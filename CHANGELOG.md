@@ -19,6 +19,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 - No duplicate entities exist in your system
 - All sensors are functioning as expected
 - **Automations may need to be updated** if they reference sensor entities that were migrated
+**A Copy of the core.config_entries, core.device_registry and core.entity_registry  is    created before the sensors are migrated and can be copied back from the /lambda_heat_pumps folder to the hidden .storage folder to undo the changes. However, version 1.0.9 of the integration must then be reinstalled for the system to work properly.** 
 
 ### Deutsch
 **TIEFGREIFENDE ÄNDERUNGEN IN DIESEM RELEASE - BACKUP ERFORDERLICH**
@@ -35,6 +36,7 @@ Dieses Release enthält bedeutende Änderungen am Entity Registry und den Sensor
 - Keine doppelten Entities in Ihrem System existieren
 - Alle Sensoren funktionieren wie erwartet
 - **Automatisierungen müssen möglicherweise angepasst werden**, falls sie auf migrierte Sensor-Entities verweisen
+**Eine Kopie der Dateien core.config_entries, core.device_registry und core.entity_registry wird vor der Migration der Sensoren erstellt und kann aus dem Order /lambda_heat_pumps wieder in den versteckten Ordner .storage kopiert werden, um die Änderungen rückgängig zu machen. Dann muss aber auch die Version 1.0.9 der Integration wieder installiert werden, damit das System sauber funktioniert.**
 
 ## [1.1.0] - 2025-08-03
 
