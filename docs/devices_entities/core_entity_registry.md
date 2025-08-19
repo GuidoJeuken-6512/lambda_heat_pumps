@@ -1,5 +1,67 @@
 # Home Assistant Core Entity Registry
 
+## Inhaltsverzeichnis
+
+- [Übersicht](#übersicht)
+- [Was ist die Entity Registry?](#was-ist-die-entity-registry)
+- [Wo befindet sich die Entity Registry?](#wo-befindet-sich-die-entity-registry)
+- [Struktur der Entity Registry](#struktur-der-entity-registry)
+  - [entity_id (String)](#1-entity_id-string)
+  - [name (String)](#2-name-string)
+    - [Name-Anzeige in der GUI](#name-anzeige-in-der-gui)
+  - [platform (String)](#3-platform-string)
+  - [config_entry_id (String)](#4-config_entry_id-string)
+  - [device_id (String)](#5-device_id-string)
+  - [area_id (String)](#6-area_id-string)
+  - [capabilities (Object)](#7-capabilities-object)
+  - [supported_features (Integer)](#8-supported_features-integer)
+  - [disabled_by (String)](#9-disabled_by-string)
+  - [entity_category (String)](#10-entity_category-string)
+  - [has_entity_name (Boolean)](#11-has_entity_name-boolean)
+  - [original_name (String)](#12-original_name-string)
+  - [unique_id (String)](#13-unique_id-string)
+  - [previous_unique_id (String)](#14-previous_unique_id-string)
+- [Beispiel einer Entity Registry Eintrag](#beispiel-einer-entity-registry-eintrag)
+- [Wichtigkeit der Entity Registry](#wichtigkeit-der-entity-registry)
+  - [Persistenz](#1-persistenz)
+  - [Verknüpfungen](#2-verknüpfungen)
+  - [Benutzerfreundlichkeit](#3-benutzerfreundlichkeit)
+  - [Automatisierung](#4-automatisierung)
+- [Entitätserstellung und Migration in Integrationen](#entitätserstellung-und-migration-in-integrationen)
+  - [Automatische Entitätserstellung](#1-automatische-entitätserstellung)
+  - [Entitätsmigration bei Updates](#2-entitätsmigration-bei-updates)
+  - [Manuelle Entitätsverwaltung](#3-manuelle-entitätsverwaltung)
+  - [Entitätsverknüpfungen](#4-entitätsverknüpfungen)
+- [Best Practices](#best-practices)
+  - [Namensgebung](#1-namensgebung)
+  - [Organisation](#2-organisation)
+  - [Wartung](#3-wartung)
+- [Fehlerbehebung](#fehlerbehebung)
+  - [Häufige Probleme](#häufige-probleme)
+- [Abhängigkeit zu historischen Daten](#abhängigkeit-zu-historischen-daten)
+  - [Verbindung zur Datenbank](#verbindung-zur-datenbank)
+    - [Datenbankstruktur](#1-datenbankstruktur)
+    - [Matching-Mechanismus](#2-matching-mechanismus)
+    - [Datenfluss](#3-datenfluss)
+  - [Wichtige Abhängigkeiten](#4-wichtige-abhängigkeiten)
+    - [Recorder-Integration](#recorder-integration)
+    - [History-Integration](#history-integration)
+    - [Statistics-Integration](#statistics-integration)
+  - [Matching-Probleme und Lösungen](#5-matching-probleme-und-lösungen)
+    - [Problem: Entität verschwunden aus History](#problem-entität-verschwunden-aus-history)
+    - [Problem: Historische Daten nicht verfügbar](#problem-historische-daten-nicht-verfügbar)
+    - [Problem: Falsche Datenzuordnung](#problem-falsche-datenzuordnung)
+  - [Datenbankoptimierung](#6-datenbankoptimierung)
+    - [Indizes für bessere Performance](#indizes-für-bessere-performance)
+    - [Partitionierung für große Datenmengen](#partitionierung-für-große-datenmengen)
+  - [Monitoring und Wartung](#7-monitoring-und-wartung)
+    - [Überprüfung der Datenintegrität](#überprüfung-der-datenintegrität)
+    - [Bereinigung verwaister Daten](#bereinigung-verwaister-daten)
+- [Fazit](#fazit)
+- [Weitere Ressourcen](#weitere-ressourcen)
+
+---
+
 ## Übersicht
 
 Die `core.entity_registry` ist eine zentrale Komponente in Home Assistant, die alle verfügbaren Entitäten (Entities) verwaltet und deren Metadaten speichert. Sie fungiert als zentrales Verzeichnis für alle Sensoren, Schalter, Lampen und andere Geräte in Ihrem Smart Home.
@@ -27,6 +89,37 @@ Jede Entität in der Registry hat folgende Hauptattribute:
 - **Beispiele**: "Wohnzimmer Temperatur", "Küche Deckenleuchte"
 - **Wichtigkeit**: Wird in der Benutzeroberfläche angezeigt
 - **Hinweis**: Kann vom Benutzer geändert werden
+
+#### **Name-Anzeige in der GUI**
+
+**Wenn `name` leer ist (`null` oder leerer String):**
+- Home Assistant generiert automatisch einen Namen aus der `entity_id`
+- Format: `domain.unique_name` wird zu `Domain Unique Name` konvertiert
+- Beispiel: `sensor.lambda_hp1_temperature` → "Sensor Lambda Hp1 Temperature"
+- Automatische Groß-/Kleinschreibung und Leerzeichen-Formatierung
+
+**Wenn `name` gefüllt ist:**
+- Der benutzerdefinierte Name wird direkt angezeigt
+- Überschreibt alle automatisch generierten Namen
+- Wird in allen UI-Bereichen verwendet (Dashboards, Automatisierungen, etc.)
+- Bleibt auch nach Neustarts und Updates erhalten
+
+**Fallback-Mechanismus:**
+1. **Priorität 1**: Benutzerdefinierter `name` aus der Registry
+2. **Priorität 2**: Automatisch generierter Name aus der `entity_id`
+3. **Priorität 3**: Integration-spezifischer Standardname (falls verfügbar)
+
+**Beispiele für die Namensgenerierung:**
+```
+entity_id: sensor.living_room_temperature
+name: null → "Sensor Living Room Temperature"
+
+entity_id: light.kitchen_ceiling
+name: "Küche Deckenleuchte" → "Küche Deckenleuchte"
+
+entity_id: climate.hvac_system
+name: "" → "Climate Hvac System"
+```
 
 ### 3. **platform** (String)
 - **Beschreibung**: Integration/Plattform, die die Entität bereitstellt
@@ -138,44 +231,31 @@ Jede Entität in der Registry hat folgende Hauptattribute:
 - Einfache Auswahl in Skripten
 - Konsistente Namensgebung
 
-## Häufige Anwendungsfälle
+## Entitätserstellung und Migration in Integrationen
 
-### 1. **Entitäten umbenennen**
-```yaml
-# In der UI oder über YAML
-sensor.living_room_temperature:
-  name: "Wohnzimmer Temperatur"
-```
+### 1. **Automatische Entitätserstellung**
+- **Discovery-Prozess**: Integrationen erkennen automatisch neue Geräte
+- **Registry-Eintrag**: Neue Entität wird automatisch in der Entity Registry registriert
+- **Standardwerte**: Integration setzt Standardnamen und -attribute
+- **unique_id**: Wird automatisch aus Gerätedaten generiert (MAC, Seriennummer, etc.)
 
-### 2. **Entitäten deaktivieren**
-```yaml
-# Über die UI oder YAML
-sensor.unused_sensor:
-  disabled_by: user
-```
+### 2. **Entitätsmigration bei Updates**
+- **Version-Updates**: Integration kann Entitäten neu strukturieren
+- **unique_id-Änderungen**: `previous_unique_id` wird gesetzt
+- **Attribut-Updates**: Neue Felder werden hinzugefügt, veraltete entfernt
+- **Rückwärtskompatibilität**: Bestehende Konfigurationen bleiben funktionsfähig
 
-### 3. **Entitäten zu Bereichen zuordnen**
-```yaml
-# Über die UI oder YAML
-light.kitchen_ceiling:
-  area_id: kitchen
-```
+### 3. **Manuelle Entitätsverwaltung**
+- **UI-Bearbeitung**: Entitäten können über die Home Assistant UI angepasst werden
+- **Name-Änderungen**: Benutzerfreundliche Namen ohne Verlust der entity_id
+- **Bereichszuordnung**: Entitäten können Räumen zugeordnet werden
+- **Deaktivierung**: Unerwünschte Entitäten können deaktiviert werden
 
-### 4. **Entitäten in Automatisierungen verwenden**
-```yaml
-automation:
-  - alias: "Temperatur zu hoch"
-    trigger:
-      platform: numeric_state
-      entity_id: sensor.living_room_temperature
-      above: 25
-    action:
-      - service: climate.set_temperature
-        target:
-          entity_id: climate.living_room
-        data:
-          temperature: 22
-```
+### 4. **Entitätsverknüpfungen**
+- **Device Registry**: Entitäten werden mit physischen Geräten verknüpft
+- **Area Registry**: Gruppierung nach Räumen für bessere Organisation
+- **Integration Registry**: Verknüpfung mit der entsprechenden Integration
+- **Konfigurationseinträge**: Verbindung zu spezifischen Integrationseinstellungen
 
 ## Best Practices
 
@@ -281,34 +361,19 @@ Integration → Entity Registry → Datenbank
 ### 5. **Matching-Probleme und Lösungen**
 
 #### **Problem: Entität verschwunden aus History**
-```yaml
-# Ursache: Entität in Registry deaktiviert
-sensor.problem_sensor:
-  disabled_by: user
-
-# Lösung: Entität wieder aktivieren
-sensor.problem_sensor:
-  disabled_by: null
-```
+- **Ursache**: Entität in Registry deaktiviert (`disabled_by: user`)
+- **Lösung**: Entität über die UI wieder aktivieren oder `disabled_by: null` setzen
+- **Häufige Ursachen**: Integration wurde entfernt, Gerät offline, manuelle Deaktivierung
 
 #### **Problem: Historische Daten nicht verfügbar**
-```yaml
-# Prüfen Sie die Recorder-Konfiguration
-recorder:
-  include:
-    entities:
-      - sensor.lambda_hp1_temperature
-  exclude:
-    entities:
-      - sensor.temporary_sensor
-```
+- **Ursache**: Recorder-Integration filtert Entitäten aus
+- **Lösung**: Überprüfen Sie die Recorder-Konfiguration auf Include/Exclude-Regeln
+- **Häufige Ursachen**: Entität wird von Recorder ignoriert, Datenbank-Fehler
 
 #### **Problem: Falsche Datenzuordnung**
-```yaml
-# Überprüfen Sie die unique_id
-sensor.temperature:
-  unique_id: "lambda_hp1_temp_001"  # Muss eindeutig sein
-```
+- **Ursache**: `unique_id` ist nicht eindeutig oder hat sich geändert
+- **Lösung**: Überprüfen Sie die `unique_id` in der Entity Registry
+- **Häufige Ursachen**: Integration-Updates, doppelte Geräte, fehlerhafte Konfiguration
 
 ### 6. **Datenbankoptimierung**
 
@@ -321,31 +386,18 @@ CREATE INDEX IF NOT EXISTS states_entity_id_last_updated_idx ON states(entity_id
 ```
 
 #### **Partitionierung für große Datenmengen**
-```yaml
-# In der recorder-Konfiguration
-recorder:
-  auto_purge: true
-  auto_repack: true
-  commit_interval: 1
-  max_retry_delay: 30
-```
+- **Auto-Purge**: Automatische Bereinigung alter Daten
+- **Auto-Repack**: Datenbank-Optimierung für bessere Performance
+- **Commit-Interval**: Häufigkeit der Datenbank-Commits
+- **Max-Retry-Delay**: Maximale Wartezeit bei Verbindungsproblemen
 
 ### 7. **Monitoring und Wartung**
 
 #### **Überprüfung der Datenintegrität**
-```yaml
-# Automatisierung zur Überwachung
-automation:
-  - alias: "Überprüfe Entity Registry Integrität"
-    trigger:
-      platform: time
-      at: "02:00:00"
-    action:
-      - service: system_log.write
-        data:
-          message: "Entity Registry Status Check"
-          level: info
-```
+- **Automatisierte Überwachung**: Regelmäßige Prüfung der Registry-Integrität
+- **Zeitbasierte Trigger**: Überwachung zu definierten Zeiten
+- **Logging**: Protokollierung von Status-Checks und Problemen
+- **Benachrichtigungen**: Warnungen bei Registry-Problemen
 
 #### **Bereinigung verwaister Daten**
 ```sql
