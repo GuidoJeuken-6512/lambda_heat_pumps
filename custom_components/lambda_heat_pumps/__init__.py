@@ -5,7 +5,6 @@ from datetime import timedelta
 
 import logging
 import asyncio
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -17,7 +16,6 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     DOMAIN,
     DEBUG_PREFIX,
-    LAMBDA_WP_CONFIG_TEMPLATE,  # Import template from const
 )
 
 from .coordinator import LambdaDataUpdateCoordinator
@@ -63,35 +61,38 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate config entry to new version."""
+    """Migrate config entry to new version using structured migration system."""
     _LOGGER.info(
-        "Starting migration for config entry %s (version %s)",
+        "Starting structured migration for config entry %s (version %s)",
         config_entry.entry_id, config_entry.version
     )
     
-    # Check if migration is needed
-    if config_entry.version >= 2:
-        _LOGGER.info(
-            "Config entry already at version 2 or higher, skipping migration"
-        )
-        return True
-    
-    # Perform the migration
-    from .migration import perform_option_c_migration
-    migration_result = await perform_option_c_migration(hass)
-    result = migration_result["success"]
-    
-    if result:
-        _LOGGER.info(
-            "Migration completed successfully for config entry %s",
-            config_entry.entry_id
-        )
-    else:
+    try:
+        # Import der neuen Migration
+        from .migration import perform_structured_migration
+        
+        # Führe strukturierte Migration durch
+        migration_success = await perform_structured_migration(hass, config_entry)
+        
+        if migration_success:
+            _LOGGER.info(
+                "Structured migration completed successfully for config entry %s",
+                config_entry.entry_id
+            )
+        else:
+            _LOGGER.error(
+                "Structured migration failed for config entry %s", 
+                config_entry.entry_id
+            )
+        
+        return migration_success
+        
+    except Exception as e:
         _LOGGER.error(
-            "Migration failed for config entry %s", config_entry.entry_id
+            "Error during structured migration for config entry %s: %s",
+            config_entry.entry_id, e
         )
-    
-    return result
+        return False
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -103,14 +104,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Setting up Lambda integration with config: %s", entry.data)
 
-    # Prüfe, ob lambda_wp_config.yaml existiert, sonst anlegen
-    config_dir = hass.config.config_dir
-    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
-    if not os.path.exists(lambda_config_path):
-        await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "w").write(LAMBDA_WP_CONFIG_TEMPLATE)
-        )
-        _LOGGER.info("Created lambda_wp_config.yaml with default template")
+    # Lambda config wird jetzt in der Migration verwaltet
+    # (siehe migration.py - create_lambda_config_backup und migrate_to_cycling_offsets)
 
     # --- Module auto-detection mit Retry ---
     detected_counts = None

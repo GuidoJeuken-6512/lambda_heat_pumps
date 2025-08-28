@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import yaml
+from datetime import datetime
+from typing import List, Tuple, Optional
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -566,3 +568,173 @@ async def increment_cycling_counter(
         await async_update_entity(hass, entity_id)
     except Exception as e:
         _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+
+
+# =============================================================================
+# UNIVERSAL FILE AGEING HELPER FUNCTIONS
+# =============================================================================
+
+async def analyze_file_ageing(
+    hass: HomeAssistant,
+    directory_path: str,
+    filename_mask: str,
+    recursive: bool = False
+) -> List[Tuple[str, int, Optional[str]]]:
+    """
+    Analysiere das Alter aller Dateien in einem Verzeichnis basierend auf Dateinamen-Maske.
+    
+    Args:
+        hass: Home Assistant Instanz
+        directory_path: Pfad zum Verzeichnis
+        filename_mask: Substring-Maske für Dateinamen (leerer String = alle Dateien)
+        recursive: True für rekursive Suche in Unterverzeichnissen
+    
+    Returns:
+        List[Tuple[str, int, Optional[str]]]: Liste von (dateipfad, tage_alt, fehler_nachricht)
+        - dateipfad: Vollständiger Pfad zur Datei
+        - tage_alt: Anzahl der Tage, die die Datei alt ist
+        - fehler_nachricht: Fehlermeldung falls etwas schiefgeht, sonst None
+    """
+    
+    results = []
+    
+    try:
+        if not os.path.exists(directory_path):
+            return [(directory_path, 0, "Verzeichnis existiert nicht")]
+        
+        if not os.path.isdir(directory_path):
+            return [(directory_path, 0, "Pfad ist kein Verzeichnis")]
+        
+        # Liste alle Dateien im Verzeichnis auf
+        if recursive:
+            # ASYNCHRON: os.walk in async_add_executor_job ausführen
+            def walk_directory(directory):
+                file_paths = []
+                for root, dirs, files in os.walk(directory):
+                    for file in files:
+                        file_paths.append(os.path.join(root, file))
+                return file_paths
+
+            file_paths = await hass.async_add_executor_job(
+                walk_directory, directory_path
+            )
+        else:
+            try:
+                files = await hass.async_add_executor_job(
+                    lambda: os.listdir(directory_path)
+                )
+                file_paths = [
+                    os.path.join(directory_path, f) for f in files
+                    if os.path.isfile(os.path.join(directory_path, f))
+                ]
+            except Exception as e:
+                return [(directory_path, 0, f"Fehler beim Auflisten des Verzeichnisses: {e}")]
+        
+        # Analysiere jede Datei
+        for file_path in file_paths:
+            try:
+                # Prüfe Dateinamen-Maske (Substring-Suche)
+                filename = os.path.basename(file_path)
+                if (not filename_mask or 
+                        filename_mask.lower() in filename.lower()):
+                    # Hole Datei-Informationen
+                    stat = await hass.async_add_executor_job(
+                        lambda: os.stat(file_path)
+                    )
+                    
+                    # Berechne Datei-Alter
+                    file_date = datetime.fromtimestamp(stat.st_mtime)
+                    today = datetime.now()
+                    days_old = (today - file_date).days
+                    
+                    results.append((file_path, days_old, None))
+                    
+            except Exception as e:
+                error_msg = f"Fehler beim Analysieren der Datei {file_path}: {e}"
+                results.append((file_path, 0, error_msg))
+                continue
+        
+        return results
+        
+    except Exception as e:
+        return [(directory_path, 0, f"Fehler beim Verarbeiten des Verzeichnisses: {e}")]
+
+async def analyze_single_file_ageing(
+    hass: HomeAssistant,
+    file_path: str
+) -> Tuple[str, int, Optional[str]]:
+    """
+    Analysiere das Alter einer einzelnen Datei.
+    
+    Args:
+        hass: Home Assistant Instanz
+        file_path: Vollständiger Pfad zur Datei
+    
+    Returns:
+        Tuple[str, int, Optional[str]]: (dateipfad, tage_alt, fehler_nachricht)
+        - dateipfad: Vollständiger Pfad zur Datei
+        - tage_alt: Anzahl der Tage, die die Datei alt ist
+        - fehler_nachricht: Fehlermeldung falls etwas schiefgeht, sonst None
+    """
+    
+    try:
+        if not os.path.exists(file_path):
+            return file_path, 0, f"Datei existiert nicht: {file_path}"
+        
+        # Hole Datei-Informationen
+        stat = await hass.async_add_executor_job(
+            lambda: os.stat(file_path)
+        )
+        
+        # Berechne Datei-Alter
+        file_date = datetime.fromtimestamp(stat.st_mtime)
+        today = datetime.now()
+        days_old = (today - file_date).days
+        
+        return file_path, days_old, None
+        
+    except Exception as e:
+        error_msg = f"Fehler beim Analysieren der Datei {file_path}: {e}"
+        return file_path, 0, error_msg
+
+async def delete_files(
+    hass: HomeAssistant,
+    file_paths: List[str],
+    dry_run: bool = True
+) -> Tuple[int, List[str]]:
+    """
+    Lösche eine Liste von Dateien.
+    
+    Args:
+        hass: Home Assistant Instanz
+        file_paths: Liste der zu löschenden Dateipfade
+        dry_run: True für Testlauf ohne Löschung, False für tatsächliche Löschung
+    
+    Returns:
+        Tuple[int, List[str]]: (gelöschte_dateien, fehler_liste)
+    """
+    
+    deleted_files = 0
+    errors = []
+    
+    for file_path in file_paths:
+        try:
+            if dry_run:
+                _LOGGER.info(
+                    "[DRY RUN] Würde Datei löschen: %s",
+                    file_path
+                )
+                deleted_files += 1
+            else:
+                await hass.async_add_executor_job(
+                    lambda: os.remove(file_path)
+                )
+                deleted_files += 1
+                _LOGGER.info("Datei gelöscht: %s", file_path)
+                
+        except Exception as e:
+            error_msg = f"Fehler beim Löschen von {file_path}: {e}"
+            errors.append(error_msg)
+            _LOGGER.error(error_msg)
+    
+    return deleted_files, errors
