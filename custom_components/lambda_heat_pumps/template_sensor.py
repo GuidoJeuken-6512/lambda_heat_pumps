@@ -73,7 +73,9 @@ async def async_setup_entry(
     )
 
     # Filter compatible template sensors
-    compatible_templates = get_compatible_sensors(CALCULATED_SENSOR_TEMPLATES, fw_version)
+    compatible_templates = get_compatible_sensors(
+        CALCULATED_SENSOR_TEMPLATES, fw_version
+    )
 
     # Create template sensors for each device type
     template_sensors = []
@@ -99,7 +101,6 @@ async def async_setup_entry(
                     and "template" in sensor_info
                     and not sensor_id.endswith("_cycling_total")
                     and not sensor_id.endswith("_cycling_yesterday")
-                    and not sensor_id.endswith("_cycling_daily")
                 ):
                     # Generate consistent names using centralized function
                     naming = generate_sensor_names(
