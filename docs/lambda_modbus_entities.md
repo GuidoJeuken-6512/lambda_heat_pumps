@@ -4,6 +4,31 @@
 
 **Legende:** R = Read-only (nur lesbar), RW = Read/Write (lesbar und schreibbar)
 
+## Inhaltsverzeichnis
+
+1. [Heat Pump (HP1)](#heat-pump-hp1)
+   - [Sensors](#sensors)
+   - [Cycling Sensors (Flanken-basiert)](#cycling-sensors-flanken-basiert)
+2. [Boiler (BOIL1)](#boiler-boil1)
+   - [Sensors](#sensors-1)
+3. [Buffer (BUFF1)](#buffer-buff1)
+   - [Sensors](#sensors-2)
+4. [Solar (SOL1)](#solar-sol1)
+   - [Sensors](#sensors-3)
+5. [Heating Circuit (HC1)](#heating-circuit-hc1)
+   - [Sensors](#sensors-4)
+6. [General Sensors (Main Controller)](#general-sensors-main-controller)
+   - [Ambient Sensors](#ambient-sensors)
+   - [E-Manager Sensors](#e-manager-sensors)
+   - [Dummy Sensors](#dummy-sensors)
+7. [Climate Entities](#climate-entities)
+   - [Hot Water Climate (Boiler)](#hot-water-climate-boiler)
+   - [Heating Circuit Climate](#heating-circuit-climate)
+8. [Base Addresses](#base-addresses)
+9. [Firmware-Versionen](#firmware-versionen)
+10. [Wichtige Hinweise](#wichtige-hinweise)
+11. [Übersicht aller RW-Sensoren](#übersicht-aller-rw-sensoren)
+
 ## Heat Pump (HP1)
 
 ### Sensors
@@ -51,21 +76,37 @@
 | Cooling Max Output Power                | 59       | 1     | kW      | R   | Kühlung Max-Ausgangsleistung |
 | Unknown Parameter (R1060)               | 60       | 1     | -       | R   | Unbekannter Parameter |
 
-### Calculated Sensors (Template-basiert)
-| Name                          | Typ | Einheit | R/W | Beschreibung |
-|-------------------------------|-----|---------|-----|--------------|
-| Heating Cycling Total         | TOTAL | cycles | R   | Gesamtzahl Heizzyklen |
-| Hot Water Cycling Total       | TOTAL | cycles | R   | Gesamtzahl Warmwasserzyklen |
-| Cooling Cycling Total         | TOTAL | cycles | R   | Gesamtzahl Kühlzyklen |
-| Defrost Cycling Total         | TOTAL | cycles | R   | Gesamtzahl Abtauzyklen |
-| Heating Cycling Yesterday     | TOTAL | cycles | R   | Heizzyklen von gestern |
-| Hot Water Cycling Yesterday   | TOTAL | cycles | R   | Warmwasserzyklen von gestern |
-| Cooling Cycling Yesterday     | TOTAL | cycles | R   | Kühlzyklen von gestern |
-| Defrost Cycling Yesterday     | TOTAL | cycles | R   | Abtauzyklen von gestern |
-| Heating Cycling Daily         | DAILY | cycles | R   | Tägliche Heizzyklen |
-| Hot Water Cycling Daily       | DAILY | cycles | R   | Tägliche Warmwasserzyklen |
-| Cooling Cycling Daily         | DAILY | cycles | R   | Tägliche Kühlzyklen |
-| Defrost Cycling Daily         | DAILY | cycles | R   | Tägliche Abtauzyklen |
+### Cycling Sensors (Flanken-basiert)
+| Name                          | Register | minFW | Einheit | R/W | Beschreibung |
+|-------------------------------|----------|-------|---------|-----|--------------|
+| Heating Cycling Total         | -        | 1     | cycles  | R   | Gesamtzahl Heizzyklen (kumulativ) |
+| Hot Water Cycling Total       | -        | 1     | cycles  | R   | Gesamtzahl Warmwasserzyklen (kumulativ) |
+| Cooling Cycling Total         | -        | 1     | cycles  | R   | Gesamtzahl Kühlzyklen (kumulativ) |
+| Defrost Cycling Total         | -        | 1     | cycles  | R   | Gesamtzahl Abtauzyklen (kumulativ) |
+| Heating Cycling Yesterday     | -        | 1     | cycles  | R   | Heizzyklen von gestern (gespeichert) |
+| Hot Water Cycling Yesterday   | -        | 1     | cycles  | R   | Warmwasserzyklen von gestern (gespeichert) |
+| Cooling Cycling Yesterday     | -        | 1     | cycles  | R   | Kühlzyklen von gestern (gespeichert) |
+| Defrost Cycling Yesterday     | -        | 1     | cycles  | R   | Abtauzyklen von gestern (gespeichert) |
+| Heating Cycling Daily         | -        | 1     | cycles  | R   | Tägliche Heizzyklen (wird täglich um 00:00 zurückgesetzt) |
+| Hot Water Cycling Daily       | -        | 1     | cycles  | R   | Tägliche Warmwasserzyklen (wird täglich um 00:00 zurückgesetzt) |
+| Cooling Cycling Daily         | -        | 1     | cycles  | R   | Tägliche Kühlzyklen (wird täglich um 00:00 zurückgesetzt) |
+| Defrost Cycling Daily         | -        | 1     | cycles  | R   | Tägliche Abtauzyklen (wird täglich um 00:00 zurückgesetzt) |
+| Heating Cycling 2H            | -        | 1     | cycles  | R   | 2-Stunden Heizzyklen (wird alle 2h zurückgesetzt: 0,2,4,6,8,10,12,14,16,18,20,22 Uhr) |
+| Hot Water Cycling 2H          | -        | 1     | cycles  | R   | 2-Stunden Warmwasserzyklen (wird alle 2h zurückgesetzt: 0,2,4,6,8,10,12,14,16,18,20,22 Uhr) |
+| Cooling Cycling 2H            | -        | 1     | cycles  | R   | 2-Stunden Kühlzyklen (wird alle 2h zurückgesetzt: 0,2,4,6,8,10,12,14,16,18,20,22 Uhr) |
+| Defrost Cycling 2H            | -        | 1     | cycles  | R   | 2-Stunden Abtauzyklen (wird alle 2h zurückgesetzt: 0,2,4,6,8,10,12,14,16,18,20,22 Uhr) |
+| Heating Cycling 4H            | -        | 1     | cycles  | R   | 4-Stunden Heizzyklen (wird alle 4h zurückgesetzt: 0,4,8,12,16,20 Uhr) |
+| Hot Water Cycling 4H          | -        | 1     | cycles  | R   | 4-Stunden Warmwasserzyklen (wird alle 4h zurückgesetzt: 0,4,8,12,16,20 Uhr) |
+| Cooling Cycling 4H            | -        | 1     | cycles  | R   | 4-Stunden Kühlzyklen (wird alle 4h zurückgesetzt: 0,4,8,12,16,20 Uhr) |
+| Defrost Cycling 4H            | -        | 1     | cycles  | R   | 4-Stunden Abtauzyklen (wird alle 4h zurückgesetzt: 0,4,8,12,16,20 Uhr) |
+
+**Hinweise zu Cycling-Sensoren:**
+- **Flanken-basierte Zählung:** Alle Cycling-Sensoren werden durch Flankenerkennung im `operating_state` erhöht
+- **Direkte Inkrementierung:** Keine Template-Berechnungen mehr - direkte Werte in den Sensoren
+- **Automatische Resets:** Daily (00:00), 2H (alle 2h), 4H (alle 4h) werden automatisch zurückgesetzt
+- **Yesterday-Werte:** Werden vor dem Daily-Reset (um 00:00) vom aktuellen Daily-Wert übernommen
+- **Historische Daten:** Alle Werte werden in der Home Assistant Datenbank gespeichert
+- **State Classes:** TOTAL (kumulativ), MEASUREMENT (periodisch zurückgesetzt)
 
 ## Boiler (BOIL1)
 
@@ -193,9 +234,25 @@ Alle Geräte verwenden folgende Basis-Adressen:
 2. **minFW** gibt die minimale Firmware-Version an, ab der der Sensor verfügbar ist
 3. **Einheiten** werden automatisch von der Integration gesetzt
 4. **R/W** zeigt an, ob ein Sensor nur lesbar (R) oder lesbar/schreibbar (RW) ist
-5. **Berechnete Sensoren** basieren auf Template-Logik und anderen Sensor-Werten
+5. **Cycling-Sensoren** basieren auf Flankenerkennung und direkter Inkrementierung (keine Template-Berechnungen mehr)
 6. **Climate-Entities** werden automatisch für Boiler und Heating Circuits erstellt
 7. **Alle Sensoren** werden dynamisch basierend auf der Konfiguration erstellt
+
+## Übersicht aller RW-Sensoren
+
+| Gerät | Name | Register | minFW | Einheit | Beschreibung |
+|-------|------|----------|-------|---------|--------------|
+| **Boiler (BOIL1)** | Target High Temperature | 50 | 1 | °C | Ziel hohe Temperatur |
+| **Buffer (BUFF1)** | Buffer High Temperature Setpoint | 4 | 1 | °C | Buffer hohe Temperatur Sollwert |
+| **Heating Circuit (HC1)** | Target Room Temperature | 51 | 1 | °C | Ziel-Raumtemperatur |
+| **Climate - Hot Water** | Hot Water Setpoint | 50 | 1 | °C | Warmwasser-Temperatur Sollwert |
+| **Climate - Heating Circuit** | Target Room Temp | 51 | 1 | °C | Ziel-Raumtemperatur |
+
+**Hinweise zu RW-Sensoren:**
+- **RW-Sensoren** können sowohl gelesen als auch geschrieben werden
+- **Sollwerte** können über Home Assistant oder Automatisierungen gesetzt werden
+- **Temperatur-Sollwerte** werden direkt an die Geräte übertragen
+- **Alle RW-Sensoren** sind temperaturbezogen und steuern das Heiz-/Kühlsystem
 
 ---
 **Hinweis:** Diese Dokumentation basiert auf der aktuellen `const.py` und wird automatisch aktualisiert, wenn neue Sensoren hinzugefügt werden.

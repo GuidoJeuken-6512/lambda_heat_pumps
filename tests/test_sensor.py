@@ -961,3 +961,633 @@ def test_lambda_template_sensor_handle_coordinator_update_unavailable(
     # Should keep unavailable state
     assert sensor._state == "unavailable"
     sensor.async_write_ha_state.assert_called_once()
+
+
+# Tests für Cycling-Sensoren
+def test_lambda_cycling_sensor_init(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor initialization."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    assert sensor._sensor_id == "heating_cycling_total"
+    assert sensor._name == "Heating Cycling Total"
+    assert sensor.entity_id == "sensor.test_heating_cycling_total"
+    assert sensor._unique_id == "test_heating_cycling_total"
+    assert sensor._unit == "cycles"
+    assert sensor._hp_index == 1
+    assert sensor._cycling_value == 0
+    assert sensor._yesterday_value == 0
+    assert sensor._last_2h_value == 0
+    assert sensor._last_4h_value == 0
+
+
+def test_lambda_cycling_sensor_set_cycling_value(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor set_cycling_value method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Mock async_write_ha_state
+    sensor.async_write_ha_state = Mock()
+    
+    # Test setting cycling value
+    sensor.set_cycling_value(42)
+    assert sensor._cycling_value == 42
+    sensor.async_write_ha_state.assert_called_once()
+
+
+def test_lambda_cycling_sensor_update_yesterday_value(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor update_yesterday_value method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Set initial cycling value
+    sensor._cycling_value = 100
+    
+    # Test yesterday update
+    sensor.update_yesterday_value()
+    assert sensor._yesterday_value == 100
+
+
+def test_lambda_cycling_sensor_update_2h_value(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor update_2h_value method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Set initial cycling value
+    sensor._cycling_value = 50
+    
+    # Test 2h update
+    sensor.update_2h_value()
+    assert sensor._last_2h_value == 50
+
+
+def test_lambda_cycling_sensor_update_4h_value(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor update_4h_value method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Set initial cycling value
+    sensor._cycling_value = 75
+    
+    # Test 4h update
+    sensor.update_4h_value()
+    assert sensor._last_4h_value == 75
+
+
+def test_lambda_cycling_sensor_handle_yesterday_update(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor _handle_yesterday_update method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Mock update_yesterday_value
+    sensor.update_yesterday_value = Mock()
+    
+    # Test with correct entry_id
+    sensor._handle_yesterday_update("test_entry")
+    sensor.update_yesterday_value.assert_called_once()
+    
+    # Test with wrong entry_id
+    sensor.update_yesterday_value.reset_mock()
+    sensor._handle_yesterday_update("wrong_entry")
+    sensor.update_yesterday_value.assert_not_called()
+
+
+def test_lambda_cycling_sensor_handle_2h_update(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor _handle_2h_update method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Mock update_2h_value
+    sensor.update_2h_value = Mock()
+    
+    # Test with correct entry_id
+    sensor._handle_2h_update("test_entry")
+    sensor.update_2h_value.assert_called_once()
+    
+    # Test with wrong entry_id
+    sensor.update_2h_value.reset_mock()
+    sensor._handle_2h_update("wrong_entry")
+    sensor.update_2h_value.assert_not_called()
+
+
+def test_lambda_cycling_sensor_handle_4h_update(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor _handle_4h_update method."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_heating_cycling_total",
+        unique_id="test_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Mock update_4h_value
+    sensor.update_4h_value = Mock()
+    
+    # Test with correct entry_id
+    sensor._handle_4h_update("test_entry")
+    sensor.update_4h_value.assert_called_once()
+    
+    # Test with wrong entry_id
+    sensor.update_4h_value.reset_mock()
+    sensor._handle_4h_update("wrong_entry")
+    sensor.update_4h_value.assert_not_called()
+
+
+def test_lambda_2h4h_sensor_init(mock_entry, mock_coordinator):
+    """Test Lambda2h4hSensor initialization."""
+    from custom_components.lambda_heat_pumps.sensor import Lambda2h4hSensor
+    
+    sensor = Lambda2h4hSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_last_2h",
+        name="Heating Cycling Last 2h",
+        entity_id="sensor.test_heating_cycling_last_2h",
+        unique_id="test_heating_cycling_last_2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+    )
+    
+    assert sensor._sensor_id == "heating_cycling_last_2h"
+    assert sensor._name == "Heating Cycling Last 2h"
+    assert sensor.entity_id == "sensor.test_heating_cycling_last_2h"
+    assert sensor._unique_id == "test_heating_cycling_last_2h"
+    assert sensor._unit == "cycles"
+    assert sensor._hp_index == 1
+    assert sensor._mode == "heating"
+    assert sensor._stored_value == 0
+
+
+def test_lambda_2h4h_sensor_set_stored_value(mock_entry, mock_coordinator):
+    """Test Lambda2h4hSensor set_stored_value method."""
+    from custom_components.lambda_heat_pumps.sensor import Lambda2h4hSensor
+    
+    sensor = Lambda2h4hSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_last_2h",
+        name="Heating Cycling Last 2h",
+        entity_id="sensor.test_heating_cycling_last_2h",
+        unique_id="test_heating_cycling_last_2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+    )
+    
+    # Mock async_write_ha_state
+    sensor.async_write_ha_state = Mock()
+    
+    # Test setting stored value
+    sensor.set_stored_value(25)
+    assert sensor._stored_value == 25
+    sensor.async_write_ha_state.assert_called_once()
+
+
+def test_lambda_2h4h_sensor_handle_2h_update(mock_entry, mock_coordinator):
+    """Test Lambda2h4hSensor _handle_2h_update method."""
+    from custom_components.lambda_heat_pumps.sensor import Lambda2h4hSensor
+    
+    sensor = Lambda2h4hSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_last_2h",
+        name="Heating Cycling Last 2h",
+        entity_id="sensor.test_heating_cycling_last_2h",
+        unique_id="test_heating_cycling_last_2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+    )
+    
+    # Mock set_stored_value
+    sensor.set_stored_value = Mock()
+    
+    # Mock hass.states.get to return a valid state
+    mock_state = Mock()
+    mock_state.state = "100"
+    mock_coordinator.hass.states.get.return_value = mock_state
+    
+    # Test with correct entry_id and 2h sensor
+    sensor._handle_2h_update("test_entry")
+    sensor.set_stored_value.assert_called_once_with(100)
+    
+    # Test with wrong entry_id
+    sensor.set_stored_value.reset_mock()
+    sensor._handle_2h_update("wrong_entry")
+    sensor.set_stored_value.assert_not_called()
+
+
+def test_lambda_2h4h_sensor_handle_4h_update(mock_entry, mock_coordinator):
+    """Test Lambda2h4hSensor _handle_4h_update method."""
+    from custom_components.lambda_heat_pumps.sensor import Lambda2h4hSensor
+    
+    sensor = Lambda2h4hSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_last_4h",
+        name="Heating Cycling Last 4h",
+        entity_id="sensor.test_heating_cycling_last_4h",
+        unique_id="test_heating_cycling_last_4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+    )
+    
+    # Mock set_stored_value
+    sensor.set_stored_value = Mock()
+    
+    # Mock hass.states.get to return a valid state
+    mock_state = Mock()
+    mock_state.state = "200"
+    mock_coordinator.hass.states.get.return_value = mock_state
+    
+    # Test with correct entry_id and 4h sensor
+    sensor._handle_4h_update("test_entry")
+    sensor.set_stored_value.assert_called_once_with(200)
+    
+    # Test with wrong entry_id
+    sensor.set_stored_value.reset_mock()
+    sensor._handle_4h_update("wrong_entry")
+    sensor.set_stored_value.assert_not_called()
+
+
+def test_lambda_2h4h_sensor_extra_state_attributes(mock_entry, mock_coordinator):
+    """Test Lambda2h4hSensor extra_state_attributes property."""
+    from custom_components.lambda_heat_pumps.sensor import Lambda2h4hSensor
+    
+    # Test 2h sensor
+    sensor_2h = Lambda2h4hSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_last_2h",
+        name="Heating Cycling Last 2h",
+        entity_id="sensor.test_heating_cycling_last_2h",
+        unique_id="test_heating_cycling_last_2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+    )
+    
+    attrs_2h = sensor_2h.extra_state_attributes
+    assert attrs_2h["hp_index"] == 1
+    assert attrs_2h["sensor_type"] == "cycling_last_2h"
+    
+    # Test 4h sensor
+    sensor_4h = Lambda2h4hSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_last_4h",
+        name="Heating Cycling Last 4h",
+        entity_id="sensor.test_heating_cycling_last_4h",
+        unique_id="test_heating_cycling_last_4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+    )
+    
+    attrs_4h = sensor_4h.extra_state_attributes
+    assert attrs_4h["hp_index"] == 1
+    assert attrs_4h["sensor_type"] == "cycling_last_4h"
+
+
+# Tests für Template-Sensoren (2h/4h Berechnungen)
+def test_template_sensor_2h_calculation(mock_entry, mock_coordinator):
+    """Test Template-Sensor für 2h-Berechnung."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaTemplateSensor
+    
+    # Mock hass.states.get to return values for total and last_2h sensors
+    def mock_states_get(entity_id):
+        mock_state = Mock()
+        if "total" in entity_id:
+            mock_state.state = "150"  # Total value
+        elif "last_2h" in entity_id:
+            mock_state.state = "100"  # Last 2h value
+        else:
+            mock_state.state = "0"
+        return mock_state
+    
+    mock_coordinator.hass.states.get.side_effect = mock_states_get
+    
+    # Create template sensor for 2h calculation
+    sensor = LambdaTemplateSensor(
+        coordinator=mock_coordinator,
+        entry=mock_entry,
+        sensor_id="heating_cycling_2h",
+        name="Heating Cycling 2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        template_str="{{% set total = states('sensor.test_heating_cycling_total') | float(0) %}}{{% set last_2h = states('sensor.test_heating_cycling_last_2h') | float(0) %}}{{{{ ((total - last_2h) | round(0)) | int }}}}",
+        entity_id="sensor.test_heating_cycling_2h",
+        unique_id="test_heating_cycling_2h",
+    )
+    
+    # Test the calculation
+    sensor.handle_coordinator_update()
+    
+    # Should calculate 150 - 100 = 50
+    assert sensor._state == 50
+
+
+def test_template_sensor_4h_calculation(mock_entry, mock_coordinator):
+    """Test Template-Sensor für 4h-Berechnung."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaTemplateSensor
+    
+    # Mock hass.states.get to return values for total and last_4h sensors
+    def mock_states_get(entity_id):
+        mock_state = Mock()
+        if "total" in entity_id:
+            mock_state.state = "200"  # Total value
+        elif "last_4h" in entity_id:
+            mock_state.state = "120"  # Last 4h value
+        else:
+            mock_state.state = "0"
+        return mock_state
+    
+    mock_coordinator.hass.states.get.side_effect = mock_states_get
+    
+    # Create template sensor for 4h calculation
+    sensor = LambdaTemplateSensor(
+        coordinator=mock_coordinator,
+        entry=mock_entry,
+        sensor_id="heating_cycling_4h",
+        name="Heating Cycling 4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        template_str="{{% set total = states('sensor.test_heating_cycling_total') | float(0) %}}{{% set last_4h = states('sensor.test_heating_cycling_last_4h') | float(0) %}}{{{{ ((total - last_4h) | round(0)) | int }}}}",
+        entity_id="sensor.test_heating_cycling_4h",
+        unique_id="test_heating_cycling_4h",
+    )
+    
+    # Test the calculation
+    sensor.handle_coordinator_update()
+    
+    # Should calculate 200 - 120 = 80
+    assert sensor._state == 80
+
+
+def test_template_sensor_2h_calculation_with_zero_values(mock_entry, mock_coordinator):
+    """Test Template-Sensor für 2h-Berechnung mit Null-Werten."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaTemplateSensor
+    
+    # Mock hass.states.get to return zero values
+    def mock_states_get(entity_id):
+        mock_state = Mock()
+        mock_state.state = "0"
+        return mock_state
+    
+    mock_coordinator.hass.states.get.side_effect = mock_states_get
+    
+    # Create template sensor for 2h calculation
+    sensor = LambdaTemplateSensor(
+        coordinator=mock_coordinator,
+        entry=mock_entry,
+        sensor_id="heating_cycling_2h",
+        name="Heating Cycling 2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        template_str="{{% set total = states('sensor.test_heating_cycling_total') | float(0) %}}{{% set last_2h = states('sensor.test_heating_cycling_last_2h') | float(0) %}}{{{{ ((total - last_2h) | round(0)) | int }}}}",
+        entity_id="sensor.test_heating_cycling_2h",
+        unique_id="test_heating_cycling_2h",
+    )
+    
+    # Test the calculation
+    sensor.handle_coordinator_update()
+    
+    # Should calculate 0 - 0 = 0
+    assert sensor._state == 0
+
+
+def test_template_sensor_4h_calculation_with_unavailable_states(mock_entry, mock_coordinator):
+    """Test Template-Sensor für 4h-Berechnung mit unavailable States."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaTemplateSensor
+    
+    # Mock hass.states.get to return unavailable states
+    def mock_states_get(entity_id):
+        mock_state = Mock()
+        mock_state.state = "unavailable"
+        return mock_state
+    
+    mock_coordinator.hass.states.get.side_effect = mock_states_get
+    
+    # Create template sensor for 4h calculation
+    sensor = LambdaTemplateSensor(
+        coordinator=mock_coordinator,
+        entry=mock_entry,
+        sensor_id="heating_cycling_4h",
+        name="Heating Cycling 4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        template_str="{{% set total = states('sensor.test_heating_cycling_total') | float(0) %}}{{% set last_4h = states('sensor.test_heating_cycling_last_4h') | float(0) %}}{{{{ ((total - last_4h) | round(0)) | int }}}}",
+        entity_id="sensor.test_heating_cycling_4h",
+        unique_id="test_heating_cycling_4h",
+    )
+    
+    # Test the calculation
+    sensor.handle_coordinator_update()
+    
+    # Should handle unavailable states gracefully and return 0
+    assert sensor._state == 0
+
+
+def test_template_sensor_2h_calculation_with_float_values(mock_entry, mock_coordinator):
+    """Test Template-Sensor für 2h-Berechnung mit Float-Werten."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaTemplateSensor
+    
+    # Mock hass.states.get to return float values
+    def mock_states_get(entity_id):
+        mock_state = Mock()
+        if "total" in entity_id:
+            mock_state.state = "150.7"  # Total value with decimal
+        elif "last_2h" in entity_id:
+            mock_state.state = "100.3"  # Last 2h value with decimal
+        else:
+            mock_state.state = "0"
+        return mock_state
+    
+    mock_coordinator.hass.states.get.side_effect = mock_states_get
+    
+    # Create template sensor for 2h calculation
+    sensor = LambdaTemplateSensor(
+        coordinator=mock_coordinator,
+        entry=mock_entry,
+        sensor_id="heating_cycling_2h",
+        name="Heating Cycling 2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        template_str="{{% set total = states('sensor.test_heating_cycling_total') | float(0) %}}{{% set last_2h = states('sensor.test_heating_cycling_last_2h') | float(0) %}}{{{{ ((total - last_2h) | round(0)) | int }}}}",
+        entity_id="sensor.test_heating_cycling_2h",
+        unique_id="test_heating_cycling_2h",
+    )
+    
+    # Test the calculation
+    sensor.handle_coordinator_update()
+    
+    # Should calculate 150.7 - 100.3 = 50.4, rounded to 50
+    assert sensor._state == 50
+
+
+def test_template_sensor_4h_calculation_with_negative_result(mock_entry, mock_coordinator):
+    """Test Template-Sensor für 4h-Berechnung mit negativem Ergebnis."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaTemplateSensor
+    
+    # Mock hass.states.get to return values where last_4h > total (shouldn't happen in practice)
+    def mock_states_get(entity_id):
+        mock_state = Mock()
+        if "total" in entity_id:
+            mock_state.state = "100"  # Total value
+        elif "last_4h" in entity_id:
+            mock_state.state = "150"  # Last 4h value (higher than total)
+        else:
+            mock_state.state = "0"
+        return mock_state
+    
+    mock_coordinator.hass.states.get.side_effect = mock_states_get
+    
+    # Create template sensor for 4h calculation
+    sensor = LambdaTemplateSensor(
+        coordinator=mock_coordinator,
+        entry=mock_entry,
+        sensor_id="heating_cycling_4h",
+        name="Heating Cycling 4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        template_str="{{% set total = states('sensor.test_heating_cycling_total') | float(0) %}}{{% set last_4h = states('sensor.test_heating_cycling_last_4h') | float(0) %}}{{{{ ((total - last_4h) | round(0)) | int }}}}",
+        entity_id="sensor.test_heating_cycling_4h",
+        unique_id="test_heating_cycling_4h",
+    )
+    
+    # Test the calculation
+    sensor.handle_coordinator_update()
+    
+    # Should calculate 100 - 150 = -50
+    assert sensor._state == -50

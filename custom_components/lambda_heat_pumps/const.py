@@ -1299,7 +1299,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "mode_value": 5,  # DEFROST
         "description": "Zählt, wie oft in den Modus Abtauen (DEFROST) gewechselt wurde.",
     },
-    # Yesterday Cycling Sensoren (echte Entities für Daily-Berechnung)
+    # Yesterday Cycling Sensoren (echte Entities - speichern gestern Werte)
     "heating_cycling_yesterday": {
         "name": "Heating Cycling Yesterday",
         "unit": "cycles",
@@ -1310,7 +1310,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "description": "Speichert den Total-Wert von gestern für Daily-Berechnung.",
+        "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "hot_water_cycling_yesterday": {
         "name": "Hot Water Cycling Yesterday",
@@ -1322,7 +1322,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "description": "Speichert den Total-Wert von gestern für Daily-Berechnung.",
+        "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "cooling_cycling_yesterday": {
         "name": "Cooling Cycling Yesterday",
@@ -1334,7 +1334,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "description": "Speichert den Total-Wert von gestern für Daily-Berechnung.",
+        "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "defrost_cycling_yesterday": {
         "name": "Defrost Cycling Yesterday",
@@ -1346,10 +1346,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "description": "Speichert den Total-Wert von gestern für Daily-Berechnung.",
+        "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
-    # Daily Cycling Sensoren - Template-basiert
-    # Diese Sensoren berechnen die täglichen Cycling-Werte basierend auf den Total-Sensoren
+
+    # Daily Cycling Sensoren (echte Entities - werden täglich um Mitternacht auf 0 gesetzt)
     "heating_cycling_daily": {
         "name": "Heating Cycling Daily",
         "unit": "cycles",
@@ -1360,12 +1360,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "template": (
-            "{{% set total = states('sensor.{full_entity_prefix}_heating_cycling_total') | float(0) %}}"
-            "{{% set yesterday = states('sensor.{full_entity_prefix}_heating_cycling_yesterday') | float(0) %}}"
-            "{{{{ ((total - yesterday) | round(0)) | int }}}}"
-        ),
-        "description": "Tägliche Cycling-Zähler für Heizen, berechnet aus Total minus gestrigem Wert.",
+        "description": "Tägliche Cycling-Zähler für Heizen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "hot_water_cycling_daily": {
         "name": "Hot Water Cycling Daily",
@@ -1377,12 +1372,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "template": (
-            "{{% set total = states('sensor.{full_entity_prefix}_hot_water_cycling_total') | float(0) %}}"
-            "{{% set yesterday = states('sensor.{full_entity_prefix}_hot_water_cycling_yesterday') | float(0) %}}"
-            "{{{{ ((total - yesterday) | round(0)) | int }}}}"
-        ),
-        "description": "Tägliche Cycling-Zähler für Warmwasser, berechnet aus Total minus gestrigem Wert.",
+        "description": "Tägliche Cycling-Zähler für Warmwasser, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "cooling_cycling_daily": {
         "name": "Cooling Cycling Daily",
@@ -1394,12 +1384,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "template": (
-            "{{% set total = states('sensor.{full_entity_prefix}_cooling_cycling_total') | float(0) %}}"
-            "{{% set yesterday = states('sensor.{full_entity_prefix}_cooling_cycling_yesterday') | float(0) %}}"
-            "{{{{ ((total - yesterday) | round(0)) | int }}}}"
-        ),
-        "description": "Tägliche Cycling-Zähler für Kühlen, berechnet aus Total minus gestrigem Wert.",
+        "description": "Tägliche Cycling-Zähler für Kühlen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "defrost_cycling_daily": {
         "name": "Defrost Cycling Daily",
@@ -1411,12 +1396,105 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
-        "template": (
-            "{{% set total = states('sensor.{full_entity_prefix}_defrost_cycling_total') | float(0) %}}"
-            "{{% set yesterday = states('sensor.{full_entity_prefix}_defrost_cycling_yesterday') | float(0) %}}"
-            "{{{{ ((total - yesterday) | round(0)) | int }}}}"
-        ),
-        "description": "Tägliche Cycling-Zähler für Abtauen, berechnet aus Total minus gestrigem Wert.",
+        "description": "Tägliche Cycling-Zähler für Abtauen, werden täglich um Mitternacht auf 0 gesetzt.",
+    },
+    # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
+    "heating_cycling_2h": {
+        "name": "Heating Cycling 2h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "2-Stunden Cycling-Zähler für Heizen, werden alle 2 Stunden auf 0 gesetzt.",
+    },
+    "hot_water_cycling_2h": {
+        "name": "Hot Water Cycling 2h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "2-Stunden Cycling-Zähler für Warmwasser, werden alle 2 Stunden auf 0 gesetzt.",
+    },
+    "cooling_cycling_2h": {
+        "name": "Cooling Cycling 2h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "2-Stunden Cycling-Zähler für Kühlen, werden alle 2 Stunden auf 0 gesetzt.",
+    },
+    "defrost_cycling_2h": {
+        "name": "Defrost Cycling 2h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "2-Stunden Cycling-Zähler für Abtauen, werden alle 2 Stunden auf 0 gesetzt.",
+    },
+    # 4h Cycling Sensoren (echte Entities - werden alle 4 Stunden auf 0 gesetzt)
+    "heating_cycling_4h": {
+        "name": "Heating Cycling 4h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "4-Stunden Cycling-Zähler für Heizen, werden alle 4 Stunden auf 0 gesetzt.",
+    },
+    "hot_water_cycling_4h": {
+        "name": "Hot Water Cycling 4h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "4-Stunden Cycling-Zähler für Warmwasser, werden alle 4 Stunden auf 0 gesetzt.",
+    },
+    "cooling_cycling_4h": {
+        "name": "Cooling Cycling 4h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "4-Stunden Cycling-Zähler für Kühlen, werden alle 4 Stunden auf 0 gesetzt.",
+    },
+    "defrost_cycling_4h": {
+        "name": "Defrost Cycling 4h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "description": "4-Stunden Cycling-Zähler für Abtauen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     # Weitere Modi können nach Bedarf ergänzt werden (siehe Statusmapping unten)
 }
