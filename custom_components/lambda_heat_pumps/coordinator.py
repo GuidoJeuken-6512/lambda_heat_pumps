@@ -94,6 +94,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._entity_registry = None  # Initialize entity registry reference
         self._registry_listener = None  # Initialize registry listener reference
 
+        # Dynamische Batch-Read-Fehlerbehandlung
+        self._batch_failures = {}  # Dict: (start_addr, count) -> failure_count
+        self._max_batch_failures = 3  # Nach 3 Fehlern auf Individual-Reads umstellen
+        self._individual_read_addresses = set()  # Adressen die nur einzeln gelesen werden
+        
+        # Dynamische Cycling-Sensor-Meldungen
+        self._cycling_warnings = {}  # Dict: entity_id -> warning_count
+        self._max_cycling_warnings = 3  # Nach 3 Warnings unterdrücken
+
         # self._load_offsets_and_persisted() ENTFERNT!
 
     async def _persist_counters(self):
@@ -262,9 +271,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
                 start_addr = batch[0]
                 count = len(batch)
+                batch_key = (start_addr, count)
 
                 # For small batches or single registers, use individual reads
                 if count == 1 or count > 100:
+                    for addr in batch:
+                        await self._read_single_register(
+                            addr, address_list[addr], sensor_mapping, data
+                        )
+                    continue
+
+                # Prüfe ob dieser Batch bereits zu oft fehlgeschlagen ist
+                if batch_key in self._individual_read_addresses:
+                    _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (previous failures)")
                     for addr in batch:
                         await self._read_single_register(
                             addr, address_list[addr], sensor_mapping, data
@@ -280,14 +299,32 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 )
 
                 if hasattr(result, "isError") and result.isError():
-                    _LOGGER.warning(
-                        f"Batch read failed for {start_addr}-{start_addr + count - 1}, falling back to individual reads"
-                    )
+                    # Erhöhe Fehlerzähler
+                    self._batch_failures[batch_key] = self._batch_failures.get(batch_key, 0) + 1
+                    
+                    if self._batch_failures[batch_key] <= self._max_batch_failures:
+                        _LOGGER.warning(
+                            f"Batch read failed for {start_addr}-{start_addr + count - 1} (attempt {self._batch_failures[batch_key]}/{self._max_batch_failures})"
+                        )
+                    else:
+                        _LOGGER.info(
+                            f"Switching to individual reads for {start_addr}-{start_addr + count - 1} after {self._max_batch_failures} failures"
+                        )
+                        self._individual_read_addresses.add(batch_key)
+                    
+                    # Fallback zu Individual-Reads
                     for addr in batch:
                         await self._read_single_register(
                             addr, address_list[addr], sensor_mapping, data
                         )
                     continue
+                
+                # Erfolgreicher Batch-Read - Reset Fehlerzähler
+                if batch_key in self._batch_failures:
+                    del self._batch_failures[batch_key]
+                if batch_key in self._individual_read_addresses:
+                    self._individual_read_addresses.remove(batch_key)
+                    _LOGGER.info(f"Batch reads restored for {start_addr}-{start_addr + count - 1}")
 
                 # Process batch results
                 for i, addr in enumerate(batch):

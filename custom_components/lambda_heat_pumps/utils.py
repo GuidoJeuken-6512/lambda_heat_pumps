@@ -16,9 +16,24 @@ from homeassistant.helpers.entity_component import async_update_entity
 from .const import (
     BASE_ADDRESSES,
     CALCULATED_SENSOR_TEMPLATES,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _get_coordinator(hass: HomeAssistant):
+    """Helper function to get the coordinator instance."""
+    from homeassistant.helpers import config_validation as cv
+    
+    # Find the first (and typically only) coordinator instance
+    try:
+        for entry_id, coordinator in hass.data[DOMAIN].items():
+            if hasattr(coordinator, '_cycling_warnings'):
+                return coordinator
+    except (KeyError, AttributeError):
+        pass
+    return None
 
 
 def get_compatible_sensors(sensor_templates: dict, fw_version: int) -> dict:
@@ -513,18 +528,58 @@ async def increment_cycling_counter(
         entity_registry = async_get_entity_registry(hass)
         entity_entry = entity_registry.async_get(entity_id)
         if entity_entry is None:
-            _LOGGER.warning(
-                f"Skipping cycling counter increment: {entity_id} not yet registered"
-            )
+            # Dynamische Meldungsunterdrückung
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                warning_count = coordinator._cycling_warnings.get(entity_id, 0)
+                coordinator._cycling_warnings[entity_id] = warning_count + 1
+                
+                if warning_count < coordinator._max_cycling_warnings:
+                    _LOGGER.debug(
+                        f"Entity {entity_id} not yet registered (attempt {warning_count + 1}/{coordinator._max_cycling_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Entity {entity_id} not yet registered after {coordinator._max_cycling_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping cycling counter increment: {entity_id} not yet registered"
+                )
             continue
 
         # Zusätzliche Prüfung: Ist die Entity tatsächlich verfügbar?
         state_obj = hass.states.get(entity_id)
         if state_obj is None:
-            _LOGGER.warning(
-                f"Skipping cycling counter increment: {entity_id} state not available yet"
-            )
+            # Dynamische Meldungsunterdrückung für State-Problem
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                state_warning_key = f"{entity_id}_state"
+                warning_count = coordinator._cycling_warnings.get(state_warning_key, 0)
+                coordinator._cycling_warnings[state_warning_key] = warning_count + 1
+                
+                if warning_count < coordinator._max_cycling_warnings:
+                    _LOGGER.debug(
+                        f"Entity {entity_id} state not available yet (attempt {warning_count + 1}/{coordinator._max_cycling_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Entity {entity_id} state not available after {coordinator._max_cycling_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping cycling counter increment: {entity_id} state not available yet"
+                )
             continue
+
+        # Erfolgreiche Registrierung - Reset Counter
+        coordinator = _get_coordinator(hass)
+        if coordinator:
+            if entity_id in coordinator._cycling_warnings:
+                del coordinator._cycling_warnings[entity_id]
+            state_warning_key = f"{entity_id}_state"
+            if state_warning_key in coordinator._cycling_warnings:
+                del coordinator._cycling_warnings[state_warning_key]
 
         # Get current state
         if state_obj.state in (None, STATE_UNKNOWN, "unknown"):

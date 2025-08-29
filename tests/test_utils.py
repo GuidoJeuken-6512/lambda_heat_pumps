@@ -16,6 +16,7 @@ from custom_components.lambda_heat_pumps.utils import (
     load_disabled_registers,
     to_signed_16bit,
     to_signed_32bit,
+    _get_coordinator,
 )
 
 
@@ -563,3 +564,33 @@ class TestGenerateSensorNames:
             cycling_yesterday["entity_id"]
             == f"sensor.{name_prefix}_hp1_heating_cycling_yesterday"
         )
+
+
+def test_get_coordinator():
+    """Test _get_coordinator helper function."""
+    from unittest.mock import Mock
+    
+    # Mock hass with coordinator data
+    mock_hass = Mock()
+    mock_coordinator = Mock()
+    mock_coordinator._cycling_warnings = {}
+    
+    mock_hass.data = {
+        "lambda_heat_pumps": {
+            "test_entry": mock_coordinator
+        }
+    }
+    
+    # Test successful coordinator retrieval
+    coordinator = _get_coordinator(mock_hass)
+    assert coordinator == mock_coordinator
+    
+    # Test with no coordinator
+    mock_hass.data = {"lambda_heat_pumps": {}}
+    coordinator = _get_coordinator(mock_hass)
+    assert coordinator is None
+    
+    # Test with no lambda_heat_pumps domain
+    mock_hass.data = {}
+    coordinator = _get_coordinator(mock_hass)
+    assert coordinator is None
