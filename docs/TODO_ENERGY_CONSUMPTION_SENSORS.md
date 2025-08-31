@@ -8,6 +8,7 @@ Implementierung von Stromverbrauchsrechnern nach Betriebsart (heating, hot water
 - **Flankenerkennung:** Wiederverwendung der bestehenden Logik für Betriebsart-Änderungen
 - **Tracking:** Kumulativer Verbrauch pro Betriebsart
 - **Sensoren:** Nur `total` und `daily` (vereinfacht)
+- **Sensor:** cop_calculated pro HP mit Quellsensorangabe in der yaml und Offeset
 
 ## Phase 1: Migration System erweitern
 
@@ -52,9 +53,9 @@ Implementierung von Stromverbrauchsrechnern nach Betriebsart (heating, hot water
     hp2:
       sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
   ```
-- **Zweck:** Konfigurierbare Input-Sensoren pro HP
+- **Zweck:** Konfigurierbare Input-Sensoren pro HP, wird auch für cop_calculated verwendet, wenn konfiguriert.
 
-### 7. Energy Consumption Offsets
+### 7. Energy Consumption Offsets, lese Offset Konzept cycling sensoren!
 - **Datei:** `lambda_wp_config.yaml`
 - **Neue Sektion:** `energy_consumption_offsets`
 - **Struktur:**
@@ -150,7 +151,7 @@ Implementierung von Stromverbrauchsrechnern nach Betriebsart (heating, hot water
   ```
 - **Zweck:** Energie-Werte über Neustarts hinweg speichern
 
-### 14. Offset-Loading implementieren
+### 14. Offset-Loading implementieren, lese OffsetKonzept der cyclimg Sensoren
 - **Datei:** `custom_components/lambda_heat_pumps/coordinator.py`
 - **Funktion:** `_load_offsets_and_persisted()` erweitern
 - **Aktion:** Energy-Offsets aus persistierter Datei laden
