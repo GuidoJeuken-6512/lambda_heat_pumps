@@ -1205,10 +1205,18 @@ CLIMATE_TEMPLATES = {
 }
 
 # Default update interval for Modbus communication (in seconds)
-DEFAULT_UPDATE_INTERVAL = 10
+# Lambda requires 1 minute timeout, so we use 30 seconds to stay well below
+DEFAULT_UPDATE_INTERVAL = 30
 
 # Default interval for writing room temperature and PV surplus (in seconds)
 DEFAULT_WRITE_INTERVAL = 30
+
+# Lambda-specific Modbus configuration
+LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout
+LAMBDA_MODBUS_UNIT_ID = 1   # Lambda Unit ID
+LAMBDA_MODBUS_PORT = 502    # Standard Modbus TCP port
+LAMBDA_MAX_RETRIES = 3      # Maximum retry attempts
+LAMBDA_RETRY_DELAY = 5      # Delay between retries in seconds
 
 DEFAULT_HEATING_CIRCUIT_MIN_TEMP = 15
 DEFAULT_HEATING_CIRCUIT_MAX_TEMP = 35
@@ -1521,12 +1529,6 @@ OPERATING_STATE_MAP = {
     17: "MINTEMP-BLOCK",
     18: "FIRMWARE-DOWNLOAD",
 }
-
-# Default update interval for Modbus communication (in seconds)
-DEFAULT_UPDATE_INTERVAL = 10
-
-# Default interval for writing room temperature and PV surplus (in seconds)
-DEFAULT_WRITE_INTERVAL = 30
 
 # Lambda WP Configuration Template
 LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration

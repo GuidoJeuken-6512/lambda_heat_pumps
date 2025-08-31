@@ -9,6 +9,7 @@
 1. [Heat Pump (HP1)](#heat-pump-hp1)
    - [Sensors](#sensors)
    - [Cycling Sensors (Flanken-basiert)](#cycling-sensors-flanken-basiert)
+   - [Template-Sensoren (Berechnete Sensoren)](#template-sensoren-berechnete-sensoren)
 2. [Boiler (BOIL1)](#boiler-boil1)
    - [Sensors](#sensors-1)
 3. [Buffer (BUFF1)](#buffer-buff1)
@@ -107,6 +108,36 @@
 - **Yesterday-Werte:** Werden vor dem Daily-Reset (um 00:00) vom aktuellen Daily-Wert übernommen
 - **Historische Daten:** Alle Werte werden in der Home Assistant Datenbank gespeichert
 - **State Classes:** TOTAL (kumulativ), MEASUREMENT (periodisch zurückgesetzt)
+
+### Template-Sensoren (Berechnete Sensoren)
+| Name                                    | minFW | Einheit | R/W | Beschreibung |
+|-----------------------------------------|-------|---------|-----|--------------|
+| COP Calculated                          | 1     | -       | R   | Berechneter COP-Wert aus kumulativen Werten |
+
+**Beispiel Entity-ID:** `sensor.eu08l_hp1_cop_calculated`
+
+**Berechnung COP Calculated:**
+```
+COP = Thermische Energie Ausgabe (kumuliert) / Elektrische Leistungsaufnahme (kumuliert)
+```
+
+**Quell-Sensoren:**
+- `compressor_thermal_energy_output_accumulated` (Register 22, Wh)
+- `compressor_power_consumption_accumulated` (Register 20, Wh)
+
+**Template-Logik:**
+```jinja2
+{% set thermal = states('sensor.{full_entity_prefix}_compressor_thermal_energy_output_accumulated') | float(0) %}
+{% set power = states('sensor.{full_entity_prefix}_compressor_power_consumption_accumulated') | float(1) %}
+{{ (thermal / power) | round(2) if power > 0 else 0 }}
+```
+
+**Hinweise zu Template-Sensoren:**
+- **Automatische Berechnung:** Werden bei jeder Coordinator-Aktualisierung neu berechnet
+- **Jinja2-Templates:** Verwenden Home Assistant Template-Syntax
+- **Sicherheitsprüfung:** Verhindert Division durch Null (COP = 0 wenn power = 0)
+- **Präzision:** 2 Dezimalstellen für COP-Werte
+- **State Class:** `measurement` (Momentanwert)
 
 ## Boiler (BOIL1)
 
@@ -235,8 +266,9 @@ Alle Geräte verwenden folgende Basis-Adressen:
 3. **Einheiten** werden automatisch von der Integration gesetzt
 4. **R/W** zeigt an, ob ein Sensor nur lesbar (R) oder lesbar/schreibbar (RW) ist
 5. **Cycling-Sensoren** basieren auf Flankenerkennung und direkter Inkrementierung (keine Template-Berechnungen mehr)
-6. **Climate-Entities** werden automatisch für Boiler und Heating Circuits erstellt
-7. **Alle Sensoren** werden dynamisch basierend auf der Konfiguration erstellt
+6. **Template-Sensoren** sind berechnete Sensoren mit Jinja2-Templates (z.B. COP Calculated)
+7. **Climate-Entities** werden automatisch für Boiler und Heating Circuits erstellt
+8. **Alle Sensoren** werden dynamisch basierend auf der Konfiguration erstellt
 
 ## Übersicht aller RW-Sensoren
 

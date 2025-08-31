@@ -542,6 +542,13 @@ async def async_setup_entry(
     except Exception as e:
         _LOGGER.error("Error setting up template sensors: %s", e)
 
+    # Markiere Coordinator-Initialisierung als abgeschlossen
+    # Dies ermöglicht die Flankenerkennung nach der Entity-Registrierung
+    coordinator_data = hass.data[DOMAIN][entry.entry_id]
+    if coordinator_data and "coordinator" in coordinator_data:
+        coordinator = coordinator_data["coordinator"]
+        coordinator.mark_initialization_complete()
+
 
 # --- Entity-Klasse für Cycling Total Sensoren ---
 class LambdaCyclingSensor(RestoreEntity, SensorEntity):
@@ -685,20 +692,94 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
                     _LOGGER.info(
                         f"Cycling sensor {self.entity_id} initialized with 0 (no previous state)"
                     )
+                
+                # Lade den bereits angewendeten Offset aus den Attributen
+                if hasattr(last_state, 'attributes') and last_state.attributes:
+                    self._applied_offset = last_state.attributes.get("applied_offset", 0)
+                    _LOGGER.info(
+                        f"Restored applied offset for {self.entity_id}: {self._applied_offset}"
+                    )
+                else:
+                    self._applied_offset = 0
+                    _LOGGER.info(
+                        f"No applied offset found for {self.entity_id}, initializing with 0"
+                    )
+                    
             except (ValueError, TypeError) as e:
                 _LOGGER.warning(
                     f"Could not restore state for {self.entity_id}: {e}, using 0"
                 )
                 self._cycling_value = 0
+                self._applied_offset = 0
         else:
             # Kein vorheriger State vorhanden, initialisiere mit 0
             self._cycling_value = 0
+            self._applied_offset = 0
             _LOGGER.info(
                 f"Cycling sensor {self.entity_id} initialized with 0 (no previous state)"
             )
 
         # Stelle sicher, dass der Wert ein Integer ist
         self._cycling_value = int(self._cycling_value)
+        
+        # Wende Cycling-Offsets an (nur für Total-Sensoren und nur wenn noch nicht angewendet)
+        if self._sensor_id.endswith("_total"):
+            await self._apply_cycling_offset()
+
+    async def _apply_cycling_offset(self):
+        """Apply cycling offset from configuration."""
+        try:
+            # Lade die Cycling-Offsets aus der Konfiguration
+            from .utils import load_lambda_config
+            config = await load_lambda_config(self.hass)
+            cycling_offsets = config.get("cycling_offsets", {})
+            
+            if not cycling_offsets:
+                _LOGGER.debug(f"No cycling offsets found for {self.entity_id}")
+                return
+            
+            # Bestimme den Device-Key (z.B. "hp1")
+            device_key = f"hp{self._hp_index}"
+            
+            if device_key not in cycling_offsets:
+                _LOGGER.debug(f"No cycling offsets found for device {device_key}")
+                return
+            
+            # Hole den aktuellen Offset für diesen Sensor
+            current_offset = cycling_offsets[device_key].get(self._sensor_id, 0)
+            
+            # Hole den bereits angewendeten Offset aus den Attributen
+            applied_offset = getattr(self, "_applied_offset", 0)
+            
+            # Berechne die Differenz zwischen aktuellem und bereits angewendetem Offset
+            offset_difference = current_offset - applied_offset
+            
+            # Debug-Log für bessere Nachverfolgung
+            _LOGGER.debug(
+                f"Offset calculation for {self.entity_id}: current={current_offset}, applied={applied_offset}, difference={offset_difference}"
+            )
+            
+            if offset_difference != 0:
+                old_value = self._cycling_value
+                self._cycling_value = int(self._cycling_value + offset_difference)
+                self._applied_offset = current_offset
+                
+                if offset_difference > 0:
+                    _LOGGER.info(
+                        f"Applied cycling offset change for {self.entity_id}: {old_value} + {offset_difference} = {self._cycling_value} (total offset: {current_offset})"
+                    )
+                else:
+                    _LOGGER.info(
+                        f"Applied cycling offset change for {self.entity_id}: {old_value} - {abs(offset_difference)} = {self._cycling_value} (total offset: {current_offset})"
+                    )
+                
+                # Aktualisiere den State sofort
+                self.async_write_ha_state()
+            else:
+                _LOGGER.debug(f"No offset change for {self.entity_id} (offset: {current_offset}, already applied: {applied_offset})")
+                
+        except Exception as e:
+            _LOGGER.error(f"Error applying cycling offset for {self.entity_id}: {e}")
 
     @callback
     def _handle_daily_reset(self, entry_id: str):
@@ -763,11 +844,18 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra state attributes."""
-        return {
+        attrs = {
             "yesterday_value": self._yesterday_value,
             "hp_index": self._hp_index,
             "sensor_type": "cycling_total",
         }
+        
+        # Füge den angewendeten Offset hinzu (nur für Total-Sensoren)
+        if self._sensor_id.endswith("_total"):
+            applied_offset = getattr(self, "_applied_offset", 0)
+            attrs["applied_offset"] = applied_offset
+            
+        return attrs
 
 
 class LambdaYesterdaySensor(RestoreEntity, SensorEntity):

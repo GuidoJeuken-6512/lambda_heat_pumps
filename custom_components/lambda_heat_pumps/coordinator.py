@@ -6,6 +6,7 @@ import logging
 import os
 import yaml
 import json
+import asyncio
 from pathlib import Path
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
@@ -25,6 +26,11 @@ from .const import (
     HC_SENSOR_TEMPLATES,
     DEFAULT_UPDATE_INTERVAL,
     CALCULATED_SENSOR_TEMPLATES,
+    LAMBDA_MODBUS_TIMEOUT,
+    LAMBDA_MODBUS_UNIT_ID,
+    LAMBDA_MODBUS_PORT,
+    LAMBDA_MAX_RETRIES,
+    LAMBDA_RETRY_DELAY,
 )
 from .utils import (
     load_disabled_registers,
@@ -65,8 +71,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval),
         )
         self.host = entry.data["host"]
-        self.port = entry.data["port"]
-        self.slave_id = entry.data.get("slave_id", 1)
+        self.port = entry.data.get("port", LAMBDA_MODBUS_PORT)
+        self.slave_id = entry.data.get("slave_id", LAMBDA_MODBUS_UNIT_ID)
         self.debug_mode = entry.data.get("debug_mode", False)
         if self.debug_mode:
             _LOGGER.setLevel(logging.DEBUG)
@@ -102,14 +108,18 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # Dynamische Cycling-Sensor-Meldungen
         self._cycling_warnings = {}  # Dict: entity_id -> warning_count
         self._max_cycling_warnings = 3  # Nach 3 Warnings unterdrücken
+        
+        # Flag für Initialisierung - verhindert Flankenerkennung beim ersten Update
+        self._initialization_complete = False
 
         # self._load_offsets_and_persisted() ENTFERNT!
 
     async def _persist_counters(self):
-        """Persist counter data to file using Home Assistant's file operations."""
+        """Persist counter data and state information to file using Home Assistant's file operations."""
         data = {
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
+            "last_operating_states": getattr(self, "_last_operating_state", {}),
         }
 
         def _write_data():
@@ -118,6 +128,12 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 f.write(json.dumps(data))
 
         await self.hass.async_add_executor_job(_write_data)
+
+    def mark_initialization_complete(self):
+        """Markiere die Initialisierung als abgeschlossen - ermöglicht Flankenerkennung."""
+        if not self._initialization_complete:
+            self._initialization_complete = True
+            _LOGGER.info("Coordinator-Initialisierung abgeschlossen - Flankenerkennung aktiviert")
 
     async def _load_offsets_and_persisted(self):
         # Lade Offsets aus lambda_wp_config.yaml
@@ -145,6 +161,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             data = await self.hass.async_add_executor_job(_read_persist)
             self._heating_cycles = data.get("heating_cycles", {})
             self._heating_energy = data.get("heating_energy", {})
+            
+            # Lade persistierte State-Informationen
+            self._last_operating_state = data.get("last_operating_states", {})
+            
+            _LOGGER.info(
+                f"Restored last_operating_state: {self._last_operating_state}"
+            )
 
     def _generate_entity_id(self, sensor_type, idx):
         if self._use_legacy_names:
@@ -732,10 +755,33 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             msg = f"Connection failed: {e}"
             raise UpdateFailed(msg) from e
 
+    async def _is_connection_healthy(self) -> bool:
+        """Check if the Modbus connection is healthy."""
+        if not self.client:
+            return False
+        
+        try:
+            # Try a simple read to test connection health
+            # Use register 0 (General Error Number) as a health check
+            result = await asyncio.wait_for(
+                self.client.read_holding_registers(0, count=1, slave=self.slave_id),
+                timeout=5  # Short timeout for health check
+            )
+            return result is not None
+        except Exception:
+            return False
+
     async def _async_update_data(self):
         """Fetch data from Lambda device."""
         try:
-            if not self.client:
+            # Check if Home Assistant is shutting down
+            if self.hass.is_stopping:
+                _LOGGER.debug("Home Assistant is stopping, skipping data update")
+                return self.data
+            
+            # Check connection health and reconnect if necessary
+            if not self.client or not await self._is_connection_healthy():
+                _LOGGER.debug("Connection unhealthy, reconnecting to %s:%s", self.host, self.port)
                 await self._connect()
 
             # Get firmware version for sensor filtering
@@ -768,8 +814,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 "cooling": 3,  # CC
                 "defrost": 5,  # DEFROST
             }
-            if not hasattr(self, "_last_mode_state"):
-                self._last_mode_state = {mode: {} for mode in MODES}
+            # Initialisiere _last_operating_state nur wenn nicht bereits aus Persistierung geladen
             if not hasattr(self, "_last_operating_state"):
                 self._last_operating_state = {}
 
@@ -790,12 +835,20 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Debug-Log: Immer ausgeben
                 last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
-                _LOGGER.debug(
-                    "DEBUG: HP %d, last_op_state=%s, op_state_val=%s",
+                _LOGGER.info(
+                    "DEBUG: HP %d, last_op_state=%s, op_state_val=%s, init_complete=%s",
                     hp_idx,
                     last_op_state,
                     op_state_val,
+                    self._initialization_complete,
                 )
+                
+                # Initialisierung beim ersten Update: Logge den aktuellen operating_state
+                if last_op_state == "UNBEKANNT":
+                    _LOGGER.info(
+                        f"Initialisiere _last_operating_state für HP {hp_idx} mit operating_state {op_state_val}"
+                    )
+                
                 # Info-Meldung bei Änderung
                 if last_op_state != op_state_val:
                     _LOGGER.info(
@@ -804,7 +857,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         last_op_state,
                         op_state_val,
                     )
-                self._last_operating_state[hp_idx] = op_state_val
+                # Speichere den alten Wert für die Flankenerkennung
+                last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
+                
                 for mode, mode_val in MODES.items():
                     cycling_key = f"{mode}_cycles"
                     energy_key = f"{mode}_energy"
@@ -814,9 +869,17 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         setattr(self, energy_key, {})
                     cycles = getattr(self, cycling_key)
                     energy = getattr(self, energy_key)
-                    last_mode_state = self._last_mode_state[mode].get(hp_idx)
                     # Flanke: operating_state wechselt von etwas anderem auf mode_val
-                    if last_mode_state != mode_val and op_state_val == mode_val:
+                    # ABER: Nur wenn Initialisierung abgeschlossen ist
+                    _LOGGER.info(
+                        "FLANKE CHECK: HP %d, Mode %s, last_op_state=%s, op_state_val=%s, mode_val=%s, init_complete=%s",
+                        hp_idx, mode, last_op_state, op_state_val, mode_val, self._initialization_complete
+                    )
+                    if (self._initialization_complete and 
+                        last_op_state != "UNBEKANNT" and
+                        last_op_state != mode_val and 
+                        op_state_val == mode_val):
+                        
                         # Prüfe, ob die Cycling-Entities bereits registriert sind
                         cycling_entities_ready = False
                         try:
@@ -845,10 +908,12 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 cycling_offsets=self._cycling_offsets,
                             )
                             _LOGGER.info(
-                                "Wärmepumpe %d: %s Modus aktiviert "
-                                "(Cycling total inkrementiert)",
+                                "FLANKE ERKANNT: Wärmepumpe %d: %s Modus aktiviert "
+                                "(Cycling total inkrementiert) - last_op_state=%s -> op_state_val=%s",
                                 hp_idx,
                                 mode,
+                                last_op_state,
+                                op_state_val,
                             )
                         else:
                             _LOGGER.debug(
@@ -857,12 +922,20 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 hp_idx,
                                 mode,
                             )
+                    elif not self._initialization_complete:
+                        # Flankenerkennung während Initialisierung unterdrückt
+                        _LOGGER.debug(
+                            "Wärmepumpe %d: %s Modus erkannt, aber Flankenerkennung "
+                            "während Initialisierung unterdrückt",
+                            hp_idx,
+                            mode,
+                        )
                     # Nur für Debug-Zwecke, nicht als Info-Log:
                     # _LOGGER.debug(
                     #     "HP %d, Modus %s: last_mode_state=%s, op_state_val=%s",
                     #     hp_idx, mode, last_mode_state, op_state_val
                     # )
-                    self._last_mode_state[mode][hp_idx] = op_state_val
+
                     # Energieintegration für aktiven Modus
                     power_info = HP_SENSOR_TEMPLATES.get("actual_heating_capacity")
                     if power_info:
@@ -882,6 +955,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     energy_offset = self._energy_offsets.get(f"hp{hp_idx}", 0.0)
                     data[cycling_entity_id] = cycles.get(hp_idx, 0) + cycling_offset
                     data[energy_entity_id] = energy.get(hp_idx, 0.0) + energy_offset
+                
+                # Aktualisiere _last_operating_state NACH der Flankenerkennung
+                self._last_operating_state[hp_idx] = op_state_val
             await self._persist_counters()
 
             # Read boiler sensors

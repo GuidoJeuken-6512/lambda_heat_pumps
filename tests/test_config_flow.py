@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 
 from custom_components.lambda_heat_pumps.config_flow import (
-    CannotConnect,
+    CannotConnectError,
     LambdaConfigFlow,
     LambdaOptionsFlow,
     validate_input,
@@ -162,7 +162,7 @@ class TestLambdaConfigFlow:
         with patch.object(flow, "_async_current_entries", return_value=[]):
             with patch(
                 "custom_components.lambda_heat_pumps.config_flow.validate_input",
-                side_effect=CannotConnect("Connection failed"),
+                side_effect=CannotConnectError("Connection failed"),
             ):
                 result = await flow.async_step_user(user_input)
 
@@ -403,7 +403,7 @@ async def test_validate_input_connection_failed(mock_hass):
     mock_client.connect.return_value = False
 
     with patch("pymodbus.client.ModbusTcpClient", return_value=mock_client):
-        with pytest.raises(CannotConnect):
+        with pytest.raises(CannotConnectError):
             await validate_input(mock_hass, user_input)
 
 
@@ -423,7 +423,7 @@ async def test_validate_input_read_error(mock_hass):
     )
 
     with patch("pymodbus.client.ModbusTcpClient", return_value=mock_client):
-        with pytest.raises(CannotConnect):
+        with pytest.raises(CannotConnectError):
             await validate_input(mock_hass, user_input)
 
 
@@ -438,12 +438,12 @@ async def test_validate_input_exception(mock_hass):
     }
 
     with patch("pymodbus.client.ModbusTcpClient", side_effect=Exception("Test error")):
-        with pytest.raises(CannotConnect, match="Failed to connect to device"):
+        with pytest.raises(CannotConnectError, match="Failed to connect to device"):
             await validate_input(mock_hass, user_input)
 
 
 def test_cannot_connect_error():
-    """Test CannotConnect exception."""
-    error = CannotConnect("Connection failed")
+    """Test CannotConnectError exception."""
+    error = CannotConnectError("Connection failed")
 
     assert str(error) == "Connection failed"
