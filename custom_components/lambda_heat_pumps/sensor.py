@@ -481,6 +481,11 @@ async def async_setup_entry(
     # Erweitere cycling_entities um alle neuen Sensor-Typen
     all_cycling_entities = cycling_entities.copy()
     
+    # Füge Yesterday-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in yesterday_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
     # Füge Daily-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in daily_sensor_ids:
