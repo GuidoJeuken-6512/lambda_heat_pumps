@@ -16,6 +16,9 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     DOMAIN,
     DEBUG_PREFIX,
+    LAMBDA_MODBUS_TIMEOUT,
+    LAMBDA_MAX_RETRIES,
+    LAMBDA_CIRCUIT_BREAKER_ENABLED,
 )
 
 from .coordinator import LambdaDataUpdateCoordinator
@@ -106,6 +109,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Ensure lambda_wp_config.yaml exists (create from template if missing)
     await ensure_lambda_config(hass)
+    
+    # Read expert options from HA config
+    config = entry.data
+    modbus_timeout = config.get("modbus_timeout", LAMBDA_MODBUS_TIMEOUT)
+    max_retries = config.get("max_retries", LAMBDA_MAX_RETRIES)
+    circuit_breaker_enabled = config.get("circuit_breaker_enable", LAMBDA_CIRCUIT_BREAKER_ENABLED)
+    
+    _LOGGER.info(
+        "Expert options: timeout=%ds, retries=%d, circuit_breaker=%s",
+        modbus_timeout, max_retries, circuit_breaker_enabled
+    )
 
     # --- Module auto-detection mit Retry ---
     detected_counts = None

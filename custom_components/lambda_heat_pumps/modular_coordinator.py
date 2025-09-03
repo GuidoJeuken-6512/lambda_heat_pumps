@@ -18,7 +18,17 @@ from homeassistant.config_entries import ConfigEntry
 
 from .modular_registry import lambda_registry, RegisterTemplate
 from .modbus_utils import AsyncModbusTcpClient
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    LAMBDA_MODBUS_TIMEOUT,
+    LAMBDA_MAX_RETRIES,
+    LAMBDA_RETRY_DELAY,
+    LAMBDA_CIRCUIT_BREAKER_ENABLED,
+    LAMBDA_MAX_OFFLINE_DURATION,
+)
+from .circuit_breaker import SmartCircuitBreaker
+from .offline_manager import HACompatibleOfflineManager
+from .utils import async_read_holding_registers_with_backoff
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -31,6 +41,9 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         config_entry: ConfigEntry,
         scan_file_path: str | None = None,
+        modbus_timeout: int = None,
+        max_retries: int = None,
+        circuit_breaker_enabled: bool = None,
     ) -> None:
         """Initialize the modular coordinator."""
         super().__init__(
@@ -45,6 +58,11 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
         self.port = config_entry.data["port"]
         self.slave_id = config_entry.data["slave_id"]
 
+        # Store expert options
+        self._modbus_timeout = modbus_timeout or LAMBDA_MODBUS_TIMEOUT
+        self._max_retries = max_retries or LAMBDA_MAX_RETRIES
+        self._circuit_breaker_enabled = circuit_breaker_enabled if circuit_breaker_enabled is not None else LAMBDA_CIRCUIT_BREAKER_ENABLED
+
         # Modbus Client
         self.modbus_client: AsyncModbusTcpClient | None = None
 
@@ -56,9 +74,53 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
         # System Overview
         self.system_overview: dict[str, Any] = {}
 
+        # Robustheit-Features
+        self._circuit_breaker = SmartCircuitBreaker() if self._circuit_breaker_enabled else None
+        self._offline_manager = HACompatibleOfflineManager()
+
         # Initialize registry
         if scan_file_path:
             self._load_hardware_scan(scan_file_path)
+
+    async def _read_modbus_with_robustness(
+        self, 
+        address: int, 
+        count: int = 1
+    ) -> Any:
+        """Read Modbus registers with robustness features.
+        
+        Args:
+            address: Starting register address
+            count: Number of registers to read
+            
+        Returns:
+            Modbus response object
+            
+        Raises:
+            Exception: If all retry attempts failed
+        """
+        # Check circuit breaker
+        if self._circuit_breaker and not self._circuit_breaker.can_execute():
+            _LOGGER.debug("Circuit breaker is OPEN - skipping Modbus read at address %d", address)
+            raise Exception("Circuit breaker is OPEN")
+        
+        try:
+            # Use exponential backoff for retries
+            result = await async_read_holding_registers_with_backoff(
+                self.modbus_client, address, count, self.slave_id, self._modbus_timeout
+            )
+            
+            # Record success in circuit breaker
+            if self._circuit_breaker:
+                self._circuit_breaker.record_success()
+            
+            return result
+            
+        except Exception as e:
+            # Record failure in circuit breaker
+            if self._circuit_breaker:
+                self._circuit_breaker.record_failure(e)
+            raise
 
     def _load_hardware_scan(self, scan_file_path: str) -> None:
         """Load hardware scan results into the registry."""
@@ -98,66 +160,82 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from all active registers."""
-        if not self.modbus_client:
-            self.modbus_client = AsyncModbusTcpClient(
-                host=self.host, port=self.port, slave_id=self.slave_id
-            )
-
-        data = {}
-
-        # Read all active registers
-        for register_addr, register_template in self.active_registers.items():
-            try:
-                # Connect if needed
-                if not self.modbus_client.is_connected():
-                    await self.modbus_client.connect()
-
-                # Read register
-                result = await self.modbus_client.read_holding_registers(
-                    register_addr, 1
+        """Fetch data from all active registers with robustness features."""
+        try:
+            if not self.modbus_client:
+                self.modbus_client = AsyncModbusTcpClient(
+                    host=self.host, port=self.port, slave_id=self.slave_id
                 )
 
-                if hasattr(result, "registers") and result.registers:
-                    raw_value = result.registers[0]
+            data = {}
 
-                    # Apply scaling
-                    scaled_value = raw_value * register_template.scale
+            # Read all active registers
+            for register_addr, register_template in self.active_registers.items():
+                try:
+                    # Connect if needed
+                    if not self.modbus_client.is_connected():
+                        await self.modbus_client.connect()
 
-                    # Store data with metadata
-                    data[register_addr] = {
-                        "value": scaled_value,
-                        "raw_value": raw_value,
-                        "name": register_template.name,
-                        "unit": register_template.unit,
-                        "documented": register_template.documented,
-                        "timestamp": self.last_update_success_time,
-                    }
+                    # Read register with robustness features
+                    result = await self._read_modbus_with_robustness(register_addr, 1)
 
-                else:
+                    if hasattr(result, "registers") and result.registers:
+                        raw_value = result.registers[0]
+
+                        # Apply scaling
+                        scaled_value = raw_value * register_template.scale
+
+                        # Store data with metadata and HA compatibility
+                        data[register_addr] = {
+                            "value": scaled_value,
+                            "raw_value": raw_value,
+                            "name": register_template.name,
+                            "unit": register_template.unit,
+                            "documented": register_template.documented,
+                            "timestamp": self.last_update_success_time,
+                            # HA compatibility attributes
+                            "device_class": getattr(register_template, 'device_class', None),
+                            "state_class": getattr(register_template, 'state_class', None),
+                        }
+
+                    else:
+                        _LOGGER.debug(
+                            "No data received for register %d (%s)",
+                            register_addr,
+                            register_template.name,
+                        )
+
+                except Exception as e:
                     _LOGGER.debug(
-                        "No data received for register %d (%s)",
+                        "Failed to read register %d (%s): %s",
                         register_addr,
                         register_template.name,
+                        e,
                     )
+                    # Keep previous value if available
+                    if register_addr in self.data:
+                        data[register_addr] = self.data[register_addr]
 
-            except Exception as e:
-                _LOGGER.debug(
-                    "Failed to read register %d (%s): %s",
-                    register_addr,
-                    register_template.name,
-                    e,
-                )
-                # Keep previous value if available
-                if register_addr in self.data:
-                    data[register_addr] = self.data[register_addr]
+            # Add system overview to data
+            data["_system_overview"] = self.system_overview
+            data["_available_modules"] = self.available_modules
+            data["_register_count"] = len(self.active_registers)
 
-        # Add system overview to data
-        data["_system_overview"] = self.system_overview
-        data["_available_modules"] = self.available_modules
-        data["_register_count"] = len(self.active_registers)
+            # Update offline manager with fresh data
+            self._offline_manager.update_data(data)
+            return data
 
-        return data
+        except Exception as ex:
+            _LOGGER.error("Error updating modular coordinator data: %s", ex)
+            
+            # Try to return offline data if available
+            offline_data = self._offline_manager.get_offline_data()
+            if offline_data:
+                _LOGGER.debug("Using last known data due to connection error: %s", ex)
+                return offline_data
+            
+            # If no offline data available, return empty dict
+            return {}
 
     async def async_setup(self) -> bool:
         """Set up the coordinator."""
@@ -226,6 +304,8 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
             "connection_status": (
                 self.modbus_client.is_connected() if self.modbus_client else False
             ),
+            "circuit_breaker_status": self._circuit_breaker.get_status() if self._circuit_breaker else None,
+            "offline_manager_status": self._offline_manager.get_status(),
         }
 
     def has_undocumented_features(self) -> bool:
@@ -300,9 +380,19 @@ async def create_modular_coordinator(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
     scan_file_path: str | None = None,
+    modbus_timeout: int = None,
+    max_retries: int = None,
+    circuit_breaker_enabled: bool = None,
 ) -> LambdaModularCoordinator:
-    """Create and setup a modular coordinator."""
-    coordinator = LambdaModularCoordinator(hass, config_entry, scan_file_path)
+    """Create and setup a modular coordinator with expert options."""
+    coordinator = LambdaModularCoordinator(
+        hass, 
+        config_entry, 
+        scan_file_path,
+        modbus_timeout=modbus_timeout,
+        max_retries=max_retries,
+        circuit_breaker_enabled=circuit_breaker_enabled
+    )
 
     if await coordinator.async_setup():
         return coordinator

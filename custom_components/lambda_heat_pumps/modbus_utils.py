@@ -7,19 +7,12 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 # Import Lambda-specific constants
-try:
-    from .const import (
-        LAMBDA_MODBUS_TIMEOUT,
-        LAMBDA_MODBUS_UNIT_ID,
-        LAMBDA_MAX_RETRIES,
-        LAMBDA_RETRY_DELAY,
-    )
-except ImportError:
-    # Fallback values if const import fails
-    LAMBDA_MODBUS_TIMEOUT = 60
-    LAMBDA_MODBUS_UNIT_ID = 1
-    LAMBDA_MAX_RETRIES = 3
-    LAMBDA_RETRY_DELAY = 5
+from .const import (
+    LAMBDA_MODBUS_TIMEOUT,
+    LAMBDA_MODBUS_UNIT_ID,
+    LAMBDA_MAX_RETRIES,
+    LAMBDA_RETRY_DELAY,
+)
 
 
 def _detect_pymodbus_api(client, method_name: str) -> str:

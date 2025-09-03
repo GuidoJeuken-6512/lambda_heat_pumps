@@ -31,6 +31,10 @@ from .const import (
     LAMBDA_MODBUS_PORT,
     LAMBDA_MAX_RETRIES,
     LAMBDA_RETRY_DELAY,
+    LAMBDA_MAX_BATCH_FAILURES,
+    LAMBDA_MAX_CYCLING_WARNINGS,
+    LAMBDA_MODBUS_SAFETY_MARGIN,
+    LAMBDA_CIRCUIT_BREAKER_ENABLED,
 )
 from .utils import (
     load_disabled_registers,
@@ -41,8 +45,11 @@ from .utils import (
     increment_cycling_counter,
     get_firmware_version_int,
     get_compatible_sensors,
+    async_read_holding_registers_with_backoff,
 )
 from .modbus_utils import async_read_holding_registers
+from .circuit_breaker import SmartCircuitBreaker
+from .offline_manager import HACompatibleOfflineManager
 import time
 import json
 
@@ -53,7 +60,14 @@ SCAN_INTERVAL = timedelta(seconds=30)
 class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Lambda data."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
+    def __init__(
+        self, 
+        hass: HomeAssistant, 
+        entry: ConfigEntry,
+        modbus_timeout: int = None,
+        max_retries: int = None,
+        circuit_breaker_enabled: bool = None
+    ):
         """Initialize."""
         # Lese update_interval aus den Optionen, falls vorhanden
         update_interval = entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
@@ -63,6 +77,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "Room thermostat control: %s",
             entry.options.get("room_thermostat_control", "nicht gefunden"),
         )
+        
+        # Store expert options
+        self._modbus_timeout = modbus_timeout or LAMBDA_MODBUS_TIMEOUT
+        self._max_retries = max_retries or LAMBDA_MAX_RETRIES
+        self._circuit_breaker_enabled = circuit_breaker_enabled if circuit_breaker_enabled is not None else LAMBDA_CIRCUIT_BREAKER_ENABLED
 
         super().__init__(
             hass,
@@ -102,17 +121,63 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
         # Dynamische Batch-Read-Fehlerbehandlung
         self._batch_failures = {}  # Dict: (start_addr, count) -> failure_count
-        self._max_batch_failures = 3  # Nach 3 Fehlern auf Individual-Reads umstellen
+        self._max_batch_failures = LAMBDA_MAX_BATCH_FAILURES
         self._individual_read_addresses = set()  # Adressen die nur einzeln gelesen werden
         
         # Dynamische Cycling-Sensor-Meldungen
         self._cycling_warnings = {}  # Dict: entity_id -> warning_count
-        self._max_cycling_warnings = 3  # Nach 3 Warnings unterdrücken
+        self._max_cycling_warnings = LAMBDA_MAX_CYCLING_WARNINGS
+        
+        # Robustheit-Features
+        self._circuit_breaker = SmartCircuitBreaker() if LAMBDA_CIRCUIT_BREAKER_ENABLED else None
+        self._offline_manager = HACompatibleOfflineManager()
         
         # Flag für Initialisierung - verhindert Flankenerkennung beim ersten Update
         self._initialization_complete = False
 
         # self._load_offsets_and_persisted() ENTFERNT!
+
+    async def _read_modbus_with_robustness(
+        self, 
+        address: int, 
+        count: int, 
+        slave_id: int
+    ) -> Any:
+        """Read Modbus registers with robustness features.
+        
+        Args:
+            address: Starting register address
+            count: Number of registers to read
+            slave_id: Modbus slave ID
+            
+        Returns:
+            Modbus response object
+            
+        Raises:
+            Exception: If all retry attempts failed
+        """
+        # Check circuit breaker
+        if self._circuit_breaker and not self._circuit_breaker.can_execute():
+            _LOGGER.debug("Circuit breaker is OPEN - skipping Modbus read at address %d", address)
+            raise Exception("Circuit breaker is OPEN")
+        
+        try:
+            # Use exponential backoff for retries
+            result = await async_read_holding_registers_with_backoff(
+                self.client, address, count, slave_id, LAMBDA_MODBUS_TIMEOUT
+            )
+            
+            # Record success in circuit breaker
+            if self._circuit_breaker:
+                self._circuit_breaker.record_success()
+            
+            return result
+            
+        except Exception as e:
+            # Record failure in circuit breaker
+            if self._circuit_breaker:
+                self._circuit_breaker.record_failure(e)
+            raise
 
     async def _persist_counters(self):
         """Persist counter data and state information to file using Home Assistant's file operations."""
@@ -208,7 +273,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             await self._load_offsets_and_persisted()
 
             # Modbus-Connect für Auto-Detection (wird im Produktivbetrieb ohnehin benötigt)
-            await self._connect()
+            # Don't fail initialization if connection fails - robustness features will handle it
+            try:
+                await self._connect()
+            except Exception as e:
+                _LOGGER.warning("Initial connection failed, but continuing with robustness features: %s", e)
 
             # Initialize Entity Registry monitoring
             # Entity-based polling control now handled by entity lifecycle methods
@@ -241,6 +310,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         """Read multiple registers in robust, type-safe batches."""
         data = {}
 
+        # Check if circuit breaker is open - if so, skip batch reading
+        if self._circuit_breaker and not self._circuit_breaker.can_execute():
+            _LOGGER.debug("Circuit breaker is OPEN - skipping batch reading")
+            return data
+
         # Sort addresses for potential batch optimization
         sorted_addresses = sorted(address_list.keys())
 
@@ -271,7 +345,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 not current_batch
                 or addr != last_addr + 1
                 or current_type != dtype
-                or len(current_batch) >= 120  # Modbus safety margin
+                or len(current_batch) >= LAMBDA_MODBUS_SAFETY_MARGIN
             ):
                 if current_batch:
                     batches.append(current_batch)
@@ -314,8 +388,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
 
                 _LOGGER.debug(f"Reading batch: start={start_addr}, count={count}")
-                result = await async_read_holding_registers(
-                    self.client,
+                result = await self._read_modbus_with_robustness(
                     start_addr,
                     count,
                     self.entry.data.get("slave_id", 1),
@@ -393,8 +466,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug(
                 f"Address {address} polling status: enabled=True (entity-based)"
             )
-            result = await async_read_holding_registers(
-                self.client,
+            result = await self._read_modbus_with_robustness(
                 address,
                 count,
                 self.entry.data.get("slave_id", 1),
@@ -728,7 +800,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return is_disabled
 
     async def _connect(self):
-        """Connect to the Modbus device."""
+        """Connect to the Modbus device with robustness features."""
         try:
             from pymodbus.client import AsyncModbusTcpClient
 
@@ -740,7 +812,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             self.client = AsyncModbusTcpClient(
-                host=self.host, port=self.port, timeout=10
+                host=self.host, port=self.port, timeout=self._modbus_timeout
             )
 
             if not await self.client.connect():
@@ -750,7 +822,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Connected to Lambda device at %s:%s", self.host, self.port)
 
         except Exception as e:
-            _LOGGER.error("Connection to %s:%s failed: %s", self.host, self.port, e)
+            _LOGGER.warning("Connection to %s:%s failed: %s", self.host, self.port, e)
             self.client = None
             msg = f"Connection failed: {e}"
             raise UpdateFailed(msg) from e
@@ -760,12 +832,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         if not self.client:
             return False
         
+        # Quick check: if circuit breaker is open, connection is not healthy
+        if self._circuit_breaker and not self._circuit_breaker.can_execute():
+            return False
+        
         try:
             # Try a simple read to test connection health
             # Use register 0 (General Error Number) as a health check
-            result = await asyncio.wait_for(
-                self.client.read_holding_registers(0, count=1, slave=self.slave_id),
-                timeout=5  # Short timeout for health check
+            result = await self._read_modbus_with_robustness(
+                0, 1, self.slave_id
             )
             return result is not None
         except Exception:
@@ -779,10 +854,29 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Home Assistant is stopping, skipping data update")
                 return self.data
             
-            # Check connection health and reconnect if necessary
+            # Check if circuit breaker is open
+            circuit_breaker_was_open = self._circuit_breaker and self._circuit_breaker.is_open
+            if self._circuit_breaker and not self._circuit_breaker.can_execute():
+                _LOGGER.info("Skipping register reads because of connection problems - using last known data")
+                # Return offline data immediately
+                offline_data = self._offline_manager.get_offline_data()
+                if offline_data:
+                    return offline_data
+                return self.data
+            
+            # Check if circuit breaker just closed (connection restored)
+            if (self._circuit_breaker and circuit_breaker_was_open and 
+                not self._circuit_breaker.is_open):
+                _LOGGER.info("Verbindung wieder erfolgreich aufgebaut - Circuit Breaker geschlossen")
+            
+            # Check connection health and reconnect if necessary (only if circuit breaker allows)
             if not self.client or not await self._is_connection_healthy():
-                _LOGGER.debug("Connection unhealthy, reconnecting to %s:%s", self.host, self.port)
-                await self._connect()
+                _LOGGER.debug("Connection unhealthy, attempting to reconnect to %s:%s", self.host, self.port)
+                try:
+                    await self._connect()
+                except Exception as e:
+                    _LOGGER.debug("Reconnection failed: %s", e)
+                    # Don't fail the update - let robustness features handle it
 
             # Get firmware version for sensor filtering
             fw_version = get_firmware_version_int(self.entry)
@@ -835,7 +929,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
                 # Debug-Log: Immer ausgeben
                 last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
-                _LOGGER.info(
+                _LOGGER.debug(
                     "DEBUG: HP %d, last_op_state=%s, op_state_val=%s, init_complete=%s",
                     hp_idx,
                     last_op_state,
@@ -871,7 +965,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     energy = getattr(self, energy_key)
                     # Flanke: operating_state wechselt von etwas anderem auf mode_val
                     # ABER: Nur wenn Initialisierung abgeschlossen ist
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "FLANKE CHECK: HP %d, Mode %s, last_op_state=%s, op_state_val=%s, mode_val=%s, init_complete=%s",
                         hp_idx, mode, last_op_state, op_state_val, mode_val, self._initialization_complete
                     )
@@ -977,8 +1071,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     try:
                         address = base_address + sensor_info["relative_address"]
                         count = 2 if sensor_info.get("data_type") == "int32" else 1
-                        result = await async_read_holding_registers(
-                            self.client,
+                        result = await self._read_modbus_with_robustness(
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
@@ -1036,8 +1129,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     try:
                         address = base_address + sensor_info["relative_address"]
                         count = 2 if sensor_info.get("data_type") == "int32" else 1
-                        result = await async_read_holding_registers(
-                            self.client,
+                        result = await self._read_modbus_with_robustness(
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
@@ -1095,8 +1187,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     try:
                         address = base_address + sensor_info["relative_address"]
                         count = 2 if sensor_info.get("data_type") == "int32" else 1
-                        result = await async_read_holding_registers(
-                            self.client,
+                        result = await self._read_modbus_with_robustness(
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
@@ -1154,8 +1245,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     try:
                         address = base_address + sensor_info["relative_address"]
                         count = 2 if sensor_info.get("data_type") == "int32" else 1
-                        result = await async_read_holding_registers(
-                            self.client,
+                        result = await self._read_modbus_with_robustness(
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
@@ -1225,10 +1315,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 # Note: Writing operations moved to services.py
                 pass
 
+            # Update offline manager with fresh data
+            self._offline_manager.update_data(data)
             return data
 
         except Exception as ex:
-            _LOGGER.error("Error updating data: %s", ex)
+            _LOGGER.warning("Error updating data: %s", ex)
+            
+            # Try to return offline data if available
+            offline_data = self._offline_manager.get_offline_data()
+            if offline_data:
+                _LOGGER.info("Using last known data due to connection error: %s", ex)
+                return offline_data
+            
             if (
                 self.client is not None
                 and hasattr(self.client, "close")

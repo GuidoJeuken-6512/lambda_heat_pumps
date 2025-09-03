@@ -1212,11 +1212,24 @@ DEFAULT_UPDATE_INTERVAL = 30
 DEFAULT_WRITE_INTERVAL = 30
 
 # Lambda-specific Modbus configuration
-LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout
+LAMBDA_MODBUS_TIMEOUT = 10  # Standard-Timeout (realistisch für Modbus)
 LAMBDA_MODBUS_UNIT_ID = 1   # Lambda Unit ID
 LAMBDA_MODBUS_PORT = 502    # Standard Modbus TCP port
 LAMBDA_MAX_RETRIES = 3      # Maximum retry attempts
 LAMBDA_RETRY_DELAY = 5      # Delay between retries in seconds
+
+# Batch-Read Constants
+LAMBDA_MAX_BATCH_FAILURES = 3  # Nach 3 Fehlern auf Individual-Reads umstellen
+LAMBDA_MAX_CYCLING_WARNINGS = 3  # Nach 3 Warnings unterdrücken
+LAMBDA_MODBUS_SAFETY_MARGIN = 120  # Modbus safety margin für Batch-Reads
+
+# Circuit Breaker Constants
+LAMBDA_CIRCUIT_BREAKER_ENABLED = True  # Standard
+LAMBDA_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3  # Nach 3 Fehlern Circuit öffnen
+LAMBDA_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = 60  # Recovery-Timeout in Sekunden
+
+# Offline Data Constants
+LAMBDA_MAX_OFFLINE_DURATION = 1800  # Max. Offline-Dauer in Sekunden (30 Minuten)
 
 DEFAULT_HEATING_CIRCUIT_MIN_TEMP = 15
 DEFAULT_HEATING_CIRCUIT_MAX_TEMP = 35

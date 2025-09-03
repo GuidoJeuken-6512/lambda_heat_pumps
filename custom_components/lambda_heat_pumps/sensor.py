@@ -507,22 +507,22 @@ async def async_setup_entry(
         cycling_sensor_count,
         cycling_sensor_ids,
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "Yesterday-Sensoren erzeugt: %d, Entity-IDs: %s",
         yesterday_sensor_count,
         yesterday_sensor_ids,
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "Daily-Sensoren erzeugt: %d, Entity-IDs: %s",
         daily_sensor_count,
         daily_sensor_ids,
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "2h-Sensoren erzeugt: %d, Entity-IDs: %s",
         two_hour_sensor_count,
         two_hour_sensor_ids,
     )
-    _LOGGER.info(
+    _LOGGER.debug(
         "4h-Sensoren erzeugt: %d, Entity-IDs: %s",
         four_hour_sensor_count,
         four_hour_sensor_ids,
@@ -683,25 +683,25 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
                 last_value = last_state.state
                 if last_value not in (None, "unknown", "unavailable"):
                     self._cycling_value = int(float(last_value))
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Cycling sensor {self.entity_id} restored from database: {self._cycling_value}"
                     )
                 else:
                     # Fallback auf 0 nur wenn wirklich kein Wert in der DB
                     self._cycling_value = 0
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Cycling sensor {self.entity_id} initialized with 0 (no previous state)"
                     )
                 
                 # Lade den bereits angewendeten Offset aus den Attributen
                 if hasattr(last_state, 'attributes') and last_state.attributes:
                     self._applied_offset = last_state.attributes.get("applied_offset", 0)
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Restored applied offset for {self.entity_id}: {self._applied_offset}"
                     )
                 else:
                     self._applied_offset = 0
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"No applied offset found for {self.entity_id}, initializing with 0"
                     )
                     
@@ -937,13 +937,13 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
                 last_value = last_state.state
                 if last_value not in (None, "unknown", "unavailable"):
                     self._yesterday_value = int(float(last_value))
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Yesterday sensor {self.entity_id} restored from database: {self._yesterday_value}"
                     )
                 else:
                     # Fallback auf 0 nur wenn wirklich kein Wert in der DB
                     self._yesterday_value = 0
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Yesterday sensor {self.entity_id} initialized with 0 (no previous state)"
                     )
             except (ValueError, TypeError) as e:
@@ -1056,12 +1056,12 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
 
         # Debug log sensor creation with register option
         if sensor_info and sensor_info.get("options", {}).get("register", False):
-            _LOGGER.info(
-                "Created sensor %s with register option, address=%s", sensor_id, address
-            )
+                            _LOGGER.debug(
+                    "Created sensor %s with register option, address=%s", sensor_id, address
+                )
 
         if txt_mapping:
-            _LOGGER.info("Created state sensor %s (txt_mapping=True)", sensor_id)
+            _LOGGER.debug("Created state sensor %s (txt_mapping=True)", sensor_id)
 
         # Store the address in coordinator for polling control
         if hasattr(coordinator, "_entity_addresses"):

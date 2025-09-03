@@ -131,9 +131,17 @@ async def _process_room_temperature_entry(
 
     # Hole Coordinator für gemeinsame Nutzung
     coordinator = entry_data.get("coordinator")
-    if not coordinator or not coordinator.client:
+    if not coordinator:
         _LOGGER.error(
-            "Coordinator or Modbus client not available for entry_id %s",
+            "Coordinator not available for entry_id %s",
+            entry_id,
+        )
+        return
+    
+    # Check if coordinator is available (even if client is None due to connection issues)
+    if not hasattr(coordinator, '_modbus_timeout'):
+        _LOGGER.error(
+            "Coordinator not properly initialized for entry_id %s",
             entry_id,
         )
         return
@@ -250,9 +258,9 @@ async def _handle_read_modbus_register(hass: HomeAssistant, call: ServiceCall) -
 
     for entry_id, entry_data in lambda_entries.items():
         coordinator = entry_data.get("coordinator")
-        if not coordinator or not coordinator.client:
+        if not coordinator:
             _LOGGER.error(
-                "Coordinator or Modbus client not available for entry_id %s",
+                "Coordinator not available for entry_id %s",
                 entry_id,
             )
             continue
@@ -304,9 +312,9 @@ async def _handle_write_modbus_register(hass: HomeAssistant, call: ServiceCall) 
 
     for entry_id, entry_data in lambda_entries.items():
         coordinator = entry_data.get("coordinator")
-        if not coordinator or not coordinator.client:
+        if not coordinator:
             _LOGGER.error(
-                "Coordinator or Modbus client not available for entry_id %s",
+                "Coordinator not available for entry_id %s",
                 entry_id,
             )
             continue
@@ -359,9 +367,9 @@ async def _write_room_and_pv_for_entry(
         return
 
     coordinator = entry_data.get("coordinator")
-    if not coordinator or not coordinator.client:
+    if not coordinator:
         _LOGGER.error(
-            "Coordinator or Modbus client not available for entry_id %s",
+            "Coordinator not available for entry_id %s",
             entry_id,
         )
         return

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import random
+import time
 import yaml
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -17,9 +20,69 @@ from .const import (
     BASE_ADDRESSES,
     CALCULATED_SENSOR_TEMPLATES,
     DOMAIN,
+    LAMBDA_MAX_RETRIES,
+    LAMBDA_RETRY_DELAY,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+async def async_read_holding_registers_with_backoff(
+    client: Any, 
+    address: int, 
+    count: int, 
+    slave_id: int,
+    timeout: int = 10
+) -> Any:
+    """Read holding registers with exponential backoff retry logic.
+    
+    Args:
+        client: Modbus client instance
+        address: Starting register address
+        count: Number of registers to read
+        slave_id: Modbus slave ID
+        timeout: Timeout in seconds
+        
+    Returns:
+        Modbus response object
+        
+    Raises:
+        Exception: Last exception if all retries failed
+    """
+    last_exception = None
+    
+    for attempt in range(LAMBDA_MAX_RETRIES):
+        try:
+            return await asyncio.wait_for(
+                client.read_holding_registers(address, count=count, slave=slave_id),
+                timeout=timeout
+            )
+        except Exception as e:
+            last_exception = e
+            if attempt < LAMBDA_MAX_RETRIES - 1:
+                # Exponential backoff mit Jitter
+                base_delay = LAMBDA_RETRY_DELAY * (2 ** attempt)
+                max_delay = 30  # Maximum 30 Sekunden
+                delay = min(base_delay, max_delay)
+                
+                # Jitter hinzufügen (±20% Zufallsschwankung)
+                jitter = random.uniform(-0.2, 0.2) * delay
+                final_delay = max(1, delay + jitter)  # Minimum 1 Sekunde
+                
+                _LOGGER.info(
+                    "Modbus read error at address %d (attempt %d/%d): %s, retrying in %.1fs",
+                    address, attempt + 1, LAMBDA_MAX_RETRIES, e, final_delay
+                )
+                await asyncio.sleep(final_delay)
+            else:
+                break
+    
+    # Fehlerbehandlung - letzte Exception weiterwerfen
+    _LOGGER.warning(
+        "Modbus read failed after %d attempts at address %d: %s",
+        LAMBDA_MAX_RETRIES, address, last_exception
+    )
+    raise last_exception
 
 
 def _get_coordinator(hass: HomeAssistant):
@@ -149,7 +212,7 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
 
         # Check if cycling_offsets already exists
         if "cycling_offsets" in current_config:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "lambda_wp_config.yaml already contains cycling_offsets - "
                 "no migration needed"
             )
@@ -649,7 +712,7 @@ async def increment_cycling_counter(
         final_value = int(new_value + offset)
         if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
             cycling_entity.set_cycling_value(final_value)
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [entity updated]"
             )
         else:
@@ -660,7 +723,7 @@ async def increment_cycling_counter(
             hass.states.async_set(
                 entity_id, final_value, state_obj.attributes if state_obj else {}
             )
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [state only]"
             )
 
