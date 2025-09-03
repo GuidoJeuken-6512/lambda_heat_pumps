@@ -20,7 +20,7 @@ from .const import (
 
 from .coordinator import LambdaDataUpdateCoordinator
 from .services import async_setup_services, async_unload_services
-from .utils import generate_base_addresses
+from .utils import generate_base_addresses, ensure_lambda_config
 from .automations import setup_cycling_automations, cleanup_cycling_automations
 # from .migration import async_migrate_entry as migrate_entry
 
@@ -104,8 +104,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.debug("Setting up Lambda integration with config: %s", entry.data)
 
-    # Lambda config wird jetzt in der Migration verwaltet
-    # (siehe migration.py - create_lambda_config_backup und migrate_to_cycling_offsets)
+    # Ensure lambda_wp_config.yaml exists (create from template if missing)
+    await ensure_lambda_config(hass)
 
     # --- Module auto-detection mit Retry ---
     detected_counts = None
@@ -128,7 +128,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 break
             else:
                 _LOGGER.warning(
-                    "[Auto-detect attempt %d/%d] Could not get Modbus client for auto-detection; using config values.",
+                    "[Auto-detect attempt %d/%d] Could not get Modbus client for "
+                    "auto-detection; using config values.",
                     attempt + 1,
                     AUTO_DETECT_RETRIES,
                 )

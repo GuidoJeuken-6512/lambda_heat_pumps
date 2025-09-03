@@ -16,9 +16,24 @@ from homeassistant.helpers.entity_component import async_update_entity
 from .const import (
     BASE_ADDRESSES,
     CALCULATED_SENSOR_TEMPLATES,
+    DOMAIN,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _get_coordinator(hass: HomeAssistant):
+    """Helper function to get the coordinator instance."""
+
+    
+    # Find the first (and typically only) coordinator instance
+    try:
+        for entry_id, coordinator in hass.data[DOMAIN].items():
+            if hasattr(coordinator, '_cycling_warnings'):
+                return coordinator
+    except (KeyError, AttributeError):
+        pass
+    return None
 
 
 def get_compatible_sensors(sensor_templates: dict, fw_version: int) -> dict:
@@ -204,9 +219,44 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
         return False
 
 
+async def ensure_lambda_config(hass: HomeAssistant) -> bool:
+    """Ensure lambda_wp_config.yaml exists, create from template if missing.
+    
+    Returns:
+        bool: True if config file exists or was created successfully
+    """
+    config_dir = hass.config.config_dir
+    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+    
+    if os.path.exists(lambda_config_path):
+        _LOGGER.debug("lambda_wp_config.yaml already exists")
+        return True
+    
+    try:
+        # Import template from const.py
+        from .const import LAMBDA_WP_CONFIG_TEMPLATE
+        
+        _LOGGER.info("Creating lambda_wp_config.yaml from template")
+        
+        # Create config file from template
+        await hass.async_add_executor_job(
+            lambda: open(lambda_config_path, "w").write(LAMBDA_WP_CONFIG_TEMPLATE)
+        )
+        
+        _LOGGER.info("Successfully created lambda_wp_config.yaml from template")
+        return True
+        
+    except Exception as e:
+        _LOGGER.error("Failed to create lambda_wp_config.yaml: %s", e)
+        return False
+
+
 async def load_lambda_config(hass: HomeAssistant) -> dict:
     """Load complete Lambda configuration from lambda_wp_config.yaml."""
-    # First, try to migrate if needed
+    # First, ensure config file exists
+    await ensure_lambda_config(hass)
+    
+    # Then, try to migrate if needed
     await migrate_lambda_config(hass)
 
     config_dir = hass.config.config_dir
@@ -475,8 +525,10 @@ async def increment_cycling_counter(
     cycling_offsets: dict = None,
 ):
     """
-    Increment the cycling_total counter for a given mode and heat pump index.
+    Increment ALL cycling counters for a given mode and heat pump index.
     This should be called only on a real flank (state change)!
+    
+    Increments: Total, Daily, 2H, 4H sensors
 
     Args:
         hass: HomeAssistant instance
@@ -487,87 +539,136 @@ async def increment_cycling_counter(
         cycling_offsets: Optional dict with cycling offsets from config
     """
 
-    sensor_id = f"{mode}_cycling_total"
     device_prefix = f"hp{hp_index}"
-    names = generate_sensor_names(
-        device_prefix,
-        CALCULATED_SENSOR_TEMPLATES[sensor_id]["name"],
-        sensor_id,
-        name_prefix,
-        use_legacy_modbus_names,
-    )
-    entity_id = names["entity_id"]
-
-    # Check if entity is already registered
-    entity_registry = async_get_entity_registry(hass)
-    entity_entry = entity_registry.async_get(entity_id)
-    if entity_entry is None:
-        _LOGGER.warning(
-            f"Skipping cycling counter increment: {entity_id} not yet registered"
+    
+    # Liste aller Sensor-Typen, die erhöht werden sollen
+    sensor_types = [
+        f"{mode}_cycling_total",
+        f"{mode}_cycling_daily", 
+        f"{mode}_cycling_2h",
+        f"{mode}_cycling_4h"
+    ]
+    
+    for sensor_id in sensor_types:
+        names = generate_sensor_names(
+            device_prefix,
+            CALCULATED_SENSOR_TEMPLATES[sensor_id]["name"],
+            sensor_id,
+            name_prefix,
+            use_legacy_modbus_names,
         )
-        return
+        entity_id = names["entity_id"]
 
-    # Zusätzliche Prüfung: Ist die Entity tatsächlich verfügbar?
-    state_obj = hass.states.get(entity_id)
-    if state_obj is None:
-        _LOGGER.warning(
-            f"Skipping cycling counter increment: {entity_id} state not available yet"
-        )
-        return
+        # Check if entity is already registered
+        entity_registry = async_get_entity_registry(hass)
+        entity_entry = entity_registry.async_get(entity_id)
+        if entity_entry is None:
+            # Dynamische Meldungsunterdrückung
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                warning_count = coordinator._cycling_warnings.get(entity_id, 0)
+                coordinator._cycling_warnings[entity_id] = warning_count + 1
+                
+                if warning_count < coordinator._max_cycling_warnings:
+                    _LOGGER.debug(
+                        f"Entity {entity_id} not yet registered (attempt {warning_count + 1}/{coordinator._max_cycling_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Entity {entity_id} not yet registered after {coordinator._max_cycling_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping cycling counter increment: {entity_id} not yet registered"
+                )
+            continue
 
-    # Get current state
-    if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
-        current = 0
-    else:
-        try:
-            current = int(float(state_obj.state))
-        except Exception:
+        # Zusätzliche Prüfung: Ist die Entity tatsächlich verfügbar?
+        state_obj = hass.states.get(entity_id)
+        if state_obj is None:
+            # Dynamische Meldungsunterdrückung für State-Problem
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                state_warning_key = f"{entity_id}_state"
+                warning_count = coordinator._cycling_warnings.get(state_warning_key, 0)
+                coordinator._cycling_warnings[state_warning_key] = warning_count + 1
+                
+                if warning_count < coordinator._max_cycling_warnings:
+                    _LOGGER.debug(
+                        f"Entity {entity_id} state not available yet (attempt {warning_count + 1}/{coordinator._max_cycling_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Entity {entity_id} state not available after {coordinator._max_cycling_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping cycling counter increment: {entity_id} state not available yet"
+                )
+            continue
+
+        # Erfolgreiche Registrierung - Reset Counter
+        coordinator = _get_coordinator(hass)
+        if coordinator:
+            if entity_id in coordinator._cycling_warnings:
+                del coordinator._cycling_warnings[entity_id]
+            state_warning_key = f"{entity_id}_state"
+            if state_warning_key in coordinator._cycling_warnings:
+                del coordinator._cycling_warnings[state_warning_key]
+
+        # Get current state
+        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
             current = 0
+        else:
+            try:
+                current = int(float(state_obj.state))
+            except Exception:
+                current = 0
 
-    # Offset aus cycling_offsets laden
-    offset = 0
-    if cycling_offsets is not None:
-        device_key = device_prefix
-        if device_key in cycling_offsets:
-            offset = int(cycling_offsets[device_key].get(sensor_id, 0))
+        # Offset nur für Total-Sensoren anwenden
+        offset = 0
+        if cycling_offsets is not None and sensor_id.endswith("_total"):
+            device_key = device_prefix
+            if device_key in cycling_offsets:
+                offset = int(cycling_offsets[device_key].get(sensor_id, 0))
 
-    new_value = int(current + 1)
+        new_value = int(current + 1)
 
-    # Versuche die Entity-Instanz zu finden
-    cycling_entity = None
-    try:
-        # Suche in der neuen Cycling-Entities-Struktur
-        for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
-            if isinstance(comp_data, dict) and "cycling_entities" in comp_data:
-                cycling_entity = comp_data["cycling_entities"].get(entity_id)
-                if cycling_entity:
-                    break
-    except Exception as e:
-        _LOGGER.debug(f"Error searching for entity {entity_id}: {e}")
+        # Versuche die Entity-Instanz zu finden
+        cycling_entity = None
+        try:
+            # Suche in der neuen Cycling-Entities-Struktur
+            for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
+                if isinstance(comp_data, dict) and "cycling_entities" in comp_data:
+                    cycling_entity = comp_data["cycling_entities"].get(entity_id)
+                    if cycling_entity:
+                        break
+        except Exception as e:
+            _LOGGER.debug(f"Error searching for entity {entity_id}: {e}")
 
-    final_value = int(new_value + offset)
-    if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
-        cycling_entity.set_cycling_value(final_value)
-        _LOGGER.info(
-            f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [entity updated]"
-        )
-    else:
-        # Fallback: State setzen wie bisher
-        _LOGGER.warning(
-            f"Cycling entity {entity_id} not found, using fallback state update"
-        )
-        hass.states.async_set(
-            entity_id, final_value, state_obj.attributes if state_obj else {}
-        )
-        _LOGGER.info(
-            f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [state only]"
-        )
+        final_value = int(new_value + offset)
+        if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
+            cycling_entity.set_cycling_value(final_value)
+            _LOGGER.info(
+                f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [entity updated]"
+            )
+        else:
+            # Fallback: State setzen wie bisher
+            _LOGGER.warning(
+                f"Cycling entity {entity_id} not found, using fallback state update"
+            )
+            hass.states.async_set(
+                entity_id, final_value, state_obj.attributes if state_obj else {}
+            )
+            _LOGGER.info(
+                f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [state only]"
+            )
 
-    # Optional: Entity zum Update zwingen (z.B. für Recorder)
-    try:
-        await async_update_entity(hass, entity_id)
-    except Exception as e:
-        _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+        # Optional: Entity zum Update zwingen (z.B. für Recorder)
+        try:
+            await async_update_entity(hass, entity_id)
+        except Exception as e:
+            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
 
 
 # =============================================================================

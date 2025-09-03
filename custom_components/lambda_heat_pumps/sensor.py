@@ -310,7 +310,7 @@ async def async_setup_entry(
             cycling_entities[names["entity_id"]] = cycling_sensor
             cycling_sensor_count += 1
 
-    # --- Yesterday Cycling Sensors (echte Entities für Daily-Berechnung) ---
+    # --- Yesterday Cycling Sensors (echte Entities - speichern gestern Werte) ---
     yesterday_modes = [
         ("heating", "heating_cycling_yesterday"),
         ("hot_water", "hot_water_cycling_yesterday"),
@@ -352,16 +352,158 @@ async def async_setup_entry(
             sensors.append(yesterday_sensor)
             yesterday_sensor_count += 1
 
+    # --- Daily Cycling Sensors (echte Entities - werden täglich um Mitternacht auf 0 gesetzt) ---
+    daily_modes = [
+        ("heating", "heating_cycling_daily"),
+        ("hot_water", "hot_water_cycling_daily"),
+        ("cooling", "cooling_cycling_daily"),
+        ("defrost", "defrost_cycling_daily"),
+    ]
+    daily_sensor_count = 0
+    daily_sensor_ids = []
+
+    for hp_idx in range(1, num_hps + 1):
+        for mode, template_id in daily_modes:
+            template = CALCULATED_SENSOR_TEMPLATES[template_id]
+            device_prefix = f"hp{hp_idx}"
+            names = generate_sensor_names(
+                device_prefix,
+                template["name"],
+                template_id,
+                name_prefix,
+                use_legacy_modbus_names,
+            )
+            daily_sensor_ids.append(names["entity_id"])
+
+            daily_sensor = LambdaCyclingSensor(
+                hass=hass,
+                entry=entry,
+                sensor_id=template_id,
+                name=names["name"],
+                entity_id=names["entity_id"],
+                unique_id=names["unique_id"],
+                unit=template["unit"],
+                state_class=template["state_class"],
+                device_class=template["device_class"],
+                device_type=template["device_type"],
+                hp_index=hp_idx,
+            )
+
+            sensors.append(daily_sensor)
+            daily_sensor_count += 1
+
+    # --- 2h Cycling Sensors (echte Entities - werden alle 2 Stunden auf 0 gesetzt) ---
+    two_hour_modes = [
+        ("heating", "heating_cycling_2h"),
+        ("hot_water", "hot_water_cycling_2h"),
+        ("cooling", "cooling_cycling_2h"),
+        ("defrost", "defrost_cycling_2h"),
+    ]
+    two_hour_sensor_count = 0
+    two_hour_sensor_ids = []
+
+    for hp_idx in range(1, num_hps + 1):
+        for mode, template_id in two_hour_modes:
+            template = CALCULATED_SENSOR_TEMPLATES[template_id]
+            device_prefix = f"hp{hp_idx}"
+            names = generate_sensor_names(
+                device_prefix,
+                template["name"],
+                template_id,
+                name_prefix,
+                use_legacy_modbus_names,
+            )
+            two_hour_sensor_ids.append(names["entity_id"])
+
+            two_hour_sensor = LambdaCyclingSensor(
+                hass=hass,
+                entry=entry,
+                sensor_id=template_id,
+                name=names["name"],
+                entity_id=names["entity_id"],
+                unique_id=names["unique_id"],
+                unit=template["unit"],
+                state_class=template["state_class"],
+                device_class=template["device_class"],
+                device_type=template["device_type"],
+                hp_index=hp_idx,
+            )
+
+            sensors.append(two_hour_sensor)
+            two_hour_sensor_count += 1
+
+    # --- 4h Cycling Sensors (echte Entities - werden alle 4 Stunden auf 0 gesetzt) ---
+    four_hour_modes = [
+        ("heating", "heating_cycling_4h"),
+        ("hot_water", "hot_water_cycling_4h"),
+        ("cooling", "cooling_cycling_4h"),
+        ("defrost", "defrost_cycling_4h"),
+    ]
+    four_hour_sensor_count = 0
+    four_hour_sensor_ids = []
+
+    for hp_idx in range(1, num_hps + 1):
+        for mode, template_id in four_hour_modes:
+            template = CALCULATED_SENSOR_TEMPLATES[template_id]
+            device_prefix = f"hp{hp_idx}"
+            names = generate_sensor_names(
+                device_prefix,
+                template["name"],
+                template_id,
+                name_prefix,
+                use_legacy_modbus_names,
+            )
+            four_hour_sensor_ids.append(names["entity_id"])
+
+            four_hour_sensor = LambdaCyclingSensor(
+                hass=hass,
+                entry=entry,
+                sensor_id=template_id,
+                name=names["name"],
+                entity_id=names["entity_id"],
+                unique_id=names["unique_id"],
+                unit=template["unit"],
+                state_class=template["state_class"],
+                device_class=template["device_class"],
+                device_type=template["device_type"],
+                hp_index=hp_idx,
+            )
+
+            sensors.append(four_hour_sensor)
+            four_hour_sensor_count += 1
+
     # Speichere die Cycling-Entities für schnellen Zugriff
     if "lambda_heat_pumps" not in hass.data:
         hass.data["lambda_heat_pumps"] = {}
     if entry.entry_id not in hass.data["lambda_heat_pumps"]:
         hass.data["lambda_heat_pumps"][entry.entry_id] = {}
-    hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = (
-        cycling_entities
-    )
+    
+    # Erweitere cycling_entities um alle neuen Sensor-Typen
+    all_cycling_entities = cycling_entities.copy()
+    
+    # Füge Yesterday-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in yesterday_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
+    # Füge Daily-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in daily_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
+    # Füge 2H-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in two_hour_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
+    # Füge 4H-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in four_hour_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
+    hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = all_cycling_entities
     _LOGGER.info(
-        "Cycling-Sensoren erzeugt: %d, Entity-IDs: %s",
+        "Total-Cycling-Sensoren erzeugt: %d, Entity-IDs: %s",
         cycling_sensor_count,
         cycling_sensor_ids,
     )
@@ -369,6 +511,21 @@ async def async_setup_entry(
         "Yesterday-Sensoren erzeugt: %d, Entity-IDs: %s",
         yesterday_sensor_count,
         yesterday_sensor_ids,
+    )
+    _LOGGER.info(
+        "Daily-Sensoren erzeugt: %d, Entity-IDs: %s",
+        daily_sensor_count,
+        daily_sensor_ids,
+    )
+    _LOGGER.info(
+        "2h-Sensoren erzeugt: %d, Entity-IDs: %s",
+        two_hour_sensor_count,
+        two_hour_sensor_ids,
+    )
+    _LOGGER.info(
+        "4h-Sensoren erzeugt: %d, Entity-IDs: %s",
+        four_hour_sensor_count,
+        four_hour_sensor_ids,
     )
 
     _LOGGER.info(
@@ -384,6 +541,13 @@ async def async_setup_entry(
         await setup_template_sensors(hass, entry, async_add_entities)
     except Exception as e:
         _LOGGER.error("Error setting up template sensors: %s", e)
+
+    # Markiere Coordinator-Initialisierung als abgeschlossen
+    # Dies ermöglicht die Flankenerkennung nach der Entity-Registrierung
+    coordinator_data = hass.data[DOMAIN][entry.entry_id]
+    if coordinator_data and "coordinator" in coordinator_data:
+        coordinator = coordinator_data["coordinator"]
+        coordinator.mark_initialization_complete()
 
 
 # --- Entity-Klasse für Cycling Total Sensoren ---
@@ -424,8 +588,14 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         self._cycling_value = 0
         # Yesterday-Wert für Daily-Berechnung
         self._yesterday_value = 0
-        # Signal-Unsubscribe-Funktion
+        # Last 2h-Wert für 2h-Berechnung
+        self._last_2h_value = 0
+        # Last 4h-Wert für 4h-Berechnung
+        self._last_4h_value = 0
+        # Signal-Unsubscribe-Funktionen
         self._unsub_dispatcher = None
+        self._unsub_2h_dispatcher = None
+        self._unsub_4h_dispatcher = None
 
         if state_class == "total_increasing":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
@@ -452,6 +622,22 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             f"Yesterday value updated for {self.entity_id}: {old_yesterday} -> {self._yesterday_value}"
         )
 
+    def update_2h_value(self):
+        """Update last 2h value with current total value (called every 2 hours)."""
+        old_2h = self._last_2h_value
+        self._last_2h_value = self._cycling_value
+        _LOGGER.info(
+            f"Last 2h value updated for {self.entity_id}: {old_2h} -> {self._last_2h_value}"
+        )
+
+    def update_4h_value(self):
+        """Update last 4h value with current total value (called every 4 hours)."""
+        old_4h = self._last_4h_value
+        self._last_4h_value = self._cycling_value
+        _LOGGER.info(
+            f"Last 4h value updated for {self.entity_id}: {old_4h} -> {self._last_4h_value}"
+        )
+
     async def async_added_to_hass(self):
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
@@ -460,11 +646,17 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         last_state = await self.async_get_last_state()
         await self.restore_state(last_state)
 
-        # Registriere Signal-Handler für Yesterday-Update
-        from .automations import SIGNAL_UPDATE_YESTERDAY  # noqa: F401
+        # Registriere Signal-Handler für Reset-Signale
+        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H  # noqa: F401
 
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_UPDATE_YESTERDAY, self._handle_yesterday_update
+            self.hass, SIGNAL_RESET_DAILY, self._handle_daily_reset
+        )
+        self._unsub_2h_dispatcher = async_dispatcher_connect(
+            self.hass, SIGNAL_RESET_2H, self._handle_2h_reset
+        )
+        self._unsub_4h_dispatcher = async_dispatcher_connect(
+            self.hass, SIGNAL_RESET_4H, self._handle_4h_reset
         )
 
         # Schreibe den State sofort ins UI
@@ -475,6 +667,12 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
             self._unsub_dispatcher = None
+        if self._unsub_2h_dispatcher:
+            self._unsub_2h_dispatcher()
+            self._unsub_2h_dispatcher = None
+        if self._unsub_4h_dispatcher:
+            self._unsub_4h_dispatcher()
+            self._unsub_4h_dispatcher = None
         await super().async_will_remove_from_hass()
 
     async def restore_state(self, last_state):
@@ -494,26 +692,121 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
                     _LOGGER.info(
                         f"Cycling sensor {self.entity_id} initialized with 0 (no previous state)"
                     )
+                
+                # Lade den bereits angewendeten Offset aus den Attributen
+                if hasattr(last_state, 'attributes') and last_state.attributes:
+                    self._applied_offset = last_state.attributes.get("applied_offset", 0)
+                    _LOGGER.info(
+                        f"Restored applied offset for {self.entity_id}: {self._applied_offset}"
+                    )
+                else:
+                    self._applied_offset = 0
+                    _LOGGER.info(
+                        f"No applied offset found for {self.entity_id}, initializing with 0"
+                    )
+                    
             except (ValueError, TypeError) as e:
                 _LOGGER.warning(
                     f"Could not restore state for {self.entity_id}: {e}, using 0"
                 )
                 self._cycling_value = 0
+                self._applied_offset = 0
         else:
             # Kein vorheriger State vorhanden, initialisiere mit 0
             self._cycling_value = 0
+            self._applied_offset = 0
             _LOGGER.info(
                 f"Cycling sensor {self.entity_id} initialized with 0 (no previous state)"
             )
 
         # Stelle sicher, dass der Wert ein Integer ist
         self._cycling_value = int(self._cycling_value)
+        
+        # Wende Cycling-Offsets an (nur für Total-Sensoren und nur wenn noch nicht angewendet)
+        if self._sensor_id.endswith("_total"):
+            await self._apply_cycling_offset()
+
+    async def _apply_cycling_offset(self):
+        """Apply cycling offset from configuration."""
+        try:
+            # Lade die Cycling-Offsets aus der Konfiguration
+            from .utils import load_lambda_config
+            config = await load_lambda_config(self.hass)
+            cycling_offsets = config.get("cycling_offsets", {})
+            
+            if not cycling_offsets:
+                _LOGGER.debug(f"No cycling offsets found for {self.entity_id}")
+                return
+            
+            # Bestimme den Device-Key (z.B. "hp1")
+            device_key = f"hp{self._hp_index}"
+            
+            if device_key not in cycling_offsets:
+                _LOGGER.debug(f"No cycling offsets found for device {device_key}")
+                return
+            
+            # Hole den aktuellen Offset für diesen Sensor
+            current_offset = cycling_offsets[device_key].get(self._sensor_id, 0)
+            
+            # Hole den bereits angewendeten Offset aus den Attributen
+            applied_offset = getattr(self, "_applied_offset", 0)
+            
+            # Berechne die Differenz zwischen aktuellem und bereits angewendetem Offset
+            offset_difference = current_offset - applied_offset
+            
+            # Debug-Log für bessere Nachverfolgung
+            _LOGGER.debug(
+                f"Offset calculation for {self.entity_id}: current={current_offset}, applied={applied_offset}, difference={offset_difference}"
+            )
+            
+            if offset_difference != 0:
+                old_value = self._cycling_value
+                self._cycling_value = int(self._cycling_value + offset_difference)
+                self._applied_offset = current_offset
+                
+                if offset_difference > 0:
+                    _LOGGER.info(
+                        f"Applied cycling offset change for {self.entity_id}: {old_value} + {offset_difference} = {self._cycling_value} (total offset: {current_offset})"
+                    )
+                else:
+                    _LOGGER.info(
+                        f"Applied cycling offset change for {self.entity_id}: {old_value} - {abs(offset_difference)} = {self._cycling_value} (total offset: {current_offset})"
+                    )
+                
+                # Aktualisiere den State sofort
+                self.async_write_ha_state()
+            else:
+                _LOGGER.debug(f"No offset change for {self.entity_id} (offset: {current_offset}, already applied: {applied_offset})")
+                
+        except Exception as e:
+            _LOGGER.error(f"Error applying cycling offset for {self.entity_id}: {e}")
 
     @callback
-    def _handle_yesterday_update(self, entry_id: str):
-        """Handle yesterday update signal."""
-        if entry_id == self._entry.entry_id:
-            self.update_yesterday_value()
+    def _handle_daily_reset(self, entry_id: str):
+        """Handle daily reset signal."""
+        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_daily"):
+            # Daily-Sensoren auf 0 zurücksetzen
+            self._cycling_value = 0
+            self.async_write_ha_state()
+            _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
+
+    @callback
+    def _handle_2h_reset(self, entry_id: str):
+        """Handle 2h reset signal."""
+        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_2h"):
+            # 2H-Sensoren auf 0 zurücksetzen
+            self._cycling_value = 0
+            self.async_write_ha_state()
+            _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
+
+    @callback
+    def _handle_4h_reset(self, entry_id: str):
+        """Handle 4h reset signal."""
+        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_4h"):
+            # 4H-Sensoren auf 0 zurücksetzen
+            self._cycling_value = 0
+            self.async_write_ha_state()
+            _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
 
     @property
     def name(self):
@@ -551,11 +844,18 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         """Return extra state attributes."""
-        return {
+        attrs = {
             "yesterday_value": self._yesterday_value,
             "hp_index": self._hp_index,
             "sensor_type": "cycling_total",
         }
+        
+        # Füge den angewendeten Offset hinzu (nur für Total-Sensoren)
+        if self._sensor_id.endswith("_total"):
+            applied_offset = getattr(self, "_applied_offset", 0)
+            attrs["applied_offset"] = applied_offset
+            
+        return attrs
 
 
 class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
@@ -593,10 +893,8 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_name = name
         self._attr_unique_id = unique_id
-        # Yesterday-Wert (wird von Total-Sensor übernommen)
+        # Yesterday-Wert (wird von Daily-Sensor übernommen)
         self._yesterday_value = 0
-        # Signal-Unsubscribe-Funktion
-        self._unsub_dispatcher = None
 
         if state_class == "total_increasing":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
@@ -608,12 +906,12 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
             self._attr_state_class = None
         self._attr_device_class = device_class
 
-    def update_yesterday_value(self, total_value):
-        """Update yesterday value with current total value (called at midnight)."""
-        old_yesterday = self._yesterday_value
-        self._yesterday_value = int(total_value)
+    def set_cycling_value(self, value):
+        """Set the cycling value and update state."""
+        old_value = self._yesterday_value
+        self._yesterday_value = int(value)
         _LOGGER.info(
-            f"Yesterday sensor {self.entity_id} updated: {old_yesterday} -> {self._yesterday_value}"
+            f"Yesterday sensor {self.entity_id} updated: {old_value} -> {self._yesterday_value}"
         )
         self.async_write_ha_state()
 
@@ -625,22 +923,11 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         last_state = await self.async_get_last_state()
         await self.restore_state(last_state)
 
-        # Registriere Signal-Handler für Yesterday-Update
-        from .automations import SIGNAL_UPDATE_YESTERDAY  # noqa: F401
-
-        self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_UPDATE_YESTERDAY, self._handle_yesterday_update
-        )
+        # Yesterday-Sensoren werden direkt von _update_yesterday_sensors() aktualisiert
+        # Keine Signal-Handler mehr nötig
 
         # Schreibe den State sofort ins UI
         self.async_write_ha_state()
-
-    async def async_will_remove_from_hass(self):
-        """Clean up when entity is removed."""
-        if self._unsub_dispatcher:
-            self._unsub_dispatcher()
-            self._unsub_dispatcher = None
-        await super().async_will_remove_from_hass()
 
     async def restore_state(self, last_state):
         """Restore state from database to prevent reset on reload."""
@@ -674,36 +961,8 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         # Stelle sicher, dass der Wert ein Integer ist
         self._yesterday_value = int(self._yesterday_value)
 
-    @callback
-    def _handle_yesterday_update(self, entry_id: str):
-        """Handle yesterday update signal."""
-        if entry_id == self._entry.entry_id:
-            # Hole den aktuellen Total-Wert vom entsprechenden Total-Sensor
-            total_sensor_id = f"{self._mode}_cycling_total"
-            device_prefix = f"hp{self._hp_index}"
-            names = generate_sensor_names(
-                device_prefix,
-                CALCULATED_SENSOR_TEMPLATES[total_sensor_id]["name"],
-                total_sensor_id,
-                self._entry.data.get("name", "").lower().replace(" ", ""),
-                self._entry.data.get("use_legacy_modbus_names", True),
-            )
-            total_entity_id = names["entity_id"]
-
-            # Hole den aktuellen Wert vom Total-Sensor
-            total_state = self.hass.states.get(total_entity_id)
-            if total_state and total_state.state not in (
-                None,
-                "unknown",
-                "unavailable",
-            ):
-                try:
-                    total_value = int(float(total_state.state))
-                    self.update_yesterday_value(total_value)
-                except (ValueError, TypeError):
-                    _LOGGER.warning(
-                        f"Could not parse total value from {total_entity_id}: {total_state.state}"
-                    )
+    # Yesterday-Sensoren werden direkt von _update_yesterday_sensors() aktualisiert
+    # Keine Signal-Handler mehr nötig
 
     @property
     def name(self):
@@ -1221,3 +1480,6 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         """When entity is added to hass."""
         await super().async_added_to_hass()
         self.handle_coordinator_update()
+
+
+

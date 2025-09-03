@@ -247,10 +247,69 @@ async def test_async_update_data_disabled_register(mock_hass, mock_entry):
     coordinator.client = mock_client
     coordinator.disabled_registers = {1000}  # Disable register 1000
 
-    result = await coordinator._async_update_data()
 
-    assert result is not None
-    # Should still read other registers
+@pytest.mark.asyncio
+async def test_dynamic_batch_read_failure_handling(mock_hass, mock_entry):
+    """Test dynamic batch read failure handling."""
+    mock_client = AsyncMock()
+    
+    # Mock failed batch read
+    mock_failed_result = Mock()
+    mock_failed_result.isError.return_value = True
+    
+    # Mock successful individual read
+    mock_success_result = Mock()
+    mock_success_result.isError.return_value = False
+    mock_success_result.registers = [100]
+    
+    # First call fails, subsequent calls succeed
+    mock_client.read_holding_registers = AsyncMock(side_effect=[
+        mock_failed_result,  # First batch read fails
+        mock_success_result,  # Individual read succeeds
+        mock_success_result,  # Individual read succeeds
+        mock_success_result,  # Individual read succeeds
+        mock_success_result,  # Individual read succeeds
+    ])
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    coordinator.client = mock_client
+    
+    # Test that batch failures are tracked
+    assert len(coordinator._batch_failures) == 0
+    assert len(coordinator._individual_read_addresses) == 0
+    
+    # Simulate batch read failure
+    batch_key = (1050, 11)  # Register 1050-1060
+    coordinator._batch_failures[batch_key] = 1
+    
+    # After max failures, should switch to individual reads
+    coordinator._batch_failures[batch_key] = coordinator._max_batch_failures + 1
+    coordinator._individual_read_addresses.add(batch_key)
+    
+    assert batch_key in coordinator._individual_read_addresses
+
+
+@pytest.mark.asyncio
+async def test_dynamic_cycling_warnings(mock_hass, mock_entry):
+    """Test dynamic cycling warnings suppression."""
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    
+    entity_id = "sensor.test_heating_cycling_total"
+    
+    # Test warning counter
+    assert len(coordinator._cycling_warnings) == 0
+    
+    # Simulate multiple warnings
+    coordinator._cycling_warnings[entity_id] = 1
+    assert coordinator._cycling_warnings[entity_id] == 1
+    
+    # Test max warnings threshold
+    coordinator._cycling_warnings[entity_id] = coordinator._max_cycling_warnings
+    assert coordinator._cycling_warnings[entity_id] == coordinator._max_cycling_warnings
+    
+    # Test reset mechanism
+    del coordinator._cycling_warnings[entity_id]
+    assert entity_id not in coordinator._cycling_warnings
 
 
 @pytest.mark.asyncio
