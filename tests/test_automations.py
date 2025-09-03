@@ -9,9 +9,9 @@ from homeassistant.core import HomeAssistant
 from custom_components.lambda_heat_pumps.automations import (
     setup_cycling_automations,
     cleanup_cycling_automations,
-    SIGNAL_UPDATE_YESTERDAY,
-    SIGNAL_UPDATE_2H,
-    SIGNAL_UPDATE_4H,
+    SIGNAL_RESET_DAILY,
+    SIGNAL_RESET_2H,
+    SIGNAL_RESET_4H,
 )
 
 
@@ -167,7 +167,7 @@ def test_yesterday_update_callback(mock_track_time_change, mock_hass, mock_entry
         yesterday_callback(datetime.now())
         
         # Verify that the signal was sent
-        mock_send.assert_called_once_with(mock_hass, SIGNAL_UPDATE_YESTERDAY, mock_entry.entry_id)
+        mock_send.assert_called_once_with(mock_hass, SIGNAL_RESET_DAILY, mock_entry.entry_id)
 
 
 @patch('custom_components.lambda_heat_pumps.automations.async_track_time_change')
@@ -191,7 +191,7 @@ def test_2h_update_callback(mock_track_time_change, mock_hass, mock_entry):
         two_hour_callback(datetime.now())
         
         # Verify that the signal was sent
-        mock_send.assert_called_once_with(mock_hass, SIGNAL_UPDATE_2H, mock_entry.entry_id)
+        mock_send.assert_called_once_with(mock_hass, SIGNAL_RESET_2H, mock_entry.entry_id)
 
 
 @patch('custom_components.lambda_heat_pumps.automations.async_track_time_change')
@@ -215,14 +215,14 @@ def test_4h_update_callback(mock_track_time_change, mock_hass, mock_entry):
         four_hour_callback(datetime.now())
         
         # Verify that the signal was sent
-        mock_send.assert_called_once_with(mock_hass, SIGNAL_UPDATE_4H, mock_entry.entry_id)
+        mock_send.assert_called_once_with(mock_hass, SIGNAL_RESET_4H, mock_entry.entry_id)
 
 
 def test_signal_constants():
     """Test that signal constants are defined correctly."""
-    assert SIGNAL_UPDATE_YESTERDAY == "lambda_heat_pumps_update_yesterday"
-    assert SIGNAL_UPDATE_2H == "lambda_heat_pumps_update_2h"
-    assert SIGNAL_UPDATE_4H == "lambda_heat_pumps_update_4h"
+    assert SIGNAL_RESET_DAILY == "lambda_heat_pumps_reset_daily"
+    assert SIGNAL_RESET_2H == "lambda_heat_pumps_reset_2h"
+    assert SIGNAL_RESET_4H == "lambda_heat_pumps_reset_4h"
 
 
 @patch('custom_components.lambda_heat_pumps.automations.async_track_time_change')

@@ -24,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 def _get_coordinator(hass: HomeAssistant):
     """Helper function to get the coordinator instance."""
-    from homeassistant.helpers import config_validation as cv
+
     
     # Find the first (and typically only) coordinator instance
     try:
@@ -219,9 +219,44 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
         return False
 
 
+async def ensure_lambda_config(hass: HomeAssistant) -> bool:
+    """Ensure lambda_wp_config.yaml exists, create from template if missing.
+    
+    Returns:
+        bool: True if config file exists or was created successfully
+    """
+    config_dir = hass.config.config_dir
+    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+    
+    if os.path.exists(lambda_config_path):
+        _LOGGER.debug("lambda_wp_config.yaml already exists")
+        return True
+    
+    try:
+        # Import template from const.py
+        from .const import LAMBDA_WP_CONFIG_TEMPLATE
+        
+        _LOGGER.info("Creating lambda_wp_config.yaml from template")
+        
+        # Create config file from template
+        await hass.async_add_executor_job(
+            lambda: open(lambda_config_path, "w").write(LAMBDA_WP_CONFIG_TEMPLATE)
+        )
+        
+        _LOGGER.info("Successfully created lambda_wp_config.yaml from template")
+        return True
+        
+    except Exception as e:
+        _LOGGER.error("Failed to create lambda_wp_config.yaml: %s", e)
+        return False
+
+
 async def load_lambda_config(hass: HomeAssistant) -> dict:
     """Load complete Lambda configuration from lambda_wp_config.yaml."""
-    # First, try to migrate if needed
+    # First, ensure config file exists
+    await ensure_lambda_config(hass)
+    
+    # Then, try to migrate if needed
     await migrate_lambda_config(hass)
 
     config_dir = hass.config.config_dir
