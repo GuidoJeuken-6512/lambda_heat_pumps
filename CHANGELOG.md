@@ -2,8 +2,57 @@
 
 **Deutsche Version siehe unten / German version see below**
 
-## ⚠️ IMPORTANT WARNING - WICHTIGE WARNUNG
+## [1.3.0] - 2025-01-03
 
+### English
+**New Features:**
+- **New 2H/4H Cycling Sensors**: Added 2-hour and 4-hour cycling sensors for detailed heat pump operation monitoring
+- **Enhanced Cycling Offsets**: Improved cycling counter offset functionality for total sensor adjustments when replacing heat pumps or resetting counters
+- **Robust Flank Detection**: Implemented robust flank detection for heat pump operating states with improved reliability
+- **Dynamic Error Handling**: Enhanced batch read error handling with automatic fallback to individual reads after threshold failures
+- **Cycling Warnings Management**: Added cycling warnings suppression logic to manage entity registration issues
+
+**Bug Fixes:**
+- **Configuration File Creation**: Fixed issue where `lambda_wp_config.yaml` was not automatically created from template, ensuring proper configuration setup
+- **Daily Cycling Sensors**: Fixed daily cycling sensors now properly displaying values and functioning correctly
+
+**Improvements:**
+- **Coordinator Initialization**: Enhanced coordinator initialization process with improved error handling
+- **Debug Logging**: Added comprehensive debug logs for tracking offset changes and system behavior
+- **Documentation**: Updated documentation to reflect new functions and configuration options
+- **Modbus Configuration**: Extended Lambda Heat Pumps integration with specific Modbus configurations
+
+**Technical Changes:**
+- Automatic `lambda_wp_config.yaml` creation from `LAMBDA_WP_CONFIG_TEMPLATE`
+- Integration of config file creation into existing migration pipeline
+- Enhanced error handling in `LambdaDataUpdateCoordinator`
+- Improved sensor attribute loading with better error recovery
+
+### Deutsch
+**Neue Funktionen:**
+- **Neue 2H/4H Cycling-Sensoren**: Hinzugefügte 2-Stunden- und 4-Stunden-Cycling-Sensoren für detaillierte Wärmepumpen-Betriebsüberwachung
+- **Erweiterte Cycling-Offsets**: Verbesserte Cycling-Counter-Offset-Funktionalität für Gesamtsensor-Anpassungen beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern
+- **Robuste Flankenerkennung**: Implementierung einer robusten Flankenerkennung für Wärmepumpen-Betriebszustände mit verbesserter Zuverlässigkeit
+- **Dynamische Fehlerbehandlung**: Erweiterte Batch-Read-Fehlerbehandlung mit automatischem Fallback auf Einzel-Lesevorgänge nach Schwellenwert-Fehlern
+- **Cycling-Warnungen-Management**: Hinzugefügte Cycling-Warnungen-Unterdrückungslogik zur Verwaltung von Entity-Registrierungsproblemen
+
+**Fehlerbehebungen:**
+- **Konfigurationsdatei-Erstellung**: Behoben, dass `lambda_wp_config.yaml` nicht automatisch aus der Vorlage erstellt wurde, um eine ordnungsgemäße Konfiguration sicherzustellen
+- **Tägliche Cycling-Sensoren**: Behoben, dass tägliche Cycling-Sensoren nun ordnungsgemäß Werte anzeigen und korrekt funktionieren
+
+**Verbesserungen:**
+- **Coordinator-Initialisierung**: Verbesserter Coordinator-Initialisierungsprozess mit erweiterter Fehlerbehandlung
+- **Debug-Protokollierung**: Umfassende Debug-Protokolle für die Nachverfolgung von Offset-Änderungen und Systemverhalten hinzugefügt
+- **Dokumentation**: Aktualisierte Dokumentation zur Widerspiegelung neuer Funktionen und Konfigurationsoptionen
+- **Modbus-Konfiguration**: Erweiterte Lambda Heat Pumps Integration mit spezifischen Modbus-Konfigurationen
+
+**Technische Änderungen:**
+- Automatische `lambda_wp_config.yaml`-Erstellung aus `LAMBDA_WP_CONFIG_TEMPLATE`
+- Integration der Konfigurationsdatei-Erstellung in bestehende Migrations-Pipeline
+- Erweiterte Fehlerbehandlung in `LambdaDataUpdateCoordinator`
+- Verbesserte Sensor-Attribut-Ladung mit besserer Fehlerwiederherstellung
+
+## [1.2.2] - 2025-08-18
 ### English
 **BREAKING CHANGES IN THIS RELEASE - BACKUP REQUIRED**
 
@@ -20,23 +69,6 @@ This release contains significant changes to the Entity Registry and sensor nami
 - All sensors are functioning as expected
 - **Automations may need to be updated** if they reference sensor entities that were migrated
 **A Copy of the core.config_entries, core.device_registry and core.entity_registry  is    created before the sensors are migrated and can be copied back from the /lambda_heat_pumps folder to the hidden .storage folder to undo the changes. However, version 1.0.9 of the integration must then be reinstalled for the system to work properly.** 
-
-### Deutsch
-**TIEFGREIFENDE ÄNDERUNGEN IN DIESEM RELEASE - BACKUP ERFORDERLICH**
-
-Dieses Release enthält bedeutende Änderungen am Entity Registry und den Sensor-Namenskonventionen. **Bitte erstellen Sie vor dem Update ein vollständiges Backup Ihrer Home Assistant Konfiguration.**
-
-**Was sich ändert:**
-- Automatische Migration bestehender Sensor-Entities zur Vermeidung von Duplikaten
-- Aktualisiertes unique_id Format für bessere Konsistenz
-- Sensor-Filterung basierend auf Firmware-Kompatibilität
-
-**Nach der Migration bitte prüfen:**
-- Sensor-Namen und Langzeitdaten sind korrekt erhalten
-- Keine doppelten Entities in Ihrem System existieren
-- Alle Sensoren funktionieren wie erwartet
-- **Automatisierungen müssen möglicherweise angepasst werden**, falls sie auf migrierte Sensor-Entities verweisen
-**Eine Kopie der Dateien core.config_entries, core.device_registry und core.entity_registry wird vor der Migration der Sensoren erstellt und kann aus dem Order /lambda_heat_pumps wieder in den versteckten Ordner .storage kopiert werden, um die Änderungen rückgängig zu machen. Dann muss aber auch die Version 1.0.9 der Integration wieder installiert werden, damit das System sauber funktioniert.**
 
 ## [1.1.0] - 2025-08-03
 
@@ -98,6 +130,25 @@ Dieses Release enthält bedeutende Änderungen am Entity Registry und den Sensor
 ---
 
 # Changelog (Deutsch)
+
+### Deutsch
+## [1.2.2] - 2025-08-18
+**TIEFGREIFENDE ÄNDERUNGEN IN DIESEM RELEASE - BACKUP ERFORDERLICH**
+
+Dieses Release enthält bedeutende Änderungen am Entity Registry und den Sensor-Namenskonventionen. **Bitte erstellen Sie vor dem Update ein vollständiges Backup Ihrer Home Assistant Konfiguration.**
+
+**Was sich ändert:**
+- Automatische Migration bestehender Sensor-Entities zur Vermeidung von Duplikaten
+- Aktualisiertes unique_id Format für bessere Konsistenz
+- Sensor-Filterung basierend auf Firmware-Kompatibilität
+
+**Nach der Migration bitte prüfen:**
+- Sensor-Namen und Langzeitdaten sind korrekt erhalten
+- Keine doppelten Entities in Ihrem System existieren
+- Alle Sensoren funktionieren wie erwartet
+- **Automatisierungen müssen möglicherweise angepasst werden**, falls sie auf migrierte Sensor-Entities verweisen
+**Eine Kopie der Dateien core.config_entries, core.device_registry und core.entity_registry wird vor der Migration der Sensoren erstellt und kann aus dem Order /lambda_heat_pumps wieder in den versteckten Ordner .storage kopiert werden, um die Änderungen rückgängig zu machen. Dann muss aber auch die Version 1.0.9 der Integration wieder installiert werden, damit das System sauber funktioniert.**
+
 
 ## [1.1.0] - 2025-07-24
 
