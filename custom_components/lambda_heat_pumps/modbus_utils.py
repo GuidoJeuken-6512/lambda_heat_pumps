@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+import random
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
@@ -12,6 +13,7 @@ from .const import (
     LAMBDA_MODBUS_UNIT_ID,
     LAMBDA_MAX_RETRIES,
     LAMBDA_RETRY_DELAY,
+    LAMBDA_REGISTER_TIMEOUTS,
 )
 
 
@@ -87,11 +89,20 @@ async def async_read_holding_registers(
         except asyncio.TimeoutError as e:
             last_exception = e
             if attempt < LAMBDA_MAX_RETRIES - 1:
+                # Exponential backoff mit Jitter
+                base_delay = LAMBDA_RETRY_DELAY * (2 ** attempt)
+                max_delay = 30  # Maximum 30 Sekunden
+                delay = min(base_delay, max_delay)
+                
+                # Jitter hinzufügen (±20% Zufallsschwankung)
+                jitter = random.uniform(-0.2, 0.2) * delay
+                final_delay = max(1, delay + jitter)  # Minimum 1 Sekunde
+                
                 _LOGGER.debug(
-                    "Modbus read timeout at address %d (attempt %d/%d), retrying in %ds",
-                    address, attempt + 1, LAMBDA_MAX_RETRIES, LAMBDA_RETRY_DELAY
+                    "Modbus read timeout at address %d (attempt %d/%d): %s, retrying in %.1fs",
+                    address, attempt + 1, LAMBDA_MAX_RETRIES, e, final_delay
                 )
-                await asyncio.sleep(LAMBDA_RETRY_DELAY)
+                await asyncio.sleep(final_delay)
             else:
                 _LOGGER.warning(
                     "Modbus read timeout at address %d after %d attempts",
@@ -100,11 +111,20 @@ async def async_read_holding_registers(
         except Exception as e:
             last_exception = e
             if attempt < LAMBDA_MAX_RETRIES - 1:
+                # Exponential backoff mit Jitter
+                base_delay = LAMBDA_RETRY_DELAY * (2 ** attempt)
+                max_delay = 30  # Maximum 30 Sekunden
+                delay = min(base_delay, max_delay)
+                
+                # Jitter hinzufügen (±20% Zufallsschwankung)
+                jitter = random.uniform(-0.2, 0.2) * delay
+                final_delay = max(1, delay + jitter)  # Minimum 1 Sekunde
+                
                 _LOGGER.debug(
-                    "Modbus read error at address %d (attempt %d/%d): %s, retrying in %ds",
-                    address, attempt + 1, LAMBDA_MAX_RETRIES, e, LAMBDA_RETRY_DELAY
+                    "Modbus read error at address %d (attempt %d/%d): %s, retrying in %.1fs",
+                    address, attempt + 1, LAMBDA_MAX_RETRIES, e, final_delay
                 )
-                await asyncio.sleep(LAMBDA_RETRY_DELAY)
+                await asyncio.sleep(final_delay)
             else:
                 break
     
@@ -116,6 +136,78 @@ async def async_read_holding_registers(
         else:
             _LOGGER.exception("Modbus read error at address %d: %s", address, last_exception)
         raise last_exception
+
+
+async def async_read_modbus_with_robustness(
+    client: Any,
+    address: int,
+    count: int,
+    slave_id: int,
+    circuit_breaker: Any = None,
+    sensor_info: dict = None,
+    default_timeout: int = LAMBDA_MODBUS_TIMEOUT
+) -> Any:
+    """Read Modbus registers with robustness features.
+    
+    This is a shared function used by both Standard and Modular Coordinators
+    to provide consistent robustness features including:
+    - Circuit breaker integration
+    - Sensor-specific timeouts
+    - Exponential backoff with jitter
+    - Error handling and logging
+    
+    Args:
+        client: Modbus client instance
+        address: Starting register address
+        count: Number of registers to read
+        slave_id: Modbus slave ID
+        circuit_breaker: Circuit breaker instance (optional)
+        sensor_info: Sensor information dict with relative_address (optional)
+        default_timeout: Default timeout in seconds
+        
+    Returns:
+        Modbus response object
+        
+    Raises:
+        Exception: If all retry attempts failed or circuit breaker is open
+    """
+    # Check circuit breaker
+    if circuit_breaker and not circuit_breaker.can_execute():
+        _LOGGER.debug("Circuit breaker is OPEN - skipping Modbus read at address %d", address)
+        raise Exception("Circuit breaker is OPEN")
+    
+    try:
+        # Sensor-spezifische Timeouts basierend auf absoluter Adresse
+        timeout = default_timeout
+        if address in LAMBDA_REGISTER_TIMEOUTS:
+            timeout = LAMBDA_REGISTER_TIMEOUTS[address]
+            # Nur einmal pro Register loggen, wenn Timeout tatsächlich geändert wurde
+            if not hasattr(async_read_modbus_with_robustness, '_timeout_logged'):
+                async_read_modbus_with_robustness._timeout_logged = set()
+            timeout_key = f"{address}_{timeout}"
+            if timeout != default_timeout and timeout_key not in async_read_modbus_with_robustness._timeout_logged:
+                _LOGGER.info(
+                    f"⏱️ TIMEOUT-ADJUST: Using sensor-specific timeout {timeout}s for register {address} - reduced from default {default_timeout}s"
+                )
+                async_read_modbus_with_robustness._timeout_logged.add(timeout_key)
+        
+        # Use exponential backoff for retries
+        from .utils import async_read_holding_registers_with_backoff
+        result = await async_read_holding_registers_with_backoff(
+            client, address, count, slave_id, timeout
+        )
+        
+        # Record success in circuit breaker
+        if circuit_breaker:
+            circuit_breaker.record_success()
+        
+        return result
+        
+    except Exception as e:
+        # Record failure in circuit breaker
+        if circuit_breaker:
+            circuit_breaker.record_failure(e)
+        raise
 
 
 async def async_read_input_registers(
@@ -276,3 +368,52 @@ def read_input_registers(client, address: int, count: int, slave_id: int = 1) ->
     except Exception as e:
         _LOGGER.error("Modbus read error at address %d: %s", address, e)
         raise
+
+
+def check_dynamic_individual_read(
+    dynamic_individual_reads: set,
+    register_timeout_counters: dict,
+    register_failure_counters: dict,
+    address: int,
+    relative_addr: int,
+    error_type: str,
+    dynamic_timeout_threshold: int = 3,
+    dynamic_failure_threshold: int = 5
+) -> None:
+    """Prüft ob ein Register dynamisch zu Individual-Reads hinzugefügt werden soll.
+    
+    Diese Funktion wird von beiden Coordinatoren (Standard und Modular) verwendet
+    um Register zur Laufzeit zu Individual-Reads hinzuzufügen, wenn sie wiederholt
+    Timeouts oder Fehler verursachen.
+    
+    Args:
+        dynamic_individual_reads: Set der aktuellen Individual-Read-Register
+        register_timeout_counters: Dict mit Timeout-Zählern pro Register
+        register_failure_counters: Dict mit Fehler-Zählern pro Register
+        address: Absolute Register-Adresse
+        relative_addr: Relative Register-Adresse
+        error_type: Art des Fehlers ("timeout" oder "failure")
+        dynamic_timeout_threshold: Schwelle für Timeout-basierte Individual-Reads
+        dynamic_failure_threshold: Schwelle für Fehler-basierte Individual-Reads
+    """
+    if relative_addr is None:
+        return
+        
+    # Prüfe ob bereits in Individual-Reads (nur absolute Adressen)
+    if address in dynamic_individual_reads:
+        return
+        
+    # Prüfe Timeout-Schwelle
+    if error_type == "timeout":
+        timeout_count = register_timeout_counters.get(address, 0)
+        if timeout_count >= dynamic_timeout_threshold:
+            dynamic_individual_reads.add(address)  # Absolute Adresse verwenden
+            _LOGGER.info(f"🔄 DYNAMIC-INDIVIDUAL: Register {address} added to Individual-Reads after {timeout_count} timeouts")
+            return
+            
+    # Prüfe Fehler-Schwelle
+    if error_type == "failure":
+        failure_count = register_failure_counters.get(address, 0)
+        if failure_count >= dynamic_failure_threshold:
+            dynamic_individual_reads.add(address)  # Absolute Adresse verwenden
+            _LOGGER.info(f"🔄 DYNAMIC-INDIVIDUAL: Register {address} added to Individual-Reads after {failure_count} failures")

@@ -788,7 +788,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             # Daily-Sensoren auf 0 zurücksetzen
             self._cycling_value = 0
             self.async_write_ha_state()
-            _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
+            # Logging-Meldung entfernt - wird in automations.py konsolidiert
 
     @callback
     def _handle_2h_reset(self, entry_id: str):
@@ -797,7 +797,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             # 2H-Sensoren auf 0 zurücksetzen
             self._cycling_value = 0
             self.async_write_ha_state()
-            _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
+            # Logging-Meldung entfernt - wird in automations.py konsolidiert
 
     @callback
     def _handle_4h_reset(self, entry_id: str):
@@ -806,7 +806,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             # 4H-Sensoren auf 0 zurücksetzen
             self._cycling_value = 0
             self.async_write_ha_state()
-            _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
+            # Logging-Meldung entfernt - wird in automations.py konsolidiert
 
     @property
     def name(self):

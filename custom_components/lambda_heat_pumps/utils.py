@@ -22,6 +22,7 @@ from .const import (
     DOMAIN,
     LAMBDA_MAX_RETRIES,
     LAMBDA_RETRY_DELAY,
+    LAMBDA_REGISTER_TIMEOUTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,14 +35,14 @@ async def async_read_holding_registers_with_backoff(
     slave_id: int,
     timeout: int = 10
 ) -> Any:
-    """Read holding registers with exponential backoff retry logic.
+    """Read holding registers with exponential backoff retry logic and sensor-specific timeouts.
     
     Args:
         client: Modbus client instance
         address: Starting register address
         count: Number of registers to read
         slave_id: Modbus slave ID
-        timeout: Timeout in seconds
+        timeout: Timeout in seconds (can be overridden by sensor-specific timeout)
         
     Returns:
         Modbus response object
@@ -51,11 +52,19 @@ async def async_read_holding_registers_with_backoff(
     """
     last_exception = None
     
+    # Sensor-spezifische Timeouts anwenden
+    # Hinweis: Diese Funktion arbeitet mit absoluten Adressen
+    # Relative Adressen werden in _read_modbus_with_robustness behandelt
+    effective_timeout = timeout
+    if address in LAMBDA_REGISTER_TIMEOUTS:
+        effective_timeout = LAMBDA_REGISTER_TIMEOUTS[address]
+        _LOGGER.debug(f"Using sensor-specific timeout {effective_timeout}s for register {address}")
+    
     for attempt in range(LAMBDA_MAX_RETRIES):
         try:
             return await asyncio.wait_for(
                 client.read_holding_registers(address, count=count, slave=slave_id),
-                timeout=timeout
+                timeout=effective_timeout
             )
         except Exception as e:
             last_exception = e

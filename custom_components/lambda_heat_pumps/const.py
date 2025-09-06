@@ -1212,24 +1212,66 @@ DEFAULT_UPDATE_INTERVAL = 30
 DEFAULT_WRITE_INTERVAL = 30
 
 # Lambda-specific Modbus configuration
-LAMBDA_MODBUS_TIMEOUT = 10  # Standard-Timeout (realistisch für Modbus)
+# Grundlegende Modbus-Einstellungen für Lambda Wärmepumpen
+# Beispiel: LAMBDA_MODBUS_TIMEOUT = 5  # Längerer Timeout für langsame Verbindungen
+LAMBDA_MODBUS_TIMEOUT = 3  # Sehr kurzer Timeout um HA 10s Warnings zu vermeiden
 LAMBDA_MODBUS_UNIT_ID = 1   # Lambda Unit ID
 LAMBDA_MODBUS_PORT = 502    # Standard Modbus TCP port
 LAMBDA_MAX_RETRIES = 3      # Maximum retry attempts
 LAMBDA_RETRY_DELAY = 5      # Delay between retries in seconds
 
 # Batch-Read Constants
+# Automatische Umstellung von Batch-Reads auf Individual-Reads
+# Beispiel: LAMBDA_MAX_BATCH_FAILURES = 5  # Nach 5 Fehlern umstellen
 LAMBDA_MAX_BATCH_FAILURES = 3  # Nach 3 Fehlern auf Individual-Reads umstellen
 LAMBDA_MAX_CYCLING_WARNINGS = 3  # Nach 3 Warnings unterdrücken
 LAMBDA_MODBUS_SAFETY_MARGIN = 120  # Modbus safety margin für Batch-Reads
 
 # Circuit Breaker Constants
+# Automatisches Abschalten bei wiederholten Fehlern
+# Beispiel: LAMBDA_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 5  # Nach 5 Fehlern
 LAMBDA_CIRCUIT_BREAKER_ENABLED = True  # Standard
 LAMBDA_CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3  # Nach 3 Fehlern Circuit öffnen
 LAMBDA_CIRCUIT_BREAKER_RECOVERY_TIMEOUT = 60  # Recovery-Timeout in Sekunden
 
 # Offline Data Constants
 LAMBDA_MAX_OFFLINE_DURATION = 1800  # Max. Offline-Dauer in Sekunden (30 Minuten)
+
+# Multi-client Modbus Konfiguration
+# Verhindert Modbus-Konflikte bei mehreren Clients
+LAMBDA_MULTI_CLIENT_SUPPORT = True
+LAMBDA_BASE_UPDATE_INTERVAL = 60  # Basis-Intervall in Sekunden (verlängert für HA 10s Timeout-Warnings)
+LAMBDA_RANDOM_INTERVAL_RANGE = 5  # Zufällige Abweichung ±5 Sekunden
+LAMBDA_MIN_INTERVAL = 45          # Minimum-Intervall
+LAMBDA_MAX_INTERVAL = 75          # Maximum-Intervall
+
+# Anti-Synchronisation für Multi-Client-Umgebungen
+# Beispiel: LAMBDA_ANTI_SYNC_FACTOR = 0.3  # 30% Zufallsschwankung
+LAMBDA_ANTI_SYNC_ENABLED = True
+LAMBDA_ANTI_SYNC_FACTOR = 0.2     # 20% Zufallsschwankung
+
+# Register-spezifische Timeouts für problematische Sensoren (absolute Adressen)
+# Automatische Timeout-Reduzierung bei wiederholten Fehlern
+# Beispiel: LAMBDA_REGISTER_TIMEOUTS = {0: 1, 1000: 2, 2000: 3}
+LAMBDA_REGISTER_TIMEOUTS = {
+    0: 1,     # Register 0 - extrem kurzer Timeout (deutlich unter HA 10s Limit)
+    1050: 1,  # Register 1050 - extrem kurzer Timeout (Batch-Read Probleme)
+    1060: 1,  # Register 1060 - extrem kurzer Timeout (Batch-Read Probleme)
+}
+
+# Individual-Reads für problematische Register (absolute Adressen)
+# Register die einzeln gelesen werden sollen (statt in Batches)
+# Beispiel: LAMBDA_INDIVIDUAL_READ_REGISTERS = [0, 1000, 2000]
+LAMBDA_INDIVIDUAL_READ_REGISTERS = [0, 1050, 1060]  # Register 0, 1050, 1060 einzeln lesen
+
+# Niedrige Priorität Register (werden zuletzt gelesen)
+# Beispiel: LAMBDA_LOW_PRIORITY_REGISTERS = [0, 1000, 2000]
+LAMBDA_LOW_PRIORITY_REGISTERS = [0, 1050, 1060]     # Register 0, 1050, 1060 niedrige Priorität
+
+# Spezielle Update-Intervalle für problematische Sensoren
+# Reduziert HA 10s Timeout-Warnings durch längere Update-Intervalle
+LAMBDA_ERROR_STATE_UPDATE_INTERVAL = 60    # error_state alle 60s statt 30s
+LAMBDA_PROBLEMATIC_UPDATE_INTERVAL = 45    # problematische Register alle 45s
 
 DEFAULT_HEATING_CIRCUIT_MIN_TEMP = 15
 DEFAULT_HEATING_CIRCUIT_MAX_TEMP = 35

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from datetime import timedelta
 from typing import Any
 
@@ -25,10 +26,23 @@ from .const import (
     LAMBDA_RETRY_DELAY,
     LAMBDA_CIRCUIT_BREAKER_ENABLED,
     LAMBDA_MAX_OFFLINE_DURATION,
+    # Multi-client Anti-Synchronisation
+    LAMBDA_MULTI_CLIENT_SUPPORT,
+    LAMBDA_BASE_UPDATE_INTERVAL,
+    LAMBDA_RANDOM_INTERVAL_RANGE,
+    LAMBDA_MIN_INTERVAL,
+    LAMBDA_MAX_INTERVAL,
+    LAMBDA_ANTI_SYNC_ENABLED,
+    LAMBDA_ANTI_SYNC_FACTOR,
+    # Register-spezifische Timeouts
+    LAMBDA_REGISTER_TIMEOUTS,
+    LAMBDA_INDIVIDUAL_READ_REGISTERS,
+    LAMBDA_LOW_PRIORITY_REGISTERS,
 )
 from .circuit_breaker import SmartCircuitBreaker
 from .offline_manager import HACompatibleOfflineManager
 from .utils import async_read_holding_registers_with_backoff
+from .modbus_utils import async_read_modbus_with_robustness, check_dynamic_individual_read
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,11 +60,30 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
         circuit_breaker_enabled: bool = None,
     ) -> None:
         """Initialize the modular coordinator."""
+        # Multi-Client Anti-Synchronisation implementieren
+        base_update_interval = 30  # Standard-Intervall
+        if LAMBDA_ANTI_SYNC_ENABLED and LAMBDA_MULTI_CLIENT_SUPPORT:
+            # Zufällige Abweichung für Anti-Synchronisation hinzufügen
+            random_range = LAMBDA_RANDOM_INTERVAL_RANGE
+            jitter = random.uniform(-random_range, random_range)
+            adjusted_interval = max(
+                LAMBDA_MIN_INTERVAL, 
+                min(LAMBDA_MAX_INTERVAL, base_update_interval + jitter)
+            )
+            
+            _LOGGER.info(
+                f"Modular coordinator anti-sync: Base interval {base_update_interval}s, "
+                f"adjusted to {adjusted_interval:.1f}s (jitter: {jitter:+.1f}s)"
+            )
+            update_interval = adjusted_interval
+        else:
+            update_interval = base_update_interval
+        
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN} Modular",
-            update_interval=timedelta(seconds=30),
+            update_interval=timedelta(seconds=update_interval),
         )
 
         self.config_entry = config_entry
@@ -77,6 +110,15 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
         # Robustheit-Features
         self._circuit_breaker = SmartCircuitBreaker() if self._circuit_breaker_enabled else None
         self._offline_manager = HACompatibleOfflineManager()
+        
+        # Dynamische Individual-Read-Verwaltung
+        self._dynamic_individual_reads = set(LAMBDA_INDIVIDUAL_READ_REGISTERS)  # Kopie der statischen Liste
+        self._register_timeout_counters = {}  # Zähler für Timeout-Häufigkeit pro Register
+        self._register_failure_counters = {}  # Zähler für Fehler-Häufigkeit pro Register
+        self._dynamic_timeout_threshold = 3  # Nach 3 Timeouts -> Individual-Read
+        self._dynamic_failure_threshold = 5  # Nach 5 Fehlern -> Individual-Read
+        
+        _LOGGER.info(f"Modular coordinator robustness enabled - Dynamic Individual-Reads: Timeout threshold: {self._dynamic_timeout_threshold}, Failure threshold: {self._dynamic_failure_threshold}")
 
         # Initialize registry
         if scan_file_path:
@@ -85,42 +127,19 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
     async def _read_modbus_with_robustness(
         self, 
         address: int, 
-        count: int = 1
+        count: int = 1,
+        sensor_info: dict = None
     ) -> Any:
-        """Read Modbus registers with robustness features.
-        
-        Args:
-            address: Starting register address
-            count: Number of registers to read
-            
-        Returns:
-            Modbus response object
-            
-        Raises:
-            Exception: If all retry attempts failed
-        """
-        # Check circuit breaker
-        if self._circuit_breaker and not self._circuit_breaker.can_execute():
-            _LOGGER.debug("Circuit breaker is OPEN - skipping Modbus read at address %d", address)
-            raise Exception("Circuit breaker is OPEN")
-        
-        try:
-            # Use exponential backoff for retries
-            result = await async_read_holding_registers_with_backoff(
-                self.modbus_client, address, count, self.slave_id, self._modbus_timeout
-            )
-            
-            # Record success in circuit breaker
-            if self._circuit_breaker:
-                self._circuit_breaker.record_success()
-            
-            return result
-            
-        except Exception as e:
-            # Record failure in circuit breaker
-            if self._circuit_breaker:
-                self._circuit_breaker.record_failure(e)
-            raise
+        """Read Modbus registers with robustness features using shared function."""
+        return await async_read_modbus_with_robustness(
+            client=self.modbus_client,
+            address=address,
+            count=count,
+            slave_id=self.slave_id,
+            circuit_breaker=self._circuit_breaker,
+            sensor_info=sensor_info,
+            default_timeout=self._modbus_timeout
+        )
 
     def _load_hardware_scan(self, scan_file_path: str) -> None:
         """Load hardware scan results into the registry."""
@@ -176,8 +195,33 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
                     if not self.modbus_client.is_connected():
                         await self.modbus_client.connect()
 
+                    # Individual-Reads für problematische Register (z.B. error_state)
+                    # Prüfe relative Adresse für Individual-Reads
+                    relative_addr = getattr(register_template, 'relative_address', None)
+                    
+                    # Dynamische Individual-Read-Prüfung (absolute Adressen)
+                    should_use_individual = register_addr in self._dynamic_individual_reads
+                    
+                    if should_use_individual:
+                        # Nur einmal pro Register loggen
+                        if not hasattr(self, '_individual_read_logged'):
+                            self._individual_read_logged = set()
+                        individual_key = f"{register_addr}_{relative_addr}"
+                        if individual_key not in self._individual_read_logged:
+                            _LOGGER.info(
+                                f"🔧 MODULAR-INDIVIDUAL-READ: Using individual read for register {register_addr} "
+                                f"(relative: {relative_addr}) - configured for individual reading"
+                            )
+                            self._individual_read_logged.add(individual_key)
+
                     # Read register with robustness features
-                    result = await self._read_modbus_with_robustness(register_addr, 1)
+                    sensor_info = {
+                        "relative_address": relative_addr,
+                        "data_type": getattr(register_template, 'data_type', 'uint16')
+                    }
+                    result = await self._read_modbus_with_robustness(
+                        register_addr, 1, sensor_info
+                    )
 
                     if hasattr(result, "registers") and result.registers:
                         raw_value = result.registers[0]
@@ -205,12 +249,44 @@ class LambdaModularCoordinator(DataUpdateCoordinator):
                             register_template.name,
                         )
 
+                except asyncio.TimeoutError as e:
+                    _LOGGER.debug(
+                        "Timeout reading register %d (%s): %s",
+                        register_addr,
+                        register_template.name,
+                        e,
+                    )
+                    # Zähler für Timeouts erhöhen
+                    self._register_timeout_counters[register_addr] = self._register_timeout_counters.get(register_addr, 0) + 1
+                    check_dynamic_individual_read(
+                        self._dynamic_individual_reads,
+                        self._register_timeout_counters,
+                        self._register_failure_counters,
+                        register_addr,
+                        relative_addr,
+                        "timeout",
+                        self._dynamic_timeout_threshold,
+                        self._dynamic_failure_threshold
+                    )
+                    # Keep previous value if available
                 except Exception as e:
                     _LOGGER.debug(
                         "Failed to read register %d (%s): %s",
                         register_addr,
                         register_template.name,
                         e,
+                    )
+                    # Zähler für Fehler erhöhen
+                    self._register_failure_counters[register_addr] = self._register_failure_counters.get(register_addr, 0) + 1
+                    check_dynamic_individual_read(
+                        self._dynamic_individual_reads,
+                        self._register_timeout_counters,
+                        self._register_failure_counters,
+                        register_addr,
+                        relative_addr,
+                        "failure",
+                        self._dynamic_timeout_threshold,
+                        self._dynamic_failure_threshold
                     )
                     # Keep previous value if available
                     if register_addr in self.data:

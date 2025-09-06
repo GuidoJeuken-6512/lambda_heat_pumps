@@ -8,6 +8,7 @@ import yaml
 import json
 import asyncio
 from pathlib import Path
+from typing import Any
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import (
@@ -35,6 +36,18 @@ from .const import (
     LAMBDA_MAX_CYCLING_WARNINGS,
     LAMBDA_MODBUS_SAFETY_MARGIN,
     LAMBDA_CIRCUIT_BREAKER_ENABLED,
+    # Multi-client Anti-Synchronisation
+    LAMBDA_MULTI_CLIENT_SUPPORT,
+    LAMBDA_BASE_UPDATE_INTERVAL,
+    LAMBDA_RANDOM_INTERVAL_RANGE,
+    LAMBDA_MIN_INTERVAL,
+    LAMBDA_MAX_INTERVAL,
+    LAMBDA_ANTI_SYNC_ENABLED,
+    LAMBDA_ANTI_SYNC_FACTOR,
+    # Register-spezifische Timeouts
+    LAMBDA_REGISTER_TIMEOUTS,
+    LAMBDA_INDIVIDUAL_READ_REGISTERS,
+    LAMBDA_LOW_PRIORITY_REGISTERS,
 )
 from .utils import (
     load_disabled_registers,
@@ -47,11 +60,13 @@ from .utils import (
     get_compatible_sensors,
     async_read_holding_registers_with_backoff,
 )
+from .modbus_utils import async_read_modbus_with_robustness, check_dynamic_individual_read
 from .modbus_utils import async_read_holding_registers
 from .circuit_breaker import SmartCircuitBreaker
 from .offline_manager import HACompatibleOfflineManager
 import time
 import json
+import random
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -70,8 +85,23 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
     ):
         """Initialize."""
         # Lese update_interval aus den Optionen, falls vorhanden
-        update_interval = entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
-        _LOGGER.debug("Update interval from options: %s seconds", update_interval)
+        base_update_interval = entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
+        
+        # Multi-Client Anti-Synchronisation implementieren
+        if LAMBDA_ANTI_SYNC_ENABLED and LAMBDA_MULTI_CLIENT_SUPPORT:
+            # Zufällige Abweichung für Anti-Synchronisation hinzufügen
+            random_range = LAMBDA_RANDOM_INTERVAL_RANGE
+            jitter = random.uniform(-random_range, random_range)
+            adjusted_interval = max(LAMBDA_MIN_INTERVAL, 
+                                  min(LAMBDA_MAX_INTERVAL, 
+                                      base_update_interval + jitter))
+            
+            _LOGGER.debug(f"Multi-client anti-sync: Base interval {base_update_interval}s, adjusted to {adjusted_interval:.1f}s (jitter: {jitter:+.1f}s)")
+            update_interval = adjusted_interval
+        else:
+            update_interval = base_update_interval
+            _LOGGER.debug("Update interval from options: %s seconds", update_interval)
+        
         _LOGGER.debug("Entry options: %s", entry.options)
         _LOGGER.debug(
             "Room thermostat control: %s",
@@ -132,6 +162,17 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._circuit_breaker = SmartCircuitBreaker() if LAMBDA_CIRCUIT_BREAKER_ENABLED else None
         self._offline_manager = HACompatibleOfflineManager()
         
+        # Dynamische Individual-Read-Verwaltung
+        self._dynamic_individual_reads = set(LAMBDA_INDIVIDUAL_READ_REGISTERS)  # Kopie der statischen Liste
+        self._register_timeout_counters = {}  # Zähler für Timeout-Häufigkeit pro Register
+        self._register_failure_counters = {}  # Zähler für Fehler-Häufigkeit pro Register
+        self._dynamic_timeout_threshold = 3  # Nach 3 Timeouts -> Individual-Read
+        self._dynamic_failure_threshold = 5  # Nach 5 Fehlern -> Individual-Read
+        
+        # Log Robustheits-Features Status (nur beim Start)
+        _LOGGER.info(f"Robustness features enabled - Circuit Breaker: {LAMBDA_CIRCUIT_BREAKER_ENABLED}, Timeouts: {LAMBDA_REGISTER_TIMEOUTS}")
+        _LOGGER.info(f"Dynamic Individual-Reads enabled - Timeout threshold: {self._dynamic_timeout_threshold}, Failure threshold: {self._dynamic_failure_threshold}")
+        
         # Flag für Initialisierung - verhindert Flankenerkennung beim ersten Update
         self._initialization_complete = False
 
@@ -141,43 +182,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self, 
         address: int, 
         count: int, 
-        slave_id: int
+        slave_id: int,
+        sensor_info: dict = None
     ) -> Any:
-        """Read Modbus registers with robustness features.
-        
-        Args:
-            address: Starting register address
-            count: Number of registers to read
-            slave_id: Modbus slave ID
-            
-        Returns:
-            Modbus response object
-            
-        Raises:
-            Exception: If all retry attempts failed
-        """
-        # Check circuit breaker
-        if self._circuit_breaker and not self._circuit_breaker.can_execute():
-            _LOGGER.debug("Circuit breaker is OPEN - skipping Modbus read at address %d", address)
-            raise Exception("Circuit breaker is OPEN")
-        
-        try:
-            # Use exponential backoff for retries
-            result = await async_read_holding_registers_with_backoff(
-                self.client, address, count, slave_id, LAMBDA_MODBUS_TIMEOUT
-            )
-            
-            # Record success in circuit breaker
-            if self._circuit_breaker:
-                self._circuit_breaker.record_success()
-            
-            return result
-            
-        except Exception as e:
-            # Record failure in circuit breaker
-            if self._circuit_breaker:
-                self._circuit_breaker.record_failure(e)
-            raise
+        """Read Modbus registers with robustness features using shared function."""
+        return await async_read_modbus_with_robustness(
+            client=self.client,
+            address=address,
+            count=count,
+            slave_id=slave_id,
+            circuit_breaker=self._circuit_breaker,
+            sensor_info=sensor_info,
+            default_timeout=LAMBDA_MODBUS_TIMEOUT
+        )
 
     async def _persist_counters(self):
         """Persist counter data and state information to file using Home Assistant's file operations."""
@@ -329,6 +346,26 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
         for addr in sorted_addresses:
             dtype = get_type(addr)
+            sensor_info = address_list[addr]
+            
+            # Individual-Reads für problematische Register (z.B. error_state)
+            # Prüfe sowohl absolute als auch relative Adresse
+            relative_addr = sensor_info.get("relative_address")
+            
+            # Dynamische Individual-Read-Prüfung (absolute Adressen)
+            should_use_individual = addr in self._dynamic_individual_reads
+            
+            if should_use_individual:
+                # Nur einmal pro Register loggen
+                if not hasattr(self, '_individual_read_logged'):
+                    self._individual_read_logged = set()
+                individual_key = f"{addr}_{relative_addr}"
+                if individual_key not in self._individual_read_logged:
+                    _LOGGER.info(f"🔧 INDIVIDUAL-READ: Using individual read for register {addr} (relative: {relative_addr}) - configured for individual reading")
+                    self._individual_read_logged.add(individual_key)
+                await self._read_single_register(addr, sensor_info, sensor_mapping, data)
+                continue
+                
             # If INT32, always treat as a pair (addr, addr+1)
             if dtype == "int32":
                 # If current batch is not empty, flush it first
@@ -388,6 +425,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
 
                 _LOGGER.debug(f"Reading batch: start={start_addr}, count={count}")
+                # Für Batch-Reads verwende Standard-Timeout
                 result = await self._read_modbus_with_robustness(
                     start_addr,
                     count,
@@ -458,10 +496,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return data
 
     async def _read_single_register(self, address, sensor_info, sensor_mapping, data):
-        """Read a single register with error handling."""
+        """Read a single register with error handling and dynamic Individual-Read management."""
         try:
             sensor_id = sensor_mapping[address]
             count = 2 if sensor_info.get("data_type") == "int32" else 1
+            relative_addr = sensor_info.get("relative_address")
 
             _LOGGER.debug(
                 f"Address {address} polling status: enabled=True (entity-based)"
@@ -470,10 +509,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 address,
                 count,
                 self.entry.data.get("slave_id", 1),
+                sensor_info
             )
 
             if hasattr(result, "isError") and result.isError():
                 _LOGGER.debug(f"Error reading register {address}: {result}")
+                # Zähler für Fehler erhöhen
+                self._register_failure_counters[address] = self._register_failure_counters.get(address, 0) + 1
+                self._check_dynamic_individual_read(address, relative_addr, "failure")
                 return
 
             if count == 2:
@@ -490,8 +533,35 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             data[sensor_id] = value
 
+        except asyncio.TimeoutError as ex:
+            _LOGGER.debug(f"Timeout reading register {address}: {ex}")
+            # Zähler für Timeouts erhöhen
+            self._register_timeout_counters[address] = self._register_timeout_counters.get(address, 0) + 1
+            check_dynamic_individual_read(
+                self._dynamic_individual_reads,
+                self._register_timeout_counters,
+                self._register_failure_counters,
+                address,
+                relative_addr,
+                "timeout",
+                self._dynamic_timeout_threshold,
+                self._dynamic_failure_threshold
+            )
         except Exception as ex:
             _LOGGER.debug(f"Error reading register {address}: {ex}")
+            # Zähler für Fehler erhöhen
+            self._register_failure_counters[address] = self._register_failure_counters.get(address, 0) + 1
+            check_dynamic_individual_read(
+                self._dynamic_individual_reads,
+                self._register_timeout_counters,
+                self._register_failure_counters,
+                address,
+                relative_addr,
+                "failure",
+                self._dynamic_timeout_threshold,
+                self._dynamic_failure_threshold
+            )
+
 
     async def _read_general_sensors_batch(self, data):
         """Read general sensors using batch optimization."""
@@ -1075,6 +1145,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
+                            sensor_info
                         )
                         if hasattr(result, "isError") and result.isError():
                             _LOGGER.debug(
@@ -1133,6 +1204,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
+                            sensor_info
                         )
                         if hasattr(result, "isError") and result.isError():
                             _LOGGER.debug(
@@ -1191,6 +1263,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
+                            sensor_info
                         )
                         if hasattr(result, "isError") and result.isError():
                             _LOGGER.debug(
@@ -1249,6 +1322,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             address,
                             count,
                             self.entry.data.get("slave_id", 1),
+                            sensor_info
                         )
                         if hasattr(result, "isError") and result.isError():
                             _LOGGER.debug(
