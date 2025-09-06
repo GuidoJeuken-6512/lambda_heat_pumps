@@ -715,7 +715,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             # Kein vorheriger State vorhanden, initialisiere mit 0
             self._cycling_value = 0
             self._applied_offset = 0
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Cycling sensor {self.entity_id} initialized with 0 (no previous state)"
             )
 
@@ -954,7 +954,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         else:
             # Kein vorheriger State vorhanden, initialisiere mit 0
             self._yesterday_value = 0
-            _LOGGER.info(
+            _LOGGER.debug(
                 f"Yesterday sensor {self.entity_id} initialized with 0 (no previous state)"
             )
 
