@@ -20,7 +20,7 @@ Für die deutsche Anleitung bitte weiter unten schauen.
    Add integration and search for "Lambda Heat Pumps".
 
 
-## Initial Configuration
+### Initial Configuration
 
 When setting up the integration, you will need to provide:
 
@@ -31,7 +31,14 @@ When setting up the integration, you will need to provide:
 - **Firmware Version**: Select your Lambda controller's firmware version
 - Everything else will be configured automatically.
 
-## Integration Options
+#### Firmware Version
+The firmware version is only important to decide which sensors are available.<br>
+To find the firmware version follow this from the main screen:
+* Click on the heat pump
+* Click on the "i" button on the left
+* Click on the button on the right that looks like a computer chip (last one)
+
+### Integration Options
 
 After initial setup, you can modify additional settings in the integration options:
 
@@ -64,12 +71,9 @@ After initial setup, you can modify additional settings in the integration optio
 
 ## 🇩🇪 Schnelleinstieg (Deutsch)
 
-> **HACS Custom Integration**  
-> Diese Integration verbindet Lambda Wärmepumpen mit Home Assistant via Modbus/TCP.
+**Lambda Heat Pumps** ist eine benutzerdefinierte Komponente für Home Assistant, die eine Verbindung zu Lambda Wärmepumpen über das Modbus TCP/RTU-Protokoll herstellt.
 
-### 🚀 Quickstart (HACS)
-#### Installation
-
+**HACS Installation:**
 1. **HACS installieren** (falls noch nicht geschehen)
 2. **Custom Repository hinzufügen:**
    - HACS → Integrations → suche nach "lambda Heat Pumps"
@@ -77,18 +81,25 @@ After initial setup, you can modify additional settings in the integration optio
    - „Lambda Heat Pumps“ auswählen und installieren
    - Home Assistant neu starten
 
-## Initial Configuration
+### Erstkonfiguration
 
-When setting up the integration, you will need to provide:
+Bei der Einrichtung müssen Sie Folgendes angeben:
 
-- **Name**: A name for your Lambda Heat Pump installation (e.g., "Main Heat Pump")
-- **Host**: IP address or hostname of your Lambda controller
-- **Port**: Modbus TCP port (default: 502)
-- **Slave ID**: Modbus Slave ID (default: 1)
-- **Firmware Version**: Select your Lambda controller's firmware version
-- alles Andere wird automatisch konfiguriert
+- **Name**: Ein Name für Ihre Lambda-Wärmepumpe (z. B. „EU08L“)
+- **Host**: IP-Adresse oder Hostname Ihres Lambda-Controllers
+- **Port**: Modbus-TCP-Port (Standard: 502)
+- **Slave ID**: Modbus-Slave-ID (Standard: 1)
+- **Firmware-Version**: Firmware-Version Ihres Lambda-Controllers auswählen
+- Alles andere wird automatisch konfiguriert
 
-## Integration Options
+#### Firmware Version
+Die Firmware-Version is nur wichtig um zu entscheiden welche Sensoren verfügbar sind.<br>
+Um die Firmware-Version zu finden, folgen Sie diesen Schritten am Hauptbildschirm:
+1. Klicken Sie auf die Wärmepumpe
+2. Klicken Sie auf die "i" Taste auf der linken Seite
+3. Klicken Sie auf die Taste auf der rechten Seite, die wie ein Computerchip aussieht (letzte Taste)
+
+### Integrationsoptionen
 
 Nach der Ersteinrichtung können Sie zusätzliche Einstellungen in den Integrationsoptionen ändern:
 

@@ -59,7 +59,8 @@ LOG_LEVELS = {"error": "ERROR", "warning": "WARNING", "info": "INFO", "debug": "
 
 # Firmware Versions
 FIRMWARE_VERSION = {
-    "V0.0.8-3K": 6,  # Current firmware - most common
+    "V0.0.9-3K": 7,  # Latest firmware
+    "V0.0.8-3K": 6,  # Previous firmware - most common in the field
     "V0.0.7-3K": 5,
     "V0.0.6-3K": 4,
     "V0.0.5-3K": 3,
