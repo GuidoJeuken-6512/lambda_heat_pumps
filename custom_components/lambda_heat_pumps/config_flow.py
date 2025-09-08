@@ -102,6 +102,39 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._data: dict[str, Any] = {}
+        self._discovered_host: str | None = None
+
+    async def async_step_dhcp(self, discovery_info: Any) -> FlowResult:
+        """Handle DHCP discovery (Lambda/SIGMATEK OUI)."""
+        try:
+            mac = (
+                getattr(discovery_info, "macaddress", None)
+                or getattr(discovery_info, "mac", None)
+                or (discovery_info.get("macaddress") if isinstance(discovery_info, dict) else None)
+            )
+            ip = (
+                getattr(discovery_info, "ip", None)
+                or (discovery_info.get("ip") if isinstance(discovery_info, dict) else None)
+            )
+            # Normalize MAC for matching and unique_id
+            mac_norm = (mac or "").upper().replace(":", "").replace("-", "").replace(".", "")
+
+            # Safety check (framework already filtered by manifest matcher)
+            if not mac_norm.startswith("0050F4"):
+                return self.async_abort(reason="not_sigmatek")
+
+            if ip:
+                self._discovered_host = ip
+
+            # Use MAC as unique id so IP changes update the entry
+            await self.async_set_unique_id(mac_norm)
+            self._abort_if_unique_id_configured(updates={CONF_HOST: ip} if ip else None)
+
+            # Continue with normal user step, pre-filling discovered host
+            return await self.async_step_user()
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("DHCP discovery handling failed")
+            return self.async_abort(reason="unknown")
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -139,7 +172,8 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
                             CONF_HOST,
                             default=user_input.get(
                                 CONF_HOST,
-                                existing_data.get(CONF_HOST, DEFAULT_HOST),
+                                self._discovered_host
+                                or existing_data.get(CONF_HOST, DEFAULT_HOST),
                             ),
                         ): selector.TextSelector(),
                         vol.Required(
@@ -329,7 +363,8 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_HOST,
                         default=user_input.get(
                             CONF_HOST,
-                            existing_data.get(CONF_HOST, DEFAULT_HOST),
+                            self._discovered_host
+                            or existing_data.get(CONF_HOST, DEFAULT_HOST),
                         ),
                     ): selector.TextSelector(),
                     vol.Required(
