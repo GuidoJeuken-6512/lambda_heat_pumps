@@ -252,7 +252,8 @@ Alle Geräte verwenden folgende Basis-Adressen:
 
 | Firmware | Version | Beschreibung |
 |----------|---------|--------------|
-| V0.0.8-3K | 6 | Aktuelle Firmware - am häufigsten |
+| V0.0.9-3K | 7 | Aktuelle Firmware |
+| V0.0.8-3K | 6 | Vorgängerversion – weiterhin häufig im Einsatz |
 | V0.0.7-3K | 5 | Vorgängerversion |
 | V0.0.6-3K | 4 | Ältere Version |
 | V0.0.5-3K | 3 | Ältere Version |
