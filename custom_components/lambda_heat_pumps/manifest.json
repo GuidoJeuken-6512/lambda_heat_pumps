@@ -3,6 +3,14 @@
   "name": "Lambda Heat Pumps",
   "codeowners": ["@GuidoJeuken-6512"],
   "config_flow": true,
+  "dhcp": [
+    {
+      "macaddress": "0050F4*"
+    },
+    {
+      "registered_devices": true
+    }
+  ],
   "documentation": "https://github.com/GuidoJeuken-6512/lambda_wp_hacs",
   "integration_type": "device",
   "iot_class": "local_polling",

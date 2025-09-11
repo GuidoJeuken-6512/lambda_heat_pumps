@@ -59,7 +59,8 @@ LOG_LEVELS = {"error": "ERROR", "warning": "WARNING", "info": "INFO", "debug": "
 
 # Firmware Versions
 FIRMWARE_VERSION = {
-    "V0.0.8-3K": 6,  # Current firmware - most common
+    "V0.0.9-3K": 7,  # Latest firmware
+    "V0.0.8-3K": 6,  # Previous firmware - most common in the field
     "V0.0.7-3K": 5,
     "V0.0.6-3K": 4,
     "V0.0.5-3K": 3,
@@ -152,8 +153,8 @@ HP_SENSOR_TEMPLATES = {
     "volume_flow_heat_sink": {
         "relative_address": 6,
         "name": "Volume Flow Heat Sink",
-        "unit": "l/h",
-        "scale": 1,
+        "unit": "l/min",
+        "scale": 0.01,
         "precision": 1,
         "data_type": "int16",
         "firmware_version": 1,
@@ -177,7 +178,7 @@ HP_SENSOR_TEMPLATES = {
         "relative_address": 8,
         "name": "Energy Source Outlet Temperature",
         "unit": "°C",
-        "scale": 0.1,
+        "scale": 0.01,
         "precision": 1,
         "data_type": "int16",
         "firmware_version": 1,
@@ -682,7 +683,7 @@ BOIL_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "boil",
-        "writeable": False,
+        "writeable": True,
         "state_class": "measurement",
     },
     "dummy_fw2": {
@@ -822,7 +823,7 @@ BUFF_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "buff",
-        "writeable": False,
+        "writeable": True,
     },
 }
 
@@ -895,6 +896,28 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": False,
     },
+    "maximum_buffer_temperature": {
+        "relative_address": 50,
+        "name": "Maximum Buffer Temperature",
+        "unit": "°C",
+        "scale": 0.1,
+        "precision": 1,
+        "data_type": "int16",
+        "firmware_version": 1,
+        "device_type": "sol",
+        "writeable": True,
+    },
+    "buffer_changeover_temperature": {
+        "relative_address": 51,
+        "name": "Buffer Changeover Temperature",
+        "unit": "°C",
+        "scale": 0.1,
+        "precision": 1,
+        "data_type": "int16",
+        "firmware_version": 1,
+        "device_type": "sol",
+        "writeable": True,
+    },
 }
 
 # Heating Circuit Sensors
@@ -956,7 +979,7 @@ HC_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "hc",
-        "writeable": False,
+        "writeable": True,
         "state_class": "measurement",
     },
     "set_flow_line_temperature": {
@@ -968,7 +991,7 @@ HC_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "hc",
-        "writeable": False,
+        "writeable": True,
         "state_class": "measurement",
     },
     "operating_mode": {
@@ -980,7 +1003,7 @@ HC_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "hc",
-        "writeable": False,
+        "writeable": True,
         "txt_mapping": True,
     },
     "set_flow_line_offset_temperature": {
@@ -992,7 +1015,7 @@ HC_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "hc",
-        "writeable": False,
+        "writeable": True,
         "state_class": "measurement",
     },
     "target_room_temperature": {
@@ -1016,7 +1039,7 @@ HC_SENSOR_TEMPLATES = {
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "hc",
-        "writeable": False,
+        "writeable": True,
         "state_class": "measurement",
     },
     "target_temp_flow_line": {
