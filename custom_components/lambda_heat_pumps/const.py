@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 # Retry-Parameter für automatische Modulerkennung
 AUTO_DETECT_RETRIES = 3
