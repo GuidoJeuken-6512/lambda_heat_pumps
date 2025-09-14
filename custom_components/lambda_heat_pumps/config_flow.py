@@ -4,8 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.helpers.entity_registry import async_get
-
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -97,7 +95,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
 class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Lambda WP."""
 
-    VERSION = 2  # Erhöht von 1 auf 2 für Entity Registry Migration
+    VERSION = 4  # Erhöht von 2 auf 4 für Energy Consumption Migration
 
     def __init__(self) -> None:
         """Initialize the config flow."""

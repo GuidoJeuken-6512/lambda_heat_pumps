@@ -12,7 +12,6 @@ from pathlib import Path
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from .modular_registry import lambda_registry
 from .modular_coordinator import LambdaModularCoordinator
 from .const import DOMAIN
 

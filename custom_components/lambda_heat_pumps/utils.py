@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import yaml
+import aiofiles
 from datetime import datetime
 from typing import List, Tuple, Optional
 
@@ -17,6 +18,8 @@ from .const import (
     BASE_ADDRESSES,
     CALCULATED_SENSOR_TEMPLATES,
     DOMAIN,
+    ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
+    ENERGY_CONSUMPTION_MODES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -253,6 +256,11 @@ async def ensure_lambda_config(hass: HomeAssistant) -> bool:
 
 async def load_lambda_config(hass: HomeAssistant) -> dict:
     """Load complete Lambda configuration from lambda_wp_config.yaml."""
+    # Check if config is already cached in hass.data
+    if DOMAIN in hass.data and "lambda_config_cache" in hass.data[DOMAIN]:
+        _LOGGER.debug("Using cached Lambda config")
+        return hass.data[DOMAIN]["lambda_config_cache"]
+    
     # First, ensure config file exists
     await ensure_lambda_config(hass)
     
@@ -331,19 +339,53 @@ async def load_lambda_config(hass: HomeAssistant) -> dict:
                 _LOGGER.error("Invalid cycling_offsets format: %s", e)
                 cycling_offsets = {}
 
+        # Load energy consumption offsets
+        energy_consumption_offsets = {}
+        if "energy_consumption_offsets" in config:
+            try:
+                energy_consumption_offsets = config["energy_consumption_offsets"]
+                # Validate energy consumption offsets structure
+                for device, offsets in energy_consumption_offsets.items():
+                    if not isinstance(offsets, dict):
+                        _LOGGER.warning(
+                            "Invalid energy_consumption_offsets format for device %s", device
+                        )
+                        continue
+                    for offset_type, value in offsets.items():
+                        if not isinstance(value, (int, float)):
+                            _LOGGER.warning(
+                                "Invalid energy consumption offset value for %s.%s: %s",
+                                device,
+                                offset_type,
+                                value,
+                            )
+                            energy_consumption_offsets[device][offset_type] = 0.0
+            except (TypeError, KeyError) as e:
+                _LOGGER.error("Invalid energy_consumption_offsets format: %s", e)
+                energy_consumption_offsets = {}
+
         _LOGGER.debug(
             "Loaded Lambda config: %d disabled registers, %d sensor "
-            "overrides, %d device offsets",
+            "overrides, %d cycling device offsets, %d energy consumption device offsets",
             len(disabled_registers),
             len(sensors_names_override),
             len(cycling_offsets),
+            len(energy_consumption_offsets),
         )
 
-        return {
+        config_result = {
             "disabled_registers": disabled_registers,
             "sensors_names_override": sensors_names_override,
             "cycling_offsets": cycling_offsets,
+            "energy_consumption_offsets": energy_consumption_offsets,
         }
+        
+        # Cache the config in hass.data to avoid repeated loading
+        if DOMAIN not in hass.data:
+            hass.data[DOMAIN] = {}
+        hass.data[DOMAIN]["lambda_config_cache"] = config_result
+        
+        return config_result
 
     except Exception as e:
         _LOGGER.error(
@@ -839,3 +881,333 @@ async def delete_files(
             _LOGGER.error(error_msg)
     
     return deleted_files, errors
+
+
+# =============================================================================
+# ENERGY CONSUMPTION HELPER FUNCTIONS
+# =============================================================================
+
+def convert_energy_to_kwh(value: float, unit: str) -> float:
+    """
+    Konvertiert Energie-Werte zu kWh basierend auf der Einheit.
+    Analog zur PV Surplus Konvertierung in services.py.
+    
+    Args:
+        value: Energie-Wert
+        unit: Einheit des Wertes (Wh, kWh, etc.)
+    
+    Returns:
+        float: Wert in kWh
+    """
+    if not unit:
+        # Wenn keine Einheit angegeben, versuche basierend auf der Größe zu schätzen
+        if value > 10000:  # Wahrscheinlich Wh
+            return value / 1000.0
+        return value
+    
+    unit_lower = unit.lower().strip()
+    
+    # Standard Energie-Einheiten
+    if unit_lower in ["wh", "wattstunden"]:
+        return value / 1000.0
+    elif unit_lower in ["kwh", "kilowattstunden"]:
+        return value
+    elif unit_lower in ["mwh", "megawattstunden"]:
+        return value * 1000.0
+    else:
+        # Unbekannte Einheit - versuche basierend auf der Größe zu schätzen
+        # Analog zur PV Surplus Logik: große Werte sind wahrscheinlich Wh
+        if value > 10000:
+            return value / 1000.0
+        return value
+
+
+def calculate_energy_delta(
+    current_reading: float,
+    last_reading: float,
+    max_delta: float = 100.0
+) -> float:
+    """
+    Berechne Energie-Delta mit Überlauf-Schutz.
+    
+    Args:
+        current_reading: Aktueller Energieverbrauch in kWh
+        last_reading: Letzter Energieverbrauch in kWh
+        max_delta: Maximale erlaubte Delta (Schutz vor unrealistischen Sprüngen)
+    
+    Returns:
+        float: Berechnetes Delta in kWh
+    """
+    if current_reading < last_reading:
+        # Überlauf erkannt - nehme aktuellen Wert
+        _LOGGER.debug(
+            "Energy overflow detected: current=%.6f < last=%.6f, using current value",
+            current_reading, last_reading
+        )
+        return current_reading
+    else:
+        delta = current_reading - last_reading
+        # Schutz vor unrealistischen Sprüngen
+        if delta > max_delta:
+            _LOGGER.warning(
+                "Energy delta %.6f exceeds maximum %.6f, clamping to maximum",
+                delta, max_delta
+            )
+            return max_delta
+        # Rückgabe mit hoher Präzision (6 Nachkommastellen)
+        return round(delta, 6)
+
+
+def generate_energy_sensor_names(
+    device_prefix: str,
+    mode: str,
+    period: str,
+    name_prefix: str,
+    use_legacy_modbus_names: bool,
+) -> dict:
+    """
+    Generiere konsistente Namen für Energy Consumption Sensoren.
+    
+    Args:
+        device_prefix: Device prefix wie "hp1", "boil1", etc.
+        mode: Betriebsart wie "heating", "hot_water", "cooling", "defrost"
+        period: Zeitraum wie "total", "daily"
+        name_prefix: Name prefix wie "eu08l" (wird im legacy mode verwendet)
+        use_legacy_modbus_names: Ob legacy naming convention verwendet werden soll
+    
+    Returns:
+        dict: Enthält 'name', 'entity_id' und 'unique_id'
+    """
+    sensor_id = f"{mode}_energy_{period}"
+    sensor_name = f"{mode.title()} Energy {period.title()}"
+    
+    return generate_sensor_names(
+        device_prefix, sensor_name, sensor_id, name_prefix, use_legacy_modbus_names
+    )
+
+
+async def increment_energy_consumption_counter(
+    hass: HomeAssistant,
+    mode: str,
+    hp_index: int,
+    energy_delta: float,
+    name_prefix: str,
+    use_legacy_modbus_names: bool = True,
+    energy_offsets: dict = None,
+):
+    """
+    Increment energy consumption counters for a given mode and heat pump.
+    Analog zu increment_cycling_counter aber für Energieverbrauch.
+    
+    Args:
+        hass: HomeAssistant instance
+        mode: One of ["heating", "hot_water", "cooling", "defrost"]
+        hp_index: Index of the heat pump (1-based)
+        energy_delta: Energy consumption delta in kWh
+        name_prefix: Name prefix (e.g. "eu08l")
+        use_legacy_modbus_names: Use legacy entity naming
+        energy_offsets: Optional dict with energy offsets from config
+    """
+    if mode not in ENERGY_CONSUMPTION_MODES:
+        _LOGGER.error("Invalid energy consumption mode: %s", mode)
+        return
+    
+    if energy_delta <= 0:
+        _LOGGER.debug("Energy delta %.2f is not positive, skipping increment", energy_delta)
+        return
+
+    device_prefix = f"hp{hp_index}"
+    
+    # Liste aller Sensor-Typen, die erhöht werden sollen
+    sensor_types = [
+        f"{mode}_energy_total",
+        f"{mode}_energy_daily", 
+    ]
+    
+    for sensor_id in sensor_types:
+        names = generate_energy_sensor_names(
+            device_prefix,
+            mode,
+            "total" if sensor_id.endswith("_total") else "daily",
+            name_prefix,
+            use_legacy_modbus_names,
+        )
+        entity_id = names["entity_id"]
+
+        # Check if entity is already registered
+        entity_registry = async_get_entity_registry(hass)
+        entity_entry = entity_registry.async_get(entity_id)
+        if entity_entry is None:
+            # Dynamische Meldungsunterdrückung
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                warning_count = coordinator._energy_warnings.get(entity_id, 0)
+                coordinator._energy_warnings[entity_id] = warning_count + 1
+                
+                if warning_count < coordinator._max_energy_warnings:
+                    _LOGGER.debug(
+                        f"Energy entity {entity_id} not yet registered (attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Energy entity {entity_id} not yet registered after {coordinator._max_energy_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping energy counter increment: {entity_id} not yet registered"
+                )
+            continue
+
+        # Zusätzliche Prüfung: Ist die Entity tatsächlich verfügbar?
+        state_obj = hass.states.get(entity_id)
+        if state_obj is None:
+            # Dynamische Meldungsunterdrückung für State-Problem
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                state_warning_key = f"{entity_id}_state"
+                warning_count = coordinator._energy_warnings.get(state_warning_key, 0)
+                coordinator._energy_warnings[state_warning_key] = warning_count + 1
+                
+                if warning_count < coordinator._max_energy_warnings:
+                    _LOGGER.debug(
+                        f"Energy entity {entity_id} state not available yet (attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Energy entity {entity_id} state not available after {coordinator._max_energy_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping energy counter increment: {entity_id} state not available yet"
+                )
+            continue
+
+        # Erfolgreiche Registrierung - Reset Counter
+        coordinator = _get_coordinator(hass)
+        if coordinator:
+            if entity_id in coordinator._energy_warnings:
+                del coordinator._energy_warnings[entity_id]
+            state_warning_key = f"{entity_id}_state"
+            if state_warning_key in coordinator._energy_warnings:
+                del coordinator._energy_warnings[state_warning_key]
+
+        # Get current state
+        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
+            current = 0.0
+        else:
+            try:
+                current = float(state_obj.state)
+            except Exception:
+                current = 0.0
+
+        # Offset nur für Total-Sensoren anwenden
+        offset = 0.0
+        if energy_offsets is not None and sensor_id.endswith("_total"):
+            device_key = device_prefix
+            if device_key in energy_offsets:
+                device_offsets = energy_offsets[device_key]
+                if isinstance(device_offsets, dict):
+                    offset = float(device_offsets.get(sensor_id, 0.0))
+                else:
+                    _LOGGER.warning(f"Invalid energy offsets structure for {device_key}: {device_offsets}")
+
+        # Debug: Check energy_delta type
+        if not isinstance(energy_delta, (int, float)):
+            _LOGGER.error(f"energy_delta is not a number: {type(energy_delta)} = {energy_delta}")
+            return
+        
+        new_value = current + energy_delta
+
+        # Versuche die Entity-Instanz zu finden
+        energy_entity = None
+        try:
+            # Suche in der Energy-Entities-Struktur
+            for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
+                if isinstance(comp_data, dict) and "energy_entities" in comp_data:
+                    energy_entity = comp_data["energy_entities"].get(entity_id)
+                    if energy_entity:
+                        break
+        except Exception as e:
+            _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
+
+        final_value = new_value + offset
+        if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
+            energy_entity.set_energy_value(final_value)
+            _LOGGER.info(
+                f"Energy counter incremented: {entity_id} = {final_value:.2f} kWh (was {current:.2f}, delta {energy_delta:.2f}, offset {offset:.2f}) [entity updated]"
+            )
+        else:
+            # Fallback: State setzen wie bisher
+            # Energy entity not found, using fallback state update (normal behavior)
+            hass.states.async_set(
+                entity_id, final_value, state_obj.attributes if state_obj else {}
+            )
+            _LOGGER.info(
+                f"Energy counter incremented: {entity_id} = {final_value:.2f} kWh (was {current:.2f}, delta {energy_delta:.2f}, offset {offset:.2f}) [state only]"
+            )
+
+        # Optional: Entity zum Update zwingen (z.B. für Recorder)
+        try:
+            await async_update_entity(hass, entity_id)
+        except Exception as e:
+            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+
+
+def get_energy_consumption_sensor_template(mode: str, period: str) -> dict:
+    """
+    Hole das Template für einen Energy Consumption Sensor.
+    
+    Args:
+        mode: Betriebsart wie "heating", "hot_water", "cooling", "defrost"
+        period: Zeitraum wie "total", "daily"
+    
+    Returns:
+        dict: Sensor template oder None wenn nicht gefunden
+    """
+    sensor_id = f"{mode}_energy_{period}"
+    return ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
+
+
+def validate_energy_consumption_config(config: dict) -> bool:
+    """
+    Validiere die Energy Consumption Konfiguration.
+    
+    Args:
+        config: Konfigurationsdictionary
+    
+    Returns:
+        bool: True wenn Konfiguration gültig ist
+    """
+    if "energy_consumption_sensors" not in config:
+        _LOGGER.warning("energy_consumption_sensors not found in config")
+        return False
+    
+    if "energy_consumption_offsets" not in config:
+        _LOGGER.warning("energy_consumption_offsets not found in config")
+        return False
+    
+    # Validiere energy_consumption_sensors
+    sensors_config = config["energy_consumption_sensors"]
+    for device, sensor_config in sensors_config.items():
+        if not isinstance(sensor_config, dict):
+            _LOGGER.error("Invalid sensor config for device %s", device)
+            return False
+        if "sensor_entity_id" not in sensor_config:
+            _LOGGER.error("Missing sensor_entity_id for device %s", device)
+            return False
+    
+    # Validiere energy_consumption_offsets
+    offsets_config = config["energy_consumption_offsets"]
+    for device, offsets in offsets_config.items():
+        if not isinstance(offsets, dict):
+            _LOGGER.error("Invalid offsets config for device %s", device)
+            return False
+        for mode in ENERGY_CONSUMPTION_MODES:
+            offset_key = f"{mode}_energy_total"
+            if offset_key not in offsets:
+                _LOGGER.warning("Missing offset for %s.%s", device, offset_key)
+            elif not isinstance(offsets[offset_key], (int, float)):
+                _LOGGER.error("Invalid offset value for %s.%s", device, offset_key)
+                return False
+    
+    return True

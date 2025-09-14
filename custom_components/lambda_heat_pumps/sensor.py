@@ -28,6 +28,9 @@ from .const import (
     BUFF_SENSOR_TEMPLATES,
     SOL_SENSOR_TEMPLATES,
     CALCULATED_SENSOR_TEMPLATES,
+    ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
+    ENERGY_CONSUMPTION_MODES,
+    ENERGY_CONSUMPTION_PERIODS,
 )
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
@@ -528,11 +531,61 @@ async def async_setup_entry(
         four_hour_sensor_ids,
     )
 
+    # Energy consumption sensors (nur total und daily)
+    for hp_idx in range(1, num_hps + 1):
+        for mode in ENERGY_CONSUMPTION_MODES:
+            for period in ENERGY_CONSUMPTION_PERIODS:
+                sensor_id = f"{mode}_energy_{period}"
+                sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
+                if not sensor_template:
+                    _LOGGER.warning(f"Template not found for {sensor_id}")
+                    continue
+                
+                device_prefix = f"hp{hp_idx}"
+                names = generate_sensor_names(
+                    device_prefix,
+                    sensor_template["name"],
+                    sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                )
+                
+                sensor = LambdaEnergyConsumptionSensor(
+                    hass,
+                    entry,
+                    sensor_id,
+                    names["name"],
+                    names["entity_id"],
+                    names["unique_id"],
+                    sensor_template["unit"],
+                    sensor_template["state_class"],
+                    sensor_template.get("device_class"),
+                    sensor_template["device_type"],
+                    hp_idx,
+                    mode,
+                    period,
+                )
+                sensors.append(sensor)
+                _LOGGER.debug(f"Created energy consumption sensor: {names['entity_id']}")
+
     _LOGGER.info(
-        "Alle Sensoren (inkl. Cycling) erzeugt: %d",
+        "Alle Sensoren (inkl. Cycling und Energy Consumption) erzeugt: %d",
         len(sensors),
     )
     async_add_entities(sensors)
+    
+    # Registriere Energy Consumption Entities in hass.data für direkten Zugriff
+    energy_entities = {}
+    for sensor in sensors:
+        if isinstance(sensor, LambdaEnergyConsumptionSensor):
+            energy_entities[sensor.entity_id] = sensor
+    
+    # Speichere Energy Entities in hass.data
+    if "energy_entities" not in coordinator_data:
+        coordinator_data["energy_entities"] = {}
+    coordinator_data["energy_entities"].update(energy_entities)
+    
+    _LOGGER.info(f"Registered {len(energy_entities)} energy consumption entities")
 
     # Load template sensors from template_sensor.py
     from .template_sensor import async_setup_entry as setup_template_sensors
@@ -853,6 +906,210 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         # Füge den angewendeten Offset hinzu (nur für Total-Sensoren)
         if self._sensor_id.endswith("_total"):
             applied_offset = getattr(self, "_applied_offset", 0)
+            attrs["applied_offset"] = applied_offset
+            
+        return attrs
+
+
+# --- Entity-Klasse für Energy Consumption Sensoren ---
+class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
+    """Energy consumption sensor (echte Entity, Wert wird von increment_energy_consumption_counter gesetzt)."""
+
+    def __init__(
+        self,
+        hass,
+        entry,
+        sensor_id,
+        name,
+        entity_id,
+        unique_id,
+        unit,
+        state_class,
+        device_class,
+        device_type,
+        hp_index,
+        mode,
+        period,
+    ):
+        self.hass = hass
+        self._entry = entry
+        self._sensor_id = sensor_id
+        self._name = name
+        self.entity_id = entity_id
+        self._unique_id = unique_id
+        self._unit = unit
+        self._state_class = state_class
+        self._device_class = device_class
+        self._device_type = device_type
+        self._hp_index = hp_index
+        self._mode = mode
+        self._period = period
+        self._attr_has_entity_name = True
+        self._attr_should_poll = False
+        self._attr_native_unit_of_measurement = unit
+        self._attr_name = name
+        self._attr_unique_id = unique_id
+        # Initialisiere energy_value mit 0.0
+        self._energy_value = 0.0
+        # Yesterday-Wert für Daily-Berechnung
+        self._yesterday_value = 0.0
+        # Track applied offset to prevent duplicate application
+        self._applied_offset = 0.0
+        # Signal-Unsubscribe-Funktionen
+        self._unsub_dispatcher = None
+
+        if state_class == "total_increasing":
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        elif state_class == "total":
+            self._attr_state_class = SensorStateClass.TOTAL
+        elif state_class == "measurement":
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        else:
+            self._attr_state_class = None
+        self._attr_device_class = device_class
+
+    def set_energy_value(self, value):
+        """Set the energy value and update state."""
+        self._energy_value = float(value)  # Stelle sicher, dass es ein Float ist
+        # Stelle sicher, dass der State korrekt aktualisiert wird
+        self.async_write_ha_state()
+        _LOGGER.debug(f"Energy sensor {self.entity_id} value set to {value}")
+
+    def update_yesterday_value(self):
+        """Update yesterday value with current total value (called at midnight)."""
+        old_yesterday = self._yesterday_value
+        self._yesterday_value = self._energy_value
+        _LOGGER.info(
+            f"Yesterday value updated for {self.entity_id}: {old_yesterday:.2f} -> {self._yesterday_value:.2f}"
+        )
+
+    async def async_added_to_hass(self):
+        """Initialize the sensor when added to Home Assistant."""
+        await super().async_added_to_hass()
+
+        # RestoreEntity provides async_get_last_state() method
+        last_state = await self.async_get_last_state()
+        await self.restore_state(last_state)
+
+        # Registriere Signal-Handler für Reset-Signale
+        self._unsub_dispatcher = async_dispatcher_connect(
+            self.hass, f"lambda_energy_reset_{self._hp_index}_{self._mode}_{self._period}", self._handle_reset
+        )
+
+    async def async_will_remove_from_hass(self):
+        """Clean up when entity is removed."""
+        if self._unsub_dispatcher:
+            self._unsub_dispatcher()
+        await super().async_will_remove_from_hass()
+
+    async def restore_state(self, last_state):
+        """Restore the state from the last state."""
+        if last_state is not None:
+            try:
+                self._energy_value = float(last_state.state)
+                _LOGGER.debug(f"Restored energy value for {self.entity_id}: {self._energy_value}")
+                
+                # Lade den bereits angewendeten Offset aus den Attributen (wie bei Cycling)
+                if hasattr(last_state, 'attributes') and last_state.attributes:
+                    self._applied_offset = last_state.attributes.get("applied_offset", 0.0)
+                else:
+                    self._applied_offset = 0.0
+            except (ValueError, TypeError):
+                _LOGGER.warning(f"Could not restore energy value for {self.entity_id}: {last_state.state}")
+                self._energy_value = 0.0
+                self._applied_offset = 0.0
+        else:
+            self._energy_value = 0.0
+            self._applied_offset = 0.0
+        
+        # Apply energy consumption offsets for total sensors
+        if self._period == "total":
+            await self._apply_energy_offset()
+
+    async def _apply_energy_offset(self):
+        """Apply energy consumption offset for total sensors (only once, like cycling sensors)."""
+        try:
+            # Lade die Energy Consumption Offsets aus der Konfiguration (wie bei Cycling)
+            from .utils import load_lambda_config
+            config = await load_lambda_config(self.hass)
+            energy_offsets = config.get("energy_consumption_offsets", {})
+            
+            if not energy_offsets:
+                _LOGGER.debug(f"No energy consumption offsets found for {self.entity_id}")
+                return
+            
+            # Bestimme den Device-Key (z.B. "hp1")
+            device_key = f"hp{self._hp_index}"
+            
+            if device_key not in energy_offsets:
+                _LOGGER.debug(f"No energy consumption offsets found for device {device_key}")
+                return
+            
+            # Hole den aktuellen Offset für diesen Sensor
+            sensor_id = f"{self._mode}_energy_total"
+            current_offset = energy_offsets[device_key].get(sensor_id, 0.0)
+            
+            # Hole den bereits angewendeten Offset aus den Attributen (wie bei Cycling)
+            applied_offset = getattr(self, "_applied_offset", 0.0)
+            
+            # Berechne die Differenz zwischen aktuellem und bereits angewendetem Offset
+            offset_difference = current_offset - applied_offset
+            
+            if offset_difference > 0:
+                # Apply only the difference to current value
+                self._energy_value += float(offset_difference)
+                self._applied_offset = current_offset  # Update applied offset
+                self.async_write_ha_state()
+                _LOGGER.info(
+                    f"Applied energy offset for {self.entity_id}: +{offset_difference:.2f} kWh (new total: {self._energy_value:.2f} kWh)"
+                )
+            elif offset_difference < 0:
+                # Offset was reduced, subtract the difference
+                self._energy_value += float(offset_difference)  # offset_difference is negative
+                self._applied_offset = current_offset
+                self.async_write_ha_state()
+                _LOGGER.info(
+                    f"Reduced energy offset for {self.entity_id}: {offset_difference:.2f} kWh (new total: {self._energy_value:.2f} kWh)"
+                )
+            else:
+                _LOGGER.debug(f"No offset change for {self.entity_id}")
+        except Exception as e:
+            _LOGGER.error(f"Error applying energy offset for {self.entity_id}: {e}")
+
+    def _handle_reset(self):
+        """Handle reset signal."""
+        _LOGGER.info(f"Resetting energy sensor {self.entity_id}")
+        self._energy_value = 0.0
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> float:
+        """Return the current value."""
+        if self._period == "daily":
+            # Daily-Wert = Total - Yesterday
+            return max(0.0, self._energy_value - self._yesterday_value)
+        else:
+            # Total-Wert
+            return self._energy_value
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        return build_device_info(self._entry)
+
+    @property
+    def extra_state_attributes(self):
+        """Return extra state attributes."""
+        attrs = {
+            "sensor_type": "energy_consumption",
+            "mode": self._mode,
+            "period": self._period,
+            "hp_index": self._hp_index,
+        }
+        
+        # Füge den angewendeten Offset hinzu (nur für Total-Sensoren)
+        if self._sensor_id.endswith("_total"):
+            applied_offset = getattr(self, "_applied_offset", 0.0)
             attrs["applied_offset"] = applied_offset
             
         return attrs

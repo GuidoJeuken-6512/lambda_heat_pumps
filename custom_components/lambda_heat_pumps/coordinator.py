@@ -1,4 +1,4 @@
-"""Data update coordinator for Lambda."""
+﻿"""Data update coordinator for Lambda."""
 
 from __future__ import annotations
 from datetime import timedelta
@@ -7,7 +7,7 @@ import os
 import yaml
 import json
 import asyncio
-from pathlib import Path
+import aiofiles
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import (
@@ -15,8 +15,6 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
-from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.util import Throttle
 from .const import (
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
@@ -26,11 +24,9 @@ from .const import (
     HC_SENSOR_TEMPLATES,
     DEFAULT_UPDATE_INTERVAL,
     CALCULATED_SENSOR_TEMPLATES,
-    LAMBDA_MODBUS_TIMEOUT,
     LAMBDA_MODBUS_UNIT_ID,
     LAMBDA_MODBUS_PORT,
-    LAMBDA_MAX_RETRIES,
-    LAMBDA_RETRY_DELAY,
+    INDIVIDUAL_READ_REGISTERS,
 )
 from .utils import (
     load_disabled_registers,
@@ -44,7 +40,6 @@ from .utils import (
 )
 from .modbus_utils import async_read_holding_registers
 import time
-import json
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -88,6 +83,12 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._last_energy_update = {}
         self._cycling_offsets = {}
         self._energy_offsets = {}
+        
+        # Energy Consumption Tracking
+        self._last_energy_reading = {}  # {hp_index: last_kwh_value}
+        self._energy_consumption = {}   # {hp_index: {mode: {period: value}}}
+        self._energy_sensor_configs = {}  # Sensor-Konfigurationen aus Config (optional)
+        
         self._use_legacy_names = entry.data.get("use_legacy_modbus_names", True)
         self._persist_file = os.path.join(
             self._config_path, "cycle_energy_persist.json"
@@ -107,9 +108,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Dynamische Cycling-Sensor-Meldungen
         self._cycling_warnings = {}  # Dict: entity_id -> warning_count
-        self._max_cycling_warnings = 3  # Nach 3 Warnings unterdrücken
+        self._max_cycling_warnings = 3  # Nach 3 Warnings unterdrÃ¼cken
         
-        # Flag für Initialisierung - verhindert Flankenerkennung beim ersten Update
+        # Dynamische Energy-Sensor-Meldungen
+        self._energy_warnings = {}  # Dict: entity_id -> warning_count
+        self._max_energy_warnings = 3  # Nach 3 Warnings unterdrÃ¼cken
+        
+        # Flag fÃ¼r Initialisierung - verhindert Flankenerkennung beim ersten Update
         self._initialization_complete = False
 
         # self._load_offsets_and_persisted() ENTFERNT!
@@ -120,6 +125,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
             "last_operating_states": getattr(self, "_last_operating_state", {}),
+            "energy_consumption": self._energy_consumption,
+            "last_energy_readings": self._last_energy_reading,
+            "energy_offsets": self._energy_offsets,
         }
 
         def _write_data():
@@ -130,15 +138,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         await self.hass.async_add_executor_job(_write_data)
 
     def mark_initialization_complete(self):
-        """Markiere die Initialisierung als abgeschlossen - ermöglicht Flankenerkennung."""
+        """Markiere die Initialisierung als abgeschlossen - ermÃ¶glicht Flankenerkennung."""
         if not self._initialization_complete:
             self._initialization_complete = True
             _LOGGER.info("Coordinator-Initialisierung abgeschlossen - Flankenerkennung aktiviert")
 
     async def _load_offsets_and_persisted(self):
         # Lade Offsets aus lambda_wp_config.yaml
-        config_path = os.path.join(self._config_path, "lambda_wp_config.yaml")
+        config_dir = self.hass.config.config_dir
+        config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+        _LOGGER.info(f"Loading config from: {config_path}")
+        
         if os.path.exists(config_path):
+            _LOGGER.info("Config file exists, loading...")
 
             def _read_config():
                 with open(config_path) as f:
@@ -146,11 +158,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     config = yaml.safe_load(content) or {}
                     return config
 
-            config = await self.hass.async_add_executor_job(_read_config)
-            self._cycling_offsets = config.get("cycling_offsets", {})
-            self._energy_offsets = config.get("energy_offsets", {})
+            try:
+                config = await self.hass.async_add_executor_job(_read_config)
+                _LOGGER.info(f"Loaded config keys: {list(config.keys())}")
+                self._cycling_offsets = config.get("cycling_offsets", {})
+                self._energy_offsets = config.get("energy_consumption_offsets", {})
+                self._energy_sensor_configs = config.get("energy_consumption_sensors", {})
+                _LOGGER.info(f"Loaded energy sensor configs: {self._energy_sensor_configs}")
+            except Exception as e:
+                _LOGGER.error(f"Error loading config: {e}")
+        else:
+            _LOGGER.warning(f"Config file not found: {config_path}")
 
-        # Lade persistierte Zählerstände (falls vorhanden)
+        # Lade persistierte ZÃ¤hlerstÃ¤nde (falls vorhanden)
         if os.path.exists(self._persist_file):
 
             def _read_persist():
@@ -165,6 +185,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Lade persistierte State-Informationen
             self._last_operating_state = data.get("last_operating_states", {})
             
+            # Lade persistierte Energy Consumption Daten
+            self._energy_consumption = data.get("energy_consumption", {})
+            self._last_energy_reading = data.get("last_energy_readings", {})
+            # Energy Offsets werden bereits aus der Config geladen
+            
             _LOGGER.info(
                 f"Restored last_operating_state: {self._last_operating_state}"
             )
@@ -176,7 +201,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             return f"sensor.eu08l_hp{idx + 1}_{sensor_type}"
 
     async def async_init(self):
-        """Async initialization (inkl. Modbus-Connect für Auto-Detection)."""
+        """Async initialization (inkl. Modbus-Connect fÃ¼r Auto-Detection)."""
         _LOGGER.debug("Initializing Lambda coordinator")
         _LOGGER.debug("Config directory: %s", self._config_dir)
         _LOGGER.debug("Config path: %s", self._config_path)
@@ -205,9 +230,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     "No disabled registers configured - this is normal if you "
                     "haven't disabled any registers"
                 )
+            
+            # Lade Offsets und persistierte Daten (immer, unabhÃ¤ngig von disabled registers)
             await self._load_offsets_and_persisted()
 
-            # Modbus-Connect für Auto-Detection (wird im Produktivbetrieb ohnehin benötigt)
+            # Modbus-Connect fÃ¼r Auto-Detection (wird im Produktivbetrieb ohnehin benÃ¶tigt)
             await self._connect()
 
             # Initialize Entity Registry monitoring
@@ -304,9 +331,18 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                     continue
 
-                # Prüfe ob dieser Batch bereits zu oft fehlgeschlagen ist
+                # PrÃ¼fe ob dieser Batch bereits zu oft fehlgeschlagen ist
                 if batch_key in self._individual_read_addresses:
                     _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (previous failures)")
+                    for addr in batch:
+                        await self._read_single_register(
+                            addr, address_list[addr], sensor_mapping, data
+                        )
+                    continue
+
+                # PrÃƒÂ¼fe ob Register in der Individual-Read-Liste stehen
+                if any(addr in INDIVIDUAL_READ_REGISTERS for addr in batch):
+                    _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (configured individual read)")
                     for addr in batch:
                         await self._read_single_register(
                             addr, address_list[addr], sensor_mapping, data
@@ -322,7 +358,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 )
 
                 if hasattr(result, "isError") and result.isError():
-                    # Erhöhe Fehlerzähler
+                    # ErhÃ¶he FehlerzÃ¤hler
                     self._batch_failures[batch_key] = self._batch_failures.get(batch_key, 0) + 1
                     
                     if self._batch_failures[batch_key] <= self._max_batch_failures:
@@ -342,7 +378,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                     continue
                 
-                # Erfolgreicher Batch-Read - Reset Fehlerzähler
+                # Erfolgreicher Batch-Read - Reset FehlerzÃ¤hler
                 if batch_key in self._batch_failures:
                     del self._batch_failures[batch_key]
                 if batch_key in self._individual_read_addresses:
@@ -806,8 +842,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             data = {}
             interval = DEFAULT_UPDATE_INTERVAL / 3600.0  # Intervall in Stunden
+            
+            # Debug: Start data update
+            _LOGGER.debug("Starting _async_update_data")
             num_hps = self.entry.data.get("num_hps", 1)
-            # Generische Flankenerkennung für alle relevanten Modi
+            # Generische Flankenerkennung fÃ¼r alle relevanten Modi
             MODES = {
                 "heating": 1,  # CH
                 "hot_water": 2,  # DHW
@@ -827,37 +866,30 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 data, num_hps, compatible_hp_sensors
             )
 
-            # Flankenerkennung und Energieintegration nach dem Auslesen aller Wärmepumpen-Sensoren
+            # Flankenerkennung und Energieintegration nach dem Auslesen aller WÃ¤rmepumpen-Sensoren
             for hp_idx in range(1, num_hps + 1):
                 op_state_val = data.get(f"hp{hp_idx}_operating_state")
                 if op_state_val is None:
                     continue
 
-                # Debug-Log: Immer ausgeben
+                # Get last operating state
                 last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
-                _LOGGER.info(
-                    "DEBUG: HP %d, last_op_state=%s, op_state_val=%s, init_complete=%s",
-                    hp_idx,
-                    last_op_state,
-                    op_state_val,
-                    self._initialization_complete,
-                )
                 
                 # Initialisierung beim ersten Update: Logge den aktuellen operating_state
                 if last_op_state == "UNBEKANNT":
                     _LOGGER.info(
-                        f"Initialisiere _last_operating_state für HP {hp_idx} mit operating_state {op_state_val}"
+                        f"Initialisiere _last_operating_state fÃ¼r HP {hp_idx} mit operating_state {op_state_val}"
                     )
                 
-                # Info-Meldung bei Änderung
+                # Info-Meldung bei Ã„nderung
                 if last_op_state != op_state_val:
                     _LOGGER.info(
-                        "Wärmepumpe %d: operating_state geändert von %s auf %s",
+                        "WÃ¤rmepumpe %d: operating_state geÃ¤ndert von %s auf %s",
                         hp_idx,
                         last_op_state,
                         op_state_val,
                     )
-                # Speichere den alten Wert für die Flankenerkennung
+                # Speichere den alten Wert fÃ¼r die Flankenerkennung
                 last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
                 
                 for mode, mode_val in MODES.items():
@@ -869,21 +901,31 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         setattr(self, energy_key, {})
                     cycles = getattr(self, cycling_key)
                     energy = getattr(self, energy_key)
+                    
+                    # Debug: Check energy structure
+                    _LOGGER.debug(f"energy structure for {energy_key}: {energy}")
+                    
+                    # Ensure energy[hp_idx] is a number, not a dict
+                    if hp_idx not in energy:
+                        energy[hp_idx] = 0.0
+                    elif isinstance(energy[hp_idx], dict):
+                        _LOGGER.warning(f"energy[{hp_idx}] is a dict, converting to 0.0: {energy[hp_idx]}")
+                        energy[hp_idx] = 0.0
+                    
+                    # Debug: Check energy structure before any operations
+                    _LOGGER.debug(f"energy[{hp_idx}] before processing: {energy[hp_idx]} (type: {type(energy[hp_idx])})")
                     # Flanke: operating_state wechselt von etwas anderem auf mode_val
                     # ABER: Nur wenn Initialisierung abgeschlossen ist
-                    _LOGGER.info(
-                        "FLANKE CHECK: HP %d, Mode %s, last_op_state=%s, op_state_val=%s, mode_val=%s, init_complete=%s",
-                        hp_idx, mode, last_op_state, op_state_val, mode_val, self._initialization_complete
-                    )
                     if (self._initialization_complete and 
                         last_op_state != "UNBEKANNT" and
                         last_op_state != mode_val and 
                         op_state_val == mode_val):
                         
-                        # Prüfe, ob die Cycling-Entities bereits registriert sind
+                        
+                        # PrÃ¼fe, ob die Cycling-Entities bereits registriert sind
                         cycling_entities_ready = False
                         try:
-                            # Prüfe, ob die Cycling-Entities in hass.data verfügbar sind
+                            # PrÃ¼fe, ob die Cycling-Entities in hass.data verfÃ¼gbar sind
                             if (
                                 "lambda_heat_pumps" in self.hass.data
                                 and self.entry.entry_id
@@ -898,7 +940,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             pass
 
                         if cycling_entities_ready:
-                            # Zentrale Funktion für total-Zähler aufrufen
+                            # Zentrale Funktion fÃ¼r total-ZÃ¤hler aufrufen
                             await increment_cycling_counter(
                                 self.hass,
                                 mode=mode,
@@ -907,43 +949,61 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 use_legacy_modbus_names=self._use_legacy_names,
                                 cycling_offsets=self._cycling_offsets,
                             )
+                            # Get current cycling count for logging
+                            cycling_key = f"{mode}_cycles"
+                            cycles = getattr(self, cycling_key)
+                            old_count = cycles.get(hp_idx, 0)
+                            
+                            # Debug: Check old_count type
+                            if not isinstance(old_count, (int, float)):
+                                _LOGGER.error(f"cycles[{hp_idx}] is not a number: {type(old_count)} = {old_count}")
+                                old_count = 0
+                            
+                            new_count = old_count + 1
+                            cycles[hp_idx] = new_count
+                            
                             _LOGGER.info(
-                                "FLANKE ERKANNT: Wärmepumpe %d: %s Modus aktiviert "
-                                "(Cycling total inkrementiert) - last_op_state=%s -> op_state_val=%s",
-                                hp_idx,
-                                mode,
-                                last_op_state,
-                                op_state_val,
+                                f"Cycling {mode} erhÃ¶ht: HP{hp_idx} von {old_count} auf {new_count}"
                             )
                         else:
                             _LOGGER.debug(
-                                "Wärmepumpe %d: %s Modus aktiviert "
+                                "WÃ¤rmepumpe %d: %s Modus aktiviert "
                                 "(Cycling-Entities noch nicht bereit)",
                                 hp_idx,
                                 mode,
                             )
                     elif not self._initialization_complete:
-                        # Flankenerkennung während Initialisierung unterdrückt
+                        # Flankenerkennung wÃ¤hrend Initialisierung unterdrÃ¼ckt
                         _LOGGER.debug(
-                            "Wärmepumpe %d: %s Modus erkannt, aber Flankenerkennung "
-                            "während Initialisierung unterdrückt",
+                            "WÃ¤rmepumpe %d: %s Modus erkannt, aber Flankenerkennung "
+                            "wÃ¤hrend Initialisierung unterdrÃ¼ckt",
                             hp_idx,
                             mode,
                         )
-                    # Nur für Debug-Zwecke, nicht als Info-Log:
+                    # Nur fÃ¼r Debug-Zwecke, nicht als Info-Log:
                     # _LOGGER.debug(
                     #     "HP %d, Modus %s: last_mode_state=%s, op_state_val=%s",
                     #     hp_idx, mode, last_mode_state, op_state_val
                     # )
 
-                    # Energieintegration für aktiven Modus
+                    # Energieintegration fÃ¼r aktiven Modus
                     power_info = HP_SENSOR_TEMPLATES.get("actual_heating_capacity")
                     if power_info:
                         power_val = data.get(f"hp{hp_idx}_actual_heating_capacity", 0.0)
                         if op_state_val == mode_val:
-                            energy[hp_idx] = energy.get(hp_idx, 0.0) + (
-                                power_val * interval
-                            )
+                            # energy[hp_idx] ist ein dict, nicht eine Zahl
+                            if hp_idx not in energy:
+                                energy[hp_idx] = 0.0
+                            elif isinstance(energy[hp_idx], dict):
+                                _LOGGER.warning(f"energy[{hp_idx}] is a dict, converting to 0.0: {energy[hp_idx]}")
+                                energy[hp_idx] = 0.0
+                            # Debug: Check types before addition
+                            _LOGGER.debug(f"Before addition: energy[{hp_idx}] = {energy[hp_idx]} (type: {type(energy[hp_idx])}), power_val * interval = {power_val * interval} (type: {type(power_val * interval)})")
+                            # Ensure energy[hp_idx] is a number before addition
+                            if not isinstance(energy[hp_idx], (int, float)):
+                                _LOGGER.error(f"energy[{hp_idx}] is not a number: {type(energy[hp_idx])} = {energy[hp_idx]}")
+                                energy[hp_idx] = 0.0
+                            energy[hp_idx] = energy[hp_idx] + (power_val * interval)
                     # Sensorwerte bereitstellen (inkl. Offset)
                     cycling_entity_id = self._generate_entity_id(
                         f"{mode}_cycling_daily", hp_idx - 1
@@ -951,10 +1011,30 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     energy_entity_id = self._generate_entity_id(
                         f"{mode}_energy_daily", hp_idx - 1
                     )
-                    cycling_offset = self._cycling_offsets.get(f"hp{hp_idx}", 0)
-                    energy_offset = self._energy_offsets.get(f"hp{hp_idx}", 0.0)
+                    # Get cycling offset for this specific sensor (correct nested structure)
+                    hp_cycling_offsets = self._cycling_offsets.get(f"hp{hp_idx}", {})
+                    if isinstance(hp_cycling_offsets, dict):
+                        cycling_offset = hp_cycling_offsets.get(f"{mode}_cycling_daily", 0)
+                    else:
+                        _LOGGER.warning(f"Invalid cycling offset structure for hp{hp_idx}: {hp_cycling_offsets}")
+                        cycling_offset = 0
+                    energy_offset = self._energy_offsets.get(f"hp{hp_idx}", {})
+                    # Energy offset is a dict, we need to get the specific sensor offset
+                    energy_sensor_offset = 0.0
+                    if isinstance(energy_offset, dict):
+                        energy_sensor_offset = energy_offset.get(f"{mode}_energy_daily", 0.0)
+                    else:
+                        _LOGGER.warning(f"Invalid energy offset structure for hp{hp_idx}: {energy_offset}")
+                    
                     data[cycling_entity_id] = cycles.get(hp_idx, 0) + cycling_offset
-                    data[energy_entity_id] = energy.get(hp_idx, 0.0) + energy_offset
+                    
+                    # Debug: Check energy structure
+                    energy_value = energy.get(hp_idx, 0.0)
+                    if not isinstance(energy_value, (int, float)):
+                        _LOGGER.error(f"energy[{hp_idx}] is not a number: {type(energy_value)} = {energy_value}")
+                        energy_value = 0.0
+                    
+                    data[energy_entity_id] = energy_value + energy_sensor_offset
                 
                 # Aktualisiere _last_operating_state NACH der Flankenerkennung
                 self._last_operating_state[hp_idx] = op_state_val
@@ -1000,7 +1080,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 value = to_signed_16bit(value)
                         if "scale" in sensor_info:
                             value = value * sensor_info["scale"]
-                        # Prüfe auf Override-Name
+                        # PrÃ¼fe auf Override-Name
                         override_name = None
                         if hasattr(self, "sensor_overrides"):
                             override_name = self.sensor_overrides.get(
@@ -1059,7 +1139,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 value = to_signed_16bit(value)
                         if "scale" in sensor_info:
                             value = value * sensor_info["scale"]
-                        # Prüfe auf Override-Name
+                        # PrÃ¼fe auf Override-Name
                         override_name = None
                         if hasattr(self, "sensor_overrides"):
                             override_name = self.sensor_overrides.get(
@@ -1118,7 +1198,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 value = to_signed_16bit(value)
                         if "scale" in sensor_info:
                             value = value * sensor_info["scale"]
-                        # Prüfe auf Override-Name
+                        # PrÃ¼fe auf Override-Name
                         override_name = None
                         if hasattr(self, "sensor_overrides"):
                             override_name = self.sensor_overrides.get(
@@ -1177,7 +1257,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                 value = to_signed_16bit(value)
                         if "scale" in sensor_info:
                             value = value * sensor_info["scale"]
-                        # Prüfe auf Override-Name
+                        # PrÃ¼fe auf Override-Name
                         override_name = None
                         if hasattr(self, "sensor_overrides"):
                             override_name = self.sensor_overrides.get(
@@ -1196,8 +1276,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             ex,
                         )
 
-            # Dummy-Keys für Template-Sensoren einfügen
-            # Erzeuge alle möglichen Template-Sensor-IDs
+            # Dummy-Keys fÃ¼r Template-Sensoren einfÃ¼gen
+            # Erzeuge alle mÃ¶glichen Template-Sensor-IDs
             num_hps = self.entry.data.get("num_hps", 1)
             num_boil = self.entry.data.get("num_boil", 1)
             num_buff = self.entry.data.get("num_buff", 0)
@@ -1216,7 +1296,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     for sensor_id, sensor_info in CALCULATED_SENSOR_TEMPLATES.items():
                         if sensor_info.get("device_type") == device_type:
                             key = f"{device_prefix}_{sensor_id}"
-                            # Setze einen sich ändernden Wert, z.B. Zeitstempel
+                            # Setze einen sich Ã¤ndernden Wert, z.B. Zeitstempel
                             data[key] = time.time()
 
             # Update room temperature and PV surplus only after Home Assistant
@@ -1225,10 +1305,18 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 # Note: Writing operations moved to services.py
                 pass
 
+            # Energy Consumption Tracking
+            _LOGGER.debug(f"DEBUG-001: Starting energy consumption tracking")
+            await self._track_energy_consumption(data)
+            _LOGGER.debug(f"DEBUG-002: Energy consumption tracking completed")
+
+            _LOGGER.debug(f"DEBUG-003: Returning data from _async_update_data")
             return data
 
         except Exception as ex:
-            _LOGGER.error("Error updating data: %s", ex)
+            _LOGGER.error("DEBUG-ERROR: Error updating data: %s", ex)
+            import traceback
+            _LOGGER.error("DEBUG-ERROR: Traceback: %s", traceback.format_exc())
             if (
                 self.client is not None
                 and hasattr(self.client, "close")
@@ -1241,6 +1329,170 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 finally:
                     self.client = None
             raise UpdateFailed(f"Error fetching Lambda data: {ex}")
+
+    async def _track_energy_consumption(self, data):
+        """Track energy consumption by operating mode."""
+        _LOGGER.debug(f"DEBUG-004: Entering _track_energy_consumption")
+        try:
+            # Get number of heat pumps from config entry
+            num_hps = self.entry.data.get("num_hps", 1)
+            _LOGGER.debug(f"DEBUG-005: Number of heat pumps: {num_hps}")
+            
+            # Get current operating states for all heat pumps
+            current_states = {}
+            for hp_idx in range(1, num_hps + 1):
+                state_key = f"hp{hp_idx}_operating_state"
+                if state_key in data:
+                    current_states[hp_idx] = data[state_key]
+                else:
+                    current_states[hp_idx] = 0  # Default to 0 if not available
+                _LOGGER.debug(f"DEBUG-006: HP{hp_idx} operating state: {current_states[hp_idx]}")
+
+            # Track energy consumption for each heat pump
+            for hp_idx in range(1, num_hps + 1):
+                _LOGGER.debug(f"DEBUG-007: Tracking energy consumption for HP{hp_idx}")
+                await self._track_hp_energy_consumption(hp_idx, current_states[hp_idx], data)
+                _LOGGER.debug(f"DEBUG-008: Completed tracking energy consumption for HP{hp_idx}")
+
+            _LOGGER.debug(f"DEBUG-009: Completed _track_energy_consumption")
+
+        except Exception as ex:
+            _LOGGER.error("DEBUG-ERROR: Error tracking energy consumption: %s", ex)
+            import traceback
+            _LOGGER.error("DEBUG-ERROR: Traceback in _track_energy_consumption: %s", traceback.format_exc())
+
+    async def _track_hp_energy_consumption(self, hp_idx, current_state, data):
+        """Track energy consumption for a specific heat pump."""
+        _LOGGER.debug(f"DEBUG-010: Entering _track_hp_energy_consumption for HP{hp_idx}")
+        try:
+            # Get sensor configuration for this heat pump (optional)
+            hp_key = f"hp{hp_idx}"
+            _LOGGER.debug(f"DEBUG-011: HP key: {hp_key}")
+            sensor_config = self._energy_sensor_configs.get(hp_key, {})
+            _LOGGER.debug(f"DEBUG-012: Sensor config: {sensor_config}")
+            sensor_entity_id = sensor_config.get("sensor_entity_id")
+            _LOGGER.debug(f"DEBUG-013: Sensor entity ID: {sensor_entity_id}")
+            
+            # If no custom sensor configured, use the default power consumption sensor
+            if not sensor_entity_id:
+                name_prefix = self.entry.data.get("name", "eu08l")
+                sensor_entity_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+                _LOGGER.info(f"Using default energy sensor for HP {hp_idx}: {sensor_entity_id}")
+            else:
+                _LOGGER.info(f"Using custom energy sensor for HP {hp_idx}: {sensor_entity_id}")
+
+            # Get current energy reading from the configured sensor
+            current_energy_state = self.hass.states.get(sensor_entity_id)
+            _LOGGER.debug(f"DEBUG-017: Energy sensor state: {current_energy_state.state if current_energy_state else 'None'}")
+            if not current_energy_state or current_energy_state.state in ["unknown", "unavailable"]:
+                # Template sensors might not be ready yet - this is normal during startup
+                if current_energy_state and current_energy_state.state == "unknown":
+                    _LOGGER.debug(f"Energy sensor {sensor_entity_id} not ready yet (state: unknown) - will retry on next update")
+                else:
+                    _LOGGER.warning(f"Energy sensor {sensor_entity_id} not available (state: {current_energy_state.state if current_energy_state else 'None'})")
+                return
+
+            try:
+                current_energy = float(current_energy_state.state)
+                _LOGGER.debug(f"DEBUG-018: Current energy value: {current_energy:.6f}")
+            except (ValueError, TypeError):
+                _LOGGER.warning(f"DEBUG-ERROR: Could not convert energy state to float: {current_energy_state.state}")
+                return
+
+            # Get unit from sensor attributes and convert to kWh
+            unit = current_energy_state.attributes.get("unit_of_measurement", "")
+            from .utils import convert_energy_to_kwh
+            original_energy = current_energy
+            current_energy_kwh = convert_energy_to_kwh(current_energy, unit)
+            
+            # Log conversion details (analog zur PV Surplus Konvertierung)
+            if unit and unit.lower() not in ["kwh", "kilowattstunden"]:
+                _LOGGER.debug(f"DEBUG-021: Energy unit conversion for HP{hp_idx}: {original_energy} {unit} -> {current_energy_kwh} kWh")
+            else:
+                _LOGGER.debug(f"DEBUG-021: Energy value for HP{hp_idx}: {current_energy_kwh} kWh (unit: {unit or 'none'})")
+
+            # Get last energy reading for this heat pump
+            last_energy = self._last_energy_reading.get(f"hp{hp_idx}", 0.0)
+            _LOGGER.debug(f"DEBUG-019: Last energy reading: {last_energy:.6f}")
+            
+            # Calculate energy delta
+            from .utils import calculate_energy_delta
+            raw_delta = current_energy_kwh - last_energy
+            energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)
+            _LOGGER.debug(f"DEBUG-020: Raw delta: {raw_delta:.6f}, Calculated delta: {energy_delta:.6f}")
+            
+            # Only skip if delta is negative (overflow) or if we're not in STBY mode
+            if energy_delta < 0:
+                return
+
+            # Update last energy reading
+            self._last_energy_reading[f"hp{hp_idx}"] = current_energy_kwh
+
+            # Get last operating state for this heat pump
+            last_state = self._last_operating_state.get(str(hp_idx), 0)
+            
+            # Map operating state to mode - alle nicht-definierten Modi gehen auf STBY
+            mode_mapping = {
+                0: "stby",         # STBY
+                1: "heating",      # CH
+                2: "hot_water",    # DHW
+                3: "cooling",      # CC
+                4: "defrost",      # DEFROST
+            }
+            
+            # Bestimme den Modus - alle nicht-definierten Modi werden auf STBY umgeleitet
+            if current_state in mode_mapping:
+                mode = mode_mapping[current_state]
+            else:
+                # Unbekannter Betriebsmodus -> auf STBY umleiten
+                mode = "stby"
+                _LOGGER.info(f"Unbekannter Betriebsmodus {current_state} für HP{hp_idx} -> auf STBY umgeleitet")
+            
+            # Determine which mode to increment based on state change
+            if current_state != last_state:
+                # State changed, increment the new mode
+                _LOGGER.info(f"Verbrauchssensor {mode} aktiv: HP{hp_idx} (Betriebsmodus: {current_state})")
+                await self._increment_energy_consumption(hp_idx, mode, energy_delta)
+            else:
+                # Same state, increment the current mode
+                # For STBY mode, always update even with delta=0 to keep sensors alive
+                if mode == "stby" or energy_delta > 0:
+                    await self._increment_energy_consumption(hp_idx, mode, energy_delta)
+
+            # Update last operating state
+            self._last_operating_state[str(hp_idx)] = current_state
+
+        except Exception as ex:
+            _LOGGER.error(f"Error tracking energy consumption for HP{hp_idx}: %s", ex)
+
+    async def _increment_energy_consumption(self, hp_idx, mode, energy_delta):
+        """Increment energy consumption for a specific mode and heat pump."""
+        try:
+            from .utils import increment_energy_consumption_counter
+            
+            # Get energy offsets for this heat pump
+            hp_key = f"hp{hp_idx}"
+            _LOGGER.debug(f"DEBUG-014: Getting energy offsets for {hp_key}")
+            energy_offsets = self._energy_offsets.get(hp_key, {})
+            _LOGGER.debug(f"DEBUG-015: Energy offsets for {hp_key}: {energy_offsets}")
+            _LOGGER.debug(f"DEBUG-016: Type of energy_offsets: {type(energy_offsets)}")
+            
+            # Get name prefix from entry data
+            name_prefix = self.entry.data.get("name", "eu08l")
+            
+            # Increment both total and daily counters
+            await increment_energy_consumption_counter(
+                hass=self.hass,
+                mode=mode,
+                hp_index=hp_idx,
+                energy_delta=energy_delta,
+                name_prefix=name_prefix,
+                use_legacy_modbus_names=True,
+                energy_offsets=energy_offsets,
+            )
+
+        except Exception as ex:
+            _LOGGER.error(f"Error incrementing energy consumption for HP{hp_idx} {mode}: %s", ex)
 
     def _on_ha_started(self, event):
         """Handle Home Assistant started event."""
@@ -1292,5 +1544,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             return await self.hass.async_add_executor_job(_read_config)
         except Exception as e:
-            _LOGGER.error(f"Fehler beim Laden der Sensor-Namen-Überschreibungen: {e}")
+            _LOGGER.error(f"Fehler beim Laden der Sensor-Namen-Ãœberschreibungen: {e}")
             return {}
+
+
+

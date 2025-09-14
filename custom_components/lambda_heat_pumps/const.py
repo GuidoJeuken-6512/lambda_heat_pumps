@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 # Retry-Parameter für automatische Modulerkennung
 AUTO_DETECT_RETRIES = 3
@@ -239,7 +239,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "COP",
         "unit": None,
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -348,7 +348,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "VdA Rating",
         "unit": "%",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -360,7 +360,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Hot Gas Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -373,7 +373,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Subcooling Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -386,7 +386,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Suction Gas Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -399,7 +399,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Condensation Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -412,7 +412,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Evaporation Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -425,7 +425,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "EqM Rating",
         "unit": "%",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -437,7 +437,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Expansion Valve Opening Angle",
         "unit": "%",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -1254,13 +1254,20 @@ BASE_ADDRESSES = {
     "hc": 5000,  # Heating circuits start at 5000
 }
 
+# Individual Read Registers
+# These registers are read individually instead of in batches due to known issues
+INDIVIDUAL_READ_REGISTERS = [
+    1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059, 1060
+]
+
+
 # Calculated Sensor Templates
 CALCULATED_SENSOR_TEMPLATES = {
     # Beispiel für einen berechneten Sensor: COP
     "cop_calc": {
         "name": "COP Calculated",
         "unit": None,
-        "precision": 2,
+        "precision": 6,
         "data_type": "calculated",
         "firmware_version": 1,
         "device_type": "hp",
@@ -1530,6 +1537,161 @@ CALCULATED_SENSOR_TEMPLATES = {
     # Weitere Modi können nach Bedarf ergänzt werden (siehe Statusmapping unten)
 }
 
+# =============================================================================
+# ENERGY CONSUMPTION SENSOR TEMPLATES
+# =============================================================================
+
+# Energy Consumption Sensor Templates
+ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
+    # Heating Energy Sensoren
+    "heating_energy_total": {
+        "name": "Heating Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 1,  # CH
+        "description": "Gesamtverbrauch für Heizen in kWh",
+    },
+    "heating_energy_daily": {
+        "name": "Heating Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "description": "Täglicher Verbrauch für Heizen in kWh",
+    },
+    # Hot Water Energy Sensoren
+    "hot_water_energy_total": {
+        "name": "Hot Water Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 2,  # DHW
+        "description": "Gesamtverbrauch für Warmwasser in kWh",
+    },
+    "hot_water_energy_daily": {
+        "name": "Hot Water Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "description": "Täglicher Verbrauch für Warmwasser in kWh",
+    },
+    # Cooling Energy Sensoren
+    "cooling_energy_total": {
+        "name": "Cooling Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 3,  # CC
+        "description": "Gesamtverbrauch für Kühlen in kWh",
+    },
+    "cooling_energy_daily": {
+        "name": "Cooling Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "description": "Täglicher Verbrauch für Kühlen in kWh",
+    },
+    # Defrost Energy Sensoren
+    "defrost_energy_total": {
+        "name": "Defrost Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 5,  # DEFROST
+        "description": "Gesamtverbrauch für Abtauen in kWh",
+    },
+    "defrost_energy_daily": {
+        "name": "Defrost Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "description": "Täglicher Verbrauch für Abtauen in kWh",
+    },
+    # STBY Energy Sensoren
+    "stby_energy_total": {
+        "name": "STBY Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "description": "Gesamtverbrauch für Standby in kWh",
+    },
+    "stby_energy_daily": {
+        "name": "STBY Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "description": "Täglicher Verbrauch für Standby in kWh",
+    },
+}
+
+# Energy Consumption Konfiguration
+ENERGY_CONSUMPTION_MODES = ["heating", "hot_water", "cooling", "defrost", "stby"]
+ENERGY_CONSUMPTION_PERIODS = ["total", "daily"]
+
+# Energy Consumption Migration Version
+ENERGY_CONSUMPTION_MIGRATION_VERSION = 4
+
+# Energy Consumption Default Offsets
+DEFAULT_ENERGY_CONSUMPTION_OFFSETS = {
+    "hp1": {
+        "heating_energy_total": 0,
+        "hot_water_energy_total": 0,
+        "cooling_energy_total": 0,
+        "defrost_energy_total": 0,
+        "stby_energy_total": 0,
+    }
+}
+
 # Statusmapping für operating_state (nur zur Referenz, nicht direkt im Template genutzt)
 OPERATING_STATE_MAP = {
     0: "STBY",
@@ -1588,6 +1750,32 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    cooling_cycling_total: 200    # Example: HP2 already had 200 cooling cycles
 #    defrost_cycling_total: 50     # Example: HP2 already had 50 defrost cycles
 
+# Energy consumption sensor configuration
+# Configure input sensors for energy consumption tracking per heat pump
+# These sensors provide the base energy consumption data (kWh)
+# Example:
+#energy_consumption_sensors:
+#  hp1:
+#    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+#  hp2:
+#    sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
+
+# Energy consumption offsets for total sensors
+# These offsets are added to the calculated energy consumption values
+# Useful when replacing heat pumps or resetting counters
+# Example:
+#energy_consumption_offsets:
+#  hp1:
+#    heating_energy_total: 0       # kWh offset for HP1 heating total
+#    hot_water_energy_total: 0     # kWh offset for HP1 hot water total
+#    cooling_energy_total: 0       # kWh offset for HP1 cooling total
+#    defrost_energy_total: 0       # kWh offset for HP1 defrost total
+#  hp2:
+#    heating_energy_total: 150.5   # Example: HP2 already consumed 150.5 kWh heating
+#    hot_water_energy_total: 45.2  # Example: HP2 already consumed 45.2 kWh hot water
+#    cooling_energy_total: 12.8    # Example: HP2 already consumed 12.8 kWh cooling
+#    defrost_energy_total: 3.1     # Example: HP2 already consumed 3.1 kWh defrost
+
 disabled_registers:
  - 100000 # this sensor does not exits, this is just an example
 
@@ -1601,4 +1789,28 @@ cycling_offsets:
     hot_water_cycling_total: 0
     cooling_cycling_total: 0
     defrost_cycling_total: 0
+
+# Energy Consumption Sensors (OPTIONAL - uses default power consumption sensors if not configured)
+# energy_consumption_sensors:
+#   hp1:
+#     sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+#   hp2:
+#     sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
+#   hp3:
+#     sensor_entity_id: "sensor.eu08l_hp3_compressor_power_consumption_accumulated"
+
+# Energy Consumption Offsets (OPTIONAL - for replacing heat pumps with existing consumption)
+# energy_consumption_offsets:
+#   hp1:
+#     heating_energy_total: 0
+#     hot_water_energy_total: 0
+#     cooling_energy_total: 0
+#     defrost_energy_total: 0
+#     stby_energy_total: 0
+#   hp2:
+#     heating_energy_total: 150.5
+#     hot_water_energy_total: 45.2
+#     cooling_energy_total: 12.8
+#     defrost_energy_total: 3.1
+#     stby_energy_total: 0
 """

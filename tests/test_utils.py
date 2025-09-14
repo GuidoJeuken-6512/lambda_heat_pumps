@@ -108,6 +108,7 @@ async def test_load_disabled_registers_file_not_exists():
     """Test loading disabled registers when file doesn't exist."""
     mock_hass = Mock()
     mock_hass.config.config_dir = "/tmp/test_config"
+    mock_hass.data = {}
 
     with patch(
         "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=False
@@ -122,6 +123,7 @@ async def test_load_disabled_registers_no_disabled_registers():
     """Test loading disabled registers when no disabled_registers key exists."""
     mock_hass = Mock()
     mock_hass.config.config_dir = "/tmp/test_config"
+    mock_hass.data = {}
 
     mock_yaml_content = """
 other_config:
@@ -147,6 +149,7 @@ async def test_load_disabled_registers_yaml_error():
     """Test loading disabled registers with YAML error."""
     mock_hass = Mock()
     mock_hass.config.config_dir = "/tmp/test_config"
+    mock_hass.data = {}
 
     with patch(
         "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=True
