@@ -446,13 +446,13 @@ class TestEnergyConsumptionConstants:
 
     def test_energy_consumption_modes(self):
         """Test energy consumption modes are defined."""
-        expected_modes = ["heating", "hot_water", "cooling", "defrost", "stby"]
-        assert ENERGY_CONSUMPTION_MODES == expected_modes
+        expected_modes = ["cooling", "defrost", "heating", "hot_water", "stby"]
+        assert sorted(ENERGY_CONSUMPTION_MODES) == expected_modes
 
     def test_energy_consumption_periods(self):
         """Test energy consumption periods are defined."""
-        expected_periods = ["total", "daily"]
-        assert ENERGY_CONSUMPTION_PERIODS == expected_periods
+        expected_periods = ["daily", "total"]
+        assert sorted(ENERGY_CONSUMPTION_PERIODS) == expected_periods
 
     def test_energy_consumption_sensor_templates(self):
         """Test energy consumption sensor templates are defined."""

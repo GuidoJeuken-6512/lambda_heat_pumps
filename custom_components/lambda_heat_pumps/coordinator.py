@@ -1377,9 +1377,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if not sensor_entity_id:
                 name_prefix = self.entry.data.get("name", "eu08l")
                 sensor_entity_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
-                _LOGGER.info(f"Using default energy sensor for HP {hp_idx}: {sensor_entity_id}")
+                _LOGGER.debug(f"Using default energy sensor for HP {hp_idx}: {sensor_entity_id}")
             else:
-                _LOGGER.info(f"Using custom energy sensor for HP {hp_idx}: {sensor_entity_id}")
+                _LOGGER.debug(f"Using custom energy sensor for HP {hp_idx}: {sensor_entity_id}")
 
             # Get current energy reading from the configured sensor
             current_energy_state = self.hass.states.get(sensor_entity_id)
@@ -1437,7 +1437,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 1: "heating",      # CH
                 2: "hot_water",    # DHW
                 3: "cooling",      # CC
-                4: "defrost",      # DEFROST
+                4: "stby",         # CIRCULATE -> geht auf STBY Counter
+                5: "defrost",      # DEFROST
             }
             
             # Bestimme den Modus - alle nicht-definierten Modi werden auf STBY umgeleitet
@@ -1446,7 +1447,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             else:
                 # Unbekannter Betriebsmodus -> auf STBY umleiten
                 mode = "stby"
-                _LOGGER.info(f"Unbekannter Betriebsmodus {current_state} für HP{hp_idx} -> auf STBY umgeleitet")
             
             # Determine which mode to increment based on state change
             if current_state != last_state:

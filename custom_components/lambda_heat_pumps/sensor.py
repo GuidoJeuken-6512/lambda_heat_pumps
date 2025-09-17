@@ -992,9 +992,21 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         await self.restore_state(last_state)
 
         # Registriere Signal-Handler für Reset-Signale
-        self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, f"lambda_energy_reset_{self._hp_index}_{self._mode}_{self._period}", self._handle_reset
-        )
+        # Verwende zentrale Signale wie Cycling Sensoren
+        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H  # noqa: F401
+        
+        if self._period == "daily":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_DAILY, self._handle_reset
+            )
+        elif self._period == "2h":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_2H, self._handle_reset
+            )
+        elif self._period == "4h":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_4H, self._handle_reset
+            )
 
     async def async_will_remove_from_hass(self):
         """Clean up when entity is removed."""

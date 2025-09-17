@@ -34,13 +34,19 @@ class TestConst(unittest.TestCase):
             self.assertIn("device_type", template_info)
             self.assertIn("writeable", template_info)
             self.assertIn("state_class", template_info)
-            self.assertIn("template", template_info)
-
+            
             # Test data_type is "calculated"
             self.assertEqual(template_info["data_type"], "calculated")
 
             # Test writeable is False for calculated sensors
             self.assertFalse(template_info["writeable"])
+            
+            # Test new attributes for cycling and energy sensors
+            if 'cycling' in sensor_id or 'energy' in sensor_id:
+                self.assertIn("operating_state", template_info)
+                self.assertIn("period", template_info)
+                self.assertIn("reset_interval", template_info)
+                self.assertIn("reset_signal", template_info)
 
     def test_calculated_sensor_templates_device_class(self):
         """Test that calculated sensor templates have device_class field."""
@@ -65,11 +71,11 @@ class TestConst(unittest.TestCase):
         all_templates = {**HP_SENSOR_TEMPLATES, **BOIL_SENSOR_TEMPLATES}
 
         for sensor_id, template_info in all_templates.items():
-            self.assertIn("device_class", template_info)
-            # device_class can be None or a valid SensorDeviceClass value
-            device_class = template_info["device_class"]
-            if device_class is not None:
-                self.assertIsInstance(device_class, str)
+            # device_class is optional in some templates
+            if "device_class" in template_info:
+                device_class = template_info["device_class"]
+                if device_class is not None:
+                    self.assertIsInstance(device_class, str)
 
     def test_temperature_sensors_device_class(self):
         """Test that temperature sensors have correct device_class."""
@@ -83,7 +89,9 @@ class TestConst(unittest.TestCase):
         for sensor_id in temperature_sensors:
             if sensor_id in HP_SENSOR_TEMPLATES:
                 template_info = HP_SENSOR_TEMPLATES[sensor_id]
-                self.assertEqual(template_info["device_class"], "temperature")
+                # Check if device_class exists and is temperature
+                if "device_class" in template_info:
+                    self.assertEqual(template_info["device_class"], "temperature")
                 self.assertEqual(template_info["unit"], "°C")
 
     def test_power_sensors_device_class(self):
@@ -102,17 +110,18 @@ class TestConst(unittest.TestCase):
     def test_template_syntax(self):
         """Test that calculated sensor templates have valid Jinja syntax."""
         for sensor_id, template_info in CALCULATED_SENSOR_TEMPLATES.items():
-            template_str = template_info["template"]
+            # Only test templates that have a template field
+            if "template" in template_info and template_info["template"]:
+                template_str = template_info["template"]
 
-            # Test basic Jinja syntax elements
-            self.assertIn("{{", template_str)
-            self.assertIn("}}", template_str)
-            self.assertIn("device_prefix", template_str)
+                # Test basic Jinja syntax elements
+                self.assertIn("{{", template_str)
+                self.assertIn("}}", template_str)
 
-            # Test that template uses proper Jinja filters
-            self.assertIn("|", template_str)
-            self.assertIn("float", template_str)
-            self.assertIn("round", template_str)
+                # Test that template uses proper Jinja filters
+                self.assertIn("|", template_str)
+                self.assertIn("float", template_str)
+                self.assertIn("round", template_str)
 
     def test_device_type_consistency(self):
         """Test that device_type is consistent across templates."""

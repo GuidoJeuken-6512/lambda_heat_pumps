@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import yaml
@@ -1015,6 +1016,11 @@ async def increment_energy_consumption_counter(
     if energy_delta <= 0:
         _LOGGER.debug("Energy delta %.2f is not positive, skipping increment", energy_delta)
         return
+    
+    # Zusätzliche Prüfung: Nur verarbeiten wenn energy_delta signifikant ist
+    if energy_delta < 0.001:
+        _LOGGER.debug("Energy delta %.6f is too small, skipping increment", energy_delta)
+        return
 
     device_prefix = f"hp{hp_index}"
     
@@ -1023,6 +1029,9 @@ async def increment_energy_consumption_counter(
         f"{mode}_energy_total",
         f"{mode}_energy_daily", 
     ]
+    
+    # Sammle alle Änderungen für eine einzige Logging-Meldung
+    changes_summary = []
     
     for sensor_id in sensor_types:
         names = generate_energy_sensor_names(
@@ -1131,26 +1140,36 @@ async def increment_energy_consumption_counter(
             _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
 
         final_value = new_value + offset
+        
+        # Nur loggen wenn sich der Wert tatsächlich ändert
+        value_changed = abs(final_value - current) > 0.001  # Toleranz für Rundungsfehler
+        
         if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
             energy_entity.set_energy_value(final_value)
-            _LOGGER.info(
-                f"Energy counter incremented: {entity_id} = {final_value:.2f} kWh (was {current:.2f}, delta {energy_delta:.2f}, offset {offset:.2f}) [entity updated]"
-            )
+            if value_changed:
+                # Sammle Änderung für zentrale Logging-Meldung
+                changes_summary.append(f"{entity_id} = {final_value:.2f} kWh (was {current:.2f})")
         else:
             # Fallback: State setzen wie bisher
             # Energy entity not found, using fallback state update (normal behavior)
             hass.states.async_set(
                 entity_id, final_value, state_obj.attributes if state_obj else {}
             )
-            _LOGGER.info(
-                f"Energy counter incremented: {entity_id} = {final_value:.2f} kWh (was {current:.2f}, delta {energy_delta:.2f}, offset {offset:.2f}) [state only]"
-            )
+            if value_changed:
+                # Sammle Änderung für zentrale Logging-Meldung
+                changes_summary.append(f"{entity_id} = {final_value:.2f} kWh (was {current:.2f})")
 
         # Optional: Entity zum Update zwingen (z.B. für Recorder)
         try:
             await async_update_entity(hass, entity_id)
         except Exception as e:
             _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+
+    # Zentrale Logging-Meldung nur bei tatsächlichen Änderungen
+    if changes_summary:
+        _LOGGER.info(
+            f"Energy counters updated for {mode} HP{hp_index}: {', '.join(changes_summary)} (delta {energy_delta:.2f} kWh)"
+        )
 
 
 def get_energy_consumption_sensor_template(mode: str, period: str) -> dict:
@@ -1211,3 +1230,353 @@ def validate_energy_consumption_config(config: dict) -> bool:
                 return False
     
     return True
+
+
+# =============================================================================
+# Reset-Signal Factory Functions
+# =============================================================================
+
+def create_reset_signal(sensor_type: str, period: str) -> str:
+    """
+    Erstellt ein standardisiertes Reset-Signal für einen Sensor-Typ und eine Periode.
+    
+    Args:
+        sensor_type: Art des Sensors ('cycling', 'energy', 'general')
+        period: Reset-Periode ('daily', '2h', '4h')
+        
+    Returns:
+        Signal-Name: 'lambda_heat_pumps_reset_{period}_{sensor_type}'
+        
+    Raises:
+        ValueError: Wenn sensor_type oder period ungültig ist
+    """
+    # Validiere sensor_type
+    valid_sensor_types = ['cycling', 'energy', 'general']
+    if sensor_type not in valid_sensor_types:
+        raise ValueError(f"Ungültiger sensor_type: {sensor_type}. Erlaubt: {valid_sensor_types}")
+    
+    # Validiere period
+    valid_periods = ['daily', '2h', '4h']
+    if period not in valid_periods:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
+    
+    return f"lambda_heat_pumps_reset_{period}_{sensor_type}"
+
+
+def get_reset_signal_for_period(period: str) -> str:
+    """
+    Holt das korrekte Reset-Signal für eine Periode (rückwärtskompatibel).
+    
+    Args:
+        period: Reset-Periode ('daily', '2h', '4h')
+        
+    Returns:
+        Signal-Name: 'lambda_heat_pumps_reset_{period}'
+        
+    Raises:
+        ValueError: Wenn period ungültig ist
+    """
+    # Validiere period
+    valid_periods = ['daily', '2h', '4h']
+    if period not in valid_periods:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
+    
+    return f"lambda_heat_pumps_reset_{period}"
+
+
+def get_all_reset_signals() -> dict:
+    """
+    Gibt alle verfügbaren Reset-Signale zurück.
+    
+    Returns:
+        Dictionary mit allen Signal-Kombinationen
+    """
+    sensor_types = ['cycling', 'energy', 'general']
+    periods = ['daily', '2h', '4h']
+    
+    signals = {}
+    for sensor_type in sensor_types:
+        signals[sensor_type] = {}
+        for period in periods:
+            signals[sensor_type][period] = create_reset_signal(sensor_type, period)
+    
+    return signals
+
+
+def validate_reset_signal(signal: str) -> bool:
+    """
+    Validiert ob ein Signal ein gültiges Reset-Signal ist.
+    
+    Args:
+        signal: Zu validierendes Signal
+        
+    Returns:
+        True wenn gültig, False sonst
+    """
+    if not isinstance(signal, str):
+        return False
+    
+    # Prüfe Format: lambda_heat_pumps_reset_{period}_{sensor_type}
+    parts = signal.split('_')
+    if len(parts) < 4:
+        return False
+    
+    if parts[0] != 'lambda' or parts[1] != 'heat' or parts[2] != 'pumps' or parts[3] != 'reset':
+        return False
+    
+    # Prüfe ob es ein spezifisches Signal ist (mit sensor_type)
+    if len(parts) == 6:  # lambda_heat_pumps_reset_{period}_{sensor_type}
+        period = parts[4]
+        sensor_type = parts[5]
+        return period in ['daily', '2h', '4h'] and sensor_type in ['cycling', 'energy', 'general']
+    
+    # Prüfe ob es ein allgemeines Signal ist (ohne sensor_type)
+    elif len(parts) == 5:  # lambda_heat_pumps_reset_{period}
+        period = parts[4]
+        return period in ['daily', '2h', '4h']
+    
+    return False
+
+
+# =============================================================================
+# Sensor Reset Registry
+# =============================================================================
+
+class SensorResetRegistry:
+    """
+    Zentrales Registry für alle Sensor-Reset-Handler.
+    
+    Verwaltet die Registrierung von Sensoren für automatische Resets
+    und sendet Reset-Signale an alle registrierten Sensoren.
+    """
+    
+    def __init__(self):
+        """Initialisiert das Registry."""
+        self._handlers = {}  # {sensor_type: {entry_id: {period: callback}}}
+        self._hass = None
+    
+    def set_hass(self, hass: HomeAssistant):
+        """Setzt die Home Assistant Instanz."""
+        self._hass = hass
+    
+    def register(self, sensor_type: str, entry_id: str, period: str, callback) -> None:
+        """
+        Registriert einen Sensor für automatische Resets.
+        
+        Args:
+            sensor_type: Art des Sensors ('cycling', 'energy', 'general')
+            entry_id: Entry ID des Sensors
+            period: Reset-Periode ('daily', '2h', '4h')
+            callback: Callback-Funktion für Reset
+        """
+        if sensor_type not in self._handlers:
+            self._handlers[sensor_type] = {}
+        
+        if entry_id not in self._handlers[sensor_type]:
+            self._handlers[sensor_type][entry_id] = {}
+        
+        self._handlers[sensor_type][entry_id][period] = callback
+        
+        _LOGGER.debug(
+            "Sensor registriert: %s/%s/%s -> %s",
+            sensor_type, entry_id, period, callback.__name__ if hasattr(callback, '__name__') else str(callback)
+        )
+    
+    def unregister(self, sensor_type: str, entry_id: str, period: str = None) -> None:
+        """
+        Entfernt einen Sensor aus der Registrierung.
+        
+        Args:
+            sensor_type: Art des Sensors
+            entry_id: Entry ID des Sensors
+            period: Reset-Periode (optional, entfernt alle Perioden wenn None)
+        """
+        if sensor_type not in self._handlers:
+            return
+        
+        if entry_id not in self._handlers[sensor_type]:
+            return
+        
+        if period is None:
+            # Entferne alle Perioden für diesen Sensor
+            del self._handlers[sensor_type][entry_id]
+            _LOGGER.debug("Alle Sensoren entfernt: %s/%s", sensor_type, entry_id)
+        else:
+            # Entferne nur die spezifische Periode
+            if period in self._handlers[sensor_type][entry_id]:
+                del self._handlers[sensor_type][entry_id][period]
+                _LOGGER.debug("Sensor entfernt: %s/%s/%s", sensor_type, entry_id, period)
+    
+    def get_signal(self, sensor_type: str, period: str) -> str:
+        """
+        Holt das korrekte Reset-Signal für einen Sensor-Typ.
+        
+        Args:
+            sensor_type: Art des Sensors
+            period: Reset-Periode
+            
+        Returns:
+            Signal-Name
+        """
+        return create_reset_signal(sensor_type, period)
+    
+    def send_reset(self, sensor_type: str, period: str, entry_id: str = None) -> int:
+        """
+        Sendet Reset-Signal an alle registrierten Sensoren.
+        
+        Args:
+            sensor_type: Art des Sensors
+            period: Reset-Periode
+            entry_id: Entry ID (optional, sendet an alle wenn None)
+            
+        Returns:
+            Anzahl der aufgerufenen Callbacks
+        """
+        if not self._hass:
+            _LOGGER.error("Home Assistant Instanz nicht gesetzt")
+            return 0
+        
+        if sensor_type not in self._handlers:
+            _LOGGER.debug("Keine Handler für %s registriert", sensor_type)
+            return 0
+        
+        callbacks_called = 0
+        
+        # Sende an alle Entry IDs für diesen Sensor-Typ
+        for eid, periods in self._handlers[sensor_type].items():
+            if entry_id is not None and eid != entry_id:
+                continue  # Überspringe andere Entry IDs wenn spezifische angefordert
+            
+            if period in periods:
+                callback = periods[period]
+                try:
+                    # Rufe Callback asynchron auf
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.create_task(callback())
+                    else:
+                        callback()
+                    callbacks_called += 1
+                    _LOGGER.debug("Reset-Callback aufgerufen: %s/%s/%s", sensor_type, eid, period)
+                except Exception as e:
+                    _LOGGER.error("Fehler beim Aufrufen des Reset-Callbacks: %s", e)
+        
+        _LOGGER.debug("Reset-Signal gesendet: %s/%s -> %d Callbacks", sensor_type, period, callbacks_called)
+        return callbacks_called
+    
+    def send_reset_to_all(self, period: str, entry_id: str = None) -> int:
+        """
+        Sendet Reset-Signal an alle registrierten Sensor-Typen.
+        
+        Args:
+            period: Reset-Periode
+            entry_id: Entry ID (optional, sendet an alle wenn None)
+            
+        Returns:
+            Gesamtanzahl der aufgerufenen Callbacks
+        """
+        total_callbacks = 0
+        
+        for sensor_type in self._handlers.keys():
+            callbacks = self.send_reset(sensor_type, period, entry_id)
+            total_callbacks += callbacks
+        
+        _LOGGER.debug("Reset-Signal an alle gesendet: %s -> %d Callbacks", period, total_callbacks)
+        return total_callbacks
+    
+    def get_registered_sensors(self) -> dict:
+        """
+        Gibt alle registrierten Sensoren zurück.
+        
+        Returns:
+            Dictionary mit allen registrierten Sensoren
+        """
+        return self._handlers.copy()
+    
+    def get_sensor_count(self, sensor_type: str = None) -> int:
+        """
+        Gibt die Anzahl der registrierten Sensoren zurück.
+        
+        Args:
+            sensor_type: Sensor-Typ (optional, zählt alle wenn None)
+            
+        Returns:
+            Anzahl der registrierten Sensoren
+        """
+        if sensor_type is None:
+            total = 0
+            for handlers in self._handlers.values():
+                for periods in handlers.values():
+                    total += len(periods)
+            return total
+        
+        if sensor_type not in self._handlers:
+            return 0
+        
+        total = 0
+        for periods in self._handlers[sensor_type].values():
+            total += len(periods)
+        return total
+    
+    def clear(self) -> None:
+        """Löscht alle Registrierungen."""
+        self._handlers.clear()
+        _LOGGER.debug("Alle Registrierungen gelöscht")
+
+
+# Globale Registry-Instanz
+_sensor_reset_registry = SensorResetRegistry()
+
+
+def get_sensor_reset_registry() -> SensorResetRegistry:
+    """
+    Holt die globale Sensor Reset Registry Instanz.
+    
+    Returns:
+        SensorResetRegistry Instanz
+    """
+    return _sensor_reset_registry
+
+
+def register_sensor_reset_handler(hass: HomeAssistant, sensor_type: str, entry_id: str, period: str, callback) -> None:
+    """
+    Registriert einen Sensor für automatische Resets (Convenience-Funktion).
+    
+    Args:
+        hass: Home Assistant Instanz
+        sensor_type: Art des Sensors
+        entry_id: Entry ID des Sensors
+        period: Reset-Periode
+        callback: Callback-Funktion für Reset
+    """
+    registry = get_sensor_reset_registry()
+    registry.set_hass(hass)
+    registry.register(sensor_type, entry_id, period, callback)
+
+
+def unregister_sensor_reset_handler(sensor_type: str, entry_id: str, period: str = None) -> None:
+    """
+    Entfernt einen Sensor aus der Registrierung (Convenience-Funktion).
+    
+    Args:
+        sensor_type: Art des Sensors
+        entry_id: Entry ID des Sensors
+        period: Reset-Periode (optional)
+    """
+    registry = get_sensor_reset_registry()
+    registry.unregister(sensor_type, entry_id, period)
+
+
+def send_reset_signal(sensor_type: str, period: str, entry_id: str = None) -> int:
+    """
+    Sendet Reset-Signal an registrierte Sensoren (Convenience-Funktion).
+    
+    Args:
+        sensor_type: Art des Sensors
+        period: Reset-Periode
+        entry_id: Entry ID (optional)
+        
+    Returns:
+        Anzahl der aufgerufenen Callbacks
+    """
+    registry = get_sensor_reset_registry()
+    return registry.send_reset(sensor_type, period, entry_id)
