@@ -29,11 +29,11 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
         """Reset daily sensors at midnight and update yesterday sensors."""
         _LOGGER.info("Resetting daily cycling sensors at midnight")
 
-        # 1. Erst Yesterday-Sensoren auf aktuelle Daily-Werte setzen
-        _update_yesterday_sensors(hass, entry_id)
+        # 1. Erst Yesterday-Sensoren auf aktuelle Daily-Werte setzen (asynchron)
+        hass.async_create_task(_update_yesterday_sensors_async(hass, entry_id))
         
-        # 2. Dann Daily-Sensoren auf 0 zurücksetzen
-        async_dispatcher_send(hass, SIGNAL_RESET_DAILY, entry_id)
+        # 2. Dann Daily-Sensoren auf 0 zurücksetzen (asynchron)
+        hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_DAILY, entry_id))
 
     # 2-Stunden Reset der 2H-Sensoren
     @callback
@@ -41,8 +41,8 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
         """Reset 2h sensors every 2 hours."""
         _LOGGER.info("Resetting 2h cycling sensors")
 
-        # Sende Signal an alle 2H-Sensoren
-        async_dispatcher_send(hass, SIGNAL_RESET_2H, entry_id)
+        # Sende Signal an alle 2H-Sensoren (asynchron)
+        hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_2H, entry_id))
 
     # 4-Stunden Reset der 4H-Sensoren
     @callback
@@ -50,8 +50,8 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
         """Reset 4h sensors every 4 hours."""
         _LOGGER.info("Resetting 4h cycling sensors")
 
-        # Sende Signal an alle 4H-Sensoren
-        async_dispatcher_send(hass, SIGNAL_RESET_4H, entry_id)
+        # Sende Signal an alle 4H-Sensoren (asynchron)
+        hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_4H, entry_id))
 
     # Registriere die Zeit-basierten Automatisierungen
     # async_track_time_change ist KEINE Coroutine, daher KEIN await!
@@ -89,8 +89,13 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
     _LOGGER.info("Cycling automations set up successfully")
 
 
-def _update_yesterday_sensors(hass: HomeAssistant, entry_id: str) -> None:
-    """Update yesterday sensors with current daily values before reset."""
+async def _send_reset_signal_async(hass: HomeAssistant, signal: str, entry_id: str) -> None:
+    """Send reset signal asynchronously."""
+    _LOGGER.info(f"Sending reset signal {signal} for entry {entry_id}")
+    async_dispatcher_send(hass, signal, entry_id)
+
+async def _update_yesterday_sensors_async(hass: HomeAssistant, entry_id: str) -> None:
+    """Update yesterday sensors with current daily values before reset (async)."""
     _LOGGER.info("Updating yesterday sensors with current daily values")
     
     # Hole alle Cycling-Entities für diese Entry
@@ -124,7 +129,7 @@ def _update_yesterday_sensors(hass: HomeAssistant, entry_id: str) -> None:
                         # Setze Yesterday-Sensor auf Daily-Wert
                         yesterday_entity = cycling_entities.get(yesterday_entity_id)
                         if yesterday_entity and hasattr(yesterday_entity, "set_cycling_value"):
-                            yesterday_entity.set_cycling_value(daily_value)
+                            await yesterday_entity.set_cycling_value(daily_value)
                             _LOGGER.info(
                                 f"Yesterday sensor {yesterday_entity_id} updated to {daily_value} from {entity_id}"
                             )
@@ -132,6 +137,12 @@ def _update_yesterday_sensors(hass: HomeAssistant, entry_id: str) -> None:
                             _LOGGER.warning(f"Yesterday entity {yesterday_entity_id} not found")
                     except (ValueError, TypeError) as e:
                         _LOGGER.warning(f"Could not update yesterday sensor {yesterday_entity_id}: {e}")
+
+
+def _update_yesterday_sensors(hass: HomeAssistant, entry_id: str) -> None:
+    """Update yesterday sensors with current daily values before reset (sync, deprecated)."""
+    _LOGGER.warning("Using deprecated sync _update_yesterday_sensors, use async version")
+    # Diese Funktion wird nicht mehr verwendet, aber für Rückwärtskompatibilität behalten
 
 
 def cleanup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:

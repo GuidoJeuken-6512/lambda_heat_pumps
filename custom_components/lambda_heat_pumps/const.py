@@ -1431,9 +1431,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "heating",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Tägliche Cycling-Zähler für Heizen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "hot_water_cycling_daily": {
@@ -1447,9 +1445,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "hot_water",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Tägliche Cycling-Zähler für Warmwasser, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "cooling_cycling_daily": {
@@ -1463,9 +1459,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "cooling",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Tägliche Cycling-Zähler für Kühlen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "defrost_cycling_daily": {
@@ -1479,9 +1473,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "defrost",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Tägliche Cycling-Zähler für Abtauen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
@@ -1496,9 +1488,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "heating",
-        "period": "2h",
         "reset_interval": "2h",
-        "reset_signal": "lambda_heat_pumps_reset_2h",
         "description": "2-Stunden Cycling-Zähler für Heizen, werden alle 2 Stunden auf 0 gesetzt.",
     },
     "hot_water_cycling_2h": {
@@ -1512,9 +1502,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "hot_water",
-        "period": "2h",
         "reset_interval": "2h",
-        "reset_signal": "lambda_heat_pumps_reset_2h",
         "description": "2-Stunden Cycling-Zähler für Warmwasser, werden alle 2 Stunden auf 0 gesetzt.",
     },
     "cooling_cycling_2h": {
@@ -1528,9 +1516,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "cooling",
-        "period": "2h",
         "reset_interval": "2h",
-        "reset_signal": "lambda_heat_pumps_reset_2h",
         "description": "2-Stunden Cycling-Zähler für Kühlen, werden alle 2 Stunden auf 0 gesetzt.",
     },
     "defrost_cycling_2h": {
@@ -1544,9 +1530,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "defrost",
-        "period": "2h",
         "reset_interval": "2h",
-        "reset_signal": "lambda_heat_pumps_reset_2h",
         "description": "2-Stunden Cycling-Zähler für Abtauen, werden alle 2 Stunden auf 0 gesetzt.",
     },
     # 4h Cycling Sensoren (echte Entities - ktionalität mit den änderungen an den sensorenwerden alle 4 Stunden auf 0 gesetzt)
@@ -1561,9 +1545,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "heating",
-        "period": "4h",
         "reset_interval": "4h",
-        "reset_signal": "lambda_heat_pumps_reset_4h",
         "description": "4-Stunden Cycling-Zähler für Heizen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     "hot_water_cycling_4h": {
@@ -1577,9 +1559,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "hot_water",
-        "period": "4h",
         "reset_interval": "4h",
-        "reset_signal": "lambda_heat_pumps_reset_4h",
         "description": "4-Stunden Cycling-Zähler für Warmwasser, werden alle 4 Stunden auf 0 gesetzt.",
     },
     "cooling_cycling_4h": {
@@ -1593,9 +1573,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "cooling",
-        "period": "4h",
         "reset_interval": "4h",
-        "reset_signal": "lambda_heat_pumps_reset_4h",
         "description": "4-Stunden Cycling-Zähler für Kühlen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     "defrost_cycling_4h": {
@@ -1609,9 +1587,7 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": None,
         "operating_state": "defrost",
-        "period": "4h",
         "reset_interval": "4h",
-        "reset_signal": "lambda_heat_pumps_reset_4h",
         "description": "4-Stunden Cycling-Zähler für Abtauen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     # Weitere Modi können nach Bedarf ergänzt werden (siehe Statusmapping unten)
@@ -1652,9 +1628,7 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": "energy",
         "operating_state": "heating",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Täglicher Verbrauch für Heizen in kWh",
     },
     # Hot Water Energy Sensoren
@@ -1686,9 +1660,7 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": "energy",
         "operating_state": "hot_water",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Täglicher Verbrauch für Warmwasser in kWh",
     },
     # Cooling Energy Sensoren
@@ -1720,9 +1692,7 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": "energy",
         "operating_state": "cooling",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Täglicher Verbrauch für Kühlen in kWh",
     },
     # Defrost Energy Sensoren
@@ -1754,9 +1724,7 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": "energy",
         "operating_state": "defrost",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Täglicher Verbrauch für Abtauen in kWh",
     },
     # STBY Energy Sensoren
@@ -1787,9 +1755,7 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "state_class": "total",
         "device_class": "energy",
         "operating_state": "stby",
-        "period": "daily",
         "reset_interval": "daily",
-        "reset_signal": "lambda_heat_pumps_reset_daily",
         "description": "Täglicher Verbrauch für Standby in kWh",
     },
 }
@@ -1807,8 +1773,11 @@ def get_energy_consumption_periods():
     """Leitet die verfügbaren Energy Consumption Perioden aus den Templates ab."""
     periods = set()
     for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
+        # Verwende period falls vorhanden, sonst reset_interval
         if "period" in template:
             periods.add(template["period"])
+        elif "reset_interval" in template and template["reset_interval"] is not None:
+            periods.add(template["reset_interval"])
     return sorted(list(periods))
 
 def get_energy_consumption_reset_intervals():
@@ -1841,13 +1810,13 @@ def get_all_periods():
     
     # Energy Consumption Templates
     for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
-        if template.get("period"):
-            periods.add(template["period"])
+        if template.get("reset_interval") is not None:
+            periods.add(template["reset_interval"])
     
     # Cycling Templates
     for template in CALCULATED_SENSOR_TEMPLATES.values():
-        if 'cycling' in template.get("name", "").lower() and template.get("period"):
-            periods.add(template["period"])
+        if 'cycling' in template.get("name", "").lower() and template.get("reset_interval") is not None:
+            periods.add(template["reset_interval"])
     
     return sorted(list(periods))
 

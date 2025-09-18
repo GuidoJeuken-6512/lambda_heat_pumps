@@ -702,14 +702,27 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         # Registriere Signal-Handler für Reset-Signale
         from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H  # noqa: F401
 
+        # Wrapper-Funktionen für asynchrone Handler mit @callback
+        @callback
+        def _wrap_daily_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_daily_reset(entry_id))
+        
+        @callback
+        def _wrap_2h_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_2h_reset(entry_id))
+        
+        @callback
+        def _wrap_4h_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_4h_reset(entry_id))
+
         self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_DAILY, self._handle_daily_reset
+            self.hass, SIGNAL_RESET_DAILY, _wrap_daily_reset
         )
         self._unsub_2h_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_2H, self._handle_2h_reset
+            self.hass, SIGNAL_RESET_2H, _wrap_2h_reset
         )
         self._unsub_4h_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_4H, self._handle_4h_reset
+            self.hass, SIGNAL_RESET_4H, _wrap_4h_reset
         )
 
         # Schreibe den State sofort ins UI
@@ -834,8 +847,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         except Exception as e:
             _LOGGER.error(f"Error applying cycling offset for {self.entity_id}: {e}")
 
-    @callback
-    def _handle_daily_reset(self, entry_id: str):
+    async def _handle_daily_reset(self, entry_id: str):
         """Handle daily reset signal."""
         if entry_id == self._entry.entry_id and self._sensor_id.endswith("_daily"):
             # Daily-Sensoren auf 0 zurücksetzen
@@ -843,8 +855,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             self.async_write_ha_state()
             _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
 
-    @callback
-    def _handle_2h_reset(self, entry_id: str):
+    async def _handle_2h_reset(self, entry_id: str):
         """Handle 2h reset signal."""
         if entry_id == self._entry.entry_id and self._sensor_id.endswith("_2h"):
             # 2H-Sensoren auf 0 zurücksetzen
@@ -852,8 +863,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             self.async_write_ha_state()
             _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
 
-    @callback
-    def _handle_4h_reset(self, entry_id: str):
+    async def _handle_4h_reset(self, entry_id: str):
         """Handle 4h reset signal."""
         if entry_id == self._entry.entry_id and self._sensor_id.endswith("_4h"):
             # 4H-Sensoren auf 0 zurücksetzen
@@ -943,7 +953,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._device_type = device_type
         self._hp_index = hp_index
         self._mode = mode
-        self._period = period
+        self._reset_interval = period  # period ist jetzt reset_interval
         self._attr_has_entity_name = True
         self._attr_should_poll = False
         self._attr_native_unit_of_measurement = unit
@@ -995,17 +1005,22 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         # Verwende zentrale Signale wie Cycling Sensoren
         from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H  # noqa: F401
         
-        if self._period == "daily":
+        # Wrapper-Funktion für asynchronen Handler mit @callback
+        @callback
+        def _wrap_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_reset(entry_id))
+        
+        if self._reset_interval == "daily":
             self._unsub_dispatcher = async_dispatcher_connect(
-                self.hass, SIGNAL_RESET_DAILY, self._handle_reset
+                self.hass, SIGNAL_RESET_DAILY, _wrap_reset
             )
-        elif self._period == "2h":
+        elif self._reset_interval == "2h":
             self._unsub_dispatcher = async_dispatcher_connect(
-                self.hass, SIGNAL_RESET_2H, self._handle_reset
+                self.hass, SIGNAL_RESET_2H, _wrap_reset
             )
-        elif self._period == "4h":
+        elif self._reset_interval == "4h":
             self._unsub_dispatcher = async_dispatcher_connect(
-                self.hass, SIGNAL_RESET_4H, self._handle_reset
+                self.hass, SIGNAL_RESET_4H, _wrap_reset
             )
 
     async def async_will_remove_from_hass(self):
@@ -1035,7 +1050,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             self._applied_offset = 0.0
         
         # Apply energy consumption offsets for total sensors
-        if self._period == "total":
+        if self._reset_interval == "total":
             await self._apply_energy_offset()
 
     async def _apply_energy_offset(self):
@@ -1088,7 +1103,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         except Exception as e:
             _LOGGER.error(f"Error applying energy offset for {self.entity_id}: {e}")
 
-    def _handle_reset(self):
+    async def _handle_reset(self, entry_id: str):
         """Handle reset signal."""
         _LOGGER.info(f"Resetting energy sensor {self.entity_id}")
         self._energy_value = 0.0
@@ -1097,7 +1112,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
     @property
     def native_value(self) -> float:
         """Return the current value."""
-        if self._period == "daily":
+        if self._reset_interval == "daily":
             # Daily-Wert = Total - Yesterday
             return max(0.0, self._energy_value - self._yesterday_value)
         else:
@@ -1115,7 +1130,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         attrs = {
             "sensor_type": "energy_consumption",
             "mode": self._mode,
-            "period": self._period,
+            "reset_interval": self._reset_interval,
             "hp_index": self._hp_index,
         }
         
@@ -1175,7 +1190,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
             self._attr_state_class = None
         self._attr_device_class = device_class
 
-    def set_cycling_value(self, value):
+    async def set_cycling_value(self, value):
         """Set the cycling value and update state."""
         old_value = self._yesterday_value
         self._yesterday_value = int(value)
