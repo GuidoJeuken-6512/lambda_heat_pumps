@@ -12,7 +12,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.data_entry_flow import FlowResult, AbortFlow
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
@@ -126,7 +126,13 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
 
             # Use MAC as unique id so IP changes update the entry
             await self.async_set_unique_id(mac_norm)
-            self._abort_if_unique_id_configured(updates={CONF_HOST: ip} if ip else None)
+            
+            try:
+                # Abort if already configured - this is the normal behavior
+                self._abort_if_unique_id_configured(updates={CONF_HOST: ip} if ip else None)
+            except AbortFlow:
+                # Integration already configured, silently abort
+                return self.async_abort(reason="already_configured")
 
             # Continue with normal user step, pre-filling discovered host
             return await self.async_step_user()
