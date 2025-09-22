@@ -1027,17 +1027,31 @@ async def increment_energy_consumption_counter(
     # Liste aller Sensor-Typen, die erhöht werden sollen
     sensor_types = [
         f"{mode}_energy_total",
-        f"{mode}_energy_daily", 
+        f"{mode}_energy_daily",
+        f"{mode}_energy_monthly",
+        f"{mode}_energy_yearly",
     ]
     
     # Sammle alle Änderungen für eine einzige Logging-Meldung
     changes_summary = []
     
     for sensor_id in sensor_types:
+        # Bestimme die Period basierend auf dem Sensor-Typ
+        if sensor_id.endswith("_total"):
+            period = "total"
+        elif sensor_id.endswith("_daily"):
+            period = "daily"
+        elif sensor_id.endswith("_monthly"):
+            period = "monthly"
+        elif sensor_id.endswith("_yearly"):
+            period = "yearly"
+        else:
+            period = "total"  # Fallback
+            
         names = generate_energy_sensor_names(
             device_prefix,
             mode,
-            "total" if sensor_id.endswith("_total") else "daily",
+            period,
             name_prefix,
             use_legacy_modbus_names,
         )
