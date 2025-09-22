@@ -17,6 +17,10 @@ SIGNAL_RESET_DAILY = "lambda_heat_pumps_reset_daily"
 SIGNAL_RESET_2H = "lambda_heat_pumps_reset_2h"
 # Signal für 4H-Reset (alle 4 Stunden)
 SIGNAL_RESET_4H = "lambda_heat_pumps_reset_4h"
+# Signal für Monthly-Reset (1. des Monats um Mitternacht)
+SIGNAL_RESET_MONTHLY = "lambda_heat_pumps_reset_monthly"
+# Signal für Yearly-Reset (1. Januar um Mitternacht)
+SIGNAL_RESET_YEARLY = "lambda_heat_pumps_reset_yearly"
 
 
 def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
@@ -53,6 +57,26 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
         # Sende Signal an alle 4H-Sensoren (asynchron)
         hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_4H, entry_id))
 
+    # Monatlicher Reset der Monthly-Sensoren (1. des Monats um Mitternacht)
+    @callback
+    def reset_monthly_sensors(now: datetime) -> None:
+        """Reset monthly sensors on the 1st of each month."""
+        # Prüfe ob es der 1. des Monats ist
+        if now.day == 1:
+            _LOGGER.info("Resetting monthly energy sensors on the 1st of the month")
+            # Sende Signal an alle Monthly-Sensoren (asynchron)
+            hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_MONTHLY, entry_id))
+
+    # Jährlicher Reset der Yearly-Sensoren (1. Januar um Mitternacht)
+    @callback
+    def reset_yearly_sensors(now: datetime) -> None:
+        """Reset yearly sensors on January 1st."""
+        # Prüfe ob es der 1. Januar ist
+        if now.month == 1 and now.day == 1:
+            _LOGGER.info("Resetting yearly energy sensors on January 1st")
+            # Sende Signal an alle Yearly-Sensoren (asynchron)
+            hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_YEARLY, entry_id))
+
     # Registriere die Zeit-basierten Automatisierungen
     # async_track_time_change ist KEINE Coroutine, daher KEIN await!
     daily_listener = async_track_time_change(
@@ -76,6 +100,20 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
         minute=0, 
         second=0
     )
+    
+    # Monatlicher Reset der Monthly-Sensoren (1. des Monats um Mitternacht)
+    # Verwende async_track_time_change mit hour=0, minute=0, second=0
+    # und prüfe in der Callback-Funktion ob es der 1. des Monats ist
+    monthly_listener = async_track_time_change(
+        hass, reset_monthly_sensors, hour=0, minute=0, second=0
+    )
+    
+    # Jährlicher Reset der Yearly-Sensoren (1. Januar um Mitternacht)
+    # Verwende async_track_time_change mit hour=0, minute=0, second=0
+    # und prüfe in der Callback-Funktion ob es der 1. Januar ist
+    yearly_listener = async_track_time_change(
+        hass, reset_yearly_sensors, hour=0, minute=0, second=0
+    )
 
     # Speichere die Listener für späteres Cleanup
     if "lambda_heat_pumps" not in hass.data:
@@ -85,6 +123,8 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
     hass.data["lambda_heat_pumps"][entry_id]["daily_listener"] = daily_listener
     hass.data["lambda_heat_pumps"][entry_id]["two_hour_listener"] = two_hour_listener
     hass.data["lambda_heat_pumps"][entry_id]["four_hour_listener"] = four_hour_listener
+    hass.data["lambda_heat_pumps"][entry_id]["monthly_listener"] = monthly_listener
+    hass.data["lambda_heat_pumps"][entry_id]["yearly_listener"] = yearly_listener
 
     _LOGGER.info("Cycling automations set up successfully")
 
@@ -179,3 +219,19 @@ def cleanup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
                 listener()
                 _LOGGER.info("Cleaned up 4h listener for entry %s", entry_id)
             del entry_data["four_hour_listener"]
+        
+        # Cleanup Monthly-Listener
+        if "monthly_listener" in entry_data:
+            listener = entry_data["monthly_listener"]
+            if listener:
+                listener()
+                _LOGGER.info("Cleaned up monthly listener for entry %s", entry_id)
+            del entry_data["monthly_listener"]
+        
+        # Cleanup Yearly-Listener
+        if "yearly_listener" in entry_data:
+            listener = entry_data["yearly_listener"]
+            if listener:
+                listener()
+                _LOGGER.info("Cleaned up yearly listener for entry %s", entry_id)
+            del entry_data["yearly_listener"]

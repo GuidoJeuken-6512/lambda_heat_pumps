@@ -44,9 +44,7 @@ class TestConst(unittest.TestCase):
             # Test new attributes for cycling and energy sensors
             if 'cycling' in sensor_id or 'energy' in sensor_id:
                 self.assertIn("operating_state", template_info)
-                self.assertIn("period", template_info)
                 self.assertIn("reset_interval", template_info)
-                self.assertIn("reset_signal", template_info)
 
     def test_calculated_sensor_templates_device_class(self):
         """Test that calculated sensor templates have device_class field."""

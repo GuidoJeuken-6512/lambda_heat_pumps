@@ -451,7 +451,7 @@ class TestEnergyConsumptionConstants:
 
     def test_energy_consumption_periods(self):
         """Test energy consumption periods are defined."""
-        expected_periods = ["daily", "total"]
+        expected_periods = ["daily", "monthly", "total", "yearly"]
         assert sorted(ENERGY_CONSUMPTION_PERIODS) == expected_periods
 
     def test_energy_consumption_sensor_templates(self):

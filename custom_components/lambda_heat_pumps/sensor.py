@@ -700,7 +700,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         await self.restore_state(last_state)
 
         # Registriere Signal-Handler für Reset-Signale
-        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H  # noqa: F401
+        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
 
         # Wrapper-Funktionen für asynchrone Handler mit @callback
         @callback
@@ -714,6 +714,14 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         @callback
         def _wrap_4h_reset(entry_id: str):
             self.hass.async_create_task(self._handle_4h_reset(entry_id))
+        
+        @callback
+        def _wrap_monthly_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_monthly_reset(entry_id))
+        
+        @callback
+        def _wrap_yearly_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_yearly_reset(entry_id))
 
         self._unsub_dispatcher = async_dispatcher_connect(
             self.hass, SIGNAL_RESET_DAILY, _wrap_daily_reset
@@ -723,6 +731,12 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         )
         self._unsub_4h_dispatcher = async_dispatcher_connect(
             self.hass, SIGNAL_RESET_4H, _wrap_4h_reset
+        )
+        self._unsub_monthly_dispatcher = async_dispatcher_connect(
+            self.hass, SIGNAL_RESET_MONTHLY, _wrap_monthly_reset
+        )
+        self._unsub_yearly_dispatcher = async_dispatcher_connect(
+            self.hass, SIGNAL_RESET_YEARLY, _wrap_yearly_reset
         )
 
         # Schreibe den State sofort ins UI
@@ -739,6 +753,12 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         if self._unsub_4h_dispatcher:
             self._unsub_4h_dispatcher()
             self._unsub_4h_dispatcher = None
+        if self._unsub_monthly_dispatcher:
+            self._unsub_monthly_dispatcher()
+            self._unsub_monthly_dispatcher = None
+        if self._unsub_yearly_dispatcher:
+            self._unsub_yearly_dispatcher()
+            self._unsub_yearly_dispatcher = None
         await super().async_will_remove_from_hass()
 
     async def restore_state(self, last_state):
@@ -870,6 +890,22 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             self._cycling_value = 0
             self.async_write_ha_state()
             _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
+
+    async def _handle_monthly_reset(self, entry_id: str):
+        """Handle monthly reset signal."""
+        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_monthly"):
+            # Monthly-Sensoren auf 0 zurücksetzen
+            self._cycling_value = 0
+            self.async_write_ha_state()
+            _LOGGER.info(f"Monthly sensor {self.entity_id} reset to 0")
+
+    async def _handle_yearly_reset(self, entry_id: str):
+        """Handle yearly reset signal."""
+        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_yearly"):
+            # Yearly-Sensoren auf 0 zurücksetzen
+            self._cycling_value = 0
+            self.async_write_ha_state()
+            _LOGGER.info(f"Yearly sensor {self.entity_id} reset to 0")
 
     @property
     def name(self):
@@ -1003,7 +1039,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
         # Registriere Signal-Handler für Reset-Signale
         # Verwende zentrale Signale wie Cycling Sensoren
-        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H  # noqa: F401
+        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
         
         # Wrapper-Funktion für asynchronen Handler mit @callback
         @callback
@@ -1021,6 +1057,14 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         elif self._reset_interval == "4h":
             self._unsub_dispatcher = async_dispatcher_connect(
                 self.hass, SIGNAL_RESET_4H, _wrap_reset
+            )
+        elif self._reset_interval == "monthly":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_MONTHLY, _wrap_reset
+            )
+        elif self._reset_interval == "yearly":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
             )
 
     async def async_will_remove_from_hass(self):
@@ -1114,6 +1158,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         """Return the current value."""
         if self._reset_interval == "daily":
             # Daily-Wert = Total - Yesterday
+            return max(0.0, self._energy_value - self._yesterday_value)
+        elif self._reset_interval in ["monthly", "yearly"]:
+            # Monthly/Yearly-Wert = Total - Previous Period
             return max(0.0, self._energy_value - self._yesterday_value)
         else:
             # Total-Wert

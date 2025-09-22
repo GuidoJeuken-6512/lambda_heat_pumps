@@ -1758,98 +1758,163 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "reset_interval": "daily",
         "description": "Täglicher Verbrauch für Standby in kWh",
     },
+    # Monthly Energy Sensoren
+    "heating_energy_monthly": {
+        "name": "Heating Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "heating",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Heizen in kWh",
+    },
+    "hot_water_energy_monthly": {
+        "name": "Hot Water Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "hot_water",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Warmwasser in kWh",
+    },
+    "cooling_energy_monthly": {
+        "name": "Cooling Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "cooling",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Kühlen in kWh",
+    },
+    "defrost_energy_monthly": {
+        "name": "Defrost Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "defrost",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Abtauen in kWh",
+    },
+    "stby_energy_monthly": {
+        "name": "STBY Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "stby",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Standby in kWh",
+    },
+    # Yearly Energy Sensoren
+    "heating_energy_yearly": {
+        "name": "Heating Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "heating",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Heizen in kWh",
+    },
+    "hot_water_energy_yearly": {
+        "name": "Hot Water Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "hot_water",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Warmwasser in kWh",
+    },
+    "cooling_energy_yearly": {
+        "name": "Cooling Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "cooling",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Kühlen in kWh",
+    },
+    "defrost_energy_yearly": {
+        "name": "Defrost Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "defrost",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Abtauen in kWh",
+    },
+    "stby_energy_yearly": {
+        "name": "STBY Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "stby",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Standby in kWh",
+    },
 }
 
-# Energy Consumption Konfiguration - Dynamisch aus Templates abgeleitet
-def get_energy_consumption_modes():
-    """Leitet die verfügbaren Energy Consumption Modi aus den Templates ab."""
-    modes = set()
-    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
-        if "operating_state" in template:
-            modes.add(template["operating_state"])
-    return sorted(list(modes))
+# Legacy-Konstanten für Rückwärtskompatibilität - Direkt aus Templates berechnet
+ENERGY_CONSUMPTION_MODES = sorted(list(set(
+    template["operating_state"] 
+    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values()
+    if "operating_state" in template
+)))
 
-def get_energy_consumption_periods():
-    """Leitet die verfügbaren Energy Consumption Perioden aus den Templates ab."""
-    periods = set()
-    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
-        # Verwende period falls vorhanden, sonst reset_interval
-        if "period" in template:
-            periods.add(template["period"])
-        elif "reset_interval" in template and template["reset_interval"] is not None:
-            periods.add(template["reset_interval"])
-    return sorted(list(periods))
-
-def get_energy_consumption_reset_intervals():
-    """Leitet die verfügbaren Reset-Intervalle aus den Templates ab."""
-    intervals = set()
-    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
-        if template.get("reset_interval"):
-            intervals.add(template["reset_interval"])
-    return sorted(list(intervals))
-
-def get_all_reset_intervals():
-    """Leitet alle verfügbaren Reset-Intervalle aus allen Templates ab."""
-    intervals = set()
-    
-    # Energy Consumption Templates
-    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
-        if template.get("reset_interval"):
-            intervals.add(template["reset_interval"])
-    
-    # Cycling Templates
-    for template in CALCULATED_SENSOR_TEMPLATES.values():
-        if 'cycling' in template.get("name", "").lower() and template.get("reset_interval"):
-            intervals.add(template["reset_interval"])
-    
-    return sorted(list(intervals))
-
-def get_all_periods():
-    """Leitet alle verfügbaren Perioden aus allen Templates ab."""
-    periods = set()
-    
-    # Energy Consumption Templates
-    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values():
-        if template.get("reset_interval") is not None:
-            periods.add(template["reset_interval"])
-    
-    # Cycling Templates
-    for template in CALCULATED_SENSOR_TEMPLATES.values():
-        if 'cycling' in template.get("name", "").lower() and template.get("reset_interval") is not None:
-            periods.add(template["reset_interval"])
-    
-    return sorted(list(periods))
-
-# Legacy-Konstanten für Rückwärtskompatibilität
-ENERGY_CONSUMPTION_MODES = get_energy_consumption_modes()
-ENERGY_CONSUMPTION_PERIODS = get_energy_consumption_periods()
-
-# Funktionen für alle Sensor-Templates
-def get_all_sensor_templates():
-    """Gibt alle Sensor-Templates als einheitliches Dictionary zurück."""
-    all_templates = {}
-    
-    # Energy Consumption Templates
-    all_templates.update(ENERGY_CONSUMPTION_SENSOR_TEMPLATES)
-    
-    # Cycling Templates (aus CALCULATED_SENSOR_TEMPLATES)
-    cycling_templates = {k: v for k, v in CALCULATED_SENSOR_TEMPLATES.items() 
-                        if 'cycling' in k}
-    all_templates.update(cycling_templates)
-    
-    return all_templates
-
-def get_operating_state_from_template(sensor_key):
-    """Leitet den Operating State aus einem Sensor-Template ab."""
-    all_templates = get_all_sensor_templates()
-    template = all_templates.get(sensor_key, {})
-    return template.get("operating_state")
-
-def get_reset_signal_from_template(sensor_key):
-    """Leitet das Reset-Signal aus einem Sensor-Template ab."""
-    all_templates = get_all_sensor_templates()
-    template = all_templates.get(sensor_key, {})
-    return template.get("reset_signal")
+ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
+    template["period"] if "period" in template 
+    else template["reset_interval"] 
+    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values()
+    if "period" in template or (template.get("reset_interval") is not None)
+)))
 
 # Energy Consumption Migration Version
 ENERGY_CONSUMPTION_MIGRATION_VERSION = 4
