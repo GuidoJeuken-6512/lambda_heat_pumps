@@ -24,6 +24,7 @@
 !requirements_test.txt
 !docs/
 !docs/*.md
+!docs/*.png
 !docs/devices_entities/
 !docs/devices_entities/**/*.md
 !docs/create_sensor_excel.py
