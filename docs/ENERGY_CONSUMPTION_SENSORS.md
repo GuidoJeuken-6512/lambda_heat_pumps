@@ -28,6 +28,8 @@ The Energy Consumption Sensors provide **detailed energy tracking by operating m
 **Key Features:**
 - **Total Sensors**: Cumulative energy consumption since installation
 - **Daily Sensors**: Daily energy consumption (reset to 0 daily at midnight)
+- **Monthly Sensors**: Monthly energy consumption (reset to 0 on 1st of each month)
+- **Yearly Sensors**: Yearly energy consumption (reset to 0 on January 1st)
 - **Flank Detection**: Automatic energy allocation based on operating mode changes
 - **Offset Support**: Support for energy offsets when replacing heat pumps
 - **Configurable Input**: Uses existing power consumption sensors as data source
@@ -57,13 +59,33 @@ The Energy Consumption Sensors provide **detailed energy tracking by operating m
   - `sensor.eu08l_hp1_cooling_energy_daily`
   - `sensor.eu08l_hp1_defrost_energy_daily`
 
+#### Monthly Energy Consumption Sensors (Real Entities)
+- **Purpose**: Track monthly energy consumption per operating mode
+- **Type**: Real Python entities (`LambdaEnergyConsumptionSensor`)
+- **Reset**: Monthly on 1st of each month (calculated as Total - Previous Monthly)
+- **Examples**:
+  - `sensor.eu08l_hp1_heating_energy_monthly`
+  - `sensor.eu08l_hp1_hot_water_energy_monthly`
+  - `sensor.eu08l_hp1_cooling_energy_monthly`
+  - `sensor.eu08l_hp1_defrost_energy_monthly`
+
+#### Yearly Energy Consumption Sensors (Real Entities)
+- **Purpose**: Track yearly energy consumption per operating mode
+- **Type**: Real Python entities (`LambdaEnergyConsumptionSensor`)
+- **Reset**: Yearly on January 1st (calculated as Total - Previous Yearly)
+- **Examples**:
+  - `sensor.eu08l_hp1_heating_energy_yearly`
+  - `sensor.eu08l_hp1_hot_water_energy_yearly`
+  - `sensor.eu08l_hp1_cooling_energy_yearly`
+  - `sensor.eu08l_hp1_defrost_energy_yearly`
+
 ### 2. Energy Tracking
 
 #### Flank Detection Logic
 1. **Monitor Operating State**: Track changes in heat pump operating mode
 2. **Calculate Energy Delta**: Measure energy consumption during each mode
 3. **Allocate Energy**: Distribute consumed energy to appropriate mode sensors
-4. **Update Counters**: Increment both total and daily sensors simultaneously
+4. **Update Counters**: Increment total, daily, monthly, and yearly sensors simultaneously
 
 #### Energy Calculation
 ```python
@@ -119,29 +141,45 @@ The integration automatically migrates existing installations to include energy 
 
 ## Sensor Examples
 
-### For 1 Heat Pump (8 Sensors)
+### For 1 Heat Pump (20 Sensors)
 ```
 sensor.eu08l_hp1_heating_energy_total      # Total heating energy (kWh)
 sensor.eu08l_hp1_heating_energy_daily      # Daily heating energy (kWh)
+sensor.eu08l_hp1_heating_energy_monthly    # Monthly heating energy (kWh)
+sensor.eu08l_hp1_heating_energy_yearly     # Yearly heating energy (kWh)
 sensor.eu08l_hp1_hot_water_energy_total    # Total hot water energy (kWh)
 sensor.eu08l_hp1_hot_water_energy_daily    # Daily hot water energy (kWh)
+sensor.eu08l_hp1_hot_water_energy_monthly  # Monthly hot water energy (kWh)
+sensor.eu08l_hp1_hot_water_energy_yearly   # Yearly hot water energy (kWh)
 sensor.eu08l_hp1_cooling_energy_total      # Total cooling energy (kWh)
 sensor.eu08l_hp1_cooling_energy_daily      # Daily cooling energy (kWh)
+sensor.eu08l_hp1_cooling_energy_monthly    # Monthly cooling energy (kWh)
+sensor.eu08l_hp1_cooling_energy_yearly     # Yearly cooling energy (kWh)
 sensor.eu08l_hp1_defrost_energy_total      # Total defrost energy (kWh)
 sensor.eu08l_hp1_defrost_energy_daily      # Daily defrost energy (kWh)
+sensor.eu08l_hp1_defrost_energy_monthly    # Monthly defrost energy (kWh)
+sensor.eu08l_hp1_defrost_energy_yearly     # Yearly defrost energy (kWh)
+sensor.eu08l_hp1_stby_energy_total         # Total standby energy (kWh)
+sensor.eu08l_hp1_stby_energy_daily         # Daily standby energy (kWh)
+sensor.eu08l_hp1_stby_energy_monthly       # Monthly standby energy (kWh)
+sensor.eu08l_hp1_stby_energy_yearly        # Yearly standby energy (kWh)
 ```
 
-### For 2 Heat Pumps (16 Sensors)
+### For 2 Heat Pumps (40 Sensors)
 ```
-# HP1 Sensors (8)
+# HP1 Sensors (20)
 sensor.eu08l_hp1_heating_energy_total
 sensor.eu08l_hp1_heating_energy_daily
-# ... (6 more)
+sensor.eu08l_hp1_heating_energy_monthly
+sensor.eu08l_hp1_heating_energy_yearly
+# ... (16 more)
 
-# HP2 Sensors (8)
+# HP2 Sensors (20)
 sensor.eu08l_hp2_heating_energy_total
 sensor.eu08l_hp2_heating_energy_daily
-# ... (6 more)
+sensor.eu08l_hp2_heating_energy_monthly
+sensor.eu08l_hp2_heating_energy_yearly
+# ... (16 more)
 ```
 
 ## Configuration Examples
@@ -193,6 +231,8 @@ energy_consumption_sensors:
 ### 1. Detailed Energy Analysis
 - **Mode-Specific Tracking**: See exactly how much energy each operating mode consumes
 - **Daily Monitoring**: Track daily energy consumption patterns
+- **Monthly Analysis**: Monitor monthly energy consumption trends
+- **Yearly Overview**: Track yearly energy consumption and efficiency
 - **Historical Data**: Maintain total consumption history
 
 ### 2. System Optimization
@@ -215,10 +255,13 @@ energy_consumption_sensors:
 ### Sensor Attributes
 Each energy consumption sensor includes helpful attributes:
 - `sensor_type`: "energy_consumption"
-- `mode`: Operating mode (heating, hot_water, cooling, defrost)
-- `period`: Time period (total, daily)
+- `mode`: Operating mode (heating, hot_water, cooling, defrost, stby)
+- `reset_interval`: Time period (total, daily, monthly, yearly)
 - `hp_index`: Heat pump index
 - `applied_offset`: Applied offset value (total sensors only)
+- `yesterday_value`: Previous daily value (daily sensors only)
+- `previous_monthly_value`: Previous monthly value (monthly sensors only)
+- `previous_yearly_value`: Previous yearly value (yearly sensors only)
 
 ### Implementation Details
 - **Offset Loading**: Offsets are loaded via `load_lambda_config()` function from `lambda_wp_config.yaml`
@@ -245,6 +288,8 @@ Die Energieverbrauchs-Sensoren bieten **detailliertes Energietracking nach Betri
 **Hauptfunktionen:**
 - **Total-Sensoren**: Kumulativer Energieverbrauch seit Installation
 - **Tages-Sensoren**: Täglicher Energieverbrauch (täglich um Mitternacht auf 0 zurückgesetzt)
+- **Monatliche Sensoren**: Monatlicher Energieverbrauch (monatlich am 1. auf 0 zurückgesetzt)
+- **Jährliche Sensoren**: Jährlicher Energieverbrauch (jährlich am 1. Januar auf 0 zurückgesetzt)
 - **Flankenerkennung**: Automatische Energiezuordnung basierend auf Betriebsart-Änderungen
 - **Offset-Unterstützung**: Unterstützung für Energie-Offsets beim Wärmepumpen-Austausch
 - **Konfigurierbare Eingabe**: Verwendet bestehende Stromverbrauchs-Sensoren als Datenquelle
@@ -274,13 +319,33 @@ Die Energieverbrauchs-Sensoren bieten **detailliertes Energietracking nach Betri
   - `sensor.eu08l_hp1_cooling_energy_daily`
   - `sensor.eu08l_hp1_defrost_energy_daily`
 
+#### Monatliche Energieverbrauchs-Sensoren (Echte Entities)
+- **Zweck**: Verfolgung des monatlichen Energieverbrauchs pro Betriebsart
+- **Typ**: Echte Python-Entities (`LambdaEnergyConsumptionSensor`)
+- **Reset**: Monatlich am 1. des Monats (berechnet als Total - Vorheriger Monat)
+- **Beispiele**:
+  - `sensor.eu08l_hp1_heating_energy_monthly`
+  - `sensor.eu08l_hp1_hot_water_energy_monthly`
+  - `sensor.eu08l_hp1_cooling_energy_monthly`
+  - `sensor.eu08l_hp1_defrost_energy_monthly`
+
+#### Jährliche Energieverbrauchs-Sensoren (Echte Entities)
+- **Zweck**: Verfolgung des jährlichen Energieverbrauchs pro Betriebsart
+- **Typ**: Echte Python-Entities (`LambdaEnergyConsumptionSensor`)
+- **Reset**: Jährlich am 1. Januar (berechnet als Total - Vorheriges Jahr)
+- **Beispiele**:
+  - `sensor.eu08l_hp1_heating_energy_yearly`
+  - `sensor.eu08l_hp1_hot_water_energy_yearly`
+  - `sensor.eu08l_hp1_cooling_energy_yearly`
+  - `sensor.eu08l_hp1_defrost_energy_yearly`
+
 ### 2. Energie-Tracking
 
 #### Flankenerkennungs-Logik
 1. **Betriebszustand überwachen**: Änderungen im Wärmepumpen-Betriebsmodus verfolgen
 2. **Energie-Delta berechnen**: Energieverbrauch während jedes Modus messen
 3. **Energie zuordnen**: Verbrauchte Energie den entsprechenden Modus-Sensoren zuweisen
-4. **Zähler aktualisieren**: Sowohl Total- als auch Tages-Sensoren gleichzeitig erhöhen
+4. **Zähler aktualisieren**: Total-, Tages-, Monatliche und Jährliche Sensoren gleichzeitig erhöhen
 
 #### Energie-Berechnung
 ```python
@@ -336,29 +401,45 @@ Die Integration migriert automatisch bestehende Installationen, um Energieverbra
 
 ## Sensor-Beispiele
 
-### Für 1 Wärmepumpe (8 Sensoren)
+### Für 1 Wärmepumpe (20 Sensoren)
 ```
 sensor.eu08l_hp1_heating_energy_total      # Gesamte Heizenergie (kWh)
 sensor.eu08l_hp1_heating_energy_daily      # Tägliche Heizenergie (kWh)
+sensor.eu08l_hp1_heating_energy_monthly    # Monatliche Heizenergie (kWh)
+sensor.eu08l_hp1_heating_energy_yearly     # Jährliche Heizenergie (kWh)
 sensor.eu08l_hp1_hot_water_energy_total    # Gesamte Warmwasserenergie (kWh)
 sensor.eu08l_hp1_hot_water_energy_daily    # Tägliche Warmwasserenergie (kWh)
+sensor.eu08l_hp1_hot_water_energy_monthly  # Monatliche Warmwasserenergie (kWh)
+sensor.eu08l_hp1_hot_water_energy_yearly   # Jährliche Warmwasserenergie (kWh)
 sensor.eu08l_hp1_cooling_energy_total      # Gesamte Kühlenergie (kWh)
 sensor.eu08l_hp1_cooling_energy_daily      # Tägliche Kühlenergie (kWh)
+sensor.eu08l_hp1_cooling_energy_monthly    # Monatliche Kühlenergie (kWh)
+sensor.eu08l_hp1_cooling_energy_yearly     # Jährliche Kühlenergie (kWh)
 sensor.eu08l_hp1_defrost_energy_total      # Gesamte Abtauenergie (kWh)
 sensor.eu08l_hp1_defrost_energy_daily      # Tägliche Abtauenergie (kWh)
+sensor.eu08l_hp1_defrost_energy_monthly    # Monatliche Abtauenergie (kWh)
+sensor.eu08l_hp1_defrost_energy_yearly     # Jährliche Abtauenergie (kWh)
+sensor.eu08l_hp1_stby_energy_total         # Gesamte Standby-Energie (kWh)
+sensor.eu08l_hp1_stby_energy_daily         # Tägliche Standby-Energie (kWh)
+sensor.eu08l_hp1_stby_energy_monthly       # Monatliche Standby-Energie (kWh)
+sensor.eu08l_hp1_stby_energy_yearly        # Jährliche Standby-Energie (kWh)
 ```
 
-### Für 2 Wärmepumpen (16 Sensoren)
+### Für 2 Wärmepumpen (40 Sensoren)
 ```
-# HP1 Sensoren (8)
+# HP1 Sensoren (20)
 sensor.eu08l_hp1_heating_energy_total
 sensor.eu08l_hp1_heating_energy_daily
-# ... (6 weitere)
+sensor.eu08l_hp1_heating_energy_monthly
+sensor.eu08l_hp1_heating_energy_yearly
+# ... (16 weitere)
 
-# HP2 Sensoren (8)
+# HP2 Sensoren (20)
 sensor.eu08l_hp2_heating_energy_total
 sensor.eu08l_hp2_heating_energy_daily
-# ... (6 weitere)
+sensor.eu08l_hp2_heating_energy_monthly
+sensor.eu08l_hp2_heating_energy_yearly
+# ... (16 weitere)
 ```
 
 ## Konfigurations-Beispiele
@@ -410,6 +491,8 @@ energy_consumption_sensors:
 ### 1. Detaillierte Energieanalyse
 - **Modus-spezifisches Tracking**: Sehen Sie genau, wie viel Energie jeder Betriebsmodus verbraucht
 - **Tägliche Überwachung**: Verfolgen Sie tägliche Energieverbrauchsmuster
+- **Monatliche Analyse**: Überwachen Sie monatliche Energieverbrauchstrends
+- **Jährliche Übersicht**: Verfolgen Sie jährlichen Energieverbrauch und Effizienz
 - **Historische Daten**: Behalten Sie Gesamtverbrauchshistorie bei
 
 ### 2. Systemoptimierung
@@ -432,10 +515,13 @@ energy_consumption_sensors:
 ### Sensor-Attribute
 Jeder Energieverbrauchs-Sensor enthält hilfreiche Attribute:
 - `sensor_type`: "energy_consumption"
-- `mode`: Betriebsmodus (heating, hot_water, cooling, defrost)
-- `period`: Zeitraum (total, daily)
+- `mode`: Betriebsmodus (heating, hot_water, cooling, defrost, stby)
+- `reset_interval`: Zeitraum (total, daily, monthly, yearly)
 - `hp_index`: Wärmepumpen-Index
 - `applied_offset`: Angewendeter Offset-Wert (nur Total-Sensoren)
+- `yesterday_value`: Vorheriger Tageswert (nur Tages-Sensoren)
+- `previous_monthly_value`: Vorheriger Monatswert (nur Monatliche Sensoren)
+- `previous_yearly_value`: Vorheriger Jahreswert (nur Jährliche Sensoren)
 
 ### Implementierungsdetails
 - **Offset-Laden**: Offsets werden über `load_lambda_config()` Funktion aus `lambda_wp_config.yaml` geladen
