@@ -6,6 +6,8 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
+# Direkte YAML-Ladung wird in get_int32_byte_order verwendet
+
 # Import Lambda-specific constants
 try:
     from .const import (
@@ -283,3 +285,85 @@ def read_input_registers(client, address: int, count: int, slave_id: int = 1) ->
     except Exception as e:
         _LOGGER.error("Modbus read error at address %d: %s", address, e)
         raise
+
+
+# =============================================================================
+# Endianness-Funktionen für int32-Register (Issue #22)
+# =============================================================================
+
+async def get_int32_byte_order(hass) -> str:
+    """
+    Lädt Endianness-Konfiguration aus lambda_wp_config.yaml (undokumentiert).
+    
+    Args:
+        hass: Home Assistant Instanz
+    
+    Returns:
+        str: "big" oder "little" (Standard: "big")
+    """
+    try:
+        import yaml
+        import os
+        
+        # Direkte YAML-Ladung um Import-Probleme zu vermeiden
+        config_dir = hass.config.config_dir
+        lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+        
+        if not os.path.exists(lambda_config_path):
+            _LOGGER.debug("lambda_wp_config.yaml nicht gefunden, verwende Standard 'big'")
+            return "big"
+        
+        # Asynchrone Datei-Ladung um Blocking Call zu vermeiden
+        def load_yaml_file():
+            with open(lambda_config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f) or {}
+        
+        config = await hass.async_add_executor_job(load_yaml_file)
+        
+        _LOGGER.debug("Geladene Konfiguration: %s", config)
+        
+        modbus_config = config.get("modbus", {})
+        _LOGGER.debug("Modbus-Konfiguration: %s", modbus_config)
+        
+        # Hole explizite Einstellung (Standard: "big")
+        byte_order = modbus_config.get("int32_byte_order", "big")
+        _LOGGER.debug("Gelesene int32_byte_order: %s", byte_order)
+        
+        # Validiere Wert
+        if byte_order not in ["big", "little"]:
+            _LOGGER.warning("Ungültige int32_byte_order: %s, verwende 'big'", byte_order)
+            return "big"
+            
+        _LOGGER.info("Int32 Byte-Order erfolgreich geladen: %s", byte_order)
+        return byte_order
+        
+    except Exception as e:
+        _LOGGER.warning("Fehler beim Laden der Endianness-Konfiguration: %s", e)
+        import traceback
+        _LOGGER.debug("Traceback: %s", traceback.format_exc())
+        return "big"  # Sicherer Fallback auf aktuelles Verhalten
+
+
+def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
+    """
+    Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert.
+    
+    Args:
+        registers: Liste mit 2 Register-Werten
+        byte_order: "big" oder "little"
+    
+    Returns:
+        int: 32-Bit-Wert
+        
+    Raises:
+        ValueError: Wenn weniger als 2 Register vorhanden sind
+    """
+    if len(registers) < 2:
+        raise ValueError("Mindestens 2 Register erforderlich für int32")
+    
+    if byte_order == "little":
+        # Little-Endian: Niedrigere Bits zuerst
+        return (registers[1] << 16) | registers[0]
+    else:  # big-endian (Standard)
+        # Big-Endian: Höhere Bits zuerst (aktuelle Implementierung)
+        return (registers[0] << 16) | registers[1]

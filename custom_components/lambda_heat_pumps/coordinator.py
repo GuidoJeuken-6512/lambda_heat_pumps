@@ -42,7 +42,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
 )
-from .modbus_utils import async_read_holding_registers
+from .modbus_utils import async_read_holding_registers, get_int32_byte_order, combine_int32_registers
 import time
 import json
 
@@ -103,6 +103,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # Dynamische Batch-Read-Fehlerbehandlung
         self._batch_failures = {}  # Dict: (start_addr, count) -> failure_count
         self._max_batch_failures = 3  # Nach 3 Fehlern auf Individual-Reads umstellen
+        
+        # Endianness-Konfiguration für int32-Register (Issue #22)
+        self._int32_byte_order = "big"  # Standard-Wert, wird in async_setup_entry geladen
         self._individual_read_addresses = set()  # Adressen die nur einzeln gelesen werden
         
         # Dynamische Cycling-Sensor-Meldungen
@@ -357,9 +360,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         if sensor_info.get("data_type") == "int32":
                             # Should not happen in batch, but safety check
                             if i + 1 < len(result.registers):
-                                value = (result.registers[i] << 16) | result.registers[
-                                    i + 1
-                                ]
+                                value = combine_int32_registers(
+                                    [result.registers[i], result.registers[i + 1]], 
+                                    self._int32_byte_order
+                                )
                                 value = to_signed_32bit(value)
                             else:
                                 continue
@@ -405,7 +409,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             if count == 2:
-                value = (result.registers[0] << 16) | result.registers[1]
+                value = combine_int32_registers(result.registers, self._int32_byte_order)
                 if sensor_info.get("data_type") == "int32":
                     value = to_signed_32bit(value)
             else:
@@ -732,6 +736,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             from pymodbus.client import AsyncModbusTcpClient
 
+            # Load Endianness configuration (only once during connection)
+            if self._int32_byte_order == "big":  # Only load if not already set
+                try:
+                    self._int32_byte_order = await get_int32_byte_order(self.hass)
+                    _LOGGER.info("Int32 Byte-Order konfiguriert: %s", self._int32_byte_order)
+                except Exception as e:
+                    _LOGGER.warning("Fehler beim Laden der Endianness-Konfiguration: %s", e)
+                    self._int32_byte_order = "big"  # Fallback auf Standard
+
             if (
                 self.client
                 and hasattr(self.client, "connected")
@@ -991,7 +1004,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:
@@ -1050,7 +1063,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:
@@ -1109,7 +1122,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:
@@ -1168,7 +1181,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:

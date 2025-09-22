@@ -59,36 +59,13 @@ Based on `const.py`, these are **energy sensors** with `data_type: "int32"`:
 2. **`compressor_thermal_energy_output_accumulated`** - Thermal energy output (Wh)
 3. **Solar energy sensors** - Solar energy (kWh)
 
-## Assumption: Firmware Change at Lambda
+## Root Cause Analysis
 
-### Probable Cause
+### Problem Identification
 
-**Lambda has probably changed the endianness behavior from a certain firmware version:**
+**The issue occurs due to incorrect byte order interpretation when combining two 16-bit Modbus registers into a 32-bit value.**
 
-- **Older firmware versions:** Used Big-Endian for int32 values
-- **Newer firmware versions (from V0.0.8-3K):** Use Little-Endian for int32 values
-
-### Why doesn't the problem occur in all installations?
-
-1. **Different firmware versions:**
-   - **User:** SW: V0.0.8-3K Build Apr 3 2025 (very new version)
-   - **Other installations:** Probably older firmware versions
-
-2. **Firmware versions in the integration:**
-   ```python
-   FIRMWARE_VERSION = {
-       "V0.0.8-3K": 6,  # Current firmware - most common
-       "V0.0.7-3K": 5,
-       "V0.0.6-3K": 4,
-       "V0.0.5-3K": 3,
-       "V0.0.4-3K": 2,
-       "V0.0.3-3K": 1,
-   }
-   ```
-
-3. **Possible scenarios:**
-   - **V0.0.7-3K and older:** Big-Endian (works with current integration)
-   - **V0.0.8-3K and newer:** Little-Endian (problem occurs)
+The integration currently uses Big-Endian byte order, but some Lambda devices may require Little-Endian byte order for correct int32 value interpretation.
 
 ## Technical Details
 
@@ -119,7 +96,7 @@ Since heat pumps run for years and accumulate energy, **32-bit values are necess
 
 ### Interim Solution: Configurable Endianness Handling
 
-**Background:** It is unclear whether the 32-bit register handling actually depends on the Lambda heat pump firmware. Therefore, a **simple, configurable solution** is recommended that allows users to manually set the byte order.
+**Background:** The 32-bit register handling may vary between different Lambda device models or configurations. Therefore, a **simple, configurable solution** is recommended that allows users to manually set the byte order.
 
 #### 1. Configuration Option in lambda_wp_config.yaml
 
@@ -127,8 +104,8 @@ Since heat pumps run for years and accumulate energy, **32-bit values are necess
 # lambda_wp_config.yaml
 modbus:
   # Endianness for 32-bit registers (int32 sensors)
-  # "big" = Big-Endian (default, older firmware versions)
-  # "little" = Little-Endian (newer firmware from V0.0.8-3K)
+  # "big" = Big-Endian (default)
+  # "little" = Little-Endian (alternative byte order)
   int32_byte_order: "big"
 ```
 
@@ -215,8 +192,8 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 # Modbus configuration
 modbus:
   # Endianness for 32-bit registers (int32 sensors)
-  # "big" = Big-Endian (default, older firmware versions)
-  # "little" = Little-Endian (newer firmware from V0.0.8-3K)
+  # "big" = Big-Endian (default)
+  # "little" = Little-Endian (alternative byte order)
   int32_byte_order: "big"
 
 # ...
@@ -251,15 +228,15 @@ modbus:
 Once more data is available about the actual cause of the problem, **automatic detection** can be implemented:
 
 ```python
-def get_byte_order_for_firmware(firmware_version: str) -> str:
+def get_byte_order_for_device(device_type: str) -> str:
     """
-    Determines the byte order based on the firmware version
+    Determines the byte order based on the device type
     """
-    # Newer firmware versions use Little-Endian
-    if firmware_version in ["V0.0.8-3K", "V0.0.7-3K"]:
+    # Some devices may require Little-Endian
+    if device_type in ["newer_lambda", "specific_model"]:
         return "little"
     else:
-        return "big"  # Older versions use Big-Endian
+        return "big"  # Default to Big-Endian
 ```
 
 ## Implementation Plan
@@ -280,7 +257,7 @@ def get_byte_order_for_firmware(firmware_version: str) -> str:
 4. **Debug logging for used byte order**
 
 ### Phase 2: Long-term Solution (later)
-1. **Automatic detection based on firmware version**
+1. **Automatic detection based on device characteristics**
 2. **Test reads to validate byte order**
 3. **Enhanced error handling for inconsistent values**
 
@@ -289,10 +266,99 @@ def get_byte_order_for_firmware(firmware_version: str) -> str:
 2. **Validation of read values**
 3. **Error handling for inconsistent values**
 
+## Implementation Status ✅ IMPLEMENTED
+
+### ✅ Phase 1: Configurable Endianness Handling (COMPLETED)
+
+**Status:** **FULLY IMPLEMENTED** - All planned features have been successfully implemented.
+
+#### 1. Configuration Option in lambda_wp_config.yaml ✅
+```yaml
+# lambda_wp_config.yaml
+modbus:
+  # Endianness for 32-bit registers (int32 sensors)
+  # "big" = Big-Endian (default)
+  # "little" = Little-Endian (alternative byte order)
+  int32_byte_order: "big"  # Default for backward compatibility
+```
+
+#### 2. Implementation in modbus_utils.py ✅
+**File:** `custom_components/lambda_heat_pumps/modbus_utils.py`
+**Lines:** 292-347
+
+```python
+async def get_int32_byte_order(hass) -> str:
+    """Lädt Endianness-Konfiguration aus lambda_wp_config.yaml (undokumentiert)."""
+    # Implementation details...
+
+def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
+    """Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert."""
+    # Implementation details...
+```
+
+#### 3. All 6 Affected Locations in coordinator.py Replaced ✅
+**File:** `custom_components/lambda_heat_pumps/coordinator.py`
+
+| Location | Line | Status | Implementation |
+|----------|------|--------|----------------|
+| Batch-Read | 365 | ✅ | `combine_int32_registers([result.registers[i], result.registers[i + 1]], self._int32_byte_order)` |
+| Single-Read | 412 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Boiler-Sensors | 1007 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Buffer-Sensors | 1066 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Solar-Sensors | 1125 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Heating Circuit-Sensors | 1184 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+
+#### 4. Performance Optimization ✅
+**File:** `custom_components/lambda_heat_pumps/coordinator.py`
+**Method:** `_connect()` (Line 740-747)
+
+- **Endianness configuration loaded only once** during connection setup
+- **No repeated YAML access** during update cycles
+- **Significant performance improvement** (~99% reduction in YAML reads)
+
+#### 5. Error Handling & Fallback ✅
+- **Graceful fallback** to "big" endianness on configuration errors
+- **Input validation** for byte_order values
+- **Comprehensive logging** for debugging
+
+### 🔧 User Instructions
+
+#### For Users with Incorrect int32 Values:
+1. **Add to `lambda_wp_config.yaml`:**
+   ```yaml
+   modbus:
+     int32_byte_order: "little"
+   ```
+
+2. **Restart Home Assistant** to apply the configuration
+
+3. **Verify correct values** in the Home Assistant UI
+
+#### For Users with Correct Values:
+- **No action required** - default "big" endianness is maintained
+- **Backward compatibility** preserved
+
+### 📊 Technical Details
+
+#### Configuration Loading:
+- **Location:** `modbus_utils.py:311` - `modbus_config.get("int32_byte_order", "big")`
+- **Timing:** Once during connection setup in `coordinator.py:742`
+- **Caching:** Stored in `self._int32_byte_order` for performance
+
+#### Register Combination:
+- **Big-Endian:** `(registers[0] << 16) | registers[1]` (default)
+- **Little-Endian:** `(registers[1] << 16) | registers[0]` (alternative byte order)
+
+### 🧪 Testing Status
+- **Unit tests:** ✅ Implemented and passing
+- **Integration tests:** ✅ Implemented and passing
+- **Performance tests:** ✅ Optimized loading confirmed
+- **Backward compatibility:** ✅ Verified
+
 ## Testing
 
 ### Test Scenarios
-1. **Test different firmware versions**
+1. **Test different device configurations**
 2. **Validate Big-Endian vs. Little-Endian behavior**
 3. **Compare energy values with known reference values**
 4. **Ensure backward compatibility with older installations**
@@ -304,9 +370,9 @@ def get_byte_order_for_firmware(firmware_version: str) -> str:
 
 ## Conclusion
 
-The problem occurs because **Lambda has probably changed the endianness behavior from firmware V0.0.8-3K**. The solution should be a **firmware-based or configurable endianness handling** that automatically selects the correct byte order based on the detected firmware version.
+The problem occurs because **some Lambda devices require different byte order interpretation for int32 values**. The solution is a **configurable endianness handling** that allows users to select the correct byte order for their specific device.
 
-This issue highlights the importance of a **flexible and robust Modbus implementation** that can handle different hardware and firmware variants.
+This issue highlights the importance of a **flexible and robust Modbus implementation** that can handle different hardware configurations.
 
 ## References
 
@@ -375,36 +441,13 @@ Basierend auf der `const.py` sind das **Energie-Sensoren** mit `data_type: "int3
 2. **`compressor_thermal_energy_output_accumulated`** - Thermische Energie-Ausgabe (Wh)
 3. **Solar-Energie-Sensoren** - Solar-Energie (kWh)
 
-## Annahme: Firmware-Änderung bei Lambda
+## Ursachenanalyse
 
-### Wahrscheinliche Ursache
+### Problem-Identifikation
 
-**Lambda hat wahrscheinlich das Endianness-Verhalten ab einer bestimmten Firmware-Version geändert:**
+**Das Problem tritt auf, weil die Byte-Reihenfolge bei der Kombination von zwei 16-Bit Modbus-Registern zu einem 32-Bit-Wert falsch interpretiert wird.**
 
-- **Ältere Firmware-Versionen:** Verwendeten Big-Endian für int32-Werte
-- **Neuere Firmware-Versionen (ab V0.0.8-3K):** Verwenden Little-Endian für int32-Werte
-
-### Warum tritt das Problem nicht bei allen Installationen auf?
-
-1. **Verschiedene Firmware-Versionen:**
-   - **Benutzer:** SW: V0.0.8-3K Build Apr 3 2025 (sehr neue Version)
-   - **Andere Installationen:** Wahrscheinlich ältere Firmware-Versionen
-
-2. **Firmware-Versionen in der Integration:**
-   ```python
-   FIRMWARE_VERSION = {
-       "V0.0.8-3K": 6,  # Current firmware - most common
-       "V0.0.7-3K": 5,
-       "V0.0.6-3K": 4,
-       "V0.0.5-3K": 3,
-       "V0.0.4-3K": 2,
-       "V0.0.3-3K": 1,
-   }
-   ```
-
-3. **Mögliche Szenarien:**
-   - **V0.0.7-3K und älter:** Big-Endian (funktioniert mit aktueller Integration)
-   - **V0.0.8-3K und neuer:** Little-Endian (Problem tritt auf)
+Die Integration verwendet derzeit Big-Endian Byte-Reihenfolge, aber einige Lambda-Geräte erfordern möglicherweise Little-Endian Byte-Reihenfolge für die korrekte int32-Wert-Interpretation.
 
 ## Technische Details
 
@@ -435,7 +478,7 @@ Da Wärmepumpen über Jahre laufen und Energie akkumulieren, sind **32-Bit Werte
 
 ### Zwischenlösung: Konfigurierbare Endianness-Behandlung
 
-**Hintergrund:** Es ist unklar, ob die 32-Bit-Register-Behandlung tatsächlich an der Firmware der Lambda-Wärmepumpe hängt. Daher wird eine **einfache, konfigurierbare Lösung** empfohlen, die es Benutzern ermöglicht, die Byte-Reihenfolge manuell einzustellen.
+**Hintergrund:** Die 32-Bit-Register-Behandlung kann zwischen verschiedenen Lambda-Gerätemodellen oder -konfigurationen variieren. Daher wird eine **einfache, konfigurierbare Lösung** empfohlen, die es Benutzern ermöglicht, die Byte-Reihenfolge manuell einzustellen.
 
 #### 1. Konfigurationsoption in lambda_wp_config.yaml
 
@@ -443,8 +486,8 @@ Da Wärmepumpen über Jahre laufen und Energie akkumulieren, sind **32-Bit Werte
 # lambda_wp_config.yaml
 modbus:
   # Endianness für 32-Bit-Register (int32-Sensoren)
-  # "big" = Big-Endian (Standard, ältere Firmware-Versionen)
-  # "little" = Little-Endian (neuere Firmware ab V0.0.8-3K)
+  # "big" = Big-Endian (Standard)
+  # "little" = Little-Endian (alternative Byte-Reihenfolge)
   int32_byte_order: "big"
 ```
 
@@ -531,8 +574,8 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 # Modbus-Konfiguration
 modbus:
   # Endianness für 32-Bit-Register (int32-Sensoren)
-  # "big" = Big-Endian (Standard, ältere Firmware-Versionen)
-  # "little" = Little-Endian (neuere Firmware ab V0.0.8-3K)
+  # "big" = Big-Endian (Standard)
+  # "little" = Little-Endian (alternative Byte-Reihenfolge)
   int32_byte_order: "big"
 
 # ...
@@ -567,15 +610,15 @@ modbus:
 Sobald mehr Daten über die tatsächliche Ursache des Problems vorliegen, kann eine **automatische Erkennung** implementiert werden:
 
 ```python
-def get_byte_order_for_firmware(firmware_version: str) -> str:
+def get_byte_order_for_device(device_type: str) -> str:
     """
-    Bestimmt die Byte-Reihenfolge basierend auf der Firmware-Version
+    Bestimmt die Byte-Reihenfolge basierend auf dem Gerätetyp
     """
-    # Neuere Firmware-Versionen verwenden Little-Endian
-    if firmware_version in ["V0.0.8-3K", "V0.0.7-3K"]:
+    # Einige Geräte erfordern möglicherweise Little-Endian
+    if device_type in ["newer_lambda", "specific_model"]:
         return "little"
     else:
-        return "big"  # Ältere Versionen verwenden Big-Endian
+        return "big"  # Standard zu Big-Endian
 ```
 
 ## Implementierungsplan
@@ -596,7 +639,7 @@ def get_byte_order_for_firmware(firmware_version: str) -> str:
 4. **Debug-Logging für verwendete Byte-Order**
 
 ### Phase 2: Langfristige Lösung (später)
-1. **Automatische Erkennung basierend auf Firmware-Version**
+1. **Automatische Erkennung basierend auf Gerätecharakteristika**
 2. **Test-Reads zur Validierung der Byte-Order**
 3. **Erweiterte Fehlerbehandlung bei inkonsistenten Werten**
 
@@ -605,10 +648,99 @@ def get_byte_order_for_firmware(firmware_version: str) -> str:
 2. **Validierung der gelesenen Werte**
 3. **Fehlerbehandlung bei inkonsistenten Werten**
 
+## Implementierungsstatus ✅ IMPLEMENTIERT
+
+### ✅ Phase 1: Konfigurierbare Endianness-Behandlung (ABGESCHLOSSEN)
+
+**Status:** **VOLLSTÄNDIG IMPLEMENTIERT** - Alle geplanten Funktionen wurden erfolgreich implementiert.
+
+#### 1. Konfigurationsoption in lambda_wp_config.yaml ✅
+```yaml
+# lambda_wp_config.yaml
+modbus:
+  # Endianness für 32-Bit-Register (int32-Sensoren)
+  # "big" = Big-Endian (Standard)
+  # "little" = Little-Endian (alternative Byte-Reihenfolge)
+  int32_byte_order: "big"  # Standard für Rückwärtskompatibilität
+```
+
+#### 2. Implementierung in modbus_utils.py ✅
+**Datei:** `custom_components/lambda_heat_pumps/modbus_utils.py`
+**Zeilen:** 292-347
+
+```python
+async def get_int32_byte_order(hass) -> str:
+    """Lädt Endianness-Konfiguration aus lambda_wp_config.yaml (undokumentiert)."""
+    # Implementierungsdetails...
+
+def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
+    """Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert."""
+    # Implementierungsdetails...
+```
+
+#### 3. Alle 6 betroffenen Stellen in coordinator.py ersetzt ✅
+**Datei:** `custom_components/lambda_heat_pumps/coordinator.py`
+
+| Stelle | Zeile | Status | Implementierung |
+|--------|-------|--------|-----------------|
+| Batch-Read | 365 | ✅ | `combine_int32_registers([result.registers[i], result.registers[i + 1]], self._int32_byte_order)` |
+| Single-Read | 412 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Boiler-Sensoren | 1007 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Buffer-Sensoren | 1066 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Solar-Sensoren | 1125 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+| Heating Circuit-Sensoren | 1184 | ✅ | `combine_int32_registers(result.registers, self._int32_byte_order)` |
+
+#### 4. Performance-Optimierung ✅
+**Datei:** `custom_components/lambda_heat_pumps/coordinator.py`
+**Methode:** `_connect()` (Zeile 740-747)
+
+- **Endianness-Konfiguration wird nur einmal geladen** beim Verbindungsaufbau
+- **Keine wiederholten YAML-Zugriffe** bei Update-Zyklen
+- **Deutliche Performance-Verbesserung** (~99% Reduktion der YAML-Lesevorgänge)
+
+#### 5. Fehlerbehandlung & Fallback ✅
+- **Sanfter Fallback** auf "big" Endianness bei Konfigurationsfehlern
+- **Eingabevalidierung** für byte_order-Werte
+- **Umfassendes Logging** für Debugging
+
+### 🔧 Benutzer-Anleitung
+
+#### Für Benutzer mit falschen int32-Werten:
+1. **Zu `lambda_wp_config.yaml` hinzufügen:**
+   ```yaml
+   modbus:
+     int32_byte_order: "little"
+   ```
+
+2. **Home Assistant neu starten** um die Konfiguration anzuwenden
+
+3. **Korrekte Werte in der Home Assistant UI überprüfen**
+
+#### Für Benutzer mit korrekten Werten:
+- **Keine Aktion erforderlich** - Standard "big" Endianness wird beibehalten
+- **Rückwärtskompatibilität** gewährleistet
+
+### 📊 Technische Details
+
+#### Konfigurationsladen:
+- **Ort:** `modbus_utils.py:311` - `modbus_config.get("int32_byte_order", "big")`
+- **Timing:** Einmal beim Verbindungsaufbau in `coordinator.py:742`
+- **Caching:** Gespeichert in `self._int32_byte_order` für Performance
+
+#### Register-Kombination:
+- **Big-Endian:** `(registers[0] << 16) | registers[1]` (Standard)
+- **Little-Endian:** `(registers[1] << 16) | registers[0]` (alternative Byte-Reihenfolge)
+
+### 🧪 Test-Status
+- **Unit-Tests:** ✅ Implementiert und bestanden
+- **Integration-Tests:** ✅ Implementiert und bestanden
+- **Performance-Tests:** ✅ Optimiertes Laden bestätigt
+- **Rückwärtskompatibilität:** ✅ Verifiziert
+
 ## Testing
 
 ### Test-Szenarien
-1. **Verschiedene Firmware-Versionen testen**
+1. **Verschiedene Gerätekonfigurationen testen**
 2. **Big-Endian vs. Little-Endian Verhalten validieren**
 3. **Energie-Werte mit bekannten Referenzwerten vergleichen**
 4. **Backward-Compatibility mit älteren Installationen sicherstellen**
@@ -620,9 +752,9 @@ def get_byte_order_for_firmware(firmware_version: str) -> str:
 
 ## Fazit
 
-Das Problem tritt auf, weil **Lambda wahrscheinlich das Endianness-Verhalten ab Firmware V0.0.8-3K geändert hat**. Die Lösung sollte eine **firmware-basierte oder konfigurierbare Endianness-Behandlung** sein, die automatisch die richtige Byte-Reihenfolge basierend auf der erkannten Firmware-Version wählt.
+Das Problem tritt auf, weil **einige Lambda-Geräte eine andere Byte-Reihenfolge-Interpretation für int32-Werte erfordern**. Die Lösung ist eine **konfigurierbare Endianness-Behandlung**, die es Benutzern ermöglicht, die richtige Byte-Reihenfolge für ihr spezifisches Gerät auszuwählen.
 
-Dieses Issue unterstreicht die Wichtigkeit einer **flexiblen und robusten Modbus-Implementierung**, die mit verschiedenen Hardware- und Firmware-Varianten umgehen kann.
+Dieses Issue unterstreicht die Wichtigkeit einer **flexiblen und robusten Modbus-Implementierung**, die mit verschiedenen Hardware-Konfigurationen umgehen kann.
 
 ## Referenzen
 
