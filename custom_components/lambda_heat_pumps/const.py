@@ -1997,6 +1997,7 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 # Energy consumption sensor configuration
 # Configure input sensors for energy consumption tracking per heat pump
 # These sensors provide the base energy consumption data (kWh)
+# You can use the default sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated" or a custom sensor_entity_id
 # Example:
 #energy_consumption_sensors:
 #  hp1:
@@ -2019,42 +2020,4 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    hot_water_energy_total: 45.2  # Example: HP2 already consumed 45.2 kWh hot water
 #    cooling_energy_total: 12.8    # Example: HP2 already consumed 12.8 kWh cooling
 #    defrost_energy_total: 3.1     # Example: HP2 already consumed 3.1 kWh defrost
-
-disabled_registers:
- - 100000 # this sensor does not exits, this is just an example
-
-sensors_names_override:
-- id: name_of_the_sensor_to_override_example
-  override_name: new_name_of_the_sensor_example
-
-cycling_offsets:
-  hp1:
-    heating_cycling_total: 0
-    hot_water_cycling_total: 0
-    cooling_cycling_total: 0
-    defrost_cycling_total: 0
-
-# Energy Consumption Sensors (OPTIONAL - uses default power consumption sensors if not configured)
-# energy_consumption_sensors:
-#   hp1:
-#     sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
-#   hp2:
-#     sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
-#   hp3:
-#     sensor_entity_id: "sensor.eu08l_hp3_compressor_power_consumption_accumulated"
-
-# Energy Consumption Offsets (OPTIONAL - for replacing heat pumps with existing consumption)
-# energy_consumption_offsets:
-#   hp1:
-#     heating_energy_total: 0
-#     hot_water_energy_total: 0
-#     cooling_energy_total: 0
-#     defrost_energy_total: 0
-#     stby_energy_total: 0
-#   hp2:
-#     heating_energy_total: 150.5
-#     hot_water_energy_total: 45.2
-#     cooling_energy_total: 12.8
-#     defrost_energy_total: 3.1
-#     stby_energy_total: 0
 """
