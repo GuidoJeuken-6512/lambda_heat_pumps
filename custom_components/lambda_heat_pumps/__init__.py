@@ -232,8 +232,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
             return False
 
-        # Set up services only for the first entry
-        if len(hass.data[DOMAIN]) == 1:
+        # Set up services (only once, regardless of number of entries)
+        if not hass.services.has_service(DOMAIN, "read_modbus_register"):
             await async_setup_services(hass)
 
         # Set up cycling automations
