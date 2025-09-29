@@ -38,7 +38,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
 )
-from .modbus_utils import async_read_holding_registers
+from .modbus_utils import async_read_holding_registers, get_int32_byte_order, combine_int32_registers
 import time
 
 _LOGGER = logging.getLogger(__name__)
@@ -97,6 +97,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # Entity-based polling control - simplified approach
         self._enabled_addresses = set()  # Aktuell aktivierte Register-Adressen
         self._entity_addresses = {}  # Mapping entity_id -> address from sensors
+        
+        # Int32 Endianness Support (Issue #22)
+        self._int32_byte_order = "big"  # Default value
         self._entity_address_mapping = {}  # Initialize entity address mapping
         self._entity_registry = None  # Initialize entity registry reference
         self._registry_listener = None  # Initialize registry listener reference
@@ -441,7 +444,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             if count == 2:
-                value = (result.registers[0] << 16) | result.registers[1]
+                value = combine_int32_registers(result.registers, self._int32_byte_order)
                 if sensor_info.get("data_type") == "int32":
                     value = to_signed_32bit(value)
             else:
@@ -784,6 +787,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed(msg)
 
             _LOGGER.debug("Connected to Lambda device at %s:%s", self.host, self.port)
+            
+            # Load endianness configuration once during connection
+            try:
+                self._int32_byte_order = await get_int32_byte_order(self.hass)
+                _LOGGER.info("Int32 Byte-Order konfiguriert: %s", self._int32_byte_order)
+            except Exception as e:
+                _LOGGER.warning("Fehler bei Byte-Order-Bestimmung: %s", e)
+                self._int32_byte_order = "big"  # Fallback auf Standard
 
         except Exception as e:
             _LOGGER.error("Connection to %s:%s failed: %s", self.host, self.port, e)
@@ -1071,7 +1082,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:
@@ -1130,7 +1141,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:
@@ -1189,7 +1200,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:
@@ -1248,7 +1259,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = (result.registers[0] << 16) | result.registers[1]
+                            value = combine_int32_registers(result.registers, self._int32_byte_order)
                             if sensor_info.get("data_type") == "int32":
                                 value = to_signed_32bit(value)
                         else:

@@ -13,14 +13,16 @@ from unittest.mock import Mock, patch, AsyncMock
 from datetime import datetime
 
 # Import der zu testenden Module
-from const import (
+from custom_components.lambda_heat_pumps.const import (
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
+)
+from custom_components.lambda_heat_pumps.utils import (
     get_energy_consumption_periods,
     get_energy_consumption_reset_intervals,
     get_all_reset_intervals,
     get_all_periods
 )
-from automations import (
+from custom_components.lambda_heat_pumps.automations import (
     SIGNAL_RESET_MONTHLY,
     SIGNAL_RESET_YEARLY,
     setup_cycling_automations,

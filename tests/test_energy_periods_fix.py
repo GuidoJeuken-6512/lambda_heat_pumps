@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'custom_components', 'lambda_heat_pumps'))
 
-import const
+from custom_components.lambda_heat_pumps import const
 
 def test_energy_periods_fix():
     """Teste den Energy Periods Fix."""

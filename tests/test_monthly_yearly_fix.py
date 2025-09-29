@@ -50,7 +50,7 @@ sys.modules['const_mapping'] = Mock()
 sys.modules['coordinator'] = Mock()
 sys.modules['template_sensor'] = Mock()
 
-from sensor import LambdaEnergyConsumptionSensor
+from custom_components.lambda_heat_pumps.sensor import LambdaEnergyConsumptionSensor
 
 class TestMonthlyYearlySensors(unittest.TestCase):
     """Test für Monthly und Yearly Energy Consumption Sensoren."""

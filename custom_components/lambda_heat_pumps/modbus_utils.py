@@ -283,3 +283,62 @@ def read_input_registers(client, address: int, count: int, slave_id: int = 1) ->
     except Exception as e:
         _LOGGER.error("Modbus read error at address %d: %s", address, e)
         raise
+
+
+# =============================================================================
+# INT32 ENDIANNESS SUPPORT (Issue #22)
+# =============================================================================
+
+async def get_int32_byte_order(hass) -> str:
+    """
+    Lädt Endianness-Konfiguration aus lambda_wp_config.yaml.
+    
+    Args:
+        hass: Home Assistant Instanz
+    
+    Returns:
+        str: "big" oder "little" (Standard: "big")
+    """
+    try:
+        from .utils import load_lambda_config
+        config = await load_lambda_config(hass)
+        modbus_config = config.get("modbus", {})
+        
+        # Hole explizite Einstellung (Standard: "big")
+        byte_order = modbus_config.get("int32_byte_order", "big")
+        
+        # Validiere Wert
+        if byte_order not in ["big", "little"]:
+            _LOGGER.warning("Ungültige int32_byte_order: %s, verwende 'big'", byte_order)
+            return "big"
+            
+        return byte_order
+        
+    except Exception as e:
+        _LOGGER.warning("Fehler beim Laden der Endianness-Konfiguration: %s", e)
+        return "big"  # Sicherer Fallback auf aktuelles Verhalten
+
+
+def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
+    """
+    Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert.
+    
+    Args:
+        registers: Liste mit 2 Register-Werten
+        byte_order: "big" oder "little"
+    
+    Returns:
+        int: 32-Bit-Wert
+        
+    Raises:
+        ValueError: Wenn weniger als 2 Register vorhanden sind
+    """
+    if len(registers) < 2:
+        raise ValueError("Mindestens 2 Register erforderlich für int32")
+    
+    if byte_order == "little":
+        # Little-Endian: Niedrigere Bits zuerst
+        return (registers[1] << 16) | registers[0]
+    else:  # big-endian (Standard)
+        # Big-Endian: Höhere Bits zuerst (aktuelle Implementierung)
+        return (registers[0] << 16) | registers[1]

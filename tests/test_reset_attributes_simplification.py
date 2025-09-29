@@ -9,8 +9,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'custom_components', 'lambda_heat_pumps'))
 
 # Direkte Imports ohne relative Imports
-import const
-import utils
+from custom_components.lambda_heat_pumps import const
+from custom_components.lambda_heat_pumps import utils
 
 def test_reset_attributes_simplification():
     """Teste, dass nur noch reset_interval verwendet wird."""

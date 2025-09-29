@@ -1914,7 +1914,7 @@ ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
     else template["reset_interval"] 
     for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values()
     if "period" in template or (template.get("reset_interval") is not None)
-)))
+) | {"monthly", "yearly"}))
 
 # Energy Consumption Migration Version
 ENERGY_CONSUMPTION_MIGRATION_VERSION = 4
@@ -2020,4 +2020,14 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    hot_water_energy_total: 45.2  # Example: HP2 already consumed 45.2 kWh hot water
 #    cooling_energy_total: 12.8    # Example: HP2 already consumed 12.8 kWh cooling
 #    defrost_energy_total: 3.1     # Example: HP2 already consumed 3.1 kWh defrost
+
+# Modbus configuration
+# Endianness for 32-bit registers (int32 sensors)
+# Some Lambda devices may require different byte order for correct int32 value interpretation
+# "big" = Big-Endian (default, current behavior)
+# "little" = Little-Endian (alternative byte order for some devices)
+# Example:
+#modbus:
+#  int32_byte_order: "big"  # or "little"
 """
+

@@ -37,8 +37,9 @@ class TestMigrationVersion:
         assert MigrationVersion.INITIAL == 1
         assert MigrationVersion.LEGACY_NAMES == 2
         assert MigrationVersion.CYCLING_OFFSETS == 3
-        assert MigrationVersion.ENTITY_OPTIMIZATION == 4
-        assert MigrationVersion.CONFIG_RESTRUCTURE == 5
+        assert MigrationVersion.ENERGY_CONSUMPTION == 4
+        assert MigrationVersion.ENTITY_OPTIMIZATION == 5
+        assert MigrationVersion.CONFIG_RESTRUCTURE == 6
     
     def test_migration_version_names(self):
         """Test: Überprüfe die Namen der MigrationVersion Enum."""
@@ -52,7 +53,7 @@ class TestMigrationVersion:
         """Test: Überprüfe die get_latest Methode."""
         latest = MigrationVersion.get_latest()
         assert latest == MigrationVersion.CONFIG_RESTRUCTURE
-        assert latest.value == 5
+        assert latest.value == 6
     
     def test_get_pending_migrations(self):
         """Test: Überprüfe die get_pending_migrations Methode."""
@@ -61,6 +62,7 @@ class TestMigrationVersion:
         expected = [
             MigrationVersion.LEGACY_NAMES,
             MigrationVersion.CYCLING_OFFSETS,
+            MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
             MigrationVersion.CONFIG_RESTRUCTURE
         ]
@@ -70,13 +72,14 @@ class TestMigrationVersion:
         pending = MigrationVersion.get_pending_migrations(2)
         expected = [
             MigrationVersion.CYCLING_OFFSETS,
+            MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
             MigrationVersion.CONFIG_RESTRUCTURE
         ]
         assert pending == expected
         
-        # Von Version 5 (aktuellste)
-        pending = MigrationVersion.get_pending_migrations(5)
+        # Von Version 6 (aktuellste)
+        pending = MigrationVersion.get_pending_migrations(6)
         assert pending == []
         
         # Von Version 0 (vor der ersten Version)
@@ -85,6 +88,7 @@ class TestMigrationVersion:
             MigrationVersion.INITIAL,
             MigrationVersion.LEGACY_NAMES,
             MigrationVersion.CYCLING_OFFSETS,
+            MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
             MigrationVersion.CONFIG_RESTRUCTURE
         ]
@@ -165,7 +169,7 @@ class TestMigrationNames:
     def test_migration_names_dict(self):
         """Test: Überprüfe Migration-Namen Dictionary."""
         assert isinstance(MIGRATION_NAMES, dict)
-        assert len(MIGRATION_NAMES) == 4  # 4 Migrationen definiert
+        assert len(MIGRATION_NAMES) == 5  # 5 Migrationen definiert
         
         # Überprüfe alle Migration-Namen
         expected_names = [

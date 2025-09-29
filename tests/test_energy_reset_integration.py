@@ -12,7 +12,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components'))
 
 # Jetzt können wir die Module importieren
-from lambda_heat_pumps.automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H
+from custom_components.lambda_heat_pumps.automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H
 
 def test_signal_constants():
     """Test ob die Signal-Konstanten korrekt definiert sind."""

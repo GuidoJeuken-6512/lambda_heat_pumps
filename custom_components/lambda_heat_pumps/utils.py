@@ -379,6 +379,7 @@ async def load_lambda_config(hass: HomeAssistant) -> dict:
             "sensors_names_override": sensors_names_override,
             "cycling_offsets": cycling_offsets,
             "energy_consumption_offsets": energy_consumption_offsets,
+            "modbus": config.get("modbus", {}),  # Include modbus configuration
         }
         
         # Cache the config in hass.data to avoid repeated loading
@@ -1594,3 +1595,90 @@ def send_reset_signal(sensor_type: str, period: str, entry_id: str = None) -> in
     """
     registry = get_sensor_reset_registry()
     return registry.send_reset(sensor_type, period, entry_id)
+
+
+# =============================================================================
+# ENERGY CONSUMPTION HELPER FUNCTIONS
+# =============================================================================
+
+def get_energy_consumption_periods():
+    """Get all energy consumption periods."""
+    try:
+        from .const import ENERGY_CONSUMPTION_PERIODS
+        return ENERGY_CONSUMPTION_PERIODS
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import ENERGY_CONSUMPTION_PERIODS
+        return ENERGY_CONSUMPTION_PERIODS
+
+def get_energy_consumption_reset_intervals():
+    """Get all energy consumption reset intervals."""
+    try:
+        from .const import ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    
+    return sorted(list(set(
+        template["reset_interval"] 
+        for template in templates.values()
+        if template.get("reset_interval") is not None
+    )))
+
+def get_all_reset_intervals():
+    """Get all reset intervals from all sensor templates."""
+    try:
+        from .const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    
+    all_intervals = set()
+    
+    # From cycling templates
+    for template in cycling_templates.values():
+        if template.get("reset_interval") is not None:
+            all_intervals.add(template["reset_interval"])
+    
+    # From energy consumption templates
+    for template in energy_templates.values():
+        if template.get("reset_interval") is not None:
+            all_intervals.add(template["reset_interval"])
+    
+    return sorted(list(all_intervals))
+
+def get_all_periods():
+    """Get all periods from all sensor templates."""
+    try:
+        from .const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    
+    all_periods = set()
+    
+    # From cycling templates
+    for template in cycling_templates.values():
+        if template.get("period") is not None:
+            all_periods.add(template["period"])
+    
+    # From energy consumption templates
+    for template in energy_templates.values():
+        if template.get("period") is not None:
+            all_periods.add(template["period"])
+    
+    # Add monthly and yearly periods
+    all_periods.add("monthly")
+    all_periods.add("yearly")
+    
+    return sorted(list(all_periods))

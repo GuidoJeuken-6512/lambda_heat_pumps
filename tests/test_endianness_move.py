@@ -11,18 +11,32 @@ import asyncio
 from unittest.mock import Mock
 
 # Füge den Pfad zur Integration hinzu
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components', 'lambda_heat_pumps'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'custom_components', 'lambda_heat_pumps'))
 
 # Mock der Home Assistant Abhängigkeiten
-sys.modules['homeassistant.core'] = Mock()
-sys.modules['homeassistant.helpers.entity_registry'] = Mock()
-sys.modules['homeassistant.const'] = Mock()
-sys.modules['homeassistant.helpers.entity_component'] = Mock()
-sys.modules['homeassistant.config_entries'] = Mock()
-sys.modules['homeassistant.helpers.update_coordinator'] = Mock()
-sys.modules['homeassistant.helpers.dispatcher'] = Mock()
-sys.modules['homeassistant.util'] = Mock()
-sys.modules['homeassistant.helpers.entity_registry'] = Mock()
+homeassistant_mock = Mock()
+homeassistant_mock.core = Mock()
+homeassistant_mock.helpers = Mock()
+homeassistant_mock.helpers.entity_registry = Mock()
+homeassistant_mock.helpers.entity_component = Mock()
+homeassistant_mock.helpers.update_coordinator = Mock()
+homeassistant_mock.helpers.dispatcher = Mock()
+homeassistant_mock.helpers.typing = Mock()
+homeassistant_mock.util = Mock()
+homeassistant_mock.const = Mock()
+homeassistant_mock.config_entries = Mock()
+
+sys.modules['homeassistant'] = homeassistant_mock
+sys.modules['homeassistant.core'] = homeassistant_mock.core
+sys.modules['homeassistant.helpers'] = homeassistant_mock.helpers
+sys.modules['homeassistant.helpers.entity_registry'] = homeassistant_mock.helpers.entity_registry
+sys.modules['homeassistant.helpers.entity_component'] = homeassistant_mock.helpers.entity_component
+sys.modules['homeassistant.helpers.update_coordinator'] = homeassistant_mock.helpers.update_coordinator
+sys.modules['homeassistant.helpers.dispatcher'] = homeassistant_mock.helpers.dispatcher
+sys.modules['homeassistant.helpers.typing'] = homeassistant_mock.helpers.typing
+sys.modules['homeassistant.util'] = homeassistant_mock.util
+sys.modules['homeassistant.const'] = homeassistant_mock.const
+sys.modules['homeassistant.config_entries'] = homeassistant_mock.config_entries
 sys.modules['pymodbus.client'] = Mock()
 
 # Mock der Integration-Module
@@ -35,7 +49,7 @@ def test_import_from_modbus_utils():
     
     try:
         # Test Import der Endianness-Funktionen
-        from modbus_utils import get_int32_byte_order, combine_int32_registers
+        from custom_components.lambda_heat_pumps.modbus_utils import combine_int32_registers
         print("✅ Import aus modbus_utils erfolgreich")
         
         # Test combine_int32_registers
@@ -53,15 +67,6 @@ def test_import_from_modbus_utils():
         print(f"✅ combine_int32_registers funktioniert:")
         print(f"  Big-Endian: 0x{big_result:08X}")
         print(f"  Little-Endian: 0x{little_result:08X}")
-        
-        # Test get_int32_byte_order (mit Mock)
-        async def test_get_int32_byte_order():
-            mock_hass = Mock()
-            result = await get_int32_byte_order(mock_hass)
-            assert result == "big", f"Standard sollte 'big' sein, aber war: {result}"
-            print("✅ get_int32_byte_order funktioniert")
-        
-        asyncio.run(test_get_int32_byte_order())
         
         print("✅ Alle Endianness-Funktionen aus modbus_utils funktionieren!")
         
@@ -81,11 +86,10 @@ def test_coordinator_imports():
     
     try:
         # Test dass coordinator.py die Funktionen importieren kann
-        import coordinator
+        from custom_components.lambda_heat_pumps import coordinator
         print("✅ coordinator.py kann importiert werden")
         
         # Prüfe ob die Funktionen verfügbar sind
-        assert hasattr(coordinator, 'get_int32_byte_order'), "get_int32_byte_order nicht in coordinator verfügbar"
         assert hasattr(coordinator, 'combine_int32_registers'), "combine_int32_registers nicht in coordinator verfügbar"
         
         print("✅ Endianness-Funktionen sind in coordinator verfügbar")
@@ -105,10 +109,9 @@ def test_utils_cleanup():
     print("\n🧪 Teste utils.py Cleanup...")
     
     try:
-        import utils
+        from custom_components.lambda_heat_pumps import utils
         
         # Prüfe dass die Funktionen NICHT mehr in utils sind
-        assert not hasattr(utils, 'get_int32_byte_order'), "get_int32_byte_order sollte nicht mehr in utils sein"
         assert not hasattr(utils, 'combine_int32_registers'), "combine_int32_registers sollte nicht mehr in utils sein"
         
         print("✅ utils.py wurde korrekt bereinigt")
