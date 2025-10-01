@@ -787,14 +787,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 raise UpdateFailed(msg)
 
             _LOGGER.debug("Connected to Lambda device at %s:%s", self.host, self.port)
-            
-            # Load endianness configuration once during connection
-            try:
-                self._int32_byte_order = await get_int32_byte_order(self.hass)
-                _LOGGER.info("Int32 Byte-Order konfiguriert: %s", self._int32_byte_order)
-            except Exception as e:
-                _LOGGER.warning("Fehler bei Byte-Order-Bestimmung: %s", e)
-                self._int32_byte_order = "big"  # Fallback auf Standard
 
         except Exception as e:
             _LOGGER.error("Connection to %s:%s failed: %s", self.host, self.port, e)
