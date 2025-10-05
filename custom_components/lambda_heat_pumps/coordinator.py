@@ -278,7 +278,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         
                         # Hole alten Wert für Vergleich
                         hp_key = f"hp{hp_idx}"
-                        old_value = self._last_energy_reading.get(hp_key, 0.0)
+                        old_value = self._last_energy_reading.get(hp_key, None)
                         
                         # Ersetze last_energy_readings mit dem ersten Wert des neuen Sensors
                         self._last_energy_reading[hp_key] = new_sensor_value
@@ -299,15 +299,53 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Warte {retry_delay}s vor nächstem Versuch...")
                     await asyncio.sleep(retry_delay)
             
-            # Alle Versuche fehlgeschlagen - verwende 0 als Fallback
-            _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Neuer Sensor {new_sensor_id} nach {max_retries} Versuchen nicht verfügbar, verwende 0")
-            self._last_energy_reading[f"hp{hp_idx}"] = 0.0
+            # Alle Versuche fehlgeschlagen - setze einen Marker, dass der Sensor später initialisiert werden muss
+            _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Neuer Sensor {new_sensor_id} nach {max_retries} Versuchen nicht verfügbar, setze Marker für spätere Initialisierung")
+            # Setze einen speziellen Marker-Wert, der später erkannt wird
+            self._last_energy_reading[f"hp{hp_idx}"] = None
             await self._persist_counters()
+            
+            # Starte einen Hintergrund-Task, der den Sensor später initialisiert
+            self.hass.async_create_task(self._initialize_sensor_later(hp_idx, new_sensor_id))
                 
         except Exception as e:
             _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Behandeln des Sensor-Wechsels für HP{hp_idx}: {e}")
             import traceback
             _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Traceback: {traceback.format_exc()}")
+
+    async def _initialize_sensor_later(self, hp_idx: int, sensor_id: str):
+        """Initialisiere den Sensor später, wenn er verfügbar wird."""
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte spätere Initialisierung für HP{hp_idx} -> {sensor_id}")
+        
+        # Warte bis zu 60 Sekunden, alle 5 Sekunden prüfen
+        max_attempts = 12
+        retry_delay = 5.0
+        
+        for attempt in range(max_attempts):
+            await asyncio.sleep(retry_delay)
+            
+            sensor_state = self.hass.states.get(sensor_id)
+            if sensor_state and sensor_state.state not in ("unknown", "unavailable", "None"):
+                try:
+                    sensor_value = float(sensor_state.state)
+                    hp_key = f"hp{hp_idx}"
+                    
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor {sensor_id} jetzt verfügbar nach {attempt + 1} Versuchen, Wert: {sensor_value}")
+                    
+                    # Initialisiere last_energy_reading mit dem aktuellen Wert
+                    self._last_energy_reading[hp_key] = sensor_value
+                    await self._persist_counters()
+                    
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: last_energy_reading für {hp_key} initialisiert mit {sensor_value}")
+                    return  # Erfolgreich initialisiert
+                    
+                except (ValueError, TypeError) as e:
+                    _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Konvertieren des Sensor-Werts: {e}")
+                    continue
+            
+            _LOGGER.debug(f"SENSOR-CHANGE-DETECTION: Versuch {attempt + 1}/{max_attempts} - Sensor {sensor_id} noch nicht verfügbar")
+        
+        _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Sensor {sensor_id} nach {max_attempts} Versuchen immer noch nicht verfügbar")
 
     def _generate_entity_id(self, sensor_type, idx):
         if self._use_legacy_names:
@@ -1527,13 +1565,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(f"DEBUG-021: Energy value for HP{hp_idx}: {current_energy_kwh} kWh (unit: {unit or 'none'})")
 
             # Get last energy reading for this heat pump
-            last_energy = self._last_energy_reading.get(f"hp{hp_idx}", 0.0)
+            last_energy = self._last_energy_reading.get(f"hp{hp_idx}", None)
+            if last_energy is None:
+                _LOGGER.info(f"Energy tracking for HP{hp_idx}: last_energy_reading is None (sensor not yet initialized), initializing with current value")
+                # Initialisiere mit dem aktuellen Wert
+                self._last_energy_reading[f"hp{hp_idx}"] = current_energy_kwh
+                await self._persist_counters()
+                return  # Kein Delta beim ersten Mal
             _LOGGER.debug(f"DEBUG-019: Last energy reading: {last_energy:.6f}")
             
             # Calculate energy delta
             from .utils import calculate_energy_delta
             raw_delta = current_energy_kwh - last_energy
-            energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)
+            energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)  # Zurück auf 100.0 kWh
             _LOGGER.debug(f"DEBUG-020: Raw delta: {raw_delta:.6f}, Calculated delta: {energy_delta:.6f}")
             
             # Only skip if delta is negative (overflow) or if we're not in STBY mode

@@ -927,19 +927,24 @@ def convert_energy_to_kwh(value: float, unit: str) -> float:
 def calculate_energy_delta(
     current_reading: float,
     last_reading: float,
-    max_delta: float = 100.0
+    max_delta: float = 100.0  # Zurück auf 100.0 kWh
 ) -> float:
     """
     Berechne Energie-Delta mit Überlauf-Schutz.
     
     Args:
         current_reading: Aktueller Energieverbrauch in kWh
-        last_reading: Letzter Energieverbrauch in kWh
+        last_reading: Letzter Energieverbrauch in kWh (kann None sein)
         max_delta: Maximale erlaubte Delta (Schutz vor unrealistischen Sprüngen)
     
     Returns:
         float: Berechnetes Delta in kWh
     """
+    # Wenn last_reading None ist, ist es ein neuer Sensor oder erster Start
+    if last_reading is None:
+        _LOGGER.info("Energy delta calculation: last_reading is None (sensor not yet initialized), returning 0")
+        return 0.0
+    
     if current_reading < last_reading:
         # Überlauf erkannt - nehme aktuellen Wert
         _LOGGER.debug(
@@ -949,13 +954,24 @@ def calculate_energy_delta(
         return current_reading
     else:
         delta = current_reading - last_reading
-        # Schutz vor unrealistischen Sprüngen
+        
+        # Wenn last_reading 0 ist, ist es wahrscheinlich ein Sensor-Wechsel oder Neustart
+        # In diesem Fall kein Maximum anwenden
+        if last_reading == 0.0:
+            _LOGGER.info(
+                "Energy delta %.6f kWh (last_reading was 0, likely sensor change or restart)",
+                delta
+            )
+            return round(delta, 6)
+        
+        # Schutz vor unrealistischen Sprüngen (nur wenn last_reading > 0)
         if delta > max_delta:
             _LOGGER.warning(
                 "Energy delta %.6f exceeds maximum %.6f, clamping to maximum",
                 delta, max_delta
             )
             return max_delta
+        
         # Rückgabe mit hoher Präzision (6 Nachkommastellen)
         return round(delta, 6)
 
@@ -1698,17 +1714,21 @@ def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
     Returns:
         bool: True wenn ein Sensor-Wechsel erkannt wurde
     """
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '{stored_sensor_id}', aktuell: '{current_sensor_id}'")
+    # Normalisiere die Strings (entferne führende/nachfolgende Leerzeichen und Anführungszeichen)
+    stored_normalized = str(stored_sensor_id).strip().strip("'\"") if stored_sensor_id else None
+    current_normalized = str(current_sensor_id).strip().strip("'\"") if current_sensor_id else None
+    
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '{stored_normalized}', aktuell: '{current_normalized}'")
     
     # Wenn kein gespeicherter Sensor vorhanden ist, ist es kein Wechsel
-    if not stored_sensor_id:
+    if not stored_normalized:
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
         return False
     
     # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
-    is_change = stored_sensor_id != current_sensor_id
+    is_change = stored_normalized != current_normalized
     if is_change:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt: '{stored_sensor_id}' -> '{current_sensor_id}'")
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt: '{stored_normalized}' -> '{current_normalized}'")
     else:
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
     
@@ -1743,13 +1763,16 @@ def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
     """
     hp_key = f"hp{hp_idx}"
     
+    # Normalisiere die Sensor-ID (entferne führende/nachfolgende Leerzeichen und Anführungszeichen)
+    normalized_sensor_id = str(sensor_id).strip().strip("'\"") if sensor_id else None
+    
     # Stelle sicher, dass sensor_ids existiert
     if "sensor_ids" not in persist_data:
         persist_data["sensor_ids"] = {}
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
     
-    # Speichere die Sensor-ID
+    # Speichere die normalisierte Sensor-ID
     old_id = persist_data["sensor_ids"].get(hp_key)
-    persist_data["sensor_ids"][hp_key] = sensor_id
+    persist_data["sensor_ids"][hp_key] = normalized_sensor_id
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{sensor_id}'")
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{normalized_sensor_id}'")
