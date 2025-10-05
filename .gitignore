@@ -24,6 +24,9 @@
 !requirements_test.txt
 !docs/
 !docs/*.md
+!docs/*.png
+!docs/to_dos/*.md    
+!docs/fix_reports/*.md
 !docs/devices_entities/
 !docs/devices_entities/**/*.md
 !docs/create_sensor_excel.py

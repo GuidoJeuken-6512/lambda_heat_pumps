@@ -29,6 +29,34 @@ Tests für Sensor-Entitäten:
 - **Properties**: `name`, `unique_id`, `entity_id` Properties
 - **Template-Sensoren**: Spezielle Tests für Template-basierte Sensoren
 
+### `test_energy_consumption.py`
+Tests für Energy Consumption Funktionalität:
+- **`calculate_energy_delta()`**: Energie-Delta-Berechnung mit Überlauf-Schutz
+- **`generate_energy_sensor_names()`**: Name-Generierung für Energy-Sensoren
+- **`increment_energy_consumption_counter()`**: Counter-Inkrementierung
+- **`get_energy_consumption_sensor_template()`**: Template-Abruf
+- **`validate_energy_consumption_config()`**: Config-Validierung
+- **Konstanten-Tests**: Überprüfung aller Energy Consumption Konstanten
+- **Integration-Tests**: Vollständige Workflow-Tests
+
+### `test_energy_consumption_migration.py`
+Tests für Energy Consumption Migration:
+- **`migrate_to_energy_consumption()`**: Migration zu Version 4
+- **Config-Erweiterung**: Hinzufügung von Energy Consumption Sektionen
+- **Offset-Konfiguration**: Standard-Offset-Werte
+- **Error-Handling**: Robuste Fehlerbehandlung
+- **Bestehende Config**: Erhaltung bestehender Konfiguration
+
+### `test_energy_consumption_sensors.py`
+Tests für Energy Consumption Sensoren:
+- **`LambdaEnergyConsumptionSensor`**: Sensor-Entity-Klasse
+- **Initialisierung**: Korrekte Sensor-Erstellung
+- **Properties**: Alle Sensor-Properties und -Attribute
+- **State-Management**: Energie-Wert-Setzung und -Abfrage
+- **Daily-Berechnung**: Tages-Wert-Berechnung (Total - Yesterday)
+- **Dispatcher-Integration**: Home Assistant Dispatcher-Integration
+- **Alle Modi/Perioden**: Tests für alle Betriebsarten und Zeiträume
+
 ### `conftest.py`
 Gemeinsame Test-Fixtures:
 - **`mock_hass`**: Mock Home Assistant Instance

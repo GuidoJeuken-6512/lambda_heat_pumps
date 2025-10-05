@@ -816,7 +816,7 @@ def test_lambda_template_sensor_handle_coordinator_update_success(
     """Test LambdaTemplateSensor _handle_coordinator_update with successful template rendering."""
     # Mock template
     mock_template = Mock()
-    mock_template.async_render.return_value = "3.5"
+    mock_template.async_render = AsyncMock(return_value="3.5")
     mock_template_class.return_value = mock_template
 
     sensor = LambdaTemplateSensor(

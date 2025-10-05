@@ -15,8 +15,9 @@ class MigrationVersion(IntEnum):
     
     # Neue Versionen mit Config-Datei-Updates
     CYCLING_OFFSETS = 3           # lambda_wp_config.yaml: cycling_offsets
-    ENTITY_OPTIMIZATION = 4       # Entity-Struktur optimieren
-    CONFIG_RESTRUCTURE = 5        # Konfigurationsschema ändern
+    ENERGY_CONSUMPTION = 4        # lambda_wp_config.yaml: energy_consumption_sensors & energy_consumption_offsets
+    ENTITY_OPTIMIZATION = 5       # Entity-Struktur optimieren
+    CONFIG_RESTRUCTURE = 6        # Konfigurationsschema ändern
     
     # Hilfsmethoden
     @classmethod
@@ -92,6 +93,7 @@ CLEANUP_MAX_TOTAL_SIZE_MB = 500  # Maximale Gesamtgröße aller Backups in MB
 MIGRATION_NAMES = {
     MigrationVersion.LEGACY_NAMES: "legacy_names_migration",
     MigrationVersion.CYCLING_OFFSETS: "cycling_offsets_migration",
+    MigrationVersion.ENERGY_CONSUMPTION: "energy_consumption_migration",
     MigrationVersion.ENTITY_OPTIMIZATION: "entity_optimization_migration",
     MigrationVersion.CONFIG_RESTRUCTURE: "config_restructure_migration",
 }
@@ -103,6 +105,21 @@ DEFAULT_CYCLING_OFFSETS = {
         "hot_water_cycling_total": 0,
         "cooling_cycling_total": 0,
         "defrost_cycling_total": 0,
+    }
+}
+
+DEFAULT_ENERGY_CONSUMPTION_SENSORS = {
+    "hp1": {
+        "sensor_entity_id": "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    }
+}
+
+DEFAULT_ENERGY_CONSUMPTION_OFFSETS = {
+    "hp1": {
+        "heating_energy_total": 0,
+        "hot_water_energy_total": 0,
+        "cooling_energy_total": 0,
+        "defrost_energy_total": 0,
     }
 }
 

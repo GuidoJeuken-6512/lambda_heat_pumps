@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import yaml
+import aiofiles
 from datetime import datetime
 from typing import List, Tuple, Optional
 
@@ -17,6 +19,8 @@ from .const import (
     BASE_ADDRESSES,
     CALCULATED_SENSOR_TEMPLATES,
     DOMAIN,
+    ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
+    ENERGY_CONSUMPTION_MODES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -253,6 +257,11 @@ async def ensure_lambda_config(hass: HomeAssistant) -> bool:
 
 async def load_lambda_config(hass: HomeAssistant) -> dict:
     """Load complete Lambda configuration from lambda_wp_config.yaml."""
+    # Check if config is already cached in hass.data
+    if DOMAIN in hass.data and "lambda_config_cache" in hass.data[DOMAIN]:
+        _LOGGER.debug("Using cached Lambda config")
+        return hass.data[DOMAIN]["lambda_config_cache"]
+    
     # First, ensure config file exists
     await ensure_lambda_config(hass)
     
@@ -331,19 +340,54 @@ async def load_lambda_config(hass: HomeAssistant) -> dict:
                 _LOGGER.error("Invalid cycling_offsets format: %s", e)
                 cycling_offsets = {}
 
+        # Load energy consumption offsets
+        energy_consumption_offsets = {}
+        if "energy_consumption_offsets" in config:
+            try:
+                energy_consumption_offsets = config["energy_consumption_offsets"]
+                # Validate energy consumption offsets structure
+                for device, offsets in energy_consumption_offsets.items():
+                    if not isinstance(offsets, dict):
+                        _LOGGER.warning(
+                            "Invalid energy_consumption_offsets format for device %s", device
+                        )
+                        continue
+                    for offset_type, value in offsets.items():
+                        if not isinstance(value, (int, float)):
+                            _LOGGER.warning(
+                                "Invalid energy consumption offset value for %s.%s: %s",
+                                device,
+                                offset_type,
+                                value,
+                            )
+                            energy_consumption_offsets[device][offset_type] = 0.0
+            except (TypeError, KeyError) as e:
+                _LOGGER.error("Invalid energy_consumption_offsets format: %s", e)
+                energy_consumption_offsets = {}
+
         _LOGGER.debug(
             "Loaded Lambda config: %d disabled registers, %d sensor "
-            "overrides, %d device offsets",
+            "overrides, %d cycling device offsets, %d energy consumption device offsets",
             len(disabled_registers),
             len(sensors_names_override),
             len(cycling_offsets),
+            len(energy_consumption_offsets),
         )
 
-        return {
+        config_result = {
             "disabled_registers": disabled_registers,
             "sensors_names_override": sensors_names_override,
             "cycling_offsets": cycling_offsets,
+            "energy_consumption_offsets": energy_consumption_offsets,
+            "modbus": config.get("modbus", {}),  # Include modbus configuration
         }
+        
+        # Cache the config in hass.data to avoid repeated loading
+        if DOMAIN not in hass.data:
+            hass.data[DOMAIN] = {}
+        hass.data[DOMAIN]["lambda_config_cache"] = config_result
+        
+        return config_result
 
     except Exception as e:
         _LOGGER.error(
@@ -839,3 +883,896 @@ async def delete_files(
             _LOGGER.error(error_msg)
     
     return deleted_files, errors
+
+
+# =============================================================================
+# ENERGY CONSUMPTION HELPER FUNCTIONS
+# =============================================================================
+
+def convert_energy_to_kwh(value: float, unit: str) -> float:
+    """
+    Konvertiert Energie-Werte zu kWh basierend auf der Einheit.
+    Analog zur PV Surplus Konvertierung in services.py.
+    
+    Args:
+        value: Energie-Wert
+        unit: Einheit des Wertes (Wh, kWh, etc.)
+    
+    Returns:
+        float: Wert in kWh
+    """
+    if not unit:
+        # Wenn keine Einheit angegeben, versuche basierend auf der Größe zu schätzen
+        if value > 10000:  # Wahrscheinlich Wh
+            return value / 1000.0
+        return value
+    
+    unit_lower = unit.lower().strip()
+    
+    # Standard Energie-Einheiten
+    if unit_lower in ["wh", "wattstunden"]:
+        return value / 1000.0
+    elif unit_lower in ["kwh", "kilowattstunden"]:
+        return value
+    elif unit_lower in ["mwh", "megawattstunden"]:
+        return value * 1000.0
+    else:
+        # Unbekannte Einheit - versuche basierend auf der Größe zu schätzen
+        # Analog zur PV Surplus Logik: große Werte sind wahrscheinlich Wh
+        if value > 10000:
+            return value / 1000.0
+        return value
+
+
+def calculate_energy_delta(
+    current_reading: float,
+    last_reading: float,
+    max_delta: float = 100.0  # Zurück auf 100.0 kWh
+) -> float:
+    """
+    Berechne Energie-Delta mit Überlauf-Schutz.
+    
+    Args:
+        current_reading: Aktueller Energieverbrauch in kWh
+        last_reading: Letzter Energieverbrauch in kWh (kann None sein)
+        max_delta: Maximale erlaubte Delta (Schutz vor unrealistischen Sprüngen)
+    
+    Returns:
+        float: Berechnetes Delta in kWh
+    """
+    # Wenn last_reading None ist, ist es ein neuer Sensor oder erster Start
+    if last_reading is None:
+        _LOGGER.info("Energy delta calculation: last_reading is None (sensor not yet initialized), returning 0")
+        return 0.0
+    
+    if current_reading < last_reading:
+        # Überlauf erkannt - nehme aktuellen Wert
+        _LOGGER.debug(
+            "Energy overflow detected: current=%.6f < last=%.6f, using current value",
+            current_reading, last_reading
+        )
+        return current_reading
+    else:
+        delta = current_reading - last_reading
+        
+        # Wenn last_reading 0 ist, ist es wahrscheinlich ein Sensor-Wechsel oder Neustart
+        # In diesem Fall kein Maximum anwenden
+        if last_reading == 0.0:
+            _LOGGER.info(
+                "Energy delta %.6f kWh (last_reading was 0, likely sensor change or restart)",
+                delta
+            )
+            return round(delta, 6)
+        
+        # Schutz vor unrealistischen Sprüngen (nur wenn last_reading > 0)
+        if delta > max_delta:
+            _LOGGER.warning(
+                "Energy delta %.6f exceeds maximum %.6f, clamping to maximum",
+                delta, max_delta
+            )
+            return max_delta
+        
+        # Rückgabe mit hoher Präzision (6 Nachkommastellen)
+        return round(delta, 6)
+
+
+def generate_energy_sensor_names(
+    device_prefix: str,
+    mode: str,
+    period: str,
+    name_prefix: str,
+    use_legacy_modbus_names: bool,
+) -> dict:
+    """
+    Generiere konsistente Namen für Energy Consumption Sensoren.
+    
+    Args:
+        device_prefix: Device prefix wie "hp1", "boil1", etc.
+        mode: Betriebsart wie "heating", "hot_water", "cooling", "defrost"
+        period: Zeitraum wie "total", "daily"
+        name_prefix: Name prefix wie "eu08l" (wird im legacy mode verwendet)
+        use_legacy_modbus_names: Ob legacy naming convention verwendet werden soll
+    
+    Returns:
+        dict: Enthält 'name', 'entity_id' und 'unique_id'
+    """
+    sensor_id = f"{mode}_energy_{period}"
+    sensor_name = f"{mode.title()} Energy {period.title()}"
+    
+    return generate_sensor_names(
+        device_prefix, sensor_name, sensor_id, name_prefix, use_legacy_modbus_names
+    )
+
+
+async def increment_energy_consumption_counter(
+    hass: HomeAssistant,
+    mode: str,
+    hp_index: int,
+    energy_delta: float,
+    name_prefix: str,
+    use_legacy_modbus_names: bool = True,
+    energy_offsets: dict = None,
+):
+    """
+    Increment energy consumption counters for a given mode and heat pump.
+    Analog zu increment_cycling_counter aber für Energieverbrauch.
+    
+    Args:
+        hass: HomeAssistant instance
+        mode: One of ["heating", "hot_water", "cooling", "defrost"]
+        hp_index: Index of the heat pump (1-based)
+        energy_delta: Energy consumption delta in kWh
+        name_prefix: Name prefix (e.g. "eu08l")
+        use_legacy_modbus_names: Use legacy entity naming
+        energy_offsets: Optional dict with energy offsets from config
+    """
+    if mode not in ENERGY_CONSUMPTION_MODES:
+        _LOGGER.error("Invalid energy consumption mode: %s", mode)
+        return
+    
+    if energy_delta <= 0:
+        _LOGGER.debug("Energy delta %.2f is not positive, skipping increment", energy_delta)
+        return
+    
+    # Zusätzliche Prüfung: Nur verarbeiten wenn energy_delta signifikant ist
+    if energy_delta < 0.001:
+        _LOGGER.debug("Energy delta %.6f is too small, skipping increment", energy_delta)
+        return
+
+    device_prefix = f"hp{hp_index}"
+    
+    # Liste aller Sensor-Typen, die erhöht werden sollen
+    sensor_types = [
+        f"{mode}_energy_total",
+        f"{mode}_energy_daily",
+        f"{mode}_energy_monthly",
+        f"{mode}_energy_yearly",
+    ]
+    
+    # Sammle alle Änderungen für eine einzige Logging-Meldung
+    changes_summary = []
+    
+    for sensor_id in sensor_types:
+        # Bestimme die Period basierend auf dem Sensor-Typ
+        if sensor_id.endswith("_total"):
+            period = "total"
+        elif sensor_id.endswith("_daily"):
+            period = "daily"
+        elif sensor_id.endswith("_monthly"):
+            period = "monthly"
+        elif sensor_id.endswith("_yearly"):
+            period = "yearly"
+        else:
+            period = "total"  # Fallback
+            
+        names = generate_energy_sensor_names(
+            device_prefix,
+            mode,
+            period,
+            name_prefix,
+            use_legacy_modbus_names,
+        )
+        entity_id = names["entity_id"]
+
+        # Check if entity is already registered
+        entity_registry = async_get_entity_registry(hass)
+        entity_entry = entity_registry.async_get(entity_id)
+        if entity_entry is None:
+            # Dynamische Meldungsunterdrückung
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                warning_count = coordinator._energy_warnings.get(entity_id, 0)
+                coordinator._energy_warnings[entity_id] = warning_count + 1
+                
+                if warning_count < coordinator._max_energy_warnings:
+                    _LOGGER.debug(
+                        f"Energy entity {entity_id} not yet registered (attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Energy entity {entity_id} not yet registered after {coordinator._max_energy_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping energy counter increment: {entity_id} not yet registered"
+                )
+            continue
+
+        # Zusätzliche Prüfung: Ist die Entity tatsächlich verfügbar?
+        state_obj = hass.states.get(entity_id)
+        if state_obj is None:
+            # Dynamische Meldungsunterdrückung für State-Problem
+            coordinator = _get_coordinator(hass)
+            if coordinator:
+                state_warning_key = f"{entity_id}_state"
+                warning_count = coordinator._energy_warnings.get(state_warning_key, 0)
+                coordinator._energy_warnings[state_warning_key] = warning_count + 1
+                
+                if warning_count < coordinator._max_energy_warnings:
+                    _LOGGER.debug(
+                        f"Energy entity {entity_id} state not available yet (attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                    )
+                else:
+                    _LOGGER.warning(
+                        f"Energy entity {entity_id} state not available after {coordinator._max_energy_warnings} attempts"
+                    )
+            else:
+                _LOGGER.warning(
+                    f"Skipping energy counter increment: {entity_id} state not available yet"
+                )
+            continue
+
+        # Erfolgreiche Registrierung - Reset Counter
+        coordinator = _get_coordinator(hass)
+        if coordinator:
+            if entity_id in coordinator._energy_warnings:
+                del coordinator._energy_warnings[entity_id]
+            state_warning_key = f"{entity_id}_state"
+            if state_warning_key in coordinator._energy_warnings:
+                del coordinator._energy_warnings[state_warning_key]
+
+        # Get current state
+        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
+            current = 0.0
+        else:
+            try:
+                current = float(state_obj.state)
+            except Exception:
+                current = 0.0
+
+        # Offset nur für Total-Sensoren anwenden
+        offset = 0.0
+        if energy_offsets is not None and sensor_id.endswith("_total"):
+            device_key = device_prefix
+            if device_key in energy_offsets:
+                device_offsets = energy_offsets[device_key]
+                if isinstance(device_offsets, dict):
+                    offset = float(device_offsets.get(sensor_id, 0.0))
+                else:
+                    _LOGGER.warning(f"Invalid energy offsets structure for {device_key}: {device_offsets}")
+
+        # Debug: Check energy_delta type
+        if not isinstance(energy_delta, (int, float)):
+            _LOGGER.error(f"energy_delta is not a number: {type(energy_delta)} = {energy_delta}")
+            return
+        
+        new_value = current + energy_delta
+
+        # Versuche die Entity-Instanz zu finden
+        energy_entity = None
+        try:
+            # Suche in der Energy-Entities-Struktur
+            for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
+                if isinstance(comp_data, dict) and "energy_entities" in comp_data:
+                    energy_entity = comp_data["energy_entities"].get(entity_id)
+                    if energy_entity:
+                        break
+        except Exception as e:
+            _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
+
+        final_value = new_value + offset
+        
+        # Nur loggen wenn sich der Wert tatsächlich ändert
+        value_changed = abs(final_value - current) > 0.001  # Toleranz für Rundungsfehler
+        
+        if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
+            energy_entity.set_energy_value(final_value)
+            if value_changed:
+                # Sammle Änderung für zentrale Logging-Meldung
+                changes_summary.append(f"{entity_id} = {final_value:.2f} kWh (was {current:.2f})")
+        else:
+            # Fallback: State setzen wie bisher
+            # Energy entity not found, using fallback state update (normal behavior)
+            hass.states.async_set(
+                entity_id, final_value, state_obj.attributes if state_obj else {}
+            )
+            if value_changed:
+                # Sammle Änderung für zentrale Logging-Meldung
+                changes_summary.append(f"{entity_id} = {final_value:.2f} kWh (was {current:.2f})")
+
+        # Optional: Entity zum Update zwingen (z.B. für Recorder)
+        try:
+            await async_update_entity(hass, entity_id)
+        except Exception as e:
+            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+
+    # Zentrale Logging-Meldung nur bei tatsächlichen Änderungen
+    if changes_summary:
+        _LOGGER.info(
+            f"Energy counters updated for {mode} HP{hp_index}: {', '.join(changes_summary)} (delta {energy_delta:.2f} kWh)"
+        )
+
+
+def get_energy_consumption_sensor_template(mode: str, period: str) -> dict:
+    """
+    Hole das Template für einen Energy Consumption Sensor.
+    
+    Args:
+        mode: Betriebsart wie "heating", "hot_water", "cooling", "defrost"
+        period: Zeitraum wie "total", "daily"
+    
+    Returns:
+        dict: Sensor template oder None wenn nicht gefunden
+    """
+    sensor_id = f"{mode}_energy_{period}"
+    return ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
+
+
+def validate_energy_consumption_config(config: dict) -> bool:
+    """
+    Validiere die Energy Consumption Konfiguration.
+    
+    Args:
+        config: Konfigurationsdictionary
+    
+    Returns:
+        bool: True wenn Konfiguration gültig ist
+    """
+    if "energy_consumption_sensors" not in config:
+        _LOGGER.warning("energy_consumption_sensors not found in config")
+        return False
+    
+    if "energy_consumption_offsets" not in config:
+        _LOGGER.warning("energy_consumption_offsets not found in config")
+        return False
+    
+    # Validiere energy_consumption_sensors
+    sensors_config = config["energy_consumption_sensors"]
+    for device, sensor_config in sensors_config.items():
+        if not isinstance(sensor_config, dict):
+            _LOGGER.error("Invalid sensor config for device %s", device)
+            return False
+        if "sensor_entity_id" not in sensor_config:
+            _LOGGER.error("Missing sensor_entity_id for device %s", device)
+            return False
+    
+    # Validiere energy_consumption_offsets
+    offsets_config = config["energy_consumption_offsets"]
+    for device, offsets in offsets_config.items():
+        if not isinstance(offsets, dict):
+            _LOGGER.error("Invalid offsets config for device %s", device)
+            return False
+        for mode in ENERGY_CONSUMPTION_MODES:
+            offset_key = f"{mode}_energy_total"
+            if offset_key not in offsets:
+                _LOGGER.warning("Missing offset for %s.%s", device, offset_key)
+            elif not isinstance(offsets[offset_key], (int, float)):
+                _LOGGER.error("Invalid offset value for %s.%s", device, offset_key)
+                return False
+    
+    return True
+
+
+# =============================================================================
+# Reset-Signal Factory Functions
+# =============================================================================
+
+def create_reset_signal(sensor_type: str, period: str) -> str:
+    """
+    Erstellt ein standardisiertes Reset-Signal für einen Sensor-Typ und eine Periode.
+    
+    Args:
+        sensor_type: Art des Sensors ('cycling', 'energy', 'general')
+        period: Reset-Periode ('daily', '2h', '4h')
+        
+    Returns:
+        Signal-Name: 'lambda_heat_pumps_reset_{period}_{sensor_type}'
+        
+    Raises:
+        ValueError: Wenn sensor_type oder period ungültig ist
+    """
+    # Validiere sensor_type
+    valid_sensor_types = ['cycling', 'energy', 'general']
+    if sensor_type not in valid_sensor_types:
+        raise ValueError(f"Ungültiger sensor_type: {sensor_type}. Erlaubt: {valid_sensor_types}")
+    
+    # Validiere period
+    valid_periods = ['daily', '2h', '4h']
+    if period not in valid_periods:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
+    
+    return f"lambda_heat_pumps_reset_{period}_{sensor_type}"
+
+
+def get_reset_signal_for_period(period: str) -> str:
+    """
+    Holt das korrekte Reset-Signal für eine Periode (rückwärtskompatibel).
+    
+    Args:
+        period: Reset-Periode ('daily', '2h', '4h')
+        
+    Returns:
+        Signal-Name: 'lambda_heat_pumps_reset_{period}'
+        
+    Raises:
+        ValueError: Wenn period ungültig ist
+    """
+    # Validiere period
+    valid_periods = ['daily', '2h', '4h']
+    if period not in valid_periods:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
+    
+    return f"lambda_heat_pumps_reset_{period}"
+
+
+def get_all_reset_signals() -> dict:
+    """
+    Gibt alle verfügbaren Reset-Signale zurück.
+    
+    Returns:
+        Dictionary mit allen Signal-Kombinationen
+    """
+    sensor_types = ['cycling', 'energy', 'general']
+    periods = ['daily', '2h', '4h']
+    
+    signals = {}
+    for sensor_type in sensor_types:
+        signals[sensor_type] = {}
+        for period in periods:
+            signals[sensor_type][period] = create_reset_signal(sensor_type, period)
+    
+    return signals
+
+
+def validate_reset_signal(signal: str) -> bool:
+    """
+    Validiert ob ein Signal ein gültiges Reset-Signal ist.
+    
+    Args:
+        signal: Zu validierendes Signal
+        
+    Returns:
+        True wenn gültig, False sonst
+    """
+    if not isinstance(signal, str):
+        return False
+    
+    # Prüfe Format: lambda_heat_pumps_reset_{period}_{sensor_type}
+    parts = signal.split('_')
+    if len(parts) < 4:
+        return False
+    
+    if parts[0] != 'lambda' or parts[1] != 'heat' or parts[2] != 'pumps' or parts[3] != 'reset':
+        return False
+    
+    # Prüfe ob es ein spezifisches Signal ist (mit sensor_type)
+    if len(parts) == 6:  # lambda_heat_pumps_reset_{period}_{sensor_type}
+        period = parts[4]
+        sensor_type = parts[5]
+        return period in ['daily', '2h', '4h'] and sensor_type in ['cycling', 'energy', 'general']
+    
+    # Prüfe ob es ein allgemeines Signal ist (ohne sensor_type)
+    elif len(parts) == 5:  # lambda_heat_pumps_reset_{period}
+        period = parts[4]
+        return period in ['daily', '2h', '4h']
+    
+    return False
+
+
+# =============================================================================
+# Sensor Reset Registry
+# =============================================================================
+
+class SensorResetRegistry:
+    """
+    Zentrales Registry für alle Sensor-Reset-Handler.
+    
+    Verwaltet die Registrierung von Sensoren für automatische Resets
+    und sendet Reset-Signale an alle registrierten Sensoren.
+    """
+    
+    def __init__(self):
+        """Initialisiert das Registry."""
+        self._handlers = {}  # {sensor_type: {entry_id: {period: callback}}}
+        self._hass = None
+    
+    def set_hass(self, hass: HomeAssistant):
+        """Setzt die Home Assistant Instanz."""
+        self._hass = hass
+    
+    def register(self, sensor_type: str, entry_id: str, period: str, callback) -> None:
+        """
+        Registriert einen Sensor für automatische Resets.
+        
+        Args:
+            sensor_type: Art des Sensors ('cycling', 'energy', 'general')
+            entry_id: Entry ID des Sensors
+            period: Reset-Periode ('daily', '2h', '4h')
+            callback: Callback-Funktion für Reset
+        """
+        if sensor_type not in self._handlers:
+            self._handlers[sensor_type] = {}
+        
+        if entry_id not in self._handlers[sensor_type]:
+            self._handlers[sensor_type][entry_id] = {}
+        
+        self._handlers[sensor_type][entry_id][period] = callback
+        
+        _LOGGER.debug(
+            "Sensor registriert: %s/%s/%s -> %s",
+            sensor_type, entry_id, period, callback.__name__ if hasattr(callback, '__name__') else str(callback)
+        )
+    
+    def unregister(self, sensor_type: str, entry_id: str, period: str = None) -> None:
+        """
+        Entfernt einen Sensor aus der Registrierung.
+        
+        Args:
+            sensor_type: Art des Sensors
+            entry_id: Entry ID des Sensors
+            period: Reset-Periode (optional, entfernt alle Perioden wenn None)
+        """
+        if sensor_type not in self._handlers:
+            return
+        
+        if entry_id not in self._handlers[sensor_type]:
+            return
+        
+        if period is None:
+            # Entferne alle Perioden für diesen Sensor
+            del self._handlers[sensor_type][entry_id]
+            _LOGGER.debug("Alle Sensoren entfernt: %s/%s", sensor_type, entry_id)
+        else:
+            # Entferne nur die spezifische Periode
+            if period in self._handlers[sensor_type][entry_id]:
+                del self._handlers[sensor_type][entry_id][period]
+                _LOGGER.debug("Sensor entfernt: %s/%s/%s", sensor_type, entry_id, period)
+    
+    def get_signal(self, sensor_type: str, period: str) -> str:
+        """
+        Holt das korrekte Reset-Signal für einen Sensor-Typ.
+        
+        Args:
+            sensor_type: Art des Sensors
+            period: Reset-Periode
+            
+        Returns:
+            Signal-Name
+        """
+        return create_reset_signal(sensor_type, period)
+    
+    def send_reset(self, sensor_type: str, period: str, entry_id: str = None) -> int:
+        """
+        Sendet Reset-Signal an alle registrierten Sensoren.
+        
+        Args:
+            sensor_type: Art des Sensors
+            period: Reset-Periode
+            entry_id: Entry ID (optional, sendet an alle wenn None)
+            
+        Returns:
+            Anzahl der aufgerufenen Callbacks
+        """
+        if not self._hass:
+            _LOGGER.error("Home Assistant Instanz nicht gesetzt")
+            return 0
+        
+        if sensor_type not in self._handlers:
+            _LOGGER.debug("Keine Handler für %s registriert", sensor_type)
+            return 0
+        
+        callbacks_called = 0
+        
+        # Sende an alle Entry IDs für diesen Sensor-Typ
+        for eid, periods in self._handlers[sensor_type].items():
+            if entry_id is not None and eid != entry_id:
+                continue  # Überspringe andere Entry IDs wenn spezifische angefordert
+            
+            if period in periods:
+                callback = periods[period]
+                try:
+                    # Rufe Callback asynchron auf
+                    if asyncio.iscoroutinefunction(callback):
+                        asyncio.create_task(callback())
+                    else:
+                        callback()
+                    callbacks_called += 1
+                    _LOGGER.debug("Reset-Callback aufgerufen: %s/%s/%s", sensor_type, eid, period)
+                except Exception as e:
+                    _LOGGER.error("Fehler beim Aufrufen des Reset-Callbacks: %s", e)
+        
+        _LOGGER.debug("Reset-Signal gesendet: %s/%s -> %d Callbacks", sensor_type, period, callbacks_called)
+        return callbacks_called
+    
+    def send_reset_to_all(self, period: str, entry_id: str = None) -> int:
+        """
+        Sendet Reset-Signal an alle registrierten Sensor-Typen.
+        
+        Args:
+            period: Reset-Periode
+            entry_id: Entry ID (optional, sendet an alle wenn None)
+            
+        Returns:
+            Gesamtanzahl der aufgerufenen Callbacks
+        """
+        total_callbacks = 0
+        
+        for sensor_type in self._handlers.keys():
+            callbacks = self.send_reset(sensor_type, period, entry_id)
+            total_callbacks += callbacks
+        
+        _LOGGER.debug("Reset-Signal an alle gesendet: %s -> %d Callbacks", period, total_callbacks)
+        return total_callbacks
+    
+    def get_registered_sensors(self) -> dict:
+        """
+        Gibt alle registrierten Sensoren zurück.
+        
+        Returns:
+            Dictionary mit allen registrierten Sensoren
+        """
+        return self._handlers.copy()
+    
+    def get_sensor_count(self, sensor_type: str = None) -> int:
+        """
+        Gibt die Anzahl der registrierten Sensoren zurück.
+        
+        Args:
+            sensor_type: Sensor-Typ (optional, zählt alle wenn None)
+            
+        Returns:
+            Anzahl der registrierten Sensoren
+        """
+        if sensor_type is None:
+            total = 0
+            for handlers in self._handlers.values():
+                for periods in handlers.values():
+                    total += len(periods)
+            return total
+        
+        if sensor_type not in self._handlers:
+            return 0
+        
+        total = 0
+        for periods in self._handlers[sensor_type].values():
+            total += len(periods)
+        return total
+    
+    def clear(self) -> None:
+        """Löscht alle Registrierungen."""
+        self._handlers.clear()
+        _LOGGER.debug("Alle Registrierungen gelöscht")
+
+
+# Globale Registry-Instanz
+_sensor_reset_registry = SensorResetRegistry()
+
+
+def get_sensor_reset_registry() -> SensorResetRegistry:
+    """
+    Holt die globale Sensor Reset Registry Instanz.
+    
+    Returns:
+        SensorResetRegistry Instanz
+    """
+    return _sensor_reset_registry
+
+
+def register_sensor_reset_handler(hass: HomeAssistant, sensor_type: str, entry_id: str, period: str, callback) -> None:
+    """
+    Registriert einen Sensor für automatische Resets (Convenience-Funktion).
+    
+    Args:
+        hass: Home Assistant Instanz
+        sensor_type: Art des Sensors
+        entry_id: Entry ID des Sensors
+        period: Reset-Periode
+        callback: Callback-Funktion für Reset
+    """
+    registry = get_sensor_reset_registry()
+    registry.set_hass(hass)
+    registry.register(sensor_type, entry_id, period, callback)
+
+
+def unregister_sensor_reset_handler(sensor_type: str, entry_id: str, period: str = None) -> None:
+    """
+    Entfernt einen Sensor aus der Registrierung (Convenience-Funktion).
+    
+    Args:
+        sensor_type: Art des Sensors
+        entry_id: Entry ID des Sensors
+        period: Reset-Periode (optional)
+    """
+    registry = get_sensor_reset_registry()
+    registry.unregister(sensor_type, entry_id, period)
+
+
+def send_reset_signal(sensor_type: str, period: str, entry_id: str = None) -> int:
+    """
+    Sendet Reset-Signal an registrierte Sensoren (Convenience-Funktion).
+    
+    Args:
+        sensor_type: Art des Sensors
+        period: Reset-Periode
+        entry_id: Entry ID (optional)
+        
+    Returns:
+        Anzahl der aufgerufenen Callbacks
+    """
+    registry = get_sensor_reset_registry()
+    return registry.send_reset(sensor_type, period, entry_id)
+
+
+# =============================================================================
+# ENERGY CONSUMPTION HELPER FUNCTIONS
+# =============================================================================
+
+def get_energy_consumption_periods():
+    """Get all energy consumption periods."""
+    try:
+        from .const import ENERGY_CONSUMPTION_PERIODS
+        return ENERGY_CONSUMPTION_PERIODS
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import ENERGY_CONSUMPTION_PERIODS
+        return ENERGY_CONSUMPTION_PERIODS
+
+def get_energy_consumption_reset_intervals():
+    """Get all energy consumption reset intervals."""
+    try:
+        from .const import ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    
+    return sorted(list(set(
+        template["reset_interval"] 
+        for template in templates.values()
+        if template.get("reset_interval") is not None
+    )))
+
+def get_all_reset_intervals():
+    """Get all reset intervals from all sensor templates."""
+    try:
+        from .const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    
+    all_intervals = set()
+    
+    # From cycling templates
+    for template in cycling_templates.values():
+        if template.get("reset_interval") is not None:
+            all_intervals.add(template["reset_interval"])
+    
+    # From energy consumption templates
+    for template in energy_templates.values():
+        if template.get("reset_interval") is not None:
+            all_intervals.add(template["reset_interval"])
+    
+    return sorted(list(all_intervals))
+
+def get_all_periods():
+    """Get all periods from all sensor templates."""
+    try:
+        from .const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    except ImportError:
+        # Fallback für direkte Ausführung
+        from const import CALCULATED_SENSOR_TEMPLATES, ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        cycling_templates = CALCULATED_SENSOR_TEMPLATES
+        energy_templates = ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+    
+    all_periods = set()
+    
+    # From cycling templates
+    for template in cycling_templates.values():
+        if template.get("period") is not None:
+            all_periods.add(template["period"])
+    
+    # From energy consumption templates
+    for template in energy_templates.values():
+        if template.get("period") is not None:
+            all_periods.add(template["period"])
+    
+    # Add monthly and yearly periods
+    all_periods.add("monthly")
+    all_periods.add("yearly")
+    
+    return sorted(list(all_periods))
+
+
+# =============================================================================
+# SENSOR CHANGE DETECTION HELPER FUNCTIONS
+# =============================================================================
+
+def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
+    """Erkenne Sensor-Wechsel durch Vergleich der gespeicherten und aktuellen Sensor-IDs.
+    
+    Args:
+        stored_sensor_id: Die zuletzt gespeicherte Sensor-ID (kann None sein)
+        current_sensor_id: Die aktuelle Sensor-ID aus der Konfiguration
+    
+    Returns:
+        bool: True wenn ein Sensor-Wechsel erkannt wurde
+    """
+    # Normalisiere die Strings (entferne führende/nachfolgende Leerzeichen und Anführungszeichen)
+    stored_normalized = str(stored_sensor_id).strip().strip("'\"") if stored_sensor_id else None
+    current_normalized = str(current_sensor_id).strip().strip("'\"") if current_sensor_id else None
+    
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '{stored_normalized}', aktuell: '{current_normalized}'")
+    
+    # Wenn kein gespeicherter Sensor vorhanden ist, ist es kein Wechsel
+    if not stored_normalized:
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
+        return False
+    
+    # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
+    is_change = stored_normalized != current_normalized
+    if is_change:
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt: '{stored_normalized}' -> '{current_normalized}'")
+    else:
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
+    
+    return is_change
+
+
+def get_stored_sensor_id(persist_data: dict, hp_idx: int) -> str:
+    """Hole die gespeicherte Sensor-ID für eine Wärmepumpe aus den persistierten Daten.
+    
+    Args:
+        persist_data: Die persistierten Daten aus cycle_energy_persist.json
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+    
+    Returns:
+        str: Die gespeicherte Sensor-ID oder None wenn nicht vorhanden
+    """
+    hp_key = f"hp{hp_idx}"
+    sensor_ids = persist_data.get("sensor_ids", {})
+    stored_id = sensor_ids.get(hp_key)
+    
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Gespeicherte Sensor-ID für {hp_key}: '{stored_id}'")
+    return stored_id
+
+
+def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
+    """Speichere die Sensor-ID für eine Wärmepumpe in den persistierten Daten.
+    
+    Args:
+        persist_data: Die persistierten Daten (wird modifiziert)
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+        sensor_id: Die Sensor-ID die gespeichert werden soll
+    """
+    hp_key = f"hp{hp_idx}"
+    
+    # Normalisiere die Sensor-ID (entferne führende/nachfolgende Leerzeichen und Anführungszeichen)
+    normalized_sensor_id = str(sensor_id).strip().strip("'\"") if sensor_id else None
+    
+    # Stelle sicher, dass sensor_ids existiert
+    if "sensor_ids" not in persist_data:
+        persist_data["sensor_ids"] = {}
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
+    
+    # Speichere die normalisierte Sensor-ID
+    old_id = persist_data["sensor_ids"].get(hp_key)
+    persist_data["sensor_ids"][hp_key] = normalized_sensor_id
+    
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{normalized_sensor_id}'")

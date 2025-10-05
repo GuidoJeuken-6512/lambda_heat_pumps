@@ -5,6 +5,7 @@ from datetime import timedelta
 
 import logging
 import asyncio
+import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -180,6 +181,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = LambdaDataUpdateCoordinator(hass, entry)
     try:
         await coordinator.async_init()
+        
+        # ⭐ KORRIGIERT: Endianness-Konfiguration VOR dem ersten async_refresh()
+        from .modbus_utils import get_int32_byte_order
+        try:
+            coordinator._int32_byte_order = await get_int32_byte_order(hass)
+            _LOGGER.info("Int32 Byte-Order konfiguriert: %s", coordinator._int32_byte_order)
+        except Exception as e:
+            _LOGGER.warning("Fehler bei Byte-Order-Bestimmung: %s", e)
+            coordinator._int32_byte_order = "big"  # Fallback auf Standard
+        
         # Warte auf die erste Datenabfrage mit Retry-Logik
         max_retries = 3
         for attempt in range(max_retries):
@@ -231,8 +242,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
             return False
 
-        # Set up services only for the first entry
-        if len(hass.data[DOMAIN]) == 1:
+        # Set up services (only once, regardless of number of entries)
+        if not hass.services.has_service(DOMAIN, "read_modbus_register"):
             await async_setup_services(hass)
 
         # Set up cycling automations

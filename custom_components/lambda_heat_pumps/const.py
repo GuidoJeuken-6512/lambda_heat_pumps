@@ -239,7 +239,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "COP",
         "unit": None,
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -348,7 +348,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "VdA Rating",
         "unit": "%",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -360,7 +360,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Hot Gas Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -373,7 +373,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Subcooling Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -386,7 +386,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Suction Gas Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -399,7 +399,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Condensation Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -412,7 +412,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Evaporation Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -425,7 +425,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "EqM Rating",
         "unit": "%",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -437,7 +437,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Expansion Valve Opening Angle",
         "unit": "%",
         "scale": 0.01,
-        "precision": 2,
+        "precision": 6,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -1254,13 +1254,20 @@ BASE_ADDRESSES = {
     "hc": 5000,  # Heating circuits start at 5000
 }
 
+# Individual Read Registers
+# These registers are read individually instead of in batches due to known issues
+INDIVIDUAL_READ_REGISTERS = [
+    1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059, 1060
+]
+
+
 # Calculated Sensor Templates
 CALCULATED_SENSOR_TEMPLATES = {
     # Beispiel für einen berechneten Sensor: COP
     "cop_calc": {
         "name": "COP Calculated",
         "unit": None,
-        "precision": 2,
+        "precision": 6,
         "data_type": "calculated",
         "firmware_version": 1,
         "device_type": "hp",
@@ -1289,6 +1296,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total_increasing",
         "device_class": None,
         "mode_value": 1,  # CH
+        "operating_state": "heating",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Heizen (CH) gewechselt wurde.",
     },
     "hot_water_cycling_total": {
@@ -1302,6 +1313,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total_increasing",
         "device_class": None,
         "mode_value": 2,  # DHW
+        "operating_state": "hot_water",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Warmwasser (DHW) gewechselt wurde.",
     },
     "cooling_cycling_total": {
@@ -1315,6 +1330,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total_increasing",
         "device_class": None,
         "mode_value": 3,  # CC
+        "operating_state": "cooling",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Kühlen (CC) gewechselt wurde.",
     },
     "defrost_cycling_total": {
@@ -1328,6 +1347,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "total_increasing",
         "device_class": None,
         "mode_value": 5,  # DEFROST
+        "operating_state": "defrost",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Abtauen (DEFROST) gewechselt wurde.",
     },
     # Yesterday Cycling Sensoren (echte Entities - speichern gestern Werte)
@@ -1341,6 +1364,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "heating",
+        "period": "yesterday",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "hot_water_cycling_yesterday": {
@@ -1353,6 +1380,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "hot_water",
+        "period": "yesterday",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "cooling_cycling_yesterday": {
@@ -1365,6 +1396,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "cooling",
+        "period": "yesterday",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "defrost_cycling_yesterday": {
@@ -1377,6 +1412,10 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "defrost",
+        "period": "yesterday",
+        "reset_interval": None,
+        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
 
@@ -1391,6 +1430,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "heating",
+        "reset_interval": "daily",
         "description": "Tägliche Cycling-Zähler für Heizen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "hot_water_cycling_daily": {
@@ -1403,6 +1444,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "hot_water",
+        "reset_interval": "daily",
         "description": "Tägliche Cycling-Zähler für Warmwasser, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "cooling_cycling_daily": {
@@ -1415,6 +1458,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "cooling",
+        "reset_interval": "daily",
         "description": "Tägliche Cycling-Zähler für Kühlen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     "defrost_cycling_daily": {
@@ -1427,6 +1472,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "defrost",
+        "reset_interval": "daily",
         "description": "Tägliche Cycling-Zähler für Abtauen, werden täglich um Mitternacht auf 0 gesetzt.",
     },
     # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
@@ -1440,6 +1487,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "heating",
+        "reset_interval": "2h",
         "description": "2-Stunden Cycling-Zähler für Heizen, werden alle 2 Stunden auf 0 gesetzt.",
     },
     "hot_water_cycling_2h": {
@@ -1452,6 +1501,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "hot_water",
+        "reset_interval": "2h",
         "description": "2-Stunden Cycling-Zähler für Warmwasser, werden alle 2 Stunden auf 0 gesetzt.",
     },
     "cooling_cycling_2h": {
@@ -1464,6 +1515,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "cooling",
+        "reset_interval": "2h",
         "description": "2-Stunden Cycling-Zähler für Kühlen, werden alle 2 Stunden auf 0 gesetzt.",
     },
     "defrost_cycling_2h": {
@@ -1476,9 +1529,11 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "defrost",
+        "reset_interval": "2h",
         "description": "2-Stunden Cycling-Zähler für Abtauen, werden alle 2 Stunden auf 0 gesetzt.",
     },
-    # 4h Cycling Sensoren (echte Entities - werden alle 4 Stunden auf 0 gesetzt)
+    # 4h Cycling Sensoren (echte Entities - ktionalität mit den änderungen an den sensorenwerden alle 4 Stunden auf 0 gesetzt)
     "heating_cycling_4h": {
         "name": "Heating Cycling 4h",
         "unit": "cycles",
@@ -1489,6 +1544,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "heating",
+        "reset_interval": "4h",
         "description": "4-Stunden Cycling-Zähler für Heizen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     "hot_water_cycling_4h": {
@@ -1501,6 +1558,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "hot_water",
+        "reset_interval": "4h",
         "description": "4-Stunden Cycling-Zähler für Warmwasser, werden alle 4 Stunden auf 0 gesetzt.",
     },
     "cooling_cycling_4h": {
@@ -1513,6 +1572,8 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "cooling",
+        "reset_interval": "4h",
         "description": "4-Stunden Cycling-Zähler für Kühlen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     "defrost_cycling_4h": {
@@ -1525,16 +1586,361 @@ CALCULATED_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "total",
         "device_class": None,
+        "operating_state": "defrost",
+        "reset_interval": "4h",
         "description": "4-Stunden Cycling-Zähler für Abtauen, werden alle 4 Stunden auf 0 gesetzt.",
     },
     # Weitere Modi können nach Bedarf ergänzt werden (siehe Statusmapping unten)
 }
 
-# Statusmapping für operating_state (nur zur Referenz, nicht direkt im Template genutzt)
+# =============================================================================
+# ENERGY CONSUMPTION SENSOR TEMPLATES
+# =============================================================================
+
+# Energy Consumption Sensor Templates
+ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
+    # Heating Energy Sensoren
+    "heating_energy_total": {
+        "name": "Heating Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 1,  # CH
+        "operating_state": "heating",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
+        "description": "Gesamtverbrauch für Heizen in kWh",
+    },
+    "heating_energy_daily": {
+        "name": "Heating Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "heating",
+        "reset_interval": "daily",
+        "description": "Täglicher Verbrauch für Heizen in kWh",
+    },
+    # Hot Water Energy Sensoren
+    "hot_water_energy_total": {
+        "name": "Hot Water Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 2,  # DHW
+        "operating_state": "hot_water",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
+        "description": "Gesamtverbrauch für Warmwasser in kWh",
+    },
+    "hot_water_energy_daily": {
+        "name": "Hot Water Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "hot_water",
+        "reset_interval": "daily",
+        "description": "Täglicher Verbrauch für Warmwasser in kWh",
+    },
+    # Cooling Energy Sensoren
+    "cooling_energy_total": {
+        "name": "Cooling Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 3,  # CC
+        "operating_state": "cooling",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
+        "description": "Gesamtverbrauch für Kühlen in kWh",
+    },
+    "cooling_energy_daily": {
+        "name": "Cooling Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "cooling",
+        "reset_interval": "daily",
+        "description": "Täglicher Verbrauch für Kühlen in kWh",
+    },
+    # Defrost Energy Sensoren
+    "defrost_energy_total": {
+        "name": "Defrost Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "mode_value": 5,  # DEFROST
+        "operating_state": "defrost",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
+        "description": "Gesamtverbrauch für Abtauen in kWh",
+    },
+    "defrost_energy_daily": {
+        "name": "Defrost Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "defrost",
+        "reset_interval": "daily",
+        "description": "Täglicher Verbrauch für Abtauen in kWh",
+    },
+    # STBY Energy Sensoren
+    "stby_energy_total": {
+        "name": "STBY Energy Total",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": "energy",
+        "operating_state": "stby",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
+        "description": "Gesamtverbrauch für Standby in kWh",
+    },
+    "stby_energy_daily": {
+        "name": "STBY Energy Daily",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "stby",
+        "reset_interval": "daily",
+        "description": "Täglicher Verbrauch für Standby in kWh",
+    },
+    # Monthly Energy Sensoren
+    "heating_energy_monthly": {
+        "name": "Heating Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "heating",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Heizen in kWh",
+    },
+    "hot_water_energy_monthly": {
+        "name": "Hot Water Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "hot_water",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Warmwasser in kWh",
+    },
+    "cooling_energy_monthly": {
+        "name": "Cooling Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "cooling",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Kühlen in kWh",
+    },
+    "defrost_energy_monthly": {
+        "name": "Defrost Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "defrost",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Abtauen in kWh",
+    },
+    "stby_energy_monthly": {
+        "name": "STBY Energy Monthly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "stby",
+        "reset_interval": "monthly",
+        "description": "Monatlicher Verbrauch für Standby in kWh",
+    },
+    # Yearly Energy Sensoren
+    "heating_energy_yearly": {
+        "name": "Heating Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "heating",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Heizen in kWh",
+    },
+    "hot_water_energy_yearly": {
+        "name": "Hot Water Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "hot_water",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Warmwasser in kWh",
+    },
+    "cooling_energy_yearly": {
+        "name": "Cooling Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "cooling",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Kühlen in kWh",
+    },
+    "defrost_energy_yearly": {
+        "name": "Defrost Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "defrost",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Abtauen in kWh",
+    },
+    "stby_energy_yearly": {
+        "name": "STBY Energy Yearly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "stby",
+        "reset_interval": "yearly",
+        "description": "Jährlicher Verbrauch für Standby in kWh",
+    },
+}
+
+# Legacy-Konstanten für Rückwärtskompatibilität - Direkt aus Templates berechnet
+ENERGY_CONSUMPTION_MODES = sorted(list(set(
+    template["operating_state"] 
+    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values()
+    if "operating_state" in template
+)))
+
+ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
+    template["period"] if "period" in template 
+    else template["reset_interval"] 
+    for template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values()
+    if "period" in template or (template.get("reset_interval") is not None)
+) | {"monthly", "yearly"}))
+
+# Energy Consumption Migration Version
+ENERGY_CONSUMPTION_MIGRATION_VERSION = 4
+
+# Energy Consumption Default Offsets
+DEFAULT_ENERGY_CONSUMPTION_OFFSETS = {
+    "hp1": {
+        "heating_energy_total": 0,
+        "hot_water_energy_total": 0,
+        "cooling_energy_total": 0,
+        "defrost_energy_total": 0,
+        "stby_energy_total": 0,
+    }
+}
+
+# Statusmapping für operating_state - DEPRECATED
+# Diese Map ist deprecated. Verwende stattdessen die operating_state Attribute
+# in den Sensor-Templates oder die Funktionen get_operating_state_from_template()
+# und get_reset_signal_from_template().
+#
+# Für Rückwärtskompatibilität bleibt diese Map bestehen, sollte aber nicht
+# mehr direkt verwendet werden.
 OPERATING_STATE_MAP = {
     0: "STBY",
     1: "CH",
-    2: "DHW",
+    2: "DHW", 
     3: "CC",
     4: "CIRCULATE",
     5: "DEFROST",
@@ -1588,17 +1994,40 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    cooling_cycling_total: 200    # Example: HP2 already had 200 cooling cycles
 #    defrost_cycling_total: 50     # Example: HP2 already had 50 defrost cycles
 
-disabled_registers:
- - 100000 # this sensor does not exits, this is just an example
+# Energy consumption sensor configuration
+# Configure input sensors for energy consumption tracking per heat pump
+# These sensors provide the base energy consumption data (kWh)
+# You can use the default sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated" or a custom sensor_entity_id
+# Example:
+#energy_consumption_sensors:
+#  hp1:
+#    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+#  hp2:
+#    sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
 
-sensors_names_override:
-- id: name_of_the_sensor_to_override_example
-  override_name: new_name_of_the_sensor_example
+# Energy consumption offsets for total sensors
+# These offsets are added to the calculated energy consumption values
+# Useful when replacing heat pumps or resetting counters
+# Example:
+#energy_consumption_offsets:
+#  hp1:
+#    heating_energy_total: 0       # kWh offset for HP1 heating total
+#    hot_water_energy_total: 0     # kWh offset for HP1 hot water total
+#    cooling_energy_total: 0       # kWh offset for HP1 cooling total
+#    defrost_energy_total: 0       # kWh offset for HP1 defrost total
+#  hp2:
+#    heating_energy_total: 150.5   # Example: HP2 already consumed 150.5 kWh heating
+#    hot_water_energy_total: 45.2  # Example: HP2 already consumed 45.2 kWh hot water
+#    cooling_energy_total: 12.8    # Example: HP2 already consumed 12.8 kWh cooling
+#    defrost_energy_total: 3.1     # Example: HP2 already consumed 3.1 kWh defrost
 
-cycling_offsets:
-  hp1:
-    heating_cycling_total: 0
-    hot_water_cycling_total: 0
-    cooling_cycling_total: 0
-    defrost_cycling_total: 0
+# Modbus configuration
+# Endianness for 32-bit registers (int32 sensors)
+# Some Lambda devices may require different byte order for correct int32 value interpretation
+# "big" = Big-Endian (default, current behavior)
+# "little" = Little-Endian (alternative byte order for some devices)
+# Example:
+#modbus:
+#  int32_byte_order: "big"  # or "little"
 """
+

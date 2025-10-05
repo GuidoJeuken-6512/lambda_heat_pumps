@@ -23,7 +23,9 @@ from .const_migration import (
     ROLLBACK_ENABLED,
     ROLLBACK_ON_CRITICAL_ERRORS,
     CRITICAL_ERROR_THRESHOLD,
-    DEFAULT_CYCLING_OFFSETS
+    DEFAULT_CYCLING_OFFSETS,
+    DEFAULT_ENERGY_CONSUMPTION_SENSORS,
+    DEFAULT_ENERGY_CONSUMPTION_OFFSETS
 )
 from .utils import (
     analyze_file_ageing,
@@ -349,6 +351,69 @@ async def migrate_to_cycling_offsets(
         return False
 
 
+async def migrate_to_energy_consumption(
+    hass: HomeAssistant, 
+    config_entry: ConfigEntry
+) -> bool:
+    """
+    Migration zu Energy Consumption Sensoren (Version 4).
+    
+    Args:
+        hass: Home Assistant Instanz
+        config_entry: Config Entry
+    
+    Returns:
+        bool: True wenn Migration erfolgreich
+    """
+    try:
+        entry_id = config_entry.entry_id
+        _LOGGER.info(
+            "Starte Migration zu Energy Consumption für Config %s", 
+            entry_id
+        )
+        
+        # Lambda config laden und aktualisieren
+        config_dir = hass.config.config_dir
+        lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+        
+        if await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+            # Bestehende Config laden
+            content = await hass.async_add_executor_job(
+                lambda: open(lambda_config_path, "r").read()
+            )
+            config = yaml.safe_load(content) or {}
+        else:
+            config = {}
+        
+        # Energy Consumption Sensoren hinzufügen falls nicht vorhanden
+        if "energy_consumption_sensors" not in config:
+            config["energy_consumption_sensors"] = DEFAULT_ENERGY_CONSUMPTION_SENSORS
+            _LOGGER.info("Energy Consumption Sensoren zu lambda_wp_config.yaml hinzugefügt")
+        
+        # Energy Consumption Offsets hinzufügen falls nicht vorhanden
+        if "energy_consumption_offsets" not in config:
+            config["energy_consumption_offsets"] = DEFAULT_ENERGY_CONSUMPTION_OFFSETS
+            _LOGGER.info("Energy Consumption Offsets zu lambda_wp_config.yaml hinzugefügt")
+        
+        # Config speichern
+        await hass.async_add_executor_job(
+            lambda: open(lambda_config_path, "w").write(yaml.dump(config, default_flow_style=False))
+        )
+        
+        _LOGGER.info(
+            "Migration zu Energy Consumption für Config %s erfolgreich abgeschlossen", 
+            entry_id
+        )
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(
+            "Fehler bei Migration zu Energy Consumption für Config %s: %s", 
+            config_entry.entry_id, e
+        )
+        return False
+
+
 async def migrate_to_entity_optimization(
     hass: HomeAssistant, 
     config_entry: ConfigEntry
@@ -433,6 +498,7 @@ async def migrate_to_config_restructure(
 MIGRATION_FUNCTIONS = {
     MigrationVersion.LEGACY_NAMES: migrate_to_legacy_names,
     MigrationVersion.CYCLING_OFFSETS: migrate_to_cycling_offsets,
+    MigrationVersion.ENERGY_CONSUMPTION: migrate_to_energy_consumption,
     MigrationVersion.ENTITY_OPTIMIZATION: migrate_to_entity_optimization,
     MigrationVersion.CONFIG_RESTRUCTURE: migrate_to_config_restructure,
 }

@@ -4,8 +4,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.helpers.entity_registry import async_get
-
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -97,12 +95,42 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
 class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Lambda WP."""
 
-    VERSION = 2  # Erhöht von 1 auf 2 für Entity Registry Migration
+    VERSION = 4  # Erhöht von 2 auf 4 für Energy Consumption Migration
 
     def __init__(self) -> None:
         """Initialize the config flow."""
         self._data: dict[str, Any] = {}
         self._discovered_host: str | None = None
+
+    def _is_connection_already_configured(
+        self, host: str, port: int, slave_id: int
+    ) -> bool:
+        """Prüfe ob bereits eine Konfiguration mit dieser IP/Port/Slave-ID existiert."""
+        existing_entries = self._async_current_entries()
+        for entry in existing_entries:
+            if (
+                entry.data.get(CONF_HOST) == host
+                and entry.data.get(CONF_PORT) == port
+                and entry.data.get(CONF_SLAVE_ID) == slave_id
+            ):
+                _LOGGER.debug(
+                    "Connection already exists: %s:%d (slave %d) in entry %s",
+                    host, port, slave_id, entry.entry_id
+                )
+                return True
+        return False
+
+    def _is_ip_already_configured(self, host: str) -> bool:
+        """Prüfe ob bereits eine Konfiguration mit dieser IP-Adresse existiert."""
+        existing_entries = self._async_current_entries()
+        for entry in existing_entries:
+            if entry.data.get(CONF_HOST) == host:
+                _LOGGER.debug(
+                    "IP address %s already configured in entry %s",
+                    host, entry.entry_id
+                )
+                return True
+        return False
 
     async def async_step_dhcp(self, discovery_info: Any) -> FlowResult:
         """Handle DHCP discovery (Lambda/SIGMATEK OUI)."""
@@ -110,14 +138,24 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
             mac = (
                 getattr(discovery_info, "macaddress", None)
                 or getattr(discovery_info, "mac", None)
-                or (discovery_info.get("macaddress") if isinstance(discovery_info, dict) else None)
+                or (
+                    discovery_info.get("macaddress")
+                    if isinstance(discovery_info, dict)
+                    else None
+                )
             )
             ip = (
                 getattr(discovery_info, "ip", None)
-                or (discovery_info.get("ip") if isinstance(discovery_info, dict) else None)
+                or (
+                    discovery_info.get("ip")
+                    if isinstance(discovery_info, dict)
+                    else None
+                )
             )
             # Normalize MAC for matching and unique_id
-            mac_norm = (mac or "").upper().replace(":", "").replace("-", "").replace(".", "")
+            mac_norm = (mac or "").upper().replace(":", "").replace("-", "").replace(
+                ".", ""
+            )
 
             # Safety check (framework already filtered by manifest matcher)
             if not mac_norm.startswith("0050F4"):
@@ -126,9 +164,17 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
             if ip:
                 self._discovered_host = ip
 
+            # Prüfe ZUERST ob bereits eine Konfiguration mit dieser IP existiert
+            # (unabhängig von Port/Slave-ID, da diese bei DHCP-Discovery unbekannt sind)
+            if ip and self._is_ip_already_configured(ip):
+                _LOGGER.info(
+                    "Lambda device with IP %s already configured, aborting discovery",
+                    ip,
+                )
+                return self.async_abort(reason="already_configured")
+
             # Use MAC as unique id so IP changes update the entry
             await self.async_set_unique_id(mac_norm)
-            self._abort_if_unique_id_configured(updates={CONF_HOST: ip} if ip else None)
 
             # Continue with normal user step, pre-filling discovered host
             return await self.async_step_user()

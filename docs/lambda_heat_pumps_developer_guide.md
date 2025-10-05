@@ -203,9 +203,13 @@ result = client.read_holding_registers(address, count, slave_id)
 if result.isError():
     # Handle error
 else:
-    # Process data
+    # Process data with endianness support
     if data_type == "int32":
-        value = (result.registers[0] << 16) | result.registers[1]
+        # Use configured endianness for proper byte order
+        if self._endianness == "little":
+            value = result.registers[0] | (result.registers[1] << 16)
+        else:  # big-endian (default)
+            value = (result.registers[0] << 16) | result.registers[1]
     else:
         value = result.registers[0]
     
@@ -217,6 +221,99 @@ values = [int_value]
 result = client.write_registers(address, values, slave_id)
 if result.isError():
     # Handle error
+```
+
+### Endianness Configuration
+
+The integration supports configurable byte order (endianness) for different Lambda models:
+
+```python
+# In coordinator.py
+async def _load_endianness_config(self):
+    """Load endianness configuration from lambda_wp_config.yaml."""
+    config = await load_lambda_config(self.hass)
+    self._endianness = config.get("endianness", "big")  # Default: big-endian
+    
+    # Legacy support for old configuration
+    if not self._endianness:
+        modbus_config = config.get("modbus", {})
+        int32_byte_order = modbus_config.get("int32_byte_order", "big")
+        self._endianness = "little" if int32_byte_order == "little" else "big"
+```
+
+### Energy Consumption Sensors
+
+The integration includes advanced energy consumption tracking with sensor change detection:
+
+```python
+# In coordinator.py
+async def _detect_and_handle_sensor_changes(self):
+    """Detect and handle energy sensor changes."""
+    for hp_idx, sensor_config in self._energy_sensor_configs.items():
+        current_sensor_id = sensor_config.get("sensor_entity_id")
+        stored_sensor_id = self._sensor_ids.get(f"hp{hp_idx}")
+        
+        if detect_sensor_change(stored_sensor_id, current_sensor_id):
+            await self._handle_sensor_change(hp_idx, current_sensor_id)
+        
+        # Store new sensor ID
+        store_sensor_id(self._persist_data, hp_idx, current_sensor_id)
+
+async def _handle_sensor_change(self, hp_idx: int, new_sensor_id: str):
+    """Handle sensor change with retry mechanism."""
+    max_retries = 5
+    retry_delay = 2.0
+    
+    for attempt in range(max_retries):
+        new_sensor_state = self.hass.states.get(new_sensor_id)
+        if new_sensor_state and new_sensor_state.state not in ("unknown", "unavailable"):
+            new_sensor_value = float(new_sensor_state.state)
+            self._last_energy_reading[f"hp{hp_idx}"] = new_sensor_value
+            await self._persist_counters()
+            return
+        
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+    
+    # Fallback to 0 if sensor not available
+    self._last_energy_reading[f"hp{hp_idx}"] = 0.0
+```
+
+### Cycling Sensors
+
+The integration provides comprehensive cycling sensors with automatic reset functionality:
+
+```python
+# In coordinator.py
+async def _track_hp_cycling(self, hp_idx: int, current_mode: int):
+    """Track cycling with generalized reset functions."""
+    hp_key = f"hp{hp_idx}"
+    
+    # Increment all cycling sensors simultaneously
+    for sensor_type in ["total", "daily", "yesterday", "2h", "4h", "monthly", "yearly"]:
+        if sensor_type in self._cycling_counters[hp_key]:
+            self._cycling_counters[hp_key][sensor_type] += 1
+    
+    # Handle resets
+    await self._handle_cycling_resets(hp_idx)
+
+async def _handle_cycling_resets(self, hp_idx: int):
+    """Handle all cycling resets with proper yesterday value handling."""
+    hp_key = f"hp{hp_idx}"
+    
+    # Daily reset at midnight
+    if self._should_reset_daily():
+        # Store yesterday's value before reset
+        self._cycling_counters[hp_key]["yesterday"] = self._cycling_counters[hp_key]["daily"]
+        self._cycling_counters[hp_key]["daily"] = 0
+    
+    # Monthly reset on 1st of month
+    if self._should_reset_monthly():
+        self._cycling_counters[hp_key]["monthly"] = 0
+    
+    # Yearly reset on January 1st
+    if self._should_reset_yearly():
+        self._cycling_counters[hp_key]["yearly"] = 0
 ```
 
 ## Common Development Tasks
@@ -277,6 +374,127 @@ When contributing to the project:
   mbpoll -a 1 -r 1000 -c 10 -t 3 -1 192.168.1.100 502
   ```
 
+## Modbus Tools for Testing and Development
+
+For comprehensive testing and development of the Lambda Heat Pumps integration, a dedicated set of Modbus tools has been developed. These tools are available in the [modbus_tools repository](https://github.com/GuidoJeuken-6512/modbus_tools) and provide simulation capabilities for Lambda heat pump behavior.
+
+### Overview
+
+The Modbus Tools project contains three main components specifically designed for Lambda Heat Pumps integration development:
+
+### 1. Modbus Client (GUI) (`client_gui.py`)
+
+A graphical user interface for interactive Modbus TCP server querying:
+
+- **Interactive GUI**: Easy-to-use interface for testing register access
+- **Pre-configured Values**: Pre-filled with common Lambda heat pump register addresses
+- **Flexible Configuration**: All values (host IP, register addresses, register types) are editable
+- **Real-time Response**: Displays server responses in dialog windows
+- **Perfect for**: Manual testing and debugging of specific register values
+
+### 2. Modbus Client (CLI) (`client_cli.py`)
+
+A command-line tool for automated Modbus TCP queries:
+
+- **Automated Testing**: Reads predefined register groups (temperature, solar, etc.)
+- **Automatic Scaling**: Applies scaling factors automatically based on register configuration
+- **Extensive Logging**: INFO/ERROR logging for debugging and development
+- **Scriptable**: Ideal for automated tests and CI/CD pipelines
+- **Example Usage**: `python client_cli.py`
+- **Perfect for**: Automated testing and quick register value verification
+
+### 3. Modbus Server (`server.py`)
+
+A complete Modbus TCP server implementation for simulation:
+
+- **Lambda Simulation**: Simulates Lambda heat pump behavior and register responses
+- **Configurable Registers**: Register values can be customized via `registers.yaml`
+- **Realistic Data**: Provides realistic sensor values and operating modes
+- **Flexible Logging**: Configurable logging options for different development needs
+- **Perfect for**: Integration testing without physical hardware
+
+#### Server Logging Configuration
+
+The server provides flexible logging options for different development scenarios:
+
+```python
+# Logging configuration constants in server.py
+LOG_ERRORS = True        # Controls logging of error messages
+LOG_WRITE_REGISTERS = True  # Controls logging of write operations
+LOG_READ_REGISTERS = False  # Controls logging of read operations
+```
+
+**Available Logging Options:**
+
+1. **Error Logging** (`LOG_ERRORS`)
+   - When `True`: Logs all error messages and write verification failures
+   - When `False`: Suppresses error messages for cleaner output
+   - Default: `True`
+
+2. **Write Register Logging** (`LOG_WRITE_REGISTERS`)
+   - When `True`: Logs all write operations to registers
+   - When `False`: Suppresses write operation logs
+   - Default: `True`
+
+3. **Read Register Logging** (`LOG_READ_REGISTERS`)
+   - When `True`: Logs all read operations from registers
+   - When `False`: Suppresses read operation logs (recommended for high-frequency reads)
+   - Default: `False`
+
+### Setup and Usage
+
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/GuidoJeuken-6512/modbus_tools.git
+   cd modbus_tools
+   ```
+
+2. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Configure Register Values** (for server):
+   - Edit `registers.yaml` to customize register values
+   - Modify `lambda.txt` for specific Lambda heat pump configurations
+
+4. **Start the Modbus Server**:
+   ```bash
+   python server.py
+   ```
+
+5. **Test with Client Tools**:
+   ```bash
+   # GUI Client
+   python client_gui.py
+   
+   # CLI Client
+   python client_cli.py
+   ```
+
+### Integration with Lambda Heat Pumps Development
+
+These tools are specifically designed to support the development of the Lambda Heat Pumps Home Assistant integration:
+
+- **Register Testing**: Verify that the integration correctly reads and interprets register values
+- **Endianness Testing**: Test both big-endian and little-endian configurations
+- **Error Handling**: Simulate various error conditions and network issues
+- **Performance Testing**: Test integration behavior under different load conditions
+- **Feature Development**: Develop and test new features without physical hardware
+
+### Dependencies
+
+- **Python 3.7+**: Required for all components
+- **PyYAML**: For register configuration file parsing (automatically uses C-optimized `_yaml` if available)
+- **pymodbus**: For Modbus TCP communication
+- **tkinter**: For GUI client (usually included with Python)
+
+### Disclaimer
+
+These tools are provided for development and testing purposes. Use at your own risk. No liability is accepted for any damages, data loss, or other consequences resulting from the use of these tools.
+
+For more information and the latest updates, visit the [modbus_tools repository](https://github.com/GuidoJeuken-6512/modbus_tools).
+
 ## Modbus Register Services
 
 The integration provides two Home Assistant services for advanced Modbus access:
@@ -292,3 +510,177 @@ All climate entities (boiler, heating circuit) are now defined by templates in `
 ## Dynamic Entity Creation
 
 Heating circuit climate entities are only created if a room thermostat sensor is configured for the respective circuit in the integration options.
+
+## New Features (Version 1.4.0)
+
+### Automatic Configuration
+
+The integration now supports automatic configuration detection:
+
+```python
+# In config_flow.py
+async def async_step_dhcp(self, discovery_info):
+    """Handle DHCP discovery."""
+    # Auto-detect existing configurations
+    existing_entries = self._async_current_entries()
+    for entry in existing_entries:
+        if entry.data.get("host") == discovery_info.ip:
+            return self.async_abort(reason="already_configured")
+    
+    # Create new entry with discovered IP
+    return self.async_create_entry(
+        title=f"Lambda Heat Pump ({discovery_info.ip})",
+        data={
+            "host": discovery_info.ip,
+            "port": 502,
+            "slave_id": 1,
+        }
+    )
+```
+
+### Energy Consumption Sensors
+
+Advanced energy tracking with configurable source sensors:
+
+```python
+# In coordinator.py
+async def _track_hp_energy_consumption(self, hp_idx: int, current_mode: int):
+    """Track energy consumption by operating mode."""
+    hp_key = f"hp{hp_idx}"
+    sensor_config = self._energy_sensor_configs.get(hp_idx, {})
+    source_sensor_id = sensor_config.get("sensor_entity_id")
+    
+    if not source_sensor_id:
+        return
+    
+    # Get current sensor value with unit conversion
+    source_state = self.hass.states.get(source_sensor_id)
+    if source_state and source_state.state not in ("unknown", "unavailable"):
+        current_value = float(source_state.state)
+        unit = source_state.attributes.get("unit_of_measurement", "")
+        
+        # Convert to kWh
+        current_kwh = convert_energy_to_kwh(current_value, unit)
+        
+        # Calculate delta and update counters
+        last_value = self._last_energy_reading.get(hp_key, 0.0)
+        delta = max(0, current_kwh - last_value)
+        
+        # Update energy consumption by mode
+        mode_key = f"{hp_key}_{current_mode}"
+        if mode_key in self._energy_consumption:
+            self._energy_consumption[mode_key] += delta
+        
+        self._last_energy_reading[hp_key] = current_kwh
+```
+
+### Sensor Change Detection
+
+Automatic detection and handling of energy sensor changes:
+
+```python
+# In utils.py
+def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
+    """Detect sensor change by comparing stored and current sensor IDs."""
+    if not stored_sensor_id:
+        return False
+    
+    return stored_sensor_id != current_sensor_id
+
+def convert_energy_to_kwh(value: float, unit: str) -> float:
+    """Convert energy values to kWh based on unit."""
+    if not unit:
+        # Estimate based on value size
+        if value > 10000:  # Probably Wh
+            return value / 1000.0
+        return value
+    
+    unit_lower = unit.lower().strip()
+    
+    if unit_lower in ["wh", "wattstunden"]:
+        return value / 1000.0
+    elif unit_lower in ["kwh", "kilowattstunden"]:
+        return value
+    elif unit_lower in ["mwh", "megawattstunden"]:
+        return value * 1000.0
+    else:
+        # Unknown unit - estimate based on value size
+        if value > 10000:
+            return value / 1000.0
+        return value
+```
+
+### Enhanced Cycling Sensors
+
+Comprehensive cycling tracking with multiple time periods:
+
+```python
+# In coordinator.py
+async def _setup_cycling_sensors(self):
+    """Setup cycling sensors for all heat pumps."""
+    for hp_idx in range(1, self._num_heat_pumps + 1):
+        hp_key = f"hp{hp_idx}"
+        
+        # Initialize cycling counters
+        self._cycling_counters[hp_key] = {
+            "total": 0,
+            "daily": 0,
+            "yesterday": 0,
+            "2h": 0,
+            "4h": 0,
+            "monthly": 0,
+            "yearly": 0,
+        }
+        
+        # Load persisted values
+        if hp_key in self._persist_data.get("cycling_counters", {}):
+            self._cycling_counters[hp_key].update(
+                self._persist_data["cycling_counters"][hp_key]
+            )
+```
+
+### Configuration File Support
+
+The integration now supports configuration via `lambda_wp_config.yaml`:
+
+```yaml
+# lambda_wp_config.yaml
+endianness: "big"  # or "little"
+
+energy_consumption_sensors:
+  1:
+    sensor_entity_id: "sensor.lambda_wp_verbrauch"
+  2:
+    sensor_entity_id: "sensor.lambda_wp_verbrauch_2"
+
+cycling_offsets:
+  1:
+    total: 1000
+    daily: 50
+  2:
+    total: 2000
+    daily: 100
+```
+
+### Persistence and State Management
+
+Enhanced persistence for all sensor data:
+
+```python
+# In coordinator.py
+async def _persist_counters(self):
+    """Persist all counter data to JSON file."""
+    self._persist_data.update({
+        "last_energy_reading": self._last_energy_reading,
+        "energy_consumption": self._energy_consumption,
+        "cycling_counters": self._cycling_counters,
+        "sensor_ids": self._sensor_ids,
+        "last_reset_daily": self._last_reset_daily,
+        "last_reset_monthly": self._last_reset_monthly,
+        "last_reset_yearly": self._last_reset_yearly,
+    })
+    
+    await self.hass.async_add_executor_job(
+        _write_persist, self._persist_file, self._persist_data
+    )
+```
