@@ -88,6 +88,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._last_energy_reading = {}  # {hp_index: last_kwh_value}
         self._energy_consumption = {}   # {hp_index: {mode: {period: value}}}
         self._energy_sensor_configs = {}  # Sensor-Konfigurationen aus Config (optional)
+        self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung
         
         self._use_legacy_names = entry.data.get("use_legacy_modbus_names", True)
         self._persist_file = os.path.join(
@@ -131,6 +132,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "energy_consumption": self._energy_consumption,
             "last_energy_readings": self._last_energy_reading,
             "energy_offsets": self._energy_offsets,
+            "sensor_ids": getattr(self, "_sensor_ids", {}),
         }
 
         def _write_data():
@@ -191,11 +193,121 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Lade persistierte Energy Consumption Daten
             self._energy_consumption = data.get("energy_consumption", {})
             self._last_energy_reading = data.get("last_energy_readings", {})
+            self._sensor_ids = data.get("sensor_ids", {})
             # Energy Offsets werden bereits aus der Config geladen
+            
+            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Geladene sensor_ids: {self._sensor_ids}")
             
             _LOGGER.info(
                 f"Restored last_operating_state: {self._last_operating_state}"
             )
+
+        # Sensor-Wechsel-Erkennung für Energy Consumption Sensoren (NACH dem Laden der persistierten Daten)
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung für {len(self._energy_sensor_configs)} konfigurierte Sensoren")
+        await self._detect_and_handle_sensor_changes()
+
+    async def _detect_and_handle_sensor_changes(self):
+        """Erkenne Sensor-Wechsel und behandle sie entsprechend."""
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
+        
+        try:
+            from .utils import detect_sensor_change, get_stored_sensor_id, store_sensor_id
+            
+            # Erstelle persist_data dict für die Hilfsfunktionen
+            persist_data = {"sensor_ids": self._sensor_ids}
+            
+            for hp_key, sensor_config in self._energy_sensor_configs.items():
+                # Extrahiere hp_idx aus hp_key (z.B. "hp1" -> 1)
+                try:
+                    hp_idx = int(hp_key.replace("hp", ""))
+                except (ValueError, AttributeError):
+                    _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Ungültiger hp_key: {hp_key}")
+                    continue
+                
+                current_sensor_id = sensor_config.get("sensor_entity_id")
+                if not current_sensor_id:
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein sensor_entity_id für {hp_key} konfiguriert")
+                    continue
+                
+                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe {hp_key} - aktueller Sensor: {current_sensor_id}")
+                
+                # Hole gespeicherte Sensor-ID
+                stored_sensor_id = get_stored_sensor_id(persist_data, hp_idx)
+                
+                # Prüfe auf Sensor-Wechsel
+                if detect_sensor_change(stored_sensor_id, current_sensor_id):
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt für {hp_key}: {stored_sensor_id} -> {current_sensor_id}")
+                    await self._handle_sensor_change(hp_idx, current_sensor_id)
+                
+                # Speichere neue Sensor-ID für nächsten Vergleich
+                store_sensor_id(persist_data, hp_idx, current_sensor_id)
+                self._sensor_ids = persist_data["sensor_ids"]
+                
+                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} aktualisiert: {current_sensor_id}")
+            
+            # Speichere alle Änderungen in der JSON-Datei
+            if self._sensor_ids:
+                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Speichere sensor_ids in JSON: {self._sensor_ids}")
+                await self._persist_counters()
+                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: sensor_ids erfolgreich gespeichert")
+            
+            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel-Erkennung abgeschlossen")
+            
+        except Exception as e:
+            _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler bei Sensor-Wechsel-Erkennung: {e}")
+            import traceback
+            _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Traceback: {traceback.format_exc()}")
+
+    async def _handle_sensor_change(self, hp_idx: int, new_sensor_id: str):
+        """Behandle Sensor-Wechsel durch Anpassung der last_energy_readings."""
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Behandle Sensor-Wechsel für HP{hp_idx} -> {new_sensor_id}")
+        
+        try:
+            # Warte bis der neue Sensor verfügbar ist (max. 5 Versuche, 2 Sekunden Abstand)
+            max_retries = 5
+            retry_delay = 2.0
+            
+            for attempt in range(max_retries):
+                new_sensor_state = self.hass.states.get(new_sensor_id)
+                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Versuch {attempt + 1}/{max_retries} - Neuer Sensor {new_sensor_id} Status: {new_sensor_state.state if new_sensor_state else 'None'}")
+                
+                if new_sensor_state and new_sensor_state.state not in ("unknown", "unavailable", "None"):
+                    try:
+                        new_sensor_value = float(new_sensor_state.state)
+                        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Neuer Sensor-Wert nach {attempt + 1} Versuchen: {new_sensor_value}")
+                        
+                        # Hole alten Wert für Vergleich
+                        hp_key = f"hp{hp_idx}"
+                        old_value = self._last_energy_reading.get(hp_key, 0.0)
+                        
+                        # Ersetze last_energy_readings mit dem ersten Wert des neuen Sensors
+                        self._last_energy_reading[hp_key] = new_sensor_value
+                        
+                        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: last_energy_readings für {hp_key} geändert: {old_value} -> {new_sensor_value}")
+                        
+                        # Speichere Änderungen in JSON
+                        await self._persist_counters()
+                        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Änderungen für {hp_key} in JSON gespeichert")
+                        return  # Erfolgreich abgeschlossen
+                        
+                    except (ValueError, TypeError) as e:
+                        _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Konvertieren des Sensor-Werts: {e}")
+                        break  # Keine weiteren Versuche bei Konvertierungsfehler
+                
+                # Warte vor dem nächsten Versuch (außer beim letzten Versuch)
+                if attempt < max_retries - 1:
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Warte {retry_delay}s vor nächstem Versuch...")
+                    await asyncio.sleep(retry_delay)
+            
+            # Alle Versuche fehlgeschlagen - verwende 0 als Fallback
+            _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Neuer Sensor {new_sensor_id} nach {max_retries} Versuchen nicht verfügbar, verwende 0")
+            self._last_energy_reading[f"hp{hp_idx}"] = 0.0
+            await self._persist_counters()
+                
+        except Exception as e:
+            _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Behandeln des Sensor-Wechsels für HP{hp_idx}: {e}")
+            import traceback
+            _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Traceback: {traceback.format_exc()}")
 
     def _generate_entity_id(self, sensor_type, idx):
         if self._use_legacy_names:

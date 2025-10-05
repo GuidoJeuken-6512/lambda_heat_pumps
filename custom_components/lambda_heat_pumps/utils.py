@@ -1682,3 +1682,74 @@ def get_all_periods():
     all_periods.add("yearly")
     
     return sorted(list(all_periods))
+
+
+# =============================================================================
+# SENSOR CHANGE DETECTION HELPER FUNCTIONS
+# =============================================================================
+
+def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
+    """Erkenne Sensor-Wechsel durch Vergleich der gespeicherten und aktuellen Sensor-IDs.
+    
+    Args:
+        stored_sensor_id: Die zuletzt gespeicherte Sensor-ID (kann None sein)
+        current_sensor_id: Die aktuelle Sensor-ID aus der Konfiguration
+    
+    Returns:
+        bool: True wenn ein Sensor-Wechsel erkannt wurde
+    """
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '{stored_sensor_id}', aktuell: '{current_sensor_id}'")
+    
+    # Wenn kein gespeicherter Sensor vorhanden ist, ist es kein Wechsel
+    if not stored_sensor_id:
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
+        return False
+    
+    # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
+    is_change = stored_sensor_id != current_sensor_id
+    if is_change:
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt: '{stored_sensor_id}' -> '{current_sensor_id}'")
+    else:
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
+    
+    return is_change
+
+
+def get_stored_sensor_id(persist_data: dict, hp_idx: int) -> str:
+    """Hole die gespeicherte Sensor-ID für eine Wärmepumpe aus den persistierten Daten.
+    
+    Args:
+        persist_data: Die persistierten Daten aus cycle_energy_persist.json
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+    
+    Returns:
+        str: Die gespeicherte Sensor-ID oder None wenn nicht vorhanden
+    """
+    hp_key = f"hp{hp_idx}"
+    sensor_ids = persist_data.get("sensor_ids", {})
+    stored_id = sensor_ids.get(hp_key)
+    
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Gespeicherte Sensor-ID für {hp_key}: '{stored_id}'")
+    return stored_id
+
+
+def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
+    """Speichere die Sensor-ID für eine Wärmepumpe in den persistierten Daten.
+    
+    Args:
+        persist_data: Die persistierten Daten (wird modifiziert)
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+        sensor_id: Die Sensor-ID die gespeichert werden soll
+    """
+    hp_key = f"hp{hp_idx}"
+    
+    # Stelle sicher, dass sensor_ids existiert
+    if "sensor_ids" not in persist_data:
+        persist_data["sensor_ids"] = {}
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
+    
+    # Speichere die Sensor-ID
+    old_id = persist_data["sensor_ids"].get(hp_key)
+    persist_data["sensor_ids"][hp_key] = sensor_id
+    
+    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{sensor_id}'")
