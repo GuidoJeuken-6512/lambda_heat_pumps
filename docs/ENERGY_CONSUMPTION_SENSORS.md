@@ -33,6 +33,10 @@ The Energy Consumption Sensors provide **detailed energy tracking by operating m
 - **Flank Detection**: Automatic energy allocation based on operating mode changes
 - **Offset Support**: Support for energy offsets when replacing heat pumps
 - **Configurable Input**: Uses existing power consumption sensors as data source
+- **Sensor Change Detection**: Automatic detection and handling of energy sensor changes
+- **Automatic Unit Conversion**: Supports Wh, kWh, and MWh with automatic conversion to kWh
+- **Retry Mechanism**: Robust handling of sensor availability during startup
+- **Overflow Protection**: Handles sensor value overflows and prevents incorrect calculations
 
 ## Architecture
 
@@ -249,6 +253,60 @@ energy_consumption_sensors:
 - **Overflow Protection**: Handles sensor value overflows gracefully
 - **Offset Support**: Easy migration when replacing heat pumps
 - **Error Handling**: Robust error handling and logging
+- **Sensor Change Detection**: Automatically detects when energy source sensors are changed
+- **Unit Conversion**: Automatic conversion between Wh, kWh, and MWh
+- **Retry Mechanism**: Handles sensor unavailability during startup with retry logic
+
+## Sensor Change Detection
+
+The integration includes **automatic sensor change detection** to handle energy source sensor changes gracefully:
+
+### How It Works
+1. **Sensor ID Tracking**: Stores the current energy source sensor ID for each heat pump
+2. **Change Detection**: Compares stored sensor ID with current configuration on startup
+3. **Automatic Handling**: When a change is detected, adjusts `last_energy_readings` to prevent incorrect calculations
+4. **Retry Mechanism**: Uses retry logic to handle sensor unavailability during startup
+
+### Configuration
+Sensor change detection is automatic and requires no configuration. It works with any energy source sensor configured in `energy_consumption_sensors`.
+
+### Benefits
+- **Prevents Incorrect Calculations**: Avoids energy consumption spikes when changing sensors
+- **Seamless Migration**: Easy to switch between different energy meters
+- **Automatic Recovery**: Handles sensor unavailability during startup
+
+## Automatic Unit Conversion
+
+The integration supports **automatic unit conversion** for energy source sensors:
+
+### Supported Units
+- **Wh (Wattstunden)**: Automatically converted to kWh (÷ 1000)
+- **kWh (Kilowattstunden)**: Used directly (no conversion needed)
+- **MWh (Megawattstunden)**: Automatically converted to kWh (× 1000)
+
+### How It Works
+1. **Unit Detection**: Reads the `unit_of_measurement` attribute from the source sensor
+2. **Automatic Conversion**: Converts the value to kWh using the `convert_energy_to_kwh()` function
+3. **Fallback Logic**: If no unit is specified, estimates based on value magnitude
+4. **Logging**: Logs conversion details for debugging
+
+### Configuration
+Unit conversion is automatic and requires no configuration. It works with any energy sensor that has a proper `unit_of_measurement` attribute.
+
+### Example
+```yaml
+# Source sensor with Wh unit
+sensor.my_energy_meter: 15000 Wh
+# Automatically converted to: 15.0 kWh
+
+# Source sensor with kWh unit  
+sensor.my_energy_meter: 15.0 kWh
+# Used directly: 15.0 kWh
+
+# Source sensor with MWh unit
+sensor.my_energy_meter: 0.015 MWh
+# Automatically converted to: 15.0 kWh
+```
 
 ## Technical Implementation Details
 
@@ -509,6 +567,60 @@ energy_consumption_sensors:
 - **Überlauf-Schutz**: Behandelt Sensorwert-Überläufe elegant
 - **Offset-Unterstützung**: Einfache Migration beim Wärmepumpen-Austausch
 - **Fehlerbehandlung**: Robuste Fehlerbehandlung und Protokollierung
+- **Sensor-Wechsel-Erkennung**: Automatische Erkennung von Energie-Quellsensor-Änderungen
+- **Einheitenkonvertierung**: Automatische Konvertierung zwischen Wh, kWh und MWh
+- **Retry-Mechanismus**: Behandelt Sensor-Unverfügbarkeit beim Start mit Retry-Logik
+
+## Sensor-Wechsel-Erkennung
+
+Die Integration beinhaltet **automatische Sensor-Wechsel-Erkennung** zur eleganten Behandlung von Energie-Quellsensor-Änderungen:
+
+### Funktionsweise
+1. **Sensor-ID-Verfolgung**: Speichert die aktuelle Energie-Quellsensor-ID für jede Wärmepumpe
+2. **Änderungserkennung**: Vergleicht gespeicherte Sensor-ID mit aktueller Konfiguration beim Start
+3. **Automatische Behandlung**: Bei erkannten Änderungen wird `last_energy_readings` angepasst, um falsche Berechnungen zu verhindern
+4. **Retry-Mechanismus**: Verwendet Retry-Logik zur Behandlung von Sensor-Unverfügbarkeit beim Start
+
+### Konfiguration
+Die Sensor-Wechsel-Erkennung ist automatisch und erfordert keine Konfiguration. Sie funktioniert mit jedem Energie-Quellsensor, der in `energy_consumption_sensors` konfiguriert ist.
+
+### Vorteile
+- **Verhindert falsche Berechnungen**: Vermeidet Energieverbrauchsspitzen beim Wechseln von Sensoren
+- **Nahtlose Migration**: Einfacher Wechsel zwischen verschiedenen Energiezählern
+- **Automatische Wiederherstellung**: Behandelt Sensor-Unverfügbarkeit beim Start
+
+## Automatische Einheitenkonvertierung
+
+Die Integration unterstützt **automatische Einheitenkonvertierung** für Energie-Quellsensoren:
+
+### Unterstützte Einheiten
+- **Wh (Wattstunden)**: Automatisch zu kWh konvertiert (÷ 1000)
+- **kWh (Kilowattstunden)**: Direkt verwendet (keine Konvertierung nötig)
+- **MWh (Megawattstunden)**: Automatisch zu kWh konvertiert (× 1000)
+
+### Funktionsweise
+1. **Einheitenerkennung**: Liest das `unit_of_measurement`-Attribut vom Quellsensor
+2. **Automatische Konvertierung**: Konvertiert den Wert zu kWh mit der `convert_energy_to_kwh()`-Funktion
+3. **Fallback-Logik**: Wenn keine Einheit angegeben ist, schätzt basierend auf der Wertgröße
+4. **Protokollierung**: Protokolliert Konvertierungsdetails für Debugging
+
+### Konfiguration
+Die Einheitenkonvertierung ist automatisch und erfordert keine Konfiguration. Sie funktioniert mit jedem Energiesensor, der ein ordnungsgemäßes `unit_of_measurement`-Attribut hat.
+
+### Beispiel
+```yaml
+# Quellsensor mit Wh-Einheit
+sensor.my_energy_meter: 15000 Wh
+# Automatisch konvertiert zu: 15.0 kWh
+
+# Quellsensor mit kWh-Einheit  
+sensor.my_energy_meter: 15.0 kWh
+# Direkt verwendet: 15.0 kWh
+
+# Quellsensor mit MWh-Einheit
+sensor.my_energy_meter: 0.015 MWh
+# Automatisch konvertiert zu: 15.0 kWh
+```
 
 ## Technische Implementierungsdetails
 

@@ -44,6 +44,21 @@ def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
         return (registers[0] << 16) | registers[1]
 ```
 
+#### 1.1. Erweiterte Endianness-Konfiguration
+
+**Neue vereinfachte Konfiguration in `lambda_wp_config.yaml`:**
+```yaml
+# Endianness-Konfiguration für verschiedene Lambda-Modelle
+endianness: "big"    # Big-Endian (Standard)
+# oder
+endianness: "little" # Little-Endian
+```
+
+**Automatische Erkennung und Fallback:**
+- Die Integration versucht automatisch die richtige Endianness zu erkennen
+- Fallback auf Big-Endian bei Konfigurationsfehlern
+- Umfassendes Logging für Debugging
+
 #### 2. Coordinator-Integration
 
 **In `coordinator.py`:**
@@ -59,16 +74,41 @@ async def _connect(self):
     self._int32_byte_order = await get_int32_byte_order(self.hass)
     _LOGGER.info("Int32 Byte-Order konfiguriert: %s", self._int32_byte_order)
 
-# Ersetze alle 5 betroffenen Stellen:
+# Ersetze alle betroffenen Stellen:
 # Alt: value = (result.registers[0] << 16) | result.registers[1]
 # Neu: value = combine_int32_registers(result.registers, self._int32_byte_order)
 ```
 
+#### 2.1. Verbesserte Integration in async_setup_entry
+
+**Endianness-Konfiguration wird jetzt früher geladen:**
+```python
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Endianness-Konfiguration vor dem ersten async_refresh()
+    endianness = await get_int32_byte_order(hass)
+    _LOGGER.info("Endianness-Konfiguration geladen: %s", endianness)
+    
+    # Weitere Setup-Logik...
+```
+
+**Vorteile:**
+- Endianness wird vor dem ersten Modbus-Zugriff konfiguriert
+- Verhindert falsche Werte beim ersten Start
+- Bessere Fehlerbehandlung und Logging
+
 #### 3. Konfigurationsdatei
 
-**In `lambda_wp_config.yaml`:**
+**Vereinfachte Konfiguration in `lambda_wp_config.yaml`:**
 ```yaml
-# Modbus configuration
+# Endianness-Konfiguration für verschiedene Lambda-Modelle
+endianness: "big"    # Big-Endian (Standard)
+# oder
+endianness: "little" # Little-Endian
+```
+
+**Alternative detaillierte Konfiguration:**
+```yaml
+# Modbus configuration (Legacy-Support)
 modbus:
   # Endianness für 32-Bit-Register (int32-Sensoren)
   # "big" = Big-Endian (Standard)
@@ -80,44 +120,63 @@ modbus:
 
 **In `const.py` - `LAMBDA_WP_CONFIG_TEMPLATE`:**
 ```yaml
-# Modbus configuration
-# Endianness for 32-bit registers (int32 sensors)
+# Endianness configuration for different Lambda models
 # Some Lambda devices may require different byte order for correct int32 value interpretation
 # "big" = Big-Endian (default, current behavior)
 # "little" = Little-Endian (alternative byte order for some devices)
 # Example:
+#endianness: "big"  # or "little"
+
+# Alternative detailed configuration (Legacy-Support):
 #modbus:
 #  int32_byte_order: "big"  # or "little"
 ```
 
 ### Betroffene Code-Stellen
 
-**5 Stellen in `coordinator.py` wurden aktualisiert:**
-1. **Batch-Read** (Zeile 447)
-2. **Single-Read** (Zeile 447) 
-3. **Boiler-Sensors** (Zeile 1085)
-4. **Buffer-Sensors** (Zeile 1133)
-5. **Solar-Sensors** (Zeile 1192)
-6. **Heating Circuit-Sensors** (Zeile 1251)
+**Mehrere Stellen in `coordinator.py` wurden aktualisiert:**
+1. **Batch-Read** - Int32-Werte aus Batch-Lesevorgängen
+2. **Single-Read** - Int32-Werte aus Einzellesevorgängen
+3. **Boiler-Sensors** - Int32-Sensoren für Kessel
+4. **Buffer-Sensors** - Int32-Sensoren für Puffer
+5. **Solar-Sensors** - Int32-Sensoren für Solar
+6. **Heating Circuit-Sensors** - Int32-Sensoren für Heizkreise
+7. **Energy Consumption Sensors** - Int32-Sensoren für Energieverbrauch
 
 **Alle verwenden jetzt:**
 ```python
 value = combine_int32_registers(result.registers, self._int32_byte_order)
 ```
 
+**Zusätzliche Verbesserungen:**
+- **Frühe Konfiguration** in `async_setup_entry` vor dem ersten Modbus-Zugriff
+- **Verbesserte Fehlerbehandlung** mit detailliertem Logging
+- **Automatische Erkennung** der richtigen Endianness
+
 ### Konfiguration
 
 #### Für Benutzer mit falschen int32-Werten:
 ```yaml
+# Vereinfachte Konfiguration
+endianness: "little"
+
+# Oder detaillierte Konfiguration (Legacy)
 modbus:
   int32_byte_order: "little"
 ```
 
 #### Für bestehende Benutzer:
 ```yaml
-modbus:
-  int32_byte_order: "big"  # oder gar nicht setzen (Standard)
+# Standard-Konfiguration (Big-Endian)
+endianness: "big"
+
+# Oder gar nicht setzen (Standard ist Big-Endian)
 ```
+
+#### Fehlerbehebung:
+Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Endianness-Einstellung:
+1. **Falsche Werte** → Wechseln Sie zu `endianness: "little"`
+2. **Korrekte Werte** → Behalten Sie `endianness: "big"` bei
 
 ### Performance-Optimierung
 
@@ -171,10 +230,13 @@ Basierend auf `const.py` sind das **Energie-Sensoren** mit `data_type: "int32"`:
 ✅ **Einfach** - nur zwei Optionen: "big" oder "little"  
 ✅ **Klar** - Benutzer muss bewusst wählen  
 ✅ **Rückwärtskompatibel** - Standard ist "big" (aktuelles Verhalten)  
-✅ **Zentral** - eine Funktion für alle 6 betroffenen Stellen  
+✅ **Zentral** - eine Funktion für alle betroffenen Stellen  
 ✅ **Sicher** - Fallback auf Big-Endian bei Fehlern  
 ✅ **Debug-freundlich** - Logging der verwendeten Byte-Order  
-✅ **Performance-optimiert** - Caching verhindert wiederholte YAML-Zugriffe
+✅ **Performance-optimiert** - Caching verhindert wiederholte YAML-Zugriffe  
+✅ **Vereinfacht** - Neue `endianness`-Konfiguration ist einfacher zu verwenden  
+✅ **Frühe Konfiguration** - Endianness wird vor dem ersten Modbus-Zugriff geladen  
+✅ **Automatische Erkennung** - Integration versucht automatisch die richtige Endianness zu erkennen
 
 ## Testing
 
@@ -192,6 +254,16 @@ Basierend auf `const.py` sind das **Energie-Sensoren** mit `data_type: "int32"`:
 ## Fazit
 
 Das Problem tritt auf, weil **einige Lambda-Geräte eine andere Byte-Reihenfolge-Interpretation für int32-Werte erfordern**. Die Lösung ist eine **konfigurierbare Endianness-Behandlung**, die es Benutzern ermöglicht, die richtige Byte-Reihenfolge für ihr spezifisches Gerät auszuwählen.
+
+### Aktuelle Implementierung (Version 1.4.0)
+
+Die Endianness-Konfiguration wurde **vereinfacht und verbessert**:
+
+1. **Vereinfachte Konfiguration**: Neue `endianness`-Option in `lambda_wp_config.yaml`
+2. **Frühe Konfiguration**: Endianness wird vor dem ersten Modbus-Zugriff geladen
+3. **Automatische Erkennung**: Integration versucht automatisch die richtige Endianness zu erkennen
+4. **Verbesserte Fehlerbehandlung**: Detailliertes Logging und robuste Fallback-Mechanismen
+5. **Legacy-Support**: Alte `modbus.int32_byte_order`-Konfiguration wird weiterhin unterstützt
 
 Dieses Issue unterstreicht die Wichtigkeit einer **flexiblen und robusten Modbus-Implementierung**, die mit verschiedenen Hardware-Konfigurationen umgehen kann.
 

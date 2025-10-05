@@ -2,6 +2,33 @@
 
 **Deutsche Version siehe unten / German version see below**
 
+## [1.4.0] - 2025-10-05
+
+### English
+**New Features:**
+- **Energy Consumption Sensors by Operating Mode**: Added configurable energy consumption sensors that track energy usage by operating mode (heating, hot water, cooling, defrost) with customizable source sensors (Issue #21)
+- **Endianness Configuration**: Added endianness switch configuration in `lambda_wp_config.yaml` for proper data interpretation (Issue #22)
+- **Sensor Change Detection**: Implemented automatic detection of energy sensor changes with intelligent handling of sensor value transitions to prevent incorrect energy consumption calculations
+
+**Bug Fixes:**
+- **Endianness Fix**: Fixed endianness issues with initial quick fix approach (Issue #22)
+- **Daily Sensor Reset Automation**: Fixed errors in automation for resetting daily sensors (Issue #29)
+- **Auto-Detection**: Fixed auto-detection not recognizing existing configurations (IP/Port/SlaveId)
+- **DCHP Discovery**: Fixed DCHP discovery error messages
+- **HASS Validation**: Fixed Home Assistant validation errors
+- **Daily Reset Function**: Repaired daily reset function for sensors
+
+**Improvements:**
+- **Enhanced Energy Tracking**: Improved energy consumption tracking with automatic unit conversion (Wh/kWh/MWh)
+- **Robust Sensor Handling**: Added retry mechanism for sensor availability during startup
+- **Comprehensive Logging**: Added detailed logging for sensor change detection and energy calculations
+- **Monthly & Yearly Power Consumption Sensors**: Added monthly and yearly energy consumption sensors for long-term tracking
+- **Service Setup Optimization**: Services are now set up only once, regardless of the number of entries
+- **Configuration Flow Improvements**: Enhanced validation for existing connections and IP addresses, removed obsolete modules
+- **Generalized Reset Functions**: Implemented generalized reset functions for all sensor types with extended tests
+- **Code Cleanup**: Cleaned up const.py, YAML templates, and general code structure
+- **Documentation Updates**: Updated documentation and created program flow diagrams
+
 ## [1.3.0] - 2025-01-03
 
 ### English
@@ -27,6 +54,35 @@
 - Integration of config file creation into existing migration pipeline
 - Enhanced error handling in `LambdaDataUpdateCoordinator`
 - Improved sensor attribute loading with better error recovery
+
+### Deutsch
+**Neue Funktionen:**
+- **Verbrauchssensoren nach Betriebsart**: Hinzugefügte konfigurierbare Verbrauchssensoren, die den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) mit anpassbaren Quellsensoren verfolgen (Issue #21)
+- **Endianness-Konfiguration**: Hinzugefügte Endianness-Umschaltung in `lambda_wp_config.yaml` für ordnungsgemäße Dateninterpretation (Issue #22)
+- **Sensor-Wechsel-Erkennung**: Implementierte automatische Erkennung von Energie-Sensor-Wechseln mit intelligenter Behandlung von Sensor-Wert-Übergängen zur Vermeidung falscher Verbrauchsberechnungen
+
+**Fehlerbehebungen:**
+- **Endianness-Fix**: Behoben Endianness-Probleme mit initialem Quick-Fix-Ansatz (Issue #22)
+- **Daily-Sensor-Reset-Automatisierung**: Behoben Fehler in der Automatisierung zum Zurücksetzen der täglichen Sensoren (Issue #29)
+- **Auto-Detection**: Behoben Auto-Detection erkannte bestehende Konfigurationen (IP/Port/SlaveId) nicht
+- **DCHP Discovery**: Behoben DCHP Discovery Fehlermeldungen
+- **HASS Validation**: Behoben Home Assistant Validierungsfehler
+- **Daily Reset Funktion**: Repariert Daily Reset-Funktion für Sensoren
+
+**Verbesserungen:**
+- **Erweiterte Energieverfolgung**: Verbesserte Verbrauchsverfolgung mit automatischer Einheitenkonvertierung (Wh/kWh/MWh)
+- **Robuste Sensor-Behandlung**: Hinzugefügter Retry-Mechanismus für Sensor-Verfügbarkeit beim Start
+- **Umfassende Protokollierung**: Hinzugefügte detaillierte Protokollierung für Sensor-Wechsel-Erkennung und Energieberechnungen
+- **Monatliche & Jährliche Verbrauchssensoren**: Hinzugefügte monatliche und jährliche Energieverbrauchssensoren für Langzeitverfolgung
+- **Service-Setup-Optimierung**: Dienste werden nun nur einmal eingerichtet, unabhängig von der Anzahl der Einträge
+- **Konfigurationsfluss-Verbesserungen**: Erweiterte Validierung für bestehende Verbindungen und IP-Adressen, veraltete Module entfernt
+- **Generalisierte Reset-Funktionen**: Implementierte generalisierte Reset-Funktionen für alle Sensor-Typen mit erweiterten Tests
+- **Code-Bereinigung**: Bereinigt const.py, YAML-Templates und allgemeine Codestruktur
+- **Dokumentations-Updates**: Aktualisierte Dokumentation und erstellte Programmablaufdiagramme
+
+---
+
+## [1.3.0] - 2025-01-03
 
 ### Deutsch
 **Neue Funktionen:**

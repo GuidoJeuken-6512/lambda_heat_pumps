@@ -23,9 +23,13 @@ The cycling sensors are a **simplified and robust solution** for tracking operat
 - **Yesterday Sensors**: Store yesterday's daily values
 - **2H Sensors**: 2-hour cycling values (reset to 0 every 2 hours)
 - **4H Sensors**: 4-hour cycling values (reset to 0 every 4 hours)
+- **Monthly Sensors**: Monthly cycling values (reset to 0 on 1st of each month)
+- **Yearly Sensors**: Yearly cycling values (reset to 0 on January 1st)
 
 **New simplified architecture:**
 - All sensors are **simultaneously** incremented on each flank detection
+- **Generalized Reset Functions**: Unified reset mechanism for all sensor types
+- **Enhanced Automation**: Improved daily reset automation with proper yesterday value handling
 
 Flank detection is performed centrally in the Coordinator for maximum robustness and performance.
 
@@ -86,6 +90,28 @@ Flank detection is performed centrally in the Coordinator for maximum robustness
   - `sensor.eu08l_hp1_cooling_cycling_4h`
   - `sensor.eu08l_hp1_defrost_cycling_4h`
 
+#### Monthly Cycling Sensors (Real Entities)
+- **Purpose**: Count monthly cycling values
+- **Type**: Real Python entities (`LambdaCyclingSensor`)
+- **Update**: Incremented on each flank detection, reset to 0 on 1st of each month
+- **Reset Times**: 1st of each month at 00:00
+- **Examples**:
+  - `sensor.eu08l_hp1_heating_cycling_monthly`
+  - `sensor.eu08l_hp1_hot_water_cycling_monthly`
+  - `sensor.eu08l_hp1_cooling_cycling_monthly`
+  - `sensor.eu08l_hp1_defrost_cycling_monthly`
+
+#### Yearly Cycling Sensors (Real Entities)
+- **Purpose**: Count yearly cycling values
+- **Type**: Real Python entities (`LambdaCyclingSensor`)
+- **Update**: Incremented on each flank detection, reset to 0 on January 1st
+- **Reset Times**: January 1st at 00:00
+- **Examples**:
+  - `sensor.eu08l_hp1_heating_cycling_yearly`
+  - `sensor.eu08l_hp1_hot_water_cycling_yearly`
+  - `sensor.eu08l_hp1_cooling_cycling_yearly`
+  - `sensor.eu08l_hp1_defrost_cycling_yearly`
+
 ### 2. Flank Detection
 
 #### Central Flank Detection in Coordinator
@@ -108,7 +134,23 @@ def _detect_cycling_flank(self, hp_index: int, old_state: int, new_state: int) -
 - **Error Handling**: Graceful handling of missing values and invalid states
 - **State Persistence**: `_last_operating_state` is persisted and restored on restart
 
-### 3. Automations
+### 3. Enhanced Automations
+
+#### Improved Reset Automation
+The cycling sensors now include **enhanced automation** with proper reset handling:
+
+**Reset Signals:**
+- `SIGNAL_RESET_DAILY`: Daily reset at midnight
+- `SIGNAL_RESET_2H`: 2-hour reset every 2 hours
+- `SIGNAL_RESET_4H`: 4-hour reset every 4 hours
+- `SIGNAL_RESET_MONTHLY`: Monthly reset on 1st of each month
+- `SIGNAL_RESET_YEARLY`: Yearly reset on January 1st
+
+**Reset Process:**
+1. **Yesterday Update**: Yesterday sensors are updated with current daily values
+2. **Daily Reset**: Daily sensors are reset to 0
+3. **Periodic Resets**: 2H, 4H, Monthly, and Yearly sensors reset at their respective intervals
+4. **Asynchronous Handling**: All reset operations are handled asynchronously for better performance
 
 #### Flank Detection (Edge Detection)
 The cycling sensors use **flank detection** to detect when the heat pump changes operating modes:
@@ -407,6 +449,26 @@ names = generate_sensor_names(
 - `sensor.eu08l_hp2_hot_water_cycling_4h`
 - `sensor.eu08l_hp2_cooling_cycling_4h`
 - `sensor.eu08l_hp2_defrost_cycling_4h`
+
+**Monthly Sensors (4 modes × 2 HPs = 8 sensors):**
+- `sensor.eu08l_hp1_heating_cycling_monthly`
+- `sensor.eu08l_hp1_hot_water_cycling_monthly`
+- `sensor.eu08l_hp1_cooling_cycling_monthly`
+- `sensor.eu08l_hp1_defrost_cycling_monthly`
+- `sensor.eu08l_hp2_heating_cycling_monthly`
+- `sensor.eu08l_hp2_hot_water_cycling_monthly`
+- `sensor.eu08l_hp2_cooling_cycling_monthly`
+- `sensor.eu08l_hp2_defrost_cycling_monthly`
+
+**Yearly Sensors (4 modes × 2 HPs = 8 sensors):**
+- `sensor.eu08l_hp1_heating_cycling_yearly`
+- `sensor.eu08l_hp1_hot_water_cycling_yearly`
+- `sensor.eu08l_hp1_cooling_cycling_yearly`
+- `sensor.eu08l_hp1_defrost_cycling_yearly`
+- `sensor.eu08l_hp2_heating_cycling_yearly`
+- `sensor.eu08l_hp2_hot_water_cycling_yearly`
+- `sensor.eu08l_hp2_cooling_cycling_yearly`
+- `sensor.eu08l_hp2_defrost_cycling_yearly`
 
 **For 2 HPs, a total of 40 sensors are created (5 types × 4 modes × 2 HPs)**
 

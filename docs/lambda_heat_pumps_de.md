@@ -13,6 +13,13 @@ Die Lambda Wärmepumpen Integration ist eine benutzerdefinierte Komponente für 
 7. [Modbus-Register-Services](#modbus-register-services)
 8. [Dynamische Entity-Erstellung](#dynamische-entity-erstellung)
 9. [Template-basierte Climate-Entities](#template-basierte-climate-entities)
+10. [Neue Features (Version 1.4.0)](#neue-features-version-140)
+11. [Automatische Konfiguration](#automatische-konfiguration)
+12. [Energieverbrauchssensoren](#energieverbrauchssensoren)
+13. [Cycling-Sensoren](#cycling-sensoren)
+14. [Endianness-Konfiguration](#endianness-konfiguration)
+15. [Sensor-Wechsel-Erkennung](#sensor-wechsel-erkennung)
+16. [Modbus-Tools für Tests](#modbus-tools-für-tests)
 
 ## Aufbau der Integration
 
@@ -252,3 +259,414 @@ Diese Services können über die Entwicklerwerkzeuge genutzt werden. Die Registe
 
 - Alle Climate-Entities (Boiler, Heizkreis) sind jetzt zentral in `const.py` als Templates definiert.
 - Dadurch können Eigenschaften zentral gepflegt und erweitert werden.
+
+## Neue Features (Version 1.4.0)
+
+Version 1.4.0 führt bedeutende neue Features und Verbesserungen in die Lambda Wärmepumpen Integration ein:
+
+### Wichtige neue Features
+
+- **Energieverbrauchssensoren nach Betriebsart**: Konfigurierbare Energieverbrauchssensoren, die den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) mit anpassbaren Quellsensoren verfolgen
+- **Endianness-Konfiguration**: Konfigurierbare Byte-Reihenfolge (Big-Endian/Little-Endian) für verschiedene Lambda-Modelle
+- **Sensor-Wechsel-Erkennung**: Automatische Erkennung von Energie-Sensor-Wechseln mit intelligenter Behandlung von Sensor-Wert-Übergängen
+- **Erweiterte Cycling-Sensoren**: Umfassende Cycling-Zähler mit monatlicher und jährlicher Verfolgung
+- **Automatische Konfiguration**: DHCP-Erkennung und Auto-Detection bestehender Konfigurationen
+- **Konfigurationsdatei-Unterstützung**: YAML-basierte Konfiguration über `lambda_wp_config.yaml`
+
+## Automatische Konfiguration
+
+Die Integration unterstützt jetzt automatische Konfigurationserkennung und -einrichtung:
+
+### DHCP-Erkennung
+- **Auto-Detection**: Erkennt automatisch Lambda Wärmepumpen im Netzwerk
+- **Bestehende Konfiguration prüfen**: Verhindert doppelte Konfigurationen
+- **Intelligente Standardwerte**: Verwendet sinnvolle Standardwerte für IP, Port und Slave-ID
+
+### Konfigurationsfluss-Verbesserungen
+- **Vereinfachter Setup**: Vereinfachter Konfigurationsprozess
+- **Validierung**: Erweiterte Konfigurationsvalidierung
+- **Fehlerbehandlung**: Bessere Fehlermeldungen und Wiederherstellung
+
+Beispiel für automatische Konfiguration:
+```python
+async def async_step_dhcp(self, discovery_info):
+    """Handle DHCP discovery."""
+    # Auto-Detection bestehender Konfigurationen
+    existing_entries = self._async_current_entries()
+    for entry in existing_entries:
+        if entry.data.get("host") == discovery_info.ip:
+            return self.async_abort(reason="already_configured")
+    
+    # Neue Eintrag mit entdeckter IP erstellen
+    return self.async_create_entry(
+        title=f"Lambda Wärmepumpe ({discovery_info.ip})",
+        data={
+            "host": discovery_info.ip,
+            "port": 502,
+            "slave_id": 1,
+        }
+    )
+```
+
+## Energieverbrauchssensoren
+
+Erweiterte Energieverfolgung mit konfigurierbaren Quellsensoren und Betriebsart-Erkennung:
+
+### Features
+- **Betriebsart-Verfolgung**: Verfolgt Energieverbrauch nach Heizen, Warmwasser, Kühlen und Abtauen
+- **Konfigurierbare Quellsensoren**: Verwendet beliebige bestehende Leistungsverbrauchssensoren als Datenquelle
+- **Automatische Einheiten-Konvertierung**: Unterstützt Wh, kWh und MWh mit automatischer Konvertierung zu kWh
+- **Monatliche und jährliche Verfolgung**: Langzeit-Energieverbrauchsüberwachung
+- **Sensor-Wechsel-Erkennung**: Automatische Behandlung von Sensor-Wechseln zur Vermeidung falscher Berechnungen
+
+### Konfiguration
+Konfigurieren Sie Energieverbrauchssensoren in `lambda_wp_config.yaml`:
+
+```yaml
+energy_consumption_sensors:
+  1:
+    sensor_entity_id: "sensor.lambda_wp_verbrauch"
+  2:
+    sensor_entity_id: "sensor.lambda_wp_verbrauch_2"
+```
+
+### Implementierung
+```python
+async def _track_hp_energy_consumption(self, hp_idx: int, current_mode: int):
+    """Verfolge Energieverbrauch nach Betriebsart."""
+    hp_key = f"hp{hp_idx}"
+    sensor_config = self._energy_sensor_configs.get(hp_idx, {})
+    source_sensor_id = sensor_config.get("sensor_entity_id")
+    
+    if not source_sensor_id:
+        return
+    
+    # Aktuellen Sensor-Wert mit Einheiten-Konvertierung abrufen
+    source_state = self.hass.states.get(source_sensor_id)
+    if source_state and source_state.state not in ("unknown", "unavailable"):
+        current_value = float(source_state.state)
+        unit = source_state.attributes.get("unit_of_measurement", "")
+        
+        # Zu kWh konvertieren
+        current_kwh = convert_energy_to_kwh(current_value, unit)
+        
+        # Delta berechnen und Zähler aktualisieren
+        last_value = self._last_energy_reading.get(hp_key, 0.0)
+        delta = max(0, current_kwh - last_value)
+        
+        # Energieverbrauch nach Betriebsart aktualisieren
+        mode_key = f"{hp_key}_{current_mode}"
+        if mode_key in self._energy_consumption:
+            self._energy_consumption[mode_key] += delta
+        
+        self._last_energy_reading[hp_key] = current_kwh
+```
+
+## Cycling-Sensoren
+
+Umfassende Cycling-Verfolgung mit mehreren Zeiträumen und automatischer Reset-Funktionalität:
+
+### Features
+- **Mehrere Zeiträume**: Total, täglich, gestern, 2h, 4h, monatlich und jährlich Cycling-Sensoren
+- **Automatischer Reset**: Täglicher Reset um Mitternacht, monatlicher Reset am 1. des Monats, jährlicher Reset am 1. Januar
+- **Generalized Reset Functions**: Einheitlicher Reset-Mechanismus für alle Sensor-Typen
+- **Erweiterte Automatisierung**: Verbesserte tägliche Reset-Automatisierung mit ordnungsgemäßer Gestern-Wert-Behandlung
+- **Konfigurierbare Offsets**: Unterstützung für Cycling-Offsets beim Austausch von Wärmepumpen
+
+### Sensor-Typen
+- **Total-Sensoren**: Kumulative Cycling-Anzahl seit Installation
+- **Tägliche Sensoren**: Tägliche Cycling-Werte (täglich um Mitternacht auf 0 zurückgesetzt)
+- **Gestern-Sensoren**: Speichern die gestrigen täglichen Werte
+- **2H/4H-Sensoren**: Kurzzeit-Cycling-Werte (alle 2/4 Stunden zurückgesetzt)
+- **Monatliche Sensoren**: Monatliche Cycling-Werte (am 1. jedes Monats zurückgesetzt)
+- **Jährliche Sensoren**: Jährliche Cycling-Werte (am 1. Januar zurückgesetzt)
+
+### Konfiguration
+Konfigurieren Sie Cycling-Offsets in `lambda_wp_config.yaml`:
+
+```yaml
+cycling_offsets:
+  1:
+    total: 1000
+    daily: 50
+  2:
+    total: 2000
+    daily: 100
+```
+
+### Implementierung
+```python
+async def _track_hp_cycling(self, hp_idx: int, current_mode: int):
+    """Verfolge Cycling mit generalized Reset Functions."""
+    hp_key = f"hp{hp_idx}"
+    
+    # Alle Cycling-Sensoren gleichzeitig erhöhen
+    for sensor_type in ["total", "daily", "yesterday", "2h", "4h", "monthly", "yearly"]:
+        if sensor_type in self._cycling_counters[hp_key]:
+            self._cycling_counters[hp_key][sensor_type] += 1
+    
+    # Resets behandeln
+    await self._handle_cycling_resets(hp_idx)
+
+async def _handle_cycling_resets(self, hp_idx: int):
+    """Behandle alle Cycling-Resets mit ordnungsgemäßer Gestern-Wert-Behandlung."""
+    hp_key = f"hp{hp_idx}"
+    
+    # Täglicher Reset um Mitternacht
+    if self._should_reset_daily():
+        # Gestern-Wert vor Reset speichern
+        self._cycling_counters[hp_key]["yesterday"] = self._cycling_counters[hp_key]["daily"]
+        self._cycling_counters[hp_key]["daily"] = 0
+    
+    # Monatlicher Reset am 1. des Monats
+    if self._should_reset_monthly():
+        self._cycling_counters[hp_key]["monthly"] = 0
+    
+    # Jährlicher Reset am 1. Januar
+    if self._should_reset_yearly():
+        self._cycling_counters[hp_key]["yearly"] = 0
+```
+
+## Endianness-Konfiguration
+
+Die Integration unterstützt jetzt konfigurierbare Byte-Reihenfolge (Endianness) für verschiedene Lambda-Modelle:
+
+### Konfiguration
+Setzen Sie Endianness in `lambda_wp_config.yaml`:
+
+```yaml
+# Endianness-Konfiguration
+endianness: "big"    # Big-Endian (Standard)
+# oder
+endianness: "little" # Little-Endian
+```
+
+### Wann ist das wichtig?
+- **Big-Endian**: Standard für die meisten Lambda-Modelle
+- **Little-Endian**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen
+- **Automatische Erkennung**: Die Integration versucht automatisch die richtige Endianness zu erkennen
+
+### Implementierung
+```python
+async def _load_endianness_config(self):
+    """Lade Endianness-Konfiguration aus lambda_wp_config.yaml."""
+    config = await load_lambda_config(self.hass)
+    self._endianness = config.get("endianness", "big")  # Standard: big-endian
+    
+    # Legacy-Support für alte Konfiguration
+    if not self._endianness:
+        modbus_config = config.get("modbus", {})
+        int32_byte_order = modbus_config.get("int32_byte_order", "big")
+        self._endianness = "little" if int32_byte_order == "little" else "big"
+```
+
+### Datenverarbeitung
+```python
+# Datenverarbeitung mit Endianness-Unterstützung
+if data_type == "int32":
+    # Konfigurierte Endianness für ordnungsgemäße Byte-Reihenfolge verwenden
+    if self._endianness == "little":
+        value = result.registers[0] | (result.registers[1] << 16)
+    else:  # big-endian (Standard)
+        value = (result.registers[0] << 16) | result.registers[1]
+else:
+    value = result.registers[0]
+```
+
+## Sensor-Wechsel-Erkennung
+
+Automatische Erkennung und Behandlung von Energie-Sensor-Wechseln zur Vermeidung falscher Energieverbrauchsberechnungen:
+
+### Features
+- **Automatische Erkennung**: Erkennt, wenn der konfigurierte Energie-Sensor wechselt
+- **Intelligente Behandlung**: Passt `last_energy_readings` an den Anfangswert des neuen Sensors an
+- **Retry-Mechanismus**: Robuste Behandlung der Sensor-Verfügbarkeit beim Start
+- **Persistierung**: Speichert Sensor-IDs über Home Assistant-Neustarts hinweg
+- **Umfassendes Logging**: Detailliertes Logging für einfache Verfolgung von Änderungen
+
+### Implementierung
+```python
+async def _detect_and_handle_sensor_changes(self):
+    """Erkenne und behandle Energie-Sensor-Wechsel."""
+    for hp_idx, sensor_config in self._energy_sensor_configs.items():
+        current_sensor_id = sensor_config.get("sensor_entity_id")
+        stored_sensor_id = self._sensor_ids.get(f"hp{hp_idx}")
+        
+        if detect_sensor_change(stored_sensor_id, current_sensor_id):
+            await self._handle_sensor_change(hp_idx, current_sensor_id)
+        
+        # Neue Sensor-ID speichern
+        store_sensor_id(self._persist_data, hp_idx, current_sensor_id)
+
+async def _handle_sensor_change(self, hp_idx: int, new_sensor_id: str):
+    """Behandle Sensor-Wechsel mit Retry-Mechanismus."""
+    max_retries = 5
+    retry_delay = 2.0
+    
+    for attempt in range(max_retries):
+        new_sensor_state = self.hass.states.get(new_sensor_id)
+        if new_sensor_state and new_sensor_state.state not in ("unknown", "unavailable"):
+            new_sensor_value = float(new_sensor_state.state)
+            self._last_energy_reading[f"hp{hp_idx}"] = new_sensor_value
+            await self._persist_counters()
+            return
+        
+        if attempt < max_retries - 1:
+            await asyncio.sleep(retry_delay)
+    
+    # Fallback auf 0 wenn Sensor nicht verfügbar
+    self._last_energy_reading[f"hp{hp_idx}"] = 0.0
+```
+
+### Hilfsfunktionen
+```python
+def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
+    """Erkenne Sensor-Wechsel durch Vergleich gespeicherter und aktueller Sensor-IDs."""
+    if not stored_sensor_id:
+        return False
+    
+    return stored_sensor_id != current_sensor_id
+
+def convert_energy_to_kwh(value: float, unit: str) -> float:
+    """Konvertiere Energie-Werte zu kWh basierend auf der Einheit."""
+    if not unit:
+        # Basierend auf der Wertgröße schätzen
+        if value > 10000:  # Wahrscheinlich Wh
+            return value / 1000.0
+        return value
+    
+    unit_lower = unit.lower().strip()
+    
+    if unit_lower in ["wh", "wattstunden"]:
+        return value / 1000.0
+    elif unit_lower in ["kwh", "kilowattstunden"]:
+        return value
+    elif unit_lower in ["mwh", "megawattstunden"]:
+        return value * 1000.0
+    else:
+        # Unbekannte Einheit - basierend auf der Wertgröße schätzen
+        if value > 10000:
+            return value / 1000.0
+        return value
+```
+
+## Modbus-Tools für Tests
+
+Für umfassende Tests und Entwicklung der Lambda Wärmepumpen Integration wurde ein dedizierter Satz von Modbus-Tools entwickelt. Diese Tools sind im [modbus_tools Repository](https://github.com/GuidoJeuken-6512/modbus_tools) verfügbar und bieten Simulationsmöglichkeiten für Lambda Wärmepumpen-Verhalten.
+
+### Überblick
+
+Das Modbus-Tools-Projekt enthält drei Hauptkomponenten, die speziell für die Lambda Wärmepumpen Integration-Entwicklung entwickelt wurden:
+
+### 1. Modbus Client (GUI) (`client_gui.py`)
+
+Eine grafische Benutzeroberfläche für interaktive Modbus TCP-Server-Abfragen:
+
+- **Interaktive GUI**: Benutzerfreundliche Oberfläche zum Testen des Register-Zugriffs
+- **Vorkonfigurierte Werte**: Vorausgefüllt mit gängigen Lambda Wärmepumpen-Register-Adressen
+- **Flexible Konfiguration**: Alle Werte (Host-IP, Register-Adressen, Register-Typen) sind editierbar
+- **Echtzeit-Antwort**: Zeigt Server-Antworten in Dialogfenstern an
+- **Perfekt für**: Manuelle Tests und Debugging spezifischer Register-Werte
+
+### 2. Modbus Client (CLI) (`client_cli.py`)
+
+Ein Kommandozeilen-Tool für automatisierte Modbus TCP-Abfragen:
+
+- **Automatisierte Tests**: Liest vordefinierte Register-Gruppen (Temperatur, Solar, etc.)
+- **Automatische Skalierung**: Wendet Skalierungsfaktoren automatisch basierend auf der Register-Konfiguration an
+- **Umfassendes Logging**: INFO/ERROR-Logging für Debugging und Entwicklung
+- **Skriptierbar**: Ideal für automatisierte Tests und CI/CD-Pipelines
+- **Beispiel-Verwendung**: `python client_cli.py`
+- **Perfekt für**: Automatisierte Tests und schnelle Register-Wert-Verifikation
+
+### 3. Modbus Server (`server.py`)
+
+Eine vollständige Modbus TCP-Server-Implementierung für Simulation:
+
+- **Lambda-Simulation**: Simuliert Lambda Wärmepumpen-Verhalten und Register-Antworten
+- **Konfigurierbare Register**: Register-Werte können über `registers.yaml` angepasst werden
+- **Realistische Daten**: Bietet realistische Sensor-Werte und Betriebsmodi
+- **Flexibles Logging**: Konfigurierbare Logging-Optionen für verschiedene Entwicklungsbedürfnisse
+- **Perfekt für**: Integration-Tests ohne physische Hardware
+
+#### Server-Logging-Konfiguration
+
+Der Server bietet flexible Logging-Optionen für verschiedene Entwicklungs-Szenarien:
+
+```python
+# Logging-Konfigurationskonstanten in server.py
+LOG_ERRORS = True        # Steuert das Logging von Fehlermeldungen
+LOG_WRITE_REGISTERS = True  # Steuert das Logging von Schreiboperationen
+LOG_READ_REGISTERS = False  # Steuert das Logging von Leseoperationen
+```
+
+**Verfügbare Logging-Optionen:**
+
+1. **Fehler-Logging** (`LOG_ERRORS`)
+   - Bei `True`: Loggt alle Fehlermeldungen und Schreibverifizierungsfehler
+   - Bei `False`: Unterdrückt Fehlermeldungen für sauberere Ausgabe
+   - Standard: `True`
+
+2. **Register-Schreib-Logging** (`LOG_WRITE_REGISTERS`)
+   - Bei `True`: Loggt alle Schreiboperationen auf Register
+   - Bei `False`: Unterdrückt Schreiboperationen-Logs
+   - Standard: `True`
+
+3. **Register-Lese-Logging** (`LOG_READ_REGISTERS`)
+   - Bei `True`: Loggt alle Leseoperationen von Registern
+   - Bei `False`: Unterdrückt Leseoperationen-Logs (empfohlen für hochfrequente Lesevorgänge)
+   - Standard: `False`
+
+### Setup und Verwendung
+
+1. **Repository klonen**:
+   ```bash
+   git clone https://github.com/GuidoJeuken-6512/modbus_tools.git
+   cd modbus_tools
+   ```
+
+2. **Abhängigkeiten installieren**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Register-Werte konfigurieren** (für Server):
+   - Bearbeiten Sie `registers.yaml` um Register-Werte anzupassen
+   - Modifizieren Sie `lambda.txt` für spezifische Lambda Wärmepumpen-Konfigurationen
+
+4. **Modbus-Server starten**:
+   ```bash
+   python server.py
+   ```
+
+5. **Mit Client-Tools testen**:
+   ```bash
+   # GUI Client
+   python client_gui.py
+   
+   # CLI Client
+   python client_cli.py
+   ```
+
+### Integration mit Lambda Wärmepumpen-Entwicklung
+
+Diese Tools sind speziell dafür entwickelt, die Entwicklung der Lambda Wärmepumpen Home Assistant Integration zu unterstützen:
+
+- **Register-Tests**: Verifizieren Sie, dass die Integration Register-Werte korrekt liest und interpretiert
+- **Endianness-Tests**: Testen Sie sowohl Big-Endian- als auch Little-Endian-Konfigurationen
+- **Fehlerbehandlung**: Simulieren Sie verschiedene Fehlerbedingungen und Netzwerkprobleme
+- **Leistungstests**: Testen Sie das Integrationsverhalten unter verschiedenen Lastbedingungen
+- **Feature-Entwicklung**: Entwickeln und testen Sie neue Features ohne physische Hardware
+
+### Abhängigkeiten
+
+- **Python 3.7+**: Erforderlich für alle Komponenten
+- **PyYAML**: Für Register-Konfigurationsdatei-Parsing (verwendet automatisch C-optimiertes `_yaml` falls verfügbar)
+- **pymodbus**: Für Modbus TCP-Kommunikation
+- **tkinter**: Für GUI-Client (meist mit Python enthalten)
+
+### Haftungsausschluss
+
+Diese Tools werden für Entwicklungs- und Testzwecke bereitgestellt. Die Nutzung erfolgt auf eigene Gefahr. Es wird keine Haftung für Schäden, Datenverluste oder andere Folgen übernommen, die durch die Verwendung dieser Tools entstehen.
+
+Für weitere Informationen und die neuesten Updates besuchen Sie das [modbus_tools Repository](https://github.com/GuidoJeuken-6512/modbus_tools).

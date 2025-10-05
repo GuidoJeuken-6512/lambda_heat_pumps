@@ -2,7 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-1.3.0-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/releases)
+[![version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/releases)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -31,6 +31,15 @@ When setting up the integration, you will need to provide:
 - **Firmware Version**: Select your Lambda controller's firmware version
 - Everything else will be configured automatically.
 
+### Automatic Configuration
+
+The integration features **automatic module detection** and **smart configuration**:
+
+- **Auto-Detection**: Automatically detects available modules (heat pumps, boilers, buffers, solar, heating circuits)
+- **Dynamic Entity Creation**: Creates sensors and entities based on detected hardware
+- **Smart Defaults**: Applies optimal settings for your specific Lambda configuration
+- **Configuration Validation**: Prevents duplicate configurations and validates existing connections
+
 #### Firmware Version
 The firmware version is only important to decide which sensors are available.<br>
 To find the firmware version follow this from the main screen:
@@ -52,11 +61,21 @@ After initial setup, you can modify additional settings in the integration optio
    - PV surplus control for solar power integration
 
 **Features:**
-- Full Modbus/TCP support for Lambda heat pumps
-- Dynamic entity and sensor detection
-- Room thermostat control with external sensors
-- PV surplus control for solar power integration
-- advanced YAML config, debug logging
+- **Full Modbus/TCP Support**: Complete support for Lambda heat pumps via Modbus/TCP
+- **Automatic Module Detection**: Auto-detects available modules and creates appropriate entities
+- **Cycling Sensors**: Comprehensive cycling counters for all operating modes (heating, hot water, cooling, defrost)
+  - Total, daily, yesterday, 2h, and 4h cycling sensors
+  - Automatic daily reset at midnight
+  - Configurable cycling offsets for counter adjustments
+- **Energy Consumption Sensors**: Detailed energy tracking by operating mode
+  - Heating, hot water, cooling, and defrost energy consumption
+  - Monthly and yearly energy consumption tracking
+  - Configurable source sensors with automatic unit conversion (Wh/kWh/MWh)
+  - Smart sensor change detection to prevent incorrect calculations
+- **Room Thermostat Control**: External sensor integration for precise temperature control
+- **PV Surplus Control**: Solar power integration for optimal energy usage
+- **Advanced Configuration**: YAML-based configuration with debug logging
+- **Endianness Configuration**: Configurable byte order for different Lambda models
 
 **Documentation:**
 - [English Guide](docs/lambda_heat_pumps_en.md)
@@ -85,12 +104,21 @@ After initial setup, you can modify additional settings in the integration optio
 
 Bei der Einrichtung müssen Sie Folgendes angeben:
 
-- **Name**: Ein Name für Ihre Lambda-Wärmepumpe (z. B. „EU08L“)
+- **Name**: Ein Name für Ihre Lambda-Wärmepumpe (z. B. „EU08L")
 - **Host**: IP-Adresse oder Hostname Ihres Lambda-Controllers
 - **Port**: Modbus-TCP-Port (Standard: 502)
 - **Slave ID**: Modbus-Slave-ID (Standard: 1)
 - **Firmware-Version**: Firmware-Version Ihres Lambda-Controllers auswählen
 - Alles andere wird automatisch konfiguriert
+
+### Automatische Konfiguration
+
+Die Integration bietet **automatische Modulerkennung** und **intelligente Konfiguration**:
+
+- **Auto-Detection**: Erkennt automatisch verfügbare Module (Wärmepumpen, Kessel, Puffer, Solar, Heizkreise)
+- **Dynamische Entity-Erstellung**: Erstellt Sensoren und Entities basierend auf erkanntem Hardware
+- **Intelligente Standardeinstellungen**: Wendet optimale Einstellungen für Ihre spezifische Lambda-Konfiguration an
+- **Konfigurationsvalidierung**: Verhindert doppelte Konfigurationen und validiert bestehende Verbindungen
 
 #### Firmware Version
 Die Firmware-Version is nur wichtig um zu entscheiden welche Sensoren verfügbar sind.<br>
@@ -111,6 +139,63 @@ Nach der Ersteinrichtung können Sie zusätzliche Einstellungen in den Integrati
    - Temperaturstufengröße
    - Raumthermostatsteuerung (mit externen Sensoren)
    - PV Überschuss zur Heizkurvenanhebung der Lambda
+
+---
+
+## 🔄 Cycling & Verbrauchssensoren
+
+Die Integration bietet umfassende **Cycling-Sensoren** und **Energieverbrauchssensoren** für detaillierte Überwachung Ihrer Lambda-Wärmepumpe:
+
+### Cycling-Sensoren
+- **Betriebsmodi**: Heizen, Warmwasser, Kühlen, Abtauen
+- **Zeiträume**: Total, Täglich, Gestern, 2h, 4h
+- **Automatischer Reset**: Tägliche Sensoren werden um Mitternacht zurückgesetzt
+- **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel
+
+### Energieverbrauchssensoren
+- **Betriebsmodi**: Heizen, Warmwasser, Kühlen, Abtauen
+- **Zeiträume**: Täglich, Monatlich, Jährlich
+- **Konfigurierbare Quellsensoren**: Beliebige Energiezähler als Datenquelle
+- **Automatische Einheitenkonvertierung**: Wh/kWh/MWh
+- **Sensor-Wechsel-Erkennung**: Intelligente Behandlung von Sensor-Änderungen
+
+### Konfiguration
+Die Sensoren werden automatisch erstellt und können über `lambda_wp_config.yaml` konfiguriert werden:
+```yaml
+energy_consumption_sensors:
+  hp1:
+    sensor_entity_id: sensor.your_energy_meter
+cycling_offsets:
+  hp1:
+    heating_cycling_total: 100
+    hot_water_cycling_total: 50
+# Endianness-Konfiguration für verschiedene Lambda-Modelle
+endianness: "big"  # "big" oder "little" - Standard: "big"
+```
+
+---
+
+## ⚙️ Endianness-Konfiguration
+
+Die Integration unterstützt **konfigurierbare Byte-Reihenfolge** (Endianness) für verschiedene Lambda-Modelle:
+
+### Konfiguration
+In der `lambda_wp_config.yaml` können Sie die Endianness festlegen:
+
+```yaml
+# Endianness-Konfiguration
+endianness: "big"    # Big-Endian (Standard)
+# oder
+endianness: "little" # Little-Endian
+```
+
+### Wann ist das wichtig?
+- **Big-Endian**: Standard für die meisten Lambda-Modelle
+- **Little-Endian**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen
+- **Automatische Erkennung**: Die Integration versucht automatisch die richtige Endianness zu erkennen
+
+### Fehlerbehebung
+Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Endianness-Einstellung.
 
 ---
 
@@ -139,6 +224,63 @@ Die Integration unterstützt die Steuerung der Wärmepumpe basierend auf verfüg
 - **Register 102**: E-Manager Actual Power (globales Register)
 - **Wertebereich**: -32768 bis 32767 (int16)
 - **Einheit**: Watt
+
+---
+
+## 🔄 Cycling & Energy Consumption Sensors
+
+The integration provides comprehensive **Cycling Sensors** and **Energy Consumption Sensors** for detailed monitoring of your Lambda heat pump:
+
+### Cycling Sensors
+- **Operating Modes**: Heating, Hot Water, Cooling, Defrost
+- **Time Periods**: Total, Daily, Yesterday, 2h, 4h
+- **Automatic Reset**: Daily sensors reset at midnight
+- **Offset Configuration**: Adjustable counters for heat pump replacement
+
+### Energy Consumption Sensors
+- **Operating Modes**: Heating, Hot Water, Cooling, Defrost
+- **Time Periods**: Daily, Monthly, Yearly
+- **Configurable Source Sensors**: Any energy meter as data source
+- **Automatic Unit Conversion**: Wh/kWh/MWh
+- **Sensor Change Detection**: Intelligent handling of sensor changes
+
+### Configuration
+Sensors are automatically created and can be configured via `lambda_wp_config.yaml`:
+```yaml
+energy_consumption_sensors:
+  hp1:
+    sensor_entity_id: sensor.your_energy_meter
+cycling_offsets:
+  hp1:
+    heating_cycling_total: 100
+    hot_water_cycling_total: 50
+# Endianness configuration for different Lambda models
+endianness: "big"  # "big" or "little" - Default: "big"
+```
+
+---
+
+## ⚙️ Endianness Configuration
+
+The integration supports **configurable byte order** (Endianness) for different Lambda models:
+
+### Configuration
+In the `lambda_wp_config.yaml` you can set the endianness:
+
+```yaml
+# Endianness configuration
+endianness: "big"    # Big-Endian (Default)
+# or
+endianness: "little" # Little-Endian
+```
+
+### When is this important?
+- **Big-Endian**: Default for most Lambda models
+- **Little-Endian**: Required for certain Lambda models or firmware versions
+- **Automatic Detection**: The integration tries to automatically detect the correct endianness
+
+### Troubleshooting
+If you see incorrect values in the sensors, try the other endianness setting.
 
 ---
 
