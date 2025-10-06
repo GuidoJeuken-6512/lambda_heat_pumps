@@ -178,7 +178,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Create coordinator (again, for main use)
     coordinator = LambdaDataUpdateCoordinator(hass, entry)
     # Create coordinator
-    coordinator = LambdaDataUpdateCoordinator(hass, entry)
+    # coordinator = LambdaDataUpdateCoordinator(hass, entry)  # Doppelter Aufruf - entfernt
     try:
         await coordinator.async_init()
         

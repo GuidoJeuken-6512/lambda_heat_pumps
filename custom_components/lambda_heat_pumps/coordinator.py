@@ -44,6 +44,9 @@ import time
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
 
+# Global flag to prevent multiple sensor detection runs across coordinator instances
+_sensor_detection_executed_global = False
+
 
 class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Lambda data."""
@@ -89,6 +92,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._energy_consumption = {}   # {hp_index: {mode: {period: value}}}
         self._energy_sensor_configs = {}  # Sensor-Konfigurationen aus Config (optional)
         self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung
+        self._energy_unit_cache = {}  # {hp_index: unit_string} - Memory-only cache for performance
+        self._sensor_detection_executed = False  # Flag to prevent multiple sensor detection runs
         
         self._use_legacy_names = entry.data.get("use_legacy_modbus_names", True)
         self._persist_file = os.path.join(
@@ -123,22 +128,153 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
         # self._load_offsets_and_persisted() ENTFERNT!
 
+    def _normalize_operating_states(self, states_dict):
+        """Normalisiere last_operating_states - konvertiere alle Schlüssel zu Strings."""
+        if not isinstance(states_dict, dict):
+            return {}
+        
+        normalized = {}
+        for key, value in states_dict.items():
+            # Konvertiere Schlüssel zu String
+            normalized[str(key)] = value
+        
+        return normalized
+
+    async def _repair_and_load_persist_file(self):
+        """Lade und repariere persistierte JSON-Datei bei Bedarf."""
+        
+        def _repair_json():
+            try:
+                with open(self._persist_file) as f:
+                    content = f.read().strip()
+                    
+                if not content:
+                    _LOGGER.warning(f"Persist file {self._persist_file} is empty, using defaults")
+                    return {}
+                    
+                # Versuche normales Laden
+                data = json.loads(content)
+                
+                # Repariere doppelte Schlüssel in last_operating_states
+                if "last_operating_states" in data and isinstance(data["last_operating_states"], dict):
+                    states = data["last_operating_states"]
+                    # Entferne doppelte Schlüssel - behalte den letzten Wert
+                    clean_states = {}
+                    for key, value in states.items():
+                        clean_states[str(key)] = value  # Normalisiere zu String
+                    data["last_operating_states"] = clean_states
+                    _LOGGER.info(
+                        f"Repaired duplicate keys in last_operating_states: {clean_states}"
+                    )
+                
+                    # Stelle sicher, dass alle wichtigen Felder existieren
+                    required_fields = [
+                        "heating_cycles", "heating_energy", "last_operating_states",
+                        "energy_consumption", "last_energy_readings", "energy_offsets"
+                    ]
+                    for field in required_fields:
+                        if field not in data:
+                            data[field] = {}
+                            _LOGGER.info(f"Added missing field {field} to repaired JSON")
+                    
+                    # sensor_ids nur hinzufügen wenn komplett fehlt, nicht wenn leer
+                    if "sensor_ids" not in data:
+                        data["sensor_ids"] = {}
+                        _LOGGER.info("Added missing sensor_ids field to repaired JSON")
+                    
+                return data
+                
+            except json.JSONDecodeError as e:
+                _LOGGER.error(f"JSON decode error in {self._persist_file}: {e}")
+                _LOGGER.warning(f"Attempting to repair corrupted JSON file")
+                
+                # Versuche einfache Reparatur durch Entfernung doppelter Schlüssel
+                try:
+                    # Erstelle Backup der ursprünglichen Datei
+                    backup_file = self._persist_file + ".backup"
+                    with open(self._persist_file, 'r') as src, open(backup_file, 'w') as dst:
+                        dst.write(src.read())
+                    
+                    # Versuche Reparatur durch Regex
+                    import re
+                    # Entferne doppelte Schlüssel: "key": value, "key": value
+                    duplicate_pattern = r'("[^"]+"\s*:\s*[^,}]+),\s*\1'
+                    
+                    with open(self._persist_file, 'r') as f:
+                        content = f.read()
+                    
+                    # Repariere doppelte Schlüssel
+                    repaired_content = content
+                    while re.search(duplicate_pattern, repaired_content):
+                        repaired_content = re.sub(duplicate_pattern, r'\1', repaired_content)
+                    
+                    # Versuche das reparierte JSON zu laden
+                    data = json.loads(repaired_content)
+                    
+                    # Stelle sicher, dass alle wichtigen Felder existieren
+                    required_fields = [
+                        "heating_cycles", "heating_energy", "last_operating_states",
+                        "energy_consumption", "last_energy_readings", "energy_offsets", "sensor_ids"
+                    ]
+                    for field in required_fields:
+                        if field not in data:
+                            data[field] = {}
+                    
+                    # Speichere reparierte Version
+                    with open(self._persist_file, 'w') as f:
+                        json.dump(data, f, indent=2)
+                    
+                    _LOGGER.info(f"Successfully repaired corrupted JSON file")
+                    return data
+                    
+                except Exception as repair_error:
+                    _LOGGER.error(f"Failed to repair JSON file: {repair_error}")
+                    _LOGGER.warning(f"Deleting corrupted persist file and starting fresh")
+                    try:
+                        os.remove(self._persist_file)
+                    except Exception:
+                        pass  # Ignore if file can't be deleted
+                    return {}
+            except Exception as e:
+                _LOGGER.error(f"Error reading persist file {self._persist_file}: {e}")
+                return {}
+        
+        return await self.hass.async_add_executor_job(_repair_json)
+
     async def _persist_counters(self):
         """Persist counter data and state information to file using Home Assistant's file operations."""
+        # Stelle sicher, dass alle Schlüssel konsistent sind
+        normalized_operating_states = self._normalize_operating_states(
+            getattr(self, "_last_operating_state", {})
+        )
+        
+        # Prüfe ob sensor_ids in der aktuellen Datei existieren und verwende sie falls self._sensor_ids leer ist
+        sensor_ids_to_save = getattr(self, "_sensor_ids", {})
+        if not sensor_ids_to_save and os.path.exists(self._persist_file):
+            try:
+                with open(self._persist_file) as f:
+                    existing_data = json.loads(f.read())
+                    existing_sensor_ids = existing_data.get("sensor_ids", {})
+                    if existing_sensor_ids:
+                        sensor_ids_to_save = existing_sensor_ids
+                        _LOGGER.debug(f"Using existing sensor_ids from file: {sensor_ids_to_save}")
+            except Exception:
+                pass  # Ignore errors when reading existing file
+        
         data = {
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
-            "last_operating_states": getattr(self, "_last_operating_state", {}),
+            "last_operating_states": normalized_operating_states,
             "energy_consumption": self._energy_consumption,
             "last_energy_readings": self._last_energy_reading,
             "energy_offsets": self._energy_offsets,
-            "sensor_ids": getattr(self, "_sensor_ids", {}),
+            "sensor_ids": sensor_ids_to_save,
         }
 
         def _write_data():
             os.makedirs(os.path.dirname(self._persist_file), exist_ok=True)
             with open(self._persist_file, "w") as f:
-                f.write(json.dumps(data))
+                json.dump(data, f, indent=2)  # Mit Indentation für bessere Lesbarkeit
 
         await self.hass.async_add_executor_job(_write_data)
 
@@ -175,15 +311,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         else:
             _LOGGER.warning(f"Config file not found: {config_path}")
 
-        # Lade persistierte Zählerstände (falls vorhanden)
+        # Lade persistierte Zählerstände (falls vorhanden) mit Reparatur-Funktion
         if os.path.exists(self._persist_file):
-
-            def _read_persist():
-                with open(self._persist_file) as f:
-                    content = f.read()
-                    return json.loads(content)
-
-            data = await self.hass.async_add_executor_job(_read_persist)
+            data = await self._repair_and_load_persist_file()
+        else:
+            data = {}
             self._heating_cycles = data.get("heating_cycles", {})
             self._heating_energy = data.get("heating_energy", {})
             
@@ -203,12 +335,17 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
         # Sensor-Wechsel-Erkennung für Energy Consumption Sensoren (NACH dem Laden der persistierten Daten)
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung für {len(self._energy_sensor_configs)} konfigurierte Sensoren")
-        await self._detect_and_handle_sensor_changes()
+        global _sensor_detection_executed_global
+        if not _sensor_detection_executed_global:
+            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung für {len(self._energy_sensor_configs)} konfigurierte Sensoren")
+            await self._detect_and_handle_sensor_changes()
+            _sensor_detection_executed_global = True
+        else:
+            _LOGGER.debug("SENSOR-CHANGE-DETECTION: Bereits ausgeführt, überspringe")
 
     async def _detect_and_handle_sensor_changes(self):
         """Erkenne Sensor-Wechsel und behandle sie entsprechend."""
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
         
         try:
             from .utils import detect_sensor_change, get_stored_sensor_id, store_sensor_id
@@ -249,9 +386,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if self._sensor_ids:
                 _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Speichere sensor_ids in JSON: {self._sensor_ids}")
                 await self._persist_counters()
-                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: sensor_ids erfolgreich gespeichert")
+                _LOGGER.info("SENSOR-CHANGE-DETECTION: sensor_ids erfolgreich gespeichert")
             
-            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel-Erkennung abgeschlossen")
+            _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-Wechsel-Erkennung abgeschlossen")
             
         except Exception as e:
             _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler bei Sensor-Wechsel-Erkennung: {e}")
@@ -1026,7 +1163,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     continue
 
                 # Get last operating state
-                last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
+                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
                 
                 # Initialisierung beim ersten Update: Logge den aktuellen operating_state
                 if last_op_state == "UNBEKANNT":
@@ -1043,7 +1180,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         op_state_val,
                     )
                 # Speichere den alten Wert für die Flankenerkennung
-                last_op_state = self._last_operating_state.get(hp_idx, "UNBEKANNT")
+                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
                 
                 for mode, mode_val in MODES.items():
                     cycling_key = f"{mode}_cycles"
@@ -1190,7 +1327,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     data[energy_entity_id] = energy_value + energy_sensor_offset
                 
                 # Aktualisiere _last_operating_state NACH der Flankenerkennung
-                self._last_operating_state[hp_idx] = op_state_val
+                self._last_operating_state[str(hp_idx)] = op_state_val
             await self._persist_counters()
 
             # Read boiler sensors
@@ -1459,11 +1596,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 pass
 
             # Energy Consumption Tracking
-            _LOGGER.debug(f"DEBUG-001: Starting energy consumption tracking")
+            _LOGGER.debug("DEBUG-001: Starting energy consumption tracking")
             await self._track_energy_consumption(data)
-            _LOGGER.debug(f"DEBUG-002: Energy consumption tracking completed")
+            _LOGGER.debug("DEBUG-002: Energy consumption tracking completed")
 
-            _LOGGER.debug(f"DEBUG-003: Returning data from _async_update_data")
+            _LOGGER.debug("DEBUG-003: Returning data from _async_update_data")
             return data
 
         except Exception as ex:
@@ -1483,9 +1620,34 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     self.client = None
             raise UpdateFailed(f"Error fetching Lambda data: {ex}")
 
+    def _is_energy_unit(self, unit: str) -> bool:
+        """Check if unit is a valid energy unit."""
+        if not unit:
+            return True  # Leer ist OK (kWh)
+        
+        unit_lower = unit.lower().strip()
+        valid_units = ["wh", "wattstunden", "kwh", "kilowattstunden", "mwh", "megawattstunden"]
+        return unit_lower in valid_units
+
+    def _convert_energy_to_kwh_cached(self, value: float, unit: str) -> float:
+        """Optimized energy conversion using cached unit."""
+        if not unit:  # Keine Einheit = kWh (Standard)
+            return value
+        
+        if unit == "kWh":
+            return value
+        elif unit == "Wh":
+            return value / 1000.0
+        elif unit == "MWh":
+            return value * 1000.0
+        else:
+            # Sollte nie erreicht werden, da ungültige Einheiten abgefangen werden
+            _LOGGER.error(f"Unexpected unit '{unit}' in conversion function")
+            return value
+
     async def _track_energy_consumption(self, data):
         """Track energy consumption by operating mode."""
-        _LOGGER.debug(f"DEBUG-004: Entering _track_energy_consumption")
+        _LOGGER.debug("DEBUG-004: Entering _track_energy_consumption")
         try:
             # Get number of heat pumps from config entry
             num_hps = self.entry.data.get("num_hps", 1)
@@ -1507,7 +1669,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 await self._track_hp_energy_consumption(hp_idx, current_states[hp_idx], data)
                 _LOGGER.debug(f"DEBUG-008: Completed tracking energy consumption for HP{hp_idx}")
 
-            _LOGGER.debug(f"DEBUG-009: Completed _track_energy_consumption")
+            _LOGGER.debug("DEBUG-009: Completed _track_energy_consumption")
 
         except Exception as ex:
             _LOGGER.error("DEBUG-ERROR: Error tracking energy consumption: %s", ex)
@@ -1552,17 +1714,46 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning(f"DEBUG-ERROR: Could not convert energy state to float: {current_energy_state.state}")
                 return
 
-            # Get unit from sensor attributes and convert to kWh
+            # Get unit from sensor attributes
             unit = current_energy_state.attributes.get("unit_of_measurement", "")
-            from .utils import convert_energy_to_kwh
-            original_energy = current_energy
-            current_energy_kwh = convert_energy_to_kwh(current_energy, unit)
             
-            # Log conversion details (analog zur PV Surplus Konvertierung)
-            if unit and unit.lower() not in ["kwh", "kilowattstunden"]:
-                _LOGGER.debug(f"DEBUG-021: Energy unit conversion for HP{hp_idx}: {original_energy} {unit} -> {current_energy_kwh} kWh")
+            # Cache unit in memory (auto-detection on first run or change)
+            cache_key = f"hp{hp_idx}"
+            if cache_key not in self._energy_unit_cache:
+                # First time - validate and cache the unit
+                if not self._is_energy_unit(unit):
+                    _LOGGER.warning(f"Invalid energy unit '{unit}' detected for HP{hp_idx} - energy tracking disabled")
+                    self._energy_unit_cache[cache_key] = None  # Mark as invalid
+                    return  # ABBRUCH - keine Werteänderung
+                else:
+                    self._energy_unit_cache[cache_key] = unit
+                    _LOGGER.info(f"Energy unit detected and cached for HP{hp_idx}: {unit or 'kWh (default)'}")
+            elif self._energy_unit_cache[cache_key] != unit:
+                # Unit changed - validate and update cache
+                if not self._is_energy_unit(unit):
+                    _LOGGER.warning(f"Energy unit changed to invalid '{unit}' for HP{hp_idx} - energy tracking disabled")
+                    self._energy_unit_cache[cache_key] = None  # Mark as invalid
+                    return  # ABBRUCH - keine Werteänderung
+                else:
+                    old_unit = self._energy_unit_cache[cache_key]
+                    self._energy_unit_cache[cache_key] = unit
+                    _LOGGER.warning(f"Energy unit changed for HP{hp_idx}: {old_unit or 'kWh (default)'} -> {unit or 'kWh (default)'}")
+            
+            # Check if unit is valid (not None)
+            if self._energy_unit_cache[cache_key] is None:
+                _LOGGER.debug(f"Energy tracking disabled for HP{hp_idx} due to invalid unit")
+                return  # ABBRUCH - keine Werteänderung
+            
+            # Use cached unit for fast conversion
+            cached_unit = self._energy_unit_cache[cache_key]
+            original_energy = current_energy
+            current_energy_kwh = self._convert_energy_to_kwh_cached(current_energy, cached_unit)
+            
+            # Log conversion details
+            if cached_unit and cached_unit.lower() not in ["kwh", "kilowattstunden"]:
+                _LOGGER.debug(f"DEBUG-021: Energy unit conversion for HP{hp_idx}: {original_energy} {cached_unit} -> {current_energy_kwh} kWh")
             else:
-                _LOGGER.debug(f"DEBUG-021: Energy value for HP{hp_idx}: {current_energy_kwh} kWh (unit: {unit or 'none'})")
+                _LOGGER.debug(f"DEBUG-021: Energy value for HP{hp_idx}: {current_energy_kwh} kWh (unit: {cached_unit or 'none'})")
 
             # Get last energy reading for this heat pump
             last_energy = self._last_energy_reading.get(f"hp{hp_idx}", None)
