@@ -251,15 +251,20 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # Prüfe ob sensor_ids in der aktuellen Datei existieren und verwende sie falls self._sensor_ids leer ist
         sensor_ids_to_save = getattr(self, "_sensor_ids", {})
         if not sensor_ids_to_save and os.path.exists(self._persist_file):
-            try:
-                with open(self._persist_file) as f:
-                    existing_data = json.loads(f.read())
-                    existing_sensor_ids = existing_data.get("sensor_ids", {})
-                    if existing_sensor_ids:
-                        sensor_ids_to_save = existing_sensor_ids
-                        _LOGGER.debug(f"Using existing sensor_ids from file: {sensor_ids_to_save}")
-            except Exception:
-                pass  # Ignore errors when reading existing file
+            
+            def _read_existing_sensor_ids():
+                try:
+                    with open(self._persist_file) as f:
+                        existing_data = json.loads(f.read())
+                        existing_sensor_ids = existing_data.get("sensor_ids", {})
+                        if existing_sensor_ids:
+                            _LOGGER.debug(f"Using existing sensor_ids from file: {existing_sensor_ids}")
+                            return existing_sensor_ids
+                except Exception:
+                    pass  # Ignore errors when reading existing file
+                return {}
+            
+            sensor_ids_to_save = await self.hass.async_add_executor_job(_read_existing_sensor_ids)
         
         data = {
             "heating_cycles": self._heating_cycles,
