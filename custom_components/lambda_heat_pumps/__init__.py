@@ -20,7 +20,7 @@ from .const import (
 )
 
 from .coordinator import LambdaDataUpdateCoordinator
-from .services import async_setup_services, async_unload_services
+from .services import async_setup_services, async_unload_services, setup_scheduled_timer
 from .utils import generate_base_addresses, ensure_lambda_config
 from .automations import setup_cycling_automations, cleanup_cycling_automations
 # from .migration import async_migrate_entry as migrate_entry
@@ -245,6 +245,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Set up services (only once, regardless of number of entries)
         if not hass.services.has_service(DOMAIN, "read_modbus_register"):
             await async_setup_services(hass)
+        else:
+            # Services existieren bereits, aber Timer müssen neu gestartet werden nach Reload
+            _LOGGER.info("Services already registered, restarting scheduled timer after reload")
+            await setup_scheduled_timer(hass)
 
         # Set up cycling automations
         setup_cycling_automations(hass, entry.entry_id)

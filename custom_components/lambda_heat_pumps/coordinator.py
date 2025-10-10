@@ -321,23 +321,24 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             data = await self._repair_and_load_persist_file()
         else:
             data = {}
-            self._heating_cycles = data.get("heating_cycles", {})
-            self._heating_energy = data.get("heating_energy", {})
-            
-            # Lade persistierte State-Informationen
-            self._last_operating_state = data.get("last_operating_states", {})
-            
-            # Lade persistierte Energy Consumption Daten
-            self._energy_consumption = data.get("energy_consumption", {})
-            self._last_energy_reading = data.get("last_energy_readings", {})
-            self._sensor_ids = data.get("sensor_ids", {})
-            # Energy Offsets werden bereits aus der Config geladen
-            
-            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Geladene sensor_ids: {self._sensor_ids}")
-            
-            _LOGGER.info(
-                f"Restored last_operating_state: {self._last_operating_state}"
-            )
+        
+        self._heating_cycles = data.get("heating_cycles", {})
+        self._heating_energy = data.get("heating_energy", {})
+        
+        # Lade persistierte State-Informationen
+        self._last_operating_state = data.get("last_operating_states", {})
+        
+        # Lade persistierte Energy Consumption Daten
+        self._energy_consumption = data.get("energy_consumption", {})
+        self._last_energy_reading = data.get("last_energy_readings", {})
+        self._sensor_ids = data.get("sensor_ids", {})
+        # Energy Offsets werden bereits aus der Config geladen
+        
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Geladene sensor_ids: {self._sensor_ids}")
+        
+        _LOGGER.info(
+            f"Restored last_operating_state: {self._last_operating_state}"
+        )
 
         # Sensor-Wechsel-Erkennung für Energy Consumption Sensoren (NACH dem Laden der persistierten Daten)
         global _sensor_detection_executed_global
