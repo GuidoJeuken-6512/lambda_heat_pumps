@@ -9,6 +9,7 @@
 1. [Heat Pump (HP1)](#heat-pump-hp1)
    - [Sensors](#sensors)
    - [Cycling Sensors (Flanken-basiert)](#cycling-sensors-flanken-basiert)
+   - [Energy Consumption Sensors (Energieverbrauchs-Sensoren nach Betriebsart)](#energy-consumption-sensors-energieverbrauchs-sensoren-nach-betriebsart)
    - [Template-Sensoren (Berechnete Sensoren)](#template-sensoren-berechnete-sensoren)
 2. [Boiler (BOIL1)](#boiler-boil1)
    - [Sensors](#sensors-1)
@@ -108,6 +109,63 @@
 - **Yesterday-Werte:** Werden vor dem Daily-Reset (um 00:00) vom aktuellen Daily-Wert übernommen
 - **Historische Daten:** Alle Werte werden in der Home Assistant Datenbank gespeichert
 - **State Classes:** TOTAL (kumulativ), MEASUREMENT (periodisch zurückgesetzt)
+
+### Energy Consumption Sensors (Energieverbrauchs-Sensoren nach Betriebsart)
+| Name                          | Register | minFW | Einheit | R/W | Beschreibung |
+|-------------------------------|----------|-------|---------|-----|--------------|
+| Heating Energy Total          | -        | 1     | kWh     | R   | Gesamter Energieverbrauch für Heizen (kumulativ) |
+| Heating Energy Daily          | -        | 1     | kWh     | R   | Täglicher Energieverbrauch für Heizen (wird täglich um 00:00 zurückgesetzt) |
+| Heating Energy Monthly        | -        | 1     | kWh     | R   | Monatlicher Energieverbrauch für Heizen (wird monatlich am 1. zurückgesetzt) |
+| Heating Energy Yearly         | -        | 1     | kWh     | R   | Jährlicher Energieverbrauch für Heizen (wird jährlich am 1. Januar zurückgesetzt) |
+| Hot Water Energy Total        | -        | 1     | kWh     | R   | Gesamter Energieverbrauch für Warmwasser (kumulativ) |
+| Hot Water Energy Daily        | -        | 1     | kWh     | R   | Täglicher Energieverbrauch für Warmwasser (wird täglich um 00:00 zurückgesetzt) |
+| Hot Water Energy Monthly      | -        | 1     | kWh     | R   | Monatlicher Energieverbrauch für Warmwasser (wird monatlich am 1. zurückgesetzt) |
+| Hot Water Energy Yearly       | -        | 1     | kWh     | R   | Jährlicher Energieverbrauch für Warmwasser (wird jährlich am 1. Januar zurückgesetzt) |
+| Cooling Energy Total          | -        | 1     | kWh     | R   | Gesamter Energieverbrauch für Kühlen (kumulativ) |
+| Cooling Energy Daily          | -        | 1     | kWh     | R   | Täglicher Energieverbrauch für Kühlen (wird täglich um 00:00 zurückgesetzt) |
+| Cooling Energy Monthly        | -        | 1     | kWh     | R   | Monatlicher Energieverbrauch für Kühlen (wird monatlich am 1. zurückgesetzt) |
+| Cooling Energy Yearly         | -        | 1     | kWh     | R   | Jährlicher Energieverbrauch für Kühlen (wird jährlich am 1. Januar zurückgesetzt) |
+| Defrost Energy Total          | -        | 1     | kWh     | R   | Gesamter Energieverbrauch für Abtauen (kumulativ) |
+| Defrost Energy Daily          | -        | 1     | kWh     | R   | Täglicher Energieverbrauch für Abtauen (wird täglich um 00:00 zurückgesetzt) |
+| Defrost Energy Monthly        | -        | 1     | kWh     | R   | Monatlicher Energieverbrauch für Abtauen (wird monatlich am 1. zurückgesetzt) |
+| Defrost Energy Yearly         | -        | 1     | kWh     | R   | Jährlicher Energieverbrauch für Abtauen (wird jährlich am 1. Januar zurückgesetzt) |
+| Standby Energy Total          | -        | 1     | kWh     | R   | Gesamter Energieverbrauch für Standby (kumulativ) |
+| Standby Energy Daily          | -        | 1     | kWh     | R   | Täglicher Energieverbrauch für Standby (wird täglich um 00:00 zurückgesetzt) |
+| Standby Energy Monthly        | -        | 1     | kWh     | R   | Monatlicher Energieverbrauch für Standby (wird monatlich am 1. zurückgesetzt) |
+| Standby Energy Yearly         | -        | 1     | kWh     | R   | Jährlicher Energieverbrauch für Standby (wird jährlich am 1. Januar zurückgesetzt) |
+
+**Hinweise zu Energy Consumption Sensors:**
+- **Flanken-basierte Energiezuordnung:** Energie wird basierend auf Betriebsart-Änderungen zugeordnet
+- **Automatische Berechnung:** Energieverbrauch wird aus dem Kompressor-Stromverbrauch berechnet
+- **Automatische Resets:** Daily (00:00), Monthly (1. des Monats), Yearly (1. Januar) werden automatisch zurückgesetzt
+- **Offset-Unterstützung:** Total-Sensoren unterstützen Offsets für Wärmepumpen-Austausch
+- **State Classes:** TOTAL_INCREASING (kumulativ), TOTAL (periodisch zurückgesetzt)
+- **Einheitenkonvertierung:** Unterstützt automatische Konvertierung von Wh, kWh, MWh zu kWh
+- **Quellesensor:** Standardmäßig wird `compressor_power_consumption_accumulated` (Register 20) verwendet
+- **Quellesensor-Konfiguration:** Der Quellesensor kann in der `lambda_wp_config.yaml` durch einen eigenen Sensor ersetzt werden (siehe Konfigurationsbeispiel unten)
+
+**Konfigurationsbeispiel für eigenen Quellesensor:**
+```yaml
+energy_consumption_sensors:
+  hp1:
+    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"  # Standard
+  hp2:
+    sensor_entity_id: "sensor.my_custom_energy_meter"  # Eigener Sensor
+
+energy_consumption_offsets:
+  hp1:
+    heating_energy_total: 0
+    hot_water_energy_total: 0
+    cooling_energy_total: 0
+    defrost_energy_total: 0
+    stby_energy_total: 0
+  hp2:
+    heating_energy_total: 150.5
+    hot_water_energy_total: 45.2
+    cooling_energy_total: 12.8
+    defrost_energy_total: 3.1
+    stby_energy_total: 5.0
+```
 
 ### Template-Sensoren (Berechnete Sensoren)
 | Name                                    | minFW | Einheit | R/W | Beschreibung |
@@ -267,9 +325,10 @@ Alle Geräte verwenden folgende Basis-Adressen:
 3. **Einheiten** werden automatisch von der Integration gesetzt
 4. **R/W** zeigt an, ob ein Sensor nur lesbar (R) oder lesbar/schreibbar (RW) ist
 5. **Cycling-Sensoren** basieren auf Flankenerkennung und direkter Inkrementierung (keine Template-Berechnungen mehr)
-6. **Template-Sensoren** sind berechnete Sensoren mit Jinja2-Templates (z.B. COP Calculated)
-7. **Climate-Entities** werden automatisch für Boiler und Heating Circuits erstellt
-8. **Alle Sensoren** werden dynamisch basierend auf der Konfiguration erstellt
+6. **Energy Consumption Sensors** erfassen den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen, Standby) mit flanken-basierter Energiezuordnung
+7. **Template-Sensoren** sind berechnete Sensoren mit Jinja2-Templates (z.B. COP Calculated)
+8. **Climate-Entities** werden automatisch für Boiler und Heating Circuits erstellt
+9. **Alle Sensoren** werden dynamisch basierend auf der Konfiguration erstellt
 
 ## Übersicht aller RW-Sensoren
 
