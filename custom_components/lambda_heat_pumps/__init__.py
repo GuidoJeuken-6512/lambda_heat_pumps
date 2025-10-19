@@ -42,6 +42,7 @@ _reload_lock = asyncio.Lock()
 PLATFORMS = [
     Platform.SENSOR,
     Platform.CLIMATE,
+    Platform.NUMBER,
 ]
 
 # Config schema - only config entries are supported

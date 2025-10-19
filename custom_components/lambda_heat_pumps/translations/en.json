@@ -90,5 +90,18 @@
         }
       }
     }
+  },
+  "entity": {
+    "number": {
+      "heating_curve_low": {
+        "name": "Heating Curve Low"
+      },
+      "heating_curve_null": {
+        "name": "Heating Curve Null"
+      },
+      "heating_curve_high": {
+        "name": "Heating Curve High"
+      }
+    }
   }
 }
