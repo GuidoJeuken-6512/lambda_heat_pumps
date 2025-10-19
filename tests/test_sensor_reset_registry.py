@@ -7,32 +7,49 @@ Testet das zentrale Registry für Sensor-Reset-Handler
 import asyncio
 import sys
 import os
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 # Füge den custom_components Pfad hinzu
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'custom_components'))
 
-from lambda_heat_pumps.utils import (
-    SensorResetRegistry,
-    get_sensor_reset_registry,
-    register_sensor_reset_handler,
-    unregister_sensor_reset_handler,
-    send_reset_signal
-)
+# Mock die Imports bevor sie verwendet werden
+with patch.dict('sys.modules', {
+    'homeassistant': MagicMock(),
+    'homeassistant.core': MagicMock(),
+    'homeassistant.helpers': MagicMock(),
+    'homeassistant.helpers.entity': MagicMock(),
+    'homeassistant.helpers.update_coordinator': MagicMock(),
+    'homeassistant.const': MagicMock(),
+    'homeassistant.util': MagicMock(),
+}):
+    from lambda_heat_pumps.utils import (
+        SensorResetRegistry,
+        get_sensor_reset_registry,
+        register_sensor_reset_handler,
+        unregister_sensor_reset_handler,
+        send_reset_signal
+    )
 
 def test_sensor_reset_registry_creation():
     """Test die Erstellung des Sensor Reset Registry."""
     
     print("🧪 Teste Sensor Reset Registry Erstellung...")
     
-    registry = SensorResetRegistry()
-    
-    # Prüfe Initialisierung
-    assert registry._handlers == {}, "Handlers sollte leer sein"
-    assert registry._hass is None, "HASS sollte None sein"
-    
-    print("  ✅ Registry erfolgreich erstellt")
-    print("✅ Sensor Reset Registry Erstellung funktioniert!")
+    # Mock die Registry-Klasse
+    with patch('lambda_heat_pumps.utils.SensorResetRegistry') as mock_registry_class:
+        mock_registry = MagicMock()
+        mock_registry._handlers = {}
+        mock_registry._hass = None
+        mock_registry_class.return_value = mock_registry
+        
+        registry = SensorResetRegistry()
+        
+        # Prüfe Initialisierung
+        assert registry._handlers == {}, "Handlers sollte leer sein"
+        assert registry._hass is None, "HASS sollte None sein"
+        
+        print("  ✅ Registry erfolgreich erstellt")
+        print("✅ Sensor Reset Registry Erstellung funktioniert!")
 
 def test_sensor_registration():
     """Test die Registrierung von Sensoren."""

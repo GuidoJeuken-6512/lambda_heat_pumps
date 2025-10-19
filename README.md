@@ -59,6 +59,7 @@ After initial setup, you can modify additional settings in the integration optio
    - Temperature step size
    - Room thermostat control (using external sensors)
    - PV surplus control for solar power integration
+   - Update interval for the sensors
 
 **Features:**
 - **Full Modbus/TCP Support**: Complete support for Lambda heat pumps via Modbus/TCP
@@ -139,6 +140,7 @@ Nach der Ersteinrichtung können Sie zusätzliche Einstellungen in den Integrati
    - Temperaturstufengröße
    - Raumthermostatsteuerung (mit externen Sensoren)
    - PV Überschuss zur Heizkurvenanhebung der Lambda
+   - Update Intervall für die Sensoren
 
 ---
 

@@ -444,6 +444,18 @@ HP_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
     },
+     "config_parameter_33": {
+        "relative_address": 33,
+        "name": "Unknown Parameter (R1033)",
+        "unit": None,
+        "scale": 1,
+        "precision": 0,
+        "data_type": "uint16",
+        "firmware_version": 1,
+        "device_type": "Hp",
+        "writeable": False,
+        "state_class": "measurement",
+    },   
     "config_parameter_50": {
         "relative_address": 50,
         "name": "Unknown Parameter (R1050)",

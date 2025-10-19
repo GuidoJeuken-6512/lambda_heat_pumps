@@ -44,8 +44,7 @@ import time
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
 
-# Global flag to prevent multiple sensor detection runs across coordinator instances
-_sensor_detection_executed_global = False
+# Sensor-Wechsel-Erkennung läuft bei jedem Start, um alle Sensor-Wechsel zu erkennen
 
 
 class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
@@ -93,6 +92,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._energy_sensor_configs = {}  # Sensor-Konfigurationen aus Config (optional)
         self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung
         self._energy_unit_cache = {}  # {hp_index: unit_string} - Memory-only cache for performance
+        self._energy_first_value_seen = {}  # {hp_index: bool} - In-Memory Flag für Zero-Value Protection
         self._sensor_detection_executed = False  # Flag to prevent multiple sensor detection runs
         
         self._use_legacy_names = entry.data.get("use_legacy_modbus_names", True)
@@ -309,8 +309,25 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.info(f"Loaded config keys: {list(config.keys())}")
                 self._cycling_offsets = config.get("cycling_offsets", {})
                 self._energy_offsets = config.get("energy_consumption_offsets", {})
-                self._energy_sensor_configs = config.get("energy_consumption_sensors", {})
+                # Lade und validiere Energy Sensor Konfigurationen
+                raw_energy_sensor_configs = config.get("energy_consumption_sensors", {})
+                
+                # Validiere externe Sensoren
+                from .utils import validate_external_sensors
+                self._energy_sensor_configs = validate_external_sensors(self.hass, raw_energy_sensor_configs)
+                
                 _LOGGER.info(f"Loaded energy sensor configs: {self._energy_sensor_configs}")
+                
+                # Info-Message: Anzeige der verwendeten Quellsensoren für Verbrauchswerte
+                if self._energy_sensor_configs:
+                    _LOGGER.info("=== ENERGY CONSUMPTION SENSORS ===")
+                    for hp_key, sensor_config in self._energy_sensor_configs.items():
+                        sensor_id = sensor_config.get("sensor_entity_id")
+                        _LOGGER.info(f"Energy consumption tracking for {hp_key.upper()}: using custom sensor '{sensor_id}'")
+                else:
+                    _LOGGER.info("=== ENERGY CONSUMPTION SENSORS ===")
+                    _LOGGER.info("Energy consumption tracking: using default internal Modbus sensors")
+                    _LOGGER.info("(Configure custom sensors in lambda_wp_config.yaml if needed)")
             except Exception as e:
                 _LOGGER.error(f"Error loading config: {e}")
         else:
@@ -341,13 +358,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
         # Sensor-Wechsel-Erkennung für Energy Consumption Sensoren (NACH dem Laden der persistierten Daten)
-        global _sensor_detection_executed_global
-        if not _sensor_detection_executed_global:
-            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung für {len(self._energy_sensor_configs)} konfigurierte Sensoren")
-            await self._detect_and_handle_sensor_changes()
-            _sensor_detection_executed_global = True
-        else:
-            _LOGGER.debug("SENSOR-CHANGE-DETECTION: Bereits ausgeführt, überspringe")
+        # Führe die Erkennung bei jedem Start aus, um Sensor-Wechsel zu erkennen
+        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung für {len(self._energy_sensor_configs)} konfigurierte Sensoren")
+        await self._detect_and_handle_sensor_changes()
 
     async def _detect_and_handle_sensor_changes(self):
         """Erkenne Sensor-Wechsel und behandle sie entsprechend."""
@@ -359,7 +372,20 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Erstelle persist_data dict für die Hilfsfunktionen
             persist_data = {"sensor_ids": self._sensor_ids}
             
-            for hp_key, sensor_config in self._energy_sensor_configs.items():
+            # Prüfe alle Wärmepumpen, die in _sensor_ids gespeichert sind (auch wenn keine Custom-Sensoren konfiguriert sind)
+            all_hp_keys = set()
+            
+            # Füge Custom-Sensoren hinzu
+            for hp_key in self._energy_sensor_configs.keys():
+                all_hp_keys.add(hp_key)
+            
+            # Füge alle Wärmepumpen aus _sensor_ids hinzu (für Default-Sensor-Wechsel)
+            for hp_key in self._sensor_ids.keys():
+                all_hp_keys.add(hp_key)
+            
+            _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe {len(all_hp_keys)} Wärmepumpen: {sorted(all_hp_keys)}")
+            
+            for hp_key in all_hp_keys:
                 # Extrahiere hp_idx aus hp_key (z.B. "hp1" -> 1)
                 try:
                     hp_idx = int(hp_key.replace("hp", ""))
@@ -367,10 +393,19 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Ungültiger hp_key: {hp_key}")
                     continue
                 
-                current_sensor_id = sensor_config.get("sensor_entity_id")
+                # Bestimme aktuellen Sensor (Custom oder Default)
+                current_sensor_id = None
+                
+                # Prüfe zuerst Custom-Sensor
+                if hp_key in self._energy_sensor_configs:
+                    current_sensor_id = self._energy_sensor_configs[hp_key].get("sensor_entity_id")
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: {hp_key} - Custom-Sensor: {current_sensor_id}")
+                
+                # Falls kein Custom-Sensor, verwende Default-Sensor
                 if not current_sensor_id:
-                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein sensor_entity_id für {hp_key} konfiguriert")
-                    continue
+                    name_prefix = self.entry.data.get("name", "eu08l")
+                    current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: {hp_key} - Default-Sensor: {current_sensor_id}")
                 
                 _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe {hp_key} - aktueller Sensor: {current_sensor_id}")
                 
@@ -402,93 +437,77 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Traceback: {traceback.format_exc()}")
 
     async def _handle_sensor_change(self, hp_idx: int, new_sensor_id: str):
-        """Behandle Sensor-Wechsel durch Anpassung der last_energy_readings."""
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Behandle Sensor-Wechsel für HP{hp_idx} -> {new_sensor_id}")
+        """Behandle Sensor-Wechsel mit intelligenter DB-Wert-Nutzung."""
+        _LOGGER.info(f"SENSOR-CHANGE: === SENSOR-WECHSEL ERKANNT HP{hp_idx} ===")
+        _LOGGER.info(f"SENSOR-CHANGE: Neuer Sensor: {new_sensor_id}")
         
-        try:
-            # Warte bis der neue Sensor verfügbar ist (max. 5 Versuche, 2 Sekunden Abstand)
-            max_retries = 5
-            retry_delay = 2.0
-            
-            for attempt in range(max_retries):
-                new_sensor_state = self.hass.states.get(new_sensor_id)
-                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Versuch {attempt + 1}/{max_retries} - Neuer Sensor {new_sensor_id} Status: {new_sensor_state.state if new_sensor_state else 'None'}")
-                
-                if new_sensor_state and new_sensor_state.state not in ("unknown", "unavailable", "None"):
-                    try:
-                        new_sensor_value = float(new_sensor_state.state)
-                        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Neuer Sensor-Wert nach {attempt + 1} Versuchen: {new_sensor_value}")
-                        
-                        # Hole alten Wert für Vergleich
-                        hp_key = f"hp{hp_idx}"
-                        old_value = self._last_energy_reading.get(hp_key, None)
-                        
-                        # Ersetze last_energy_readings mit dem ersten Wert des neuen Sensors
-                        self._last_energy_reading[hp_key] = new_sensor_value
-                        
-                        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: last_energy_readings für {hp_key} geändert: {old_value} -> {new_sensor_value}")
-                        
-                        # Speichere Änderungen in JSON
-                        await self._persist_counters()
-                        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Änderungen für {hp_key} in JSON gespeichert")
-                        return  # Erfolgreich abgeschlossen
-                        
-                    except (ValueError, TypeError) as e:
-                        _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Konvertieren des Sensor-Werts: {e}")
-                        break  # Keine weiteren Versuche bei Konvertierungsfehler
-                
-                # Warte vor dem nächsten Versuch (außer beim letzten Versuch)
-                if attempt < max_retries - 1:
-                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Warte {retry_delay}s vor nächstem Versuch...")
-                    await asyncio.sleep(retry_delay)
-            
-            # Alle Versuche fehlgeschlagen - setze einen Marker, dass der Sensor später initialisiert werden muss
-            _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Neuer Sensor {new_sensor_id} nach {max_retries} Versuchen nicht verfügbar, setze Marker für spätere Initialisierung")
-            # Setze einen speziellen Marker-Wert, der später erkannt wird
-            self._last_energy_reading[f"hp{hp_idx}"] = None
-            await self._persist_counters()
-            
-            # Starte einen Hintergrund-Task, der den Sensor später initialisiert
-            self.hass.async_create_task(self._initialize_sensor_later(hp_idx, new_sensor_id))
-                
-        except Exception as e:
-            _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Behandeln des Sensor-Wechsels für HP{hp_idx}: {e}")
-            import traceback
-            _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Traceback: {traceback.format_exc()}")
-
-    async def _initialize_sensor_later(self, hp_idx: int, sensor_id: str):
-        """Initialisiere den Sensor später, wenn er verfügbar wird."""
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Starte spätere Initialisierung für HP{hp_idx} -> {sensor_id}")
+        hp_key = f"hp{hp_idx}"
         
-        # Warte bis zu 60 Sekunden, alle 5 Sekunden prüfen
-        max_attempts = 12
-        retry_delay = 5.0
+        # Prüfe ob es ein Default-Sensor ist (interner Modbus-Sensor)
+        name_prefix = self.entry.data.get("name", "eu08l")
+        default_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
         
-        for attempt in range(max_attempts):
-            await asyncio.sleep(retry_delay)
+        is_default_sensor = (new_sensor_id == default_sensor_id)
+        _LOGGER.info(f"SENSOR-CHANGE: Erwarteter Default-Sensor: {default_sensor_id}")
+        _LOGGER.info(f"SENSOR-CHANGE: Ist Default-Sensor: {is_default_sensor}")
+        
+        if is_default_sensor:
+            # SCHRITT 3: Wechsel zu Default-Sensor (interner Modbus)
+            _LOGGER.info(f"SENSOR-CHANGE: → SCHRITT 3: Wechsel zu Default-Sensor (interner Modbus)")
+            _LOGGER.info(f"SENSOR-CHANGE: → Lese DB-Wert vom Default-Sensor...")
             
-            sensor_state = self.hass.states.get(sensor_id)
-            if sensor_state and sensor_state.state not in ("unknown", "unavailable", "None"):
+            # Lese letzten DB-Wert vom Default-Sensor
+            db_state = self.hass.states.get(new_sensor_id)
+            _LOGGER.info(f"SENSOR-CHANGE: → DB-State: {db_state.state if db_state else 'None'}")
+            
+            if db_state and db_state.state not in ("unknown", "unavailable", "None"):
                 try:
-                    sensor_value = float(sensor_state.state)
-                    hp_key = f"hp{hp_idx}"
+                    db_value = float(db_state.state)
+                    _LOGGER.info(f"SENSOR-CHANGE: → DB-Wert konvertiert: {db_value:.2f} kWh")
                     
-                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor {sensor_id} jetzt verfügbar nach {attempt + 1} Versuchen, Wert: {sensor_value}")
-                    
-                    # Initialisiere last_energy_reading mit dem aktuellen Wert
-                    self._last_energy_reading[hp_key] = sensor_value
-                    await self._persist_counters()
-                    
-                    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: last_energy_reading für {hp_key} initialisiert mit {sensor_value}")
-                    return  # Erfolgreich initialisiert
-                    
+                    if db_value > 0:
+                        _LOGGER.info(f"SENSOR-CHANGE: → ✅ DB-Wert > 0: {db_value:.2f} kWh")
+                        _LOGGER.info(f"SENSOR-CHANGE: → ✅ Setze als Referenz für sofortige Delta-Berechnung")
+                        _LOGGER.info(f"SENSOR-CHANGE: → ✅ Nächster Messwert wird mit diesem DB-Wert verglichen")
+                        
+                        # Setze DB-Wert als last_energy
+                        self._last_energy_reading[hp_key] = db_value
+                        self._energy_first_value_seen[hp_key] = True
+                        
+                        await self._persist_counters()
+                        _LOGGER.info(f"SENSOR-CHANGE: → ✅ Referenzwert gesetzt, warte auf ersten Messwert")
+                        _LOGGER.info(f"SENSOR-CHANGE: === SENSOR-WECHSEL ABGESCHLOSSEN: DB-REFERENZ GESETZT ===")
+                        return
+                        
+                    else:
+                        # DB-Wert ist 0
+                        _LOGGER.info(f"SENSOR-CHANGE: → ❌ DB-Wert = 0, keine Historie verfügbar")
+                        _LOGGER.info(f"SENSOR-CHANGE: → ❌ Starte Zero-Value Protection")
+                        
                 except (ValueError, TypeError) as e:
-                    _LOGGER.error(f"SENSOR-CHANGE-DETECTION: Fehler beim Konvertieren des Sensor-Werts: {e}")
-                    continue
-            
-            _LOGGER.debug(f"SENSOR-CHANGE-DETECTION: Versuch {attempt + 1}/{max_attempts} - Sensor {sensor_id} noch nicht verfügbar")
+                    _LOGGER.warning(f"SENSOR-CHANGE: → ❌ Fehler beim Konvertieren des DB-Werts: {e}")
+                    _LOGGER.info(f"SENSOR-CHANGE: → ❌ Starte Zero-Value Protection")
+            else:
+                _LOGGER.info(f"SENSOR-CHANGE: → ❌ Kein DB-Wert verfügbar (State: {db_state.state if db_state else 'None'})")
+                _LOGGER.info(f"SENSOR-CHANGE: → ❌ Starte Zero-Value Protection")
         
-        _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Sensor {sensor_id} nach {max_attempts} Versuchen immer noch nicht verfügbar")
+        else:
+            # SCHRITT 4: Wechsel zu externem/Custom Sensor
+            _LOGGER.info(f"SENSOR-CHANGE: → SCHRITT 4: Wechsel zu externem/Custom Sensor")
+            _LOGGER.info(f"SENSOR-CHANGE: → ❌ Keine DB-Historie verfügbar für externe Sensoren")
+            _LOGGER.info(f"SENSOR-CHANGE: → ❌ Starte Zero-Value Protection")
+        
+        # Fallback: Zero-Value Protection
+        _LOGGER.info(f"SENSOR-CHANGE: → 🔄 AKTIVIERE ZERO-VALUE PROTECTION")
+        _LOGGER.info(f"SENSOR-CHANGE: → 🔄 Warte auf 2 aufeinanderfolgende Werte > 0")
+        _LOGGER.info(f"SENSOR-CHANGE: → 🔄 Erster Wert wird gespeichert, aber kein Delta berechnet")
+        _LOGGER.info(f"SENSOR-CHANGE: → 🔄 Ab zweitem Wert wird Delta berechnet")
+        
+        self._last_energy_reading[hp_key] = None
+        self._energy_first_value_seen[hp_key] = False
+        await self._persist_counters()
+        _LOGGER.info(f"SENSOR-CHANGE: === SENSOR-WECHSEL ABGESCHLOSSEN: ZERO-VALUE PROTECTION AKTIV ===")
+
 
     def _generate_entity_id(self, sensor_type, idx):
         if self._use_legacy_names:
@@ -1698,6 +1717,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if not sensor_entity_id:
                 name_prefix = self.entry.data.get("name", "eu08l")
                 sensor_entity_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+                _LOGGER.info(f"INTERNAL-SENSOR: HP{hp_idx} - Verwende internen Modbus-Sensor '{sensor_entity_id}' zur Verbrauchsberechnung")
                 _LOGGER.debug(f"Using default energy sensor for HP {hp_idx}: {sensor_entity_id}")
             else:
                 _LOGGER.debug(f"Using custom energy sensor for HP {hp_idx}: {sensor_entity_id}")
@@ -1763,26 +1783,80 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             # Get last energy reading for this heat pump
             last_energy = self._last_energy_reading.get(f"hp{hp_idx}", None)
-            if last_energy is None:
-                _LOGGER.info(f"Energy tracking for HP{hp_idx}: last_energy_reading is None (sensor not yet initialized), initializing with current value")
-                # Initialisiere mit dem aktuellen Wert
+            first_value_seen = self._energy_first_value_seen.get(f"hp{hp_idx}", False)
+
+            # SCHRITT 1: Prüfe ob current_energy_kwh == 0.0
+            if current_energy_kwh == 0.0:
+                _LOGGER.info(
+                    f"ENERGY-DELTA: HP{hp_idx} - ❌ 0-WERT ERKANNT: {current_energy_kwh} kWh"
+                )
+                _LOGGER.info(
+                    f"ENERGY-DELTA: HP{hp_idx} - ❌ Reset Zero-Value Protection (Flag war: {first_value_seen})"
+                )
+                # Reset bei 0-Wert
+                self._energy_first_value_seen[f"hp{hp_idx}"] = False
+                # WICHTIG: last_energy NICHT updaten!
+                return
+
+            # SCHRITT 2: Erster valider Wert > 0
+            if not first_value_seen or last_energy is None:
+                _LOGGER.info(
+                    f"ENERGY-DELTA: HP{hp_idx} - 🔄 ERSTER WERT > 0: {current_energy_kwh:.2f} kWh"
+                )
+                _LOGGER.info(
+                    f"ENERGY-DELTA: HP{hp_idx} - 🔄 Speichere als Referenz, KEIN Delta berechnet"
+                )
+                _LOGGER.info(
+                    f"ENERGY-DELTA: HP{hp_idx} - 🔄 Warte auf zweiten Wert für Delta-Berechnung"
+                )
                 self._last_energy_reading[f"hp{hp_idx}"] = current_energy_kwh
+                self._energy_first_value_seen[f"hp{hp_idx}"] = True
                 await self._persist_counters()
-                return  # Kein Delta beim ersten Mal
-            _LOGGER.debug(f"DEBUG-019: Last energy reading: {last_energy:.6f}")
-            
-            # Calculate energy delta
+                return  # KEIN Delta beim ersten Wert!
+
+            # SCHRITT 3: Zweiter valider Wert > 0 - ABER prüfe auf Rückwärts-Sprung
             from .utils import calculate_energy_delta
-            raw_delta = current_energy_kwh - last_energy
-            energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)  # Zurück auf 100.0 kWh
-            _LOGGER.debug(f"DEBUG-020: Raw delta: {raw_delta:.6f}, Calculated delta: {energy_delta:.6f}")
+
+            _LOGGER.info(
+                f"ENERGY-DELTA: HP{hp_idx} - 📊 DELTA-BERECHNUNG: {current_energy_kwh:.2f} kWh vs {last_energy:.2f} kWh"
+            )
+
+            # Prüfe ob aktueller Wert kleiner als letzter Wert (verdächtig!)
+            if current_energy_kwh < last_energy:
+                _LOGGER.warning(
+                    f"ENERGY-DELTA: HP{hp_idx} - ⚠️ RÜCKWÄRTS-SPRUNG ERKANNT!"
+                )
+                _LOGGER.warning(
+                    f"ENERGY-DELTA: HP{hp_idx} - ⚠️ Aktuell ({current_energy_kwh:.2f} kWh) < Letzt ({last_energy:.2f} kWh)"
+                )
+                _LOGGER.warning(
+                    f"ENERGY-DELTA: HP{hp_idx} - ⚠️ Möglicher Sensor-Reset/Überlauf - Reset Zero-Value Protection"
+                )
+                # Reset: Warte wieder auf 2 Werte
+                self._energy_first_value_seen[f"hp{hp_idx}"] = False
+                self._last_energy_reading[f"hp{hp_idx}"] = None
+                await self._persist_counters()
+                return
+
+            # Normale Delta-Berechnung
+            _LOGGER.info(
+                f"ENERGY-DELTA: HP{hp_idx} - ✅ WERTE OK: {current_energy_kwh:.2f} >= {last_energy:.2f} kWh"
+            )
+            _LOGGER.info(
+                f"ENERGY-DELTA: HP{hp_idx} - ✅ Starte normale Delta-Berechnung..."
+            )
             
-            # Only skip if delta is negative (overflow) or if we're not in STBY mode
+            energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)
+            _LOGGER.info(f"ENERGY-DELTA: HP{hp_idx} - ✅ DELTA BERECHNET: {energy_delta:.6f} kWh")
+
+            # Only proceed if delta is valid (>= 0)
             if energy_delta < 0:
+                _LOGGER.warning(f"ENERGY-DELTA: HP{hp_idx} - ❌ Delta negativ, überspringe")
                 return
 
             # Update last energy reading
             self._last_energy_reading[f"hp{hp_idx}"] = current_energy_kwh
+            _LOGGER.info(f"ENERGY-DELTA: HP{hp_idx} - ✅ Delta-Berechnung abgeschlossen, last_energy aktualisiert")
 
             # Get last operating state for this heat pump
             last_state = self._last_operating_state.get(str(hp_idx), 0)

@@ -877,6 +877,18 @@ class LambdaOptionsFlow(OptionsFlow):
                 )
             ),
             vol.Optional(
+                "update_interval",
+                default=self._options.get("update_interval", DEFAULT_UPDATE_INTERVAL),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=10,
+                    max=300,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                    unit_of_measurement="Sekunden",
+                )
+            ),
+            vol.Optional(
                 "room_thermostat_control",
                 default=self._options.get(
                     "room_thermostat_control", DEFAULT_ROOM_THERMOSTAT_CONTROL
@@ -896,17 +908,6 @@ class LambdaOptionsFlow(OptionsFlow):
                         for k, v in PV_SURPLUS_MODE_OPTIONS.items()
                     ],
                     mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                "update_interval",
-                default=self._options.get("update_interval", DEFAULT_UPDATE_INTERVAL),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=5,
-                    max=300,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
                 )
             ),
         }

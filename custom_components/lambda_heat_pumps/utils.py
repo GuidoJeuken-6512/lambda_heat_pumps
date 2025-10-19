@@ -1207,6 +1207,52 @@ def validate_energy_consumption_config(config: dict) -> bool:
     return True
 
 
+def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) -> dict:
+    """
+    Validiere externe Sensoren und gib bereinigte Konfiguration zurück.
+    
+    Args:
+        hass: Home Assistant Instanz
+        energy_sensor_configs: Dictionary mit Sensor-Konfigurationen
+    
+    Returns:
+        dict: Bereinigte Konfiguration (fehlerhafte Sensoren entfernt)
+    """
+    validated_configs = {}
+    fallback_used = False
+    
+    for hp_key, sensor_config in energy_sensor_configs.items():
+        sensor_id = sensor_config.get("sensor_entity_id")
+        
+        if not sensor_id:
+            _LOGGER.warning(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Keine sensor_entity_id konfiguriert")
+            continue
+        
+        # Prüfe ob Sensor existiert
+        sensor_state = hass.states.get(sensor_id)
+        
+        if sensor_state is None:
+            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' existiert nicht!")
+            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Bitte prüfen Sie die Sensor-ID in lambda_wp_config.yaml")
+            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Fallback auf internen Modbus-Sensor")
+            fallback_used = True
+            continue
+        
+        # Prüfe ob Sensor verfügbar ist
+        if sensor_state.state in ("unknown", "unavailable", None):
+            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist nicht verfügbar (State: {sensor_state.state})")
+            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert")
+        
+        # Sensor ist gültig
+        validated_configs[hp_key] = sensor_config
+        _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet")
+    
+    if fallback_used:
+        _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: Einige externe Sensoren sind fehlerhaft - verwende interne Modbus-Sensoren als Fallback")
+    
+    return validated_configs
+
+
 # =============================================================================
 # Reset-Signal Factory Functions
 # =============================================================================
@@ -1672,7 +1718,7 @@ def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
     # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
     is_change = stored_normalized != current_normalized
     if is_change:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt: '{stored_normalized}' -> '{current_normalized}'")
+        _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Sensor wurde gewechselt - '{stored_normalized}' -> '{current_normalized}'. {current_normalized} wird zur Verbrauchsberechnung verwendet")
     else:
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
     

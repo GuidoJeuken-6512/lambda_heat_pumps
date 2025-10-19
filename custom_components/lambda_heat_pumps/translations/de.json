@@ -59,6 +59,7 @@
         },
         "data_description": {
           "firmware_version": "Wählen Sie die Firmware-Version Ihrer Lambda Wärmepumpe",
+          "update_interval": "Aktualisierungsintervall für Modbus-Abfragen (10-300 Sekunden). Niedrigere Werte = häufiger Updates, aber mehr Modbus-Traffic.",
           "room_thermostat_control": "Ermöglicht Integration mit externen Raumthermostaten",
           "pv_surplus": "Aktiviert PV-Überschuss-Steuerung für optimierten Energieverbrauch"
         }
