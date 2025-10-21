@@ -20,7 +20,7 @@ class TestLambdaEnergyConsumptionSensor:
     @pytest.fixture
     def mock_hass(self):
         """Mock Home Assistant instance."""
-        hass = Mock(spec=HomeAssistant)
+        hass = Mock()
         hass.states = Mock()
         hass.data = {}
         hass.data['customize'] = {}
@@ -29,7 +29,7 @@ class TestLambdaEnergyConsumptionSensor:
     @pytest.fixture
     def mock_entry(self):
         """Mock ConfigEntry instance."""
-        entry = Mock(spec=ConfigEntry)
+        entry = Mock()
         entry.entry_id = "test_entry_id"
         entry.data = {
             "name": "eu08l",

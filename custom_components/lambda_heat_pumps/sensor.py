@@ -995,7 +995,8 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._device_type = device_type
         self._hp_index = hp_index
         self._mode = mode
-        self._reset_interval = period  # period ist jetzt reset_interval
+        self._period = period  # Speichere period für Tests und native_value Berechnung
+        self._reset_interval = period  # period ist auch reset_interval
         self._attr_has_entity_name = True
         self._attr_should_poll = False
         self._attr_native_unit_of_measurement = unit
@@ -1164,8 +1165,23 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
     @property
     def native_value(self) -> float:
-        """Return the current value."""
-        return self._energy_value
+        """Return the current value based on period."""
+        if self._period == "total":
+            return self._energy_value
+        elif self._period == "daily":
+            # Daily = Total - Yesterday
+            daily_value = self._energy_value - self._yesterday_value
+            return max(0.0, daily_value)  # Clamp to 0
+        elif self._period == "monthly":
+            # Monthly = Total - Previous Monthly
+            monthly_value = self._energy_value - self._previous_monthly_value
+            return max(0.0, monthly_value)  # Clamp to 0
+        elif self._period == "yearly":
+            # Yearly = Total - Previous Yearly
+            yearly_value = self._energy_value - self._previous_yearly_value
+            return max(0.0, yearly_value)  # Clamp to 0
+        else:
+            return self._energy_value
 
     @property
     def extra_state_attributes(self):
@@ -1173,6 +1189,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         attrs = {
             "sensor_type": "energy_consumption",
             "mode": self._mode,
+            "period": self._period,
             "reset_interval": self._reset_interval,
             "hp_index": self._hp_index,
             "applied_offset": self._applied_offset,

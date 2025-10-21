@@ -1227,183 +1227,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 data, num_hps, compatible_hp_sensors
             )
 
-            # Flankenerkennung und Energieintegration nach dem Auslesen aller Wärmepumpen-Sensoren
-            for hp_idx in range(1, num_hps + 1):
-                op_state_val = data.get(f"hp{hp_idx}_operating_state")
-                if op_state_val is None:
-                    continue
-
-                # Get last operating state
-                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
-                
-                # Initialisierung beim ersten Update: Logge den aktuellen operating_state
-                if last_op_state == "UNBEKANNT":
-                    _LOGGER.info(
-                        f"Initialisiere _last_operating_state für HP {hp_idx} mit operating_state {op_state_val}"
-                    )
-                
-                # Info-Meldung bei Änderung
-                if last_op_state != op_state_val:
-                    _LOGGER.info(
-                        "Wärmepumpe %d: operating_state geändert von %s auf %s",
-                        hp_idx,
-                        last_op_state,
-                        op_state_val,
-                    )
-                # Speichere den alten Wert für die Flankenerkennung
-                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
-                
-                for mode, mode_val in MODES.items():
-                    cycling_key = f"{mode}_cycles"
-                    energy_key = f"{mode}_energy"
-                    if not hasattr(self, cycling_key):
-                        setattr(self, cycling_key, {})
-                    if not hasattr(self, energy_key):
-                        setattr(self, energy_key, {})
-                    cycles = getattr(self, cycling_key)
-                    energy = getattr(self, energy_key)
-                    
-                    # Debug: Check energy structure
-                    _LOGGER.debug(f"energy structure for {energy_key}: {energy}")
-                    
-                    # Ensure energy[hp_idx] is a number, not a dict
-                    if hp_idx not in energy:
-                        energy[hp_idx] = 0.0
-                    elif isinstance(energy[hp_idx], dict):
-                        _LOGGER.warning(f"energy[{hp_idx}] is a dict, converting to 0.0: {energy[hp_idx]}")
-                        energy[hp_idx] = 0.0
-                    
-                    # Debug: Check energy structure before any operations
-                    _LOGGER.debug(f"energy[{hp_idx}] before processing: {energy[hp_idx]} (type: {type(energy[hp_idx])})")
-                    # Flanke: operating_state wechselt von etwas anderem auf mode_val
-                    # ABER: Nur wenn Initialisierung abgeschlossen ist
-                    if (self._initialization_complete and 
-                        last_op_state != "UNBEKANNT" and
-                        last_op_state != mode_val and 
-                        op_state_val == mode_val):
-                        
-                        
-                        # Prüfe, ob die Cycling-Entities bereits registriert sind
-                        cycling_entities_ready = False
-                        try:
-                            # Prüfe, ob die Cycling-Entities in hass.data verfügbar sind
-                            if (
-                                "lambda_heat_pumps" in self.hass.data
-                                and self.entry.entry_id
-                                in self.hass.data["lambda_heat_pumps"]
-                                and "cycling_entities"
-                                in self.hass.data["lambda_heat_pumps"][
-                                    self.entry.entry_id
-                                ]
-                            ):
-                                cycling_entities_ready = True
-                        except Exception:
-                            pass
-
-                        if cycling_entities_ready:
-                            # Zentrale Funktion für total-Zähler aufrufen
-                            await increment_cycling_counter(
-                                self.hass,
-                                mode=mode,
-                                hp_index=hp_idx,
-                                name_prefix=self.entry.data.get("name", "eu08l"),
-                                use_legacy_modbus_names=self._use_legacy_names,
-                                cycling_offsets=self._cycling_offsets,
-                            )
-                            # Get current cycling count for logging
-                            cycling_key = f"{mode}_cycles"
-                            cycles = getattr(self, cycling_key)
-                            old_count = cycles.get(hp_idx, 0)
-                            
-                            # Debug: Check old_count type
-                            if not isinstance(old_count, (int, float)):
-                                _LOGGER.error(f"cycles[{hp_idx}] is not a number: {type(old_count)} = {old_count}")
-                                old_count = 0
-                            
-                            new_count = old_count + 1
-                            cycles[hp_idx] = new_count
-                            
-                            _LOGGER.info(
-                                f"Cycling {mode} erhöht: HP{hp_idx} von {old_count} auf {new_count}"
-                            )
-                        else:
-                            _LOGGER.debug(
-                                "Wärmepumpe %d: %s Modus aktiviert "
-                                "(Cycling-Entities noch nicht bereit)",
-                                hp_idx,
-                                mode,
-                            )
-                    elif not self._initialization_complete:
-                        # Flankenerkennung während Initialisierung unterdrückt
-                        _LOGGER.debug(
-                            "Wärmepumpe %d: %s Modus erkannt, aber Flankenerkennung "
-                            "während Initialisierung unterdrückt",
-                            hp_idx,
-                            mode,
-                        )
-                    # Nur für Debug-Zwecke, nicht als Info-Log:
-                    # _LOGGER.debug(
-                    #     "HP %d, Modus %s: last_mode_state=%s, op_state_val=%s",
-                    #     hp_idx, mode, last_mode_state, op_state_val
-                    # )
-
-                    # Energieintegration für aktiven Modus
-                    power_info = HP_SENSOR_TEMPLATES.get("actual_heating_capacity")
-                    if power_info:
-                        power_val = data.get(f"hp{hp_idx}_actual_heating_capacity", 0.0)
-                        if op_state_val == mode_val:
-                            # energy[hp_idx] ist ein dict, nicht eine Zahl
-                            if hp_idx not in energy:
-                                energy[hp_idx] = 0.0
-                            elif isinstance(energy[hp_idx], dict):
-                                _LOGGER.warning(f"energy[{hp_idx}] is a dict, converting to 0.0: {energy[hp_idx]}")
-                                energy[hp_idx] = 0.0
-                            # Debug: Check types before addition
-                            _LOGGER.debug(f"Before addition: energy[{hp_idx}] = {energy[hp_idx]} (type: {type(energy[hp_idx])}), power_val * interval = {power_val * interval} (type: {type(power_val * interval)})")
-                            # Ensure energy[hp_idx] is a number before addition
-                            if not isinstance(energy[hp_idx], (int, float)):
-                                _LOGGER.error(f"energy[{hp_idx}] is not a number: {type(energy[hp_idx])} = {energy[hp_idx]}")
-                                energy[hp_idx] = 0.0
-                            energy[hp_idx] = energy[hp_idx] + (power_val * interval)
-                    # Sensorwerte bereitstellen (inkl. Offset)
-                    cycling_entity_id = self._generate_entity_id(
-                        f"{mode}_cycling_daily", hp_idx - 1
-                    )
-                    energy_entity_id = self._generate_entity_id(
-                        f"{mode}_energy_daily", hp_idx - 1
-                    )
-                    # Get cycling offset for this specific sensor (correct nested structure)
-                    hp_cycling_offsets = self._cycling_offsets.get(f"hp{hp_idx}", {})
-                    if isinstance(hp_cycling_offsets, dict):
-                        cycling_offset = hp_cycling_offsets.get(f"{mode}_cycling_daily", 0)
-                    else:
-                        _LOGGER.warning(f"Invalid cycling offset structure for hp{hp_idx}: {hp_cycling_offsets}")
-                        cycling_offset = 0
-                    energy_offset = self._energy_offsets.get(f"hp{hp_idx}", {})
-                    # Energy offset is a dict, we need to get the specific sensor offset
-                    energy_sensor_offset = 0.0
-                    if isinstance(energy_offset, dict):
-                        energy_sensor_offset = energy_offset.get(f"{mode}_energy_daily", 0.0)
-                    else:
-                        _LOGGER.warning(f"Invalid energy offset structure for hp{hp_idx}: {energy_offset}")
-                    
-                    data[cycling_entity_id] = cycles.get(hp_idx, 0) + cycling_offset
-                    
-                    # Debug: Check energy structure
-                    energy_value = energy.get(hp_idx, 0.0)
-                    if not isinstance(energy_value, (int, float)):
-                        _LOGGER.error(f"energy[{hp_idx}] is not a number: {type(energy_value)} = {energy_value}")
-                        energy_value = 0.0
-                    
-                    data[energy_entity_id] = energy_value + energy_sensor_offset
-                
-                # Aktualisiere _last_operating_state NACH der Flankenerkennung
-                self._last_operating_state[str(hp_idx)] = op_state_val
-                
-            # Setze Dirty-Flag wenn sich Werte geändert haben
-            self._persist_dirty = True
-            
-            await self._persist_counters()
+            # Flankenerkennung wird nach dem Lesen der Register ausgeführt
 
             # Read boiler sensors
             num_boil = self.entry.data.get("num_boil", 1)
@@ -1629,15 +1453,203 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 # Note: Writing operations moved to services.py
                 pass
 
-            # Energy Consumption Tracking
-            _LOGGER.debug("DEBUG-001: Starting energy consumption tracking")
-            await self._track_energy_consumption(data)
-            _LOGGER.debug("DEBUG-002: Energy consumption tracking completed")
-
             # 🚀 NEUE OPTIMIERUNG: Lese alle gesammelten Register in einem großen Batch
             global_data = await self._read_all_registers_globally()
             data.update(global_data)
             _LOGGER.debug(f"Global register reading completed: {len(global_data)} values")
+
+            # Flankenerkennung und Energieintegration NACH dem Lesen aller Register
+            for hp_idx in range(1, num_hps + 1):
+                op_state_val = data.get(f"hp{hp_idx}_operating_state")
+                if op_state_val is None:
+                    continue
+
+                # Get last operating state
+                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
+                
+                # Initialisierung beim ersten Update: Logge den aktuellen operating_state
+                if last_op_state == "UNBEKANNT":
+                    _LOGGER.info(
+                        f"Initialisiere _last_operating_state für HP {hp_idx} mit operating_state {op_state_val}"
+                    )
+                
+                # Info-Meldung bei Änderung
+                if last_op_state != op_state_val:
+                    _LOGGER.info(
+                        "Wärmepumpe %d: operating_state geändert von %s auf %s",
+                        hp_idx,
+                        last_op_state,
+                        op_state_val,
+                    )
+                # Speichere den alten Wert für die Flankenerkennung
+                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
+                
+                for mode, mode_val in MODES.items():
+                    cycling_key = f"{mode}_cycles"
+                    energy_key = f"{mode}_energy"
+                    if not hasattr(self, cycling_key):
+                        setattr(self, cycling_key, {})
+                    if not hasattr(self, energy_key):
+                        setattr(self, energy_key, {})
+                    cycles = getattr(self, cycling_key)
+                    energy = getattr(self, energy_key)
+                    
+                    # Debug: Check energy structure
+                    _LOGGER.debug(f"energy structure for {energy_key}: {energy}")
+                    
+                    # Ensure energy[hp_idx] is a number, not a dict
+                    if hp_idx not in energy:
+                        energy[hp_idx] = 0.0
+                    elif isinstance(energy[hp_idx], dict):
+                        _LOGGER.warning(f"energy[{hp_idx}] is a dict, converting to 0.0: {energy[hp_idx]}")
+                        energy[hp_idx] = 0.0
+                    
+                    # Debug: Check energy structure before any operations
+                    _LOGGER.debug(f"energy[{hp_idx}] before processing: {energy[hp_idx]} (type: {type(energy[hp_idx])})")
+                    # Flanke: operating_state wechselt von etwas anderem auf mode_val
+                    # ABER: Nur wenn Initialisierung abgeschlossen ist
+                    _LOGGER.debug(f"FLANKENERKENNUNG DEBUG HP{hp_idx}: init_complete={self._initialization_complete}, last_op_state='{last_op_state}', mode_val='{mode_val}', op_state_val='{op_state_val}'")
+                    
+                    if (self._initialization_complete and 
+                        last_op_state != "UNBEKANNT" and
+                        last_op_state != mode_val and 
+                        op_state_val == mode_val):
+                        
+                        
+                        # Prüfe, ob die Cycling-Entities bereits registriert sind
+                        cycling_entities_ready = False
+                        try:
+                            # Prüfe, ob die Cycling-Entities in hass.data verfügbar sind
+                            if (
+                                "lambda_heat_pumps" in self.hass.data
+                                and self.entry.entry_id
+                                in self.hass.data["lambda_heat_pumps"]
+                                and "cycling_entities"
+                                in self.hass.data["lambda_heat_pumps"][
+                                    self.entry.entry_id
+                                ]
+                            ):
+                                cycling_entities_ready = True
+                        except Exception:
+                            pass
+
+                        if cycling_entities_ready:
+                            # Zentrale Funktion für total-Zähler aufrufen
+                            await increment_cycling_counter(
+                                self.hass,
+                                mode=mode,
+                                hp_index=hp_idx,
+                                name_prefix=self.entry.data.get("name", "eu08l"),
+                                use_legacy_modbus_names=self._use_legacy_names,
+                                cycling_offsets=self._cycling_offsets,
+                            )
+                            # Get current cycling count for logging
+                            cycling_key = f"{mode}_cycles"
+                            cycles = getattr(self, cycling_key)
+                            old_count = cycles.get(hp_idx, 0)
+                            
+                            # Debug: Check old_count type
+                            if not isinstance(old_count, (int, float)):
+                                _LOGGER.error(f"cycles[{hp_idx}] is not a number: {type(old_count)} = {old_count}")
+                                old_count = 0
+                            
+                            new_count = old_count + 1
+                            cycles[hp_idx] = new_count
+                            
+                            _LOGGER.info(
+                                f"🔄 FLANKENERKENNUNG: HP{hp_idx} {last_op_state} → {op_state_val} | Cycling {mode} erhöht: {old_count} → {new_count}"
+                            )
+                            _LOGGER.debug(
+                                f"Flankenwechsel Details: HP{hp_idx} operating_state von '{last_op_state}' auf '{op_state_val}' geändert, {mode} Modus aktiviert"
+                            )
+                        else:
+                            _LOGGER.debug(
+                                "Wärmepumpe %d: %s Modus aktiviert "
+                                "(Cycling-Entities noch nicht bereit)",
+                                hp_idx,
+                                mode,
+                            )
+                    elif not self._initialization_complete:
+                        # Flankenerkennung während Initialisierung unterdrückt
+                        _LOGGER.debug(
+                            "Wärmepumpe %d: %s Modus erkannt, aber Flankenerkennung "
+                            "während Initialisierung unterdrückt",
+                            hp_idx,
+                            mode,
+                        )
+                    else:
+                        # Flankenerkennung aus anderen Gründen nicht ausgelöst
+                        _LOGGER.debug(
+                            f"FLANKENERKENNUNG NICHT AUSGELÖST HP{hp_idx}: init_complete={self._initialization_complete}, last_op_state='{last_op_state}', mode_val='{mode_val}', op_state_val='{op_state_val}'"
+                        )
+                    # Nur für Debug-Zwecke, nicht als Info-Log:
+                    # _LOGGER.debug(
+                    #     "HP %d, Modus %s: last_mode_state=%s, op_state_val=%s",
+                    #     hp_idx, mode, last_mode_state, op_state_val
+                    # )
+
+                    # Energieintegration für aktiven Modus
+                    power_info = HP_SENSOR_TEMPLATES.get("actual_heating_capacity")
+                    if power_info:
+                        power_val = data.get(f"hp{hp_idx}_actual_heating_capacity", 0.0)
+                        if op_state_val == mode_val:
+                            # energy[hp_idx] ist ein dict, nicht eine Zahl
+                            if hp_idx not in energy:
+                                energy[hp_idx] = 0.0
+                            elif isinstance(energy[hp_idx], dict):
+                                _LOGGER.warning(f"energy[{hp_idx}] is a dict, converting to 0.0: {energy[hp_idx]}")
+                                energy[hp_idx] = 0.0
+                            # Debug: Check types before addition
+                            _LOGGER.debug(f"Before addition: energy[{hp_idx}] = {energy[hp_idx]} (type: {type(energy[hp_idx])}), power_val * interval = {power_val * interval} (type: {type(power_val * interval)})")
+                            # Ensure energy[hp_idx] is a number before addition
+                            if not isinstance(energy[hp_idx], (int, float)):
+                                _LOGGER.error(f"energy[{hp_idx}] is not a number: {type(energy[hp_idx])} = {energy[hp_idx]}")
+                                energy[hp_idx] = 0.0
+                            energy[hp_idx] = energy[hp_idx] + (power_val * interval)
+                    # Sensorwerte bereitstellen (inkl. Offset)
+                    cycling_entity_id = self._generate_entity_id(
+                        f"{mode}_cycling_daily", hp_idx - 1
+                    )
+                    energy_entity_id = self._generate_entity_id(
+                        f"{mode}_energy_daily", hp_idx - 1
+                    )
+                    # Get cycling offset for this specific sensor (correct nested structure)
+                    hp_cycling_offsets = self._cycling_offsets.get(f"hp{hp_idx}", {})
+                    if isinstance(hp_cycling_offsets, dict):
+                        cycling_offset = hp_cycling_offsets.get(f"{mode}_cycling_daily", 0)
+                    else:
+                        _LOGGER.warning(f"Invalid cycling offset structure for hp{hp_idx}: {hp_cycling_offsets}")
+                        cycling_offset = 0
+                    energy_offset = self._energy_offsets.get(f"hp{hp_idx}", {})
+                    # Energy offset is a dict, we need to get the specific sensor offset
+                    energy_sensor_offset = 0.0
+                    if isinstance(energy_offset, dict):
+                        energy_sensor_offset = energy_offset.get(f"{mode}_energy_daily", 0.0)
+                    else:
+                        _LOGGER.warning(f"Invalid energy offset structure for hp{hp_idx}: {energy_offset}")
+                    
+                    data[cycling_entity_id] = cycles.get(hp_idx, 0) + cycling_offset
+                    
+                    # Debug: Check energy structure
+                    energy_value = energy.get(hp_idx, 0.0)
+                    if not isinstance(energy_value, (int, float)):
+                        _LOGGER.error(f"energy[{hp_idx}] is not a number: {type(energy_value)} = {energy_value}")
+                        energy_value = 0.0
+                    
+                    data[energy_entity_id] = energy_value + energy_sensor_offset
+                
+                # Aktualisiere _last_operating_state NACH der Flankenerkennung
+                self._last_operating_state[str(hp_idx)] = op_state_val
+            
+            await self._persist_counters()
+            
+            # Setze Dirty-Flag wenn sich Werte geändert haben
+            self._persist_dirty = True
+
+            # Energy Consumption Tracking - NACH dem Lesen der Register
+            _LOGGER.debug("DEBUG-001: Starting energy consumption tracking")
+            await self._track_energy_consumption(data)
+            _LOGGER.debug("DEBUG-002: Energy consumption tracking completed")
 
             _LOGGER.debug("DEBUG-003: Returning data from _async_update_data")
             return data
@@ -1696,10 +1708,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             current_states = {}
             for hp_idx in range(1, num_hps + 1):
                 state_key = f"hp{hp_idx}_operating_state"
+                _LOGGER.debug(f"DEBUG-006A: Available keys in data: {list(data.keys())}")
+                _LOGGER.debug(f"DEBUG-006B: Looking for key: {state_key}")
                 if state_key in data:
                     current_states[hp_idx] = data[state_key]
+                    _LOGGER.debug(f"DEBUG-006C: Found {state_key} = {data[state_key]}")
                 else:
                     current_states[hp_idx] = 0  # Default to 0 if not available
+                    _LOGGER.debug(f"DEBUG-006D: Key {state_key} not found, using default 0")
                 _LOGGER.debug(f"DEBUG-006: HP{hp_idx} operating state: {current_states[hp_idx]}")
 
             # Track energy consumption for each heat pump
