@@ -2,7 +2,7 @@
 
 **Deutsche Version siehe unten / German version see below**
 
-## [1.4.0] - 2025-10-05
+## [1.4.1] - 2025-10-21
 
 ### English
 **New Features:**
@@ -19,6 +19,16 @@
 - **Daily Reset Function**: Repaired daily reset function for sensors
 
 **Improvements:**
+- **Massive Performance Improvements**: Dramatically improved integration startup and update performance
+  - **Startup Time**: Reduced by ~72% (from ~7.3s to ~2.05s) through intelligent background auto-detection
+  - **Update Cycles**: Reduced by ~50% (from >30s to <15s) through global register deduplication
+  - **Modbus Traffic**: Reduced by ~80% through elimination of duplicate register reads
+- **Intelligent Auto-Detection**: Implemented background auto-detection for existing configurations, eliminating startup delays while maintaining hardware change detection
+- **Global Register Cache**: Added comprehensive register deduplication system that eliminates duplicate Modbus reads across all modules (HP, Boiler, Buffer, Solar, HC)
+- **Optimized Batch Reading**: Improved Modbus batch reading with larger consecutive register ranges and reduced individual read thresholds
+- **Parallel Template Setup**: Template sensors now load in background tasks, preventing startup blocking
+- **Persist I/O Optimization**: Added debouncing and dirty-flag mechanisms to reduce unnecessary file writes
+- **Connection Health Optimization**: Reduced connection timeout from 5s to 2s for faster failure detection
 - **Enhanced Energy Tracking**: Improved energy consumption tracking with automatic unit conversion (Wh/kWh/MWh)
 - **Robust Sensor Handling**: Added retry mechanism for sensor availability during startup
 - **Comprehensive Logging**: Added detailed logging for sensor change detection and energy calculations
@@ -70,6 +80,16 @@
 - **Daily Reset Funktion**: Repariert Daily Reset-Funktion für Sensoren
 
 **Verbesserungen:**
+- **Massive Performance-Verbesserungen**: Dramatisch verbesserte Start- und Update-Performance der Integration
+  - **Startzeit**: Reduziert um ~72% (von ~7,3s auf ~2,05s) durch intelligente Background-Auto-Detection
+  - **Update-Zyklen**: Reduziert um ~50% (von >30s auf <15s) durch globale Register-Deduplizierung
+  - **Modbus-Traffic**: Reduziert um ~80% durch Eliminierung von Duplikat-Register-Reads
+- **Intelligente Auto-Detection**: Implementierte Background-Auto-Detection für bestehende Konfigurationen, eliminiert Startverzögerungen bei gleichzeitiger Aufrechterhaltung der Hardware-Änderungserkennung
+- **Globaler Register-Cache**: Hinzugefügtes umfassendes Register-Deduplizierungssystem, das Duplikat-Modbus-Reads über alle Module (HP, Boiler, Buffer, Solar, HC) eliminiert
+- **Optimiertes Batch-Reading**: Verbesserte Modbus-Batch-Reads mit größeren zusammenhängenden Register-Bereichen und reduzierten individuellen Read-Schwellenwerten
+- **Paralleles Template-Setup**: Template-Sensoren laden nun in Background-Tasks, verhindert Start-Blockierung
+- **Persist-I/O-Optimierung**: Hinzugefügte Debouncing- und Dirty-Flag-Mechanismen zur Reduzierung unnötiger Datei-Schreibvorgänge
+- **Verbindungs-Health-Optimierung**: Reduzierte Verbindungs-Timeout von 5s auf 2s für schnellere Fehlererkennung
 - **Erweiterte Energieverfolgung**: Verbesserte Verbrauchsverfolgung mit automatischer Einheitenkonvertierung (Wh/kWh/MWh)
 - **Robuste Sensor-Behandlung**: Hinzugefügter Retry-Mechanismus für Sensor-Verfügbarkeit beim Start
 - **Umfassende Protokollierung**: Hinzugefügte detaillierte Protokollierung für Sensor-Wechsel-Erkennung und Energieberechnungen

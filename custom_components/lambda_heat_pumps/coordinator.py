@@ -7,7 +7,7 @@ import os
 import yaml
 import json
 import asyncio
-import aiofiles
+# import aiofiles  # Unused import removed
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import (
@@ -38,7 +38,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
 )
-from .modbus_utils import async_read_holding_registers, get_int32_byte_order, combine_int32_registers
+from .modbus_utils import async_read_holding_registers, combine_int32_registers
 import time
 
 _LOGGER = logging.getLogger(__name__)
@@ -126,7 +126,45 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # Flag für Initialisierung - verhindert Flankenerkennung beim ersten Update
         self._initialization_complete = False
 
+        # Persist File I/O Optimierung
+        self._persist_dirty = False  # Dirty-Flag für Änderungen
+        self._persist_last_write = 0  # Timestamp des letzten Schreibens
+        self._persist_debounce_seconds = 30  # Max 1x pro 30 Sekunden schreiben
+        
+        # Globale Register-Deduplizierung für bessere Performance
+        self._global_register_cache = {}  # Cache für bereits gelesene Register pro Update-Zyklus
+        self._global_register_requests = {}  # Sammle alle Register-Requests vor dem Lesen
+
         # self._load_offsets_and_persisted() ENTFERNT!
+
+    def _add_register_request(self, address, sensor_info, sensor_id):
+        """Füge einen Register-Request zur globalen Sammlung hinzu."""
+        if address not in self._global_register_requests:
+            self._global_register_requests[address] = {
+                'sensor_info': sensor_info,
+                'sensor_ids': set()
+            }
+        self._global_register_requests[address]['sensor_ids'].add(sensor_id)
+
+    async def _read_all_registers_globally(self):
+        """Lese alle gesammelten Register in einem großen Batch."""
+        if not self._global_register_requests:
+            return {}
+        
+        _LOGGER.debug(f"Reading {len(self._global_register_requests)} unique registers globally")
+        
+        # Konvertiere zu address_list und sensor_mapping Format
+        address_list = {}
+        sensor_mapping = {}
+        
+        for address, request_data in self._global_register_requests.items():
+            address_list[address] = request_data['sensor_info']
+            # Verwende den ersten sensor_id als Hauptschlüssel
+            primary_sensor_id = list(request_data['sensor_ids'])[0]
+            sensor_mapping[address] = primary_sensor_id
+        
+        # Lese alle Register in einem Batch
+        return await self._read_registers_batch(address_list, sensor_mapping)
 
     def _normalize_operating_states(self, states_dict):
         """Normalisiere last_operating_states - konvertiere alle Schlüssel zu Strings."""
@@ -242,7 +280,22 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return await self.hass.async_add_executor_job(_repair_json)
 
     async def _persist_counters(self):
-        """Persist counter data and state information to file using Home Assistant's file operations."""
+        """Persist counter data and state information to file using optimized I/O with debouncing."""
+        import time
+        
+        # Prüfe Dirty-Flag - nur schreiben wenn sich etwas geändert hat
+        if not self._persist_dirty:
+            _LOGGER.debug("No changes to persist, skipping write")
+            return
+        
+        current_time = time.time()
+        
+        # Debouncing: Max 1x pro 30 Sekunden schreiben
+        if current_time - self._persist_last_write < self._persist_debounce_seconds:
+            _LOGGER.debug("Persist write debounced (last write %.1fs ago)", 
+                         current_time - self._persist_last_write)
+            return
+        
         # Stelle sicher, dass alle Schlüssel konsistent sind
         normalized_operating_states = self._normalize_operating_states(
             getattr(self, "_last_operating_state", {})
@@ -281,7 +334,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             with open(self._persist_file, "w") as f:
                 json.dump(data, f, indent=2)  # Mit Indentation für bessere Lesbarkeit
 
-        await self.hass.async_add_executor_job(_write_data)
+        # Schreibe als Background-Task (non-blocking)
+        try:
+            await self.hass.async_add_executor_job(_write_data)
+            self._persist_last_write = current_time
+            self._persist_dirty = False  # Reset Dirty-Flag nach erfolgreichem Schreiben
+            _LOGGER.debug("Persist file written successfully")
+        except Exception as e:
+            _LOGGER.error("Failed to write persist file: %s", e)
+            # Dirty-Flag bleibt True für nächsten Versuch
 
     def mark_initialization_complete(self):
         """Markiere die Initialisierung als abgeschlossen - ermöglicht Flankenerkennung."""
@@ -583,8 +644,22 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         """Read multiple registers in robust, type-safe batches."""
         data = {}
 
+        # Globale Deduplizierung - verhindere mehrfaches Lesen der gleichen Register über alle Module
+        unique_addresses = {}
+        for address, sensor_info in address_list.items():
+            # Prüfe globalen Cache zuerst
+            if address in self._global_register_cache:
+                # Verwende gecachten Wert
+                sensor_id = sensor_mapping.get(address, f"addr_{address}")
+                data[sensor_id] = self._global_register_cache[address]
+                _LOGGER.debug(f"Using cached value for register {address}")
+                continue
+            # Nur hinzufügen wenn nicht bereits gelesen
+            if address not in unique_addresses:
+                unique_addresses[address] = sensor_info
+
         # Sort addresses for potential batch optimization
-        sorted_addresses = sorted(address_list.keys())
+        sorted_addresses = sorted(unique_addresses.keys())
 
         # Group addresses for batch reading, avoiding INT32 boundaries and mixed types
         batches = []
@@ -593,7 +668,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         last_addr = None
 
         def get_type(addr):
-            return address_list[addr].get("data_type")
+            return unique_addresses[addr].get("data_type", "uint16")
 
         for addr in sorted_addresses:
             dtype = get_type(addr)
@@ -631,18 +706,18 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 # If batch is a single INT32 (2 addresses), handle as such
                 if len(batch) == 2 and get_type(batch[0]) == "int32":
                     await self._read_single_register(
-                        batch[0], address_list[batch[0]], sensor_mapping, data
+                        batch[0], unique_addresses[batch[0]], sensor_mapping, data
                     )
                     continue
                 start_addr = batch[0]
                 count = len(batch)
                 batch_key = (start_addr, count)
 
-                # For small batches or single registers, use individual reads
-                if count == 1 or count > 100:
+                # For very small batches, use individual reads (optimiert: 2 statt 3)
+                if count < 2 or count > 100:
                     for addr in batch:
                         await self._read_single_register(
-                            addr, address_list[addr], sensor_mapping, data
+                            addr, unique_addresses[addr], sensor_mapping, data
                         )
                     continue
 
@@ -651,7 +726,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (previous failures)")
                     for addr in batch:
                         await self._read_single_register(
-                            addr, address_list[addr], sensor_mapping, data
+                            addr, unique_addresses[addr], sensor_mapping, data
                         )
                     continue
 
@@ -660,7 +735,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (configured individual read)")
                     for addr in batch:
                         await self._read_single_register(
-                            addr, address_list[addr], sensor_mapping, data
+                            addr, unique_addresses[addr], sensor_mapping, data
                         )
                     continue
 
@@ -721,6 +796,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         if "scale" in sensor_info:
                             value = value * sensor_info["scale"]
                         data[sensor_id] = value
+                        
+                        # Cache den Wert im globalen Cache für andere Module
+                        self._global_register_cache[addr] = value
+                        _LOGGER.debug(f"Cached register {addr} = {value} (batch)")
                     except Exception as ex:
                         _LOGGER.debug(
                             f"Error processing register {addr} in batch: {ex}"
@@ -768,114 +847,76 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 value = value * sensor_info["scale"]
 
             data[sensor_id] = value
+            
+            # Cache den Wert im globalen Cache für andere Module
+            self._global_register_cache[address] = value
+            _LOGGER.debug(f"Cached register {address} = {value}")
 
         except Exception as ex:
             _LOGGER.debug(f"Error reading register {address}: {ex}")
 
     async def _read_general_sensors_batch(self, data):
-        """Read general sensors using batch optimization."""
-        address_list = {}
-        sensor_mapping = {}
-
+        """Read general sensors using global register collection."""
         for sensor_id, sensor_info in SENSOR_TYPES.items():
             if self.is_register_disabled(sensor_info["address"]):
                 continue
+            if not self.is_address_enabled_by_entity(sensor_info["address"]):
+                continue
 
-            address = sensor_info["address"]
-            address_list[address] = sensor_info
-            sensor_mapping[address] = sensor_id
-
-        if address_list:
-            batch_data = await self._read_registers_batch(address_list, sensor_mapping)
-            data.update(batch_data)
+            # Sammle Register-Request statt sofort zu lesen
+            self._add_register_request(sensor_info["address"], sensor_info, sensor_id)
 
     async def _read_heatpump_sensors_batch(self, data, num_hps, compatible_hp_sensors):
-        """Read heat pump sensors in optimized batches."""
+        """Read heat pump sensors using global register collection."""
         for hp_idx in range(1, num_hps + 1):
             base_address = generate_base_addresses("hp", num_hps)[hp_idx]
 
-            # Group sensors by consecutive addresses
-            address_groups = {}
-            sensor_mapping = {}
             for sensor_id, sensor_info in compatible_hp_sensors.items():
                 address = base_address + sensor_info["relative_address"]
                 if not self.is_address_enabled_by_entity(address):
                     continue
 
-                address_groups[address] = sensor_info
-                sensor_mapping[address] = f"hp{hp_idx}_{sensor_id}"
-
-            # Read in batches
-            batch_results = await self._read_registers_batch(
-                address_groups, sensor_mapping
-            )
-            data.update(batch_results)
+                # Sammle Register-Request statt sofort zu lesen
+                self._add_register_request(address, sensor_info, f"hp{hp_idx}_{sensor_id}")
 
     async def _read_boiler_sensors_batch(self, data, num_boil, compatible_boil_sensors):
-        """Read boiler sensors in optimized batches."""
+        """Read boiler sensors using global register collection."""
         for boil_idx in range(1, num_boil + 1):
             base_address = generate_base_addresses("boil", num_boil)[boil_idx]
 
-            # Group sensors by consecutive addresses
-            address_groups = {}
-            sensor_mapping = {}
             for sensor_id, sensor_info in compatible_boil_sensors.items():
                 address = base_address + sensor_info["relative_address"]
                 if not self.is_address_enabled_by_entity(address):
                     continue
 
-                address_groups[address] = sensor_info
-                sensor_mapping[address] = f"boil{boil_idx}_{sensor_id}"
-
-            # Read in batches
-            batch_results = await self._read_registers_batch(
-                address_groups, sensor_mapping
-            )
-            data.update(batch_results)
+                # Sammle Register-Request statt sofort zu lesen
+                self._add_register_request(address, sensor_info, f"boil{boil_idx}_{sensor_id}")
 
     async def _read_buffer_sensors_batch(self, data, num_buff, compatible_buff_sensors):
-        """Read buffer sensors in optimized batches."""
+        """Read buffer sensors using global register collection."""
         for buff_idx in range(1, num_buff + 1):
             base_address = generate_base_addresses("buff", num_buff)[buff_idx]
 
-            # Group sensors by consecutive addresses
-            address_groups = {}
-            sensor_mapping = {}
             for sensor_id, sensor_info in compatible_buff_sensors.items():
                 address = base_address + sensor_info["relative_address"]
                 if not self.is_address_enabled_by_entity(address):
                     continue
 
-                address_groups[address] = sensor_info
-                sensor_mapping[address] = f"buff{buff_idx}_{sensor_id}"
-
-            # Read in batches
-            batch_results = await self._read_registers_batch(
-                address_groups, sensor_mapping
-            )
-            data.update(batch_results)
+                # Sammle Register-Request statt sofort zu lesen
+                self._add_register_request(address, sensor_info, f"buff{buff_idx}_{sensor_id}")
 
     async def _read_solar_sensors_batch(self, data, num_sol, compatible_sol_sensors):
-        """Read solar sensors in optimized batches."""
+        """Read solar sensors using global register collection."""
         for sol_idx in range(1, num_sol + 1):
             base_address = generate_base_addresses("sol", num_sol)[sol_idx]
 
-            # Group sensors by consecutive addresses
-            address_groups = {}
-            sensor_mapping = {}
             for sensor_id, sensor_info in compatible_sol_sensors.items():
                 address = base_address + sensor_info["relative_address"]
                 if not self.is_address_enabled_by_entity(address):
                     continue
 
-                address_groups[address] = sensor_info
-                sensor_mapping[address] = f"sol{sol_idx}_{sensor_id}"
-
-            # Read in batches
-            batch_results = await self._read_registers_batch(
-                address_groups, sensor_mapping
-            )
-            data.update(batch_results)
+                # Sammle Register-Request statt sofort zu lesen
+                self._add_register_request(address, sensor_info, f"sol{sol_idx}_{sensor_id}")
 
     async def _setup_entity_registry_monitoring(self):
         """Setup Entity Registry monitoring for dynamic polling."""
@@ -1116,7 +1157,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Use register 0 (General Error Number) as a health check
             result = await asyncio.wait_for(
                 self.client.read_holding_registers(0, count=1, slave=self.slave_id),
-                timeout=5  # Short timeout for health check
+                timeout=2  # Reduziert von 5s auf 2s für schnelleren Health Check
             )
             return result is not None
         except Exception:
@@ -1129,6 +1170,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if self.hass.is_stopping:
                 _LOGGER.debug("Home Assistant is stopping, skipping data update")
                 return self.data
+            
+            # Reset global register cache für neuen Update-Zyklus
+            self._global_register_cache = {}
+            self._global_register_requests = {}  # Sammle alle Register-Requests vor dem Lesen
+            _LOGGER.debug("Reset global register cache for new update cycle")
             
             # Check connection health and reconnect if necessary
             if not self.client or not await self._is_connection_healthy():
@@ -1353,6 +1399,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Aktualisiere _last_operating_state NACH der Flankenerkennung
                 self._last_operating_state[str(hp_idx)] = op_state_val
+                
+            # Setze Dirty-Flag wenn sich Werte geändert haben
+            self._persist_dirty = True
+            
             await self._persist_counters()
 
             # Read boiler sensors
@@ -1532,7 +1582,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             ex,
                         )
 
-            # Read heating circuit sensors
+            # Read heating circuit sensors using global register collection
             num_hc = self.entry.data.get("num_hc", 1)
             for hc_idx in range(1, num_hc + 1):
                 base_address = generate_base_addresses("hc", num_hc)[hc_idx]
@@ -1546,50 +1596,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             address,
                         )
                         continue
-                    try:
-                        address = base_address + sensor_info["relative_address"]
-                        count = 2 if sensor_info.get("data_type") == "int32" else 1
-                        result = await async_read_holding_registers(
-                            self.client,
-                            address,
-                            count,
-                            self.entry.data.get("slave_id", 1),
-                        )
-                        if hasattr(result, "isError") and result.isError():
-                            _LOGGER.debug(
-                                "Error reading register %d: %s",
-                                address,
-                                result,
-                            )
-                            continue
-                        if count == 2:
-                            value = combine_int32_registers(result.registers, self._int32_byte_order)
-                            if sensor_info.get("data_type") == "int32":
-                                value = to_signed_32bit(value)
-                        else:
-                            value = result.registers[0]
-                            if sensor_info.get("data_type") == "int16":
-                                value = to_signed_16bit(value)
-                        if "scale" in sensor_info:
-                            value = value * sensor_info["scale"]
-                        # Prüfe auf Override-Name
-                        override_name = None
-                        if hasattr(self, "sensor_overrides"):
-                            override_name = self.sensor_overrides.get(
-                                f"hc{hc_idx}_{sensor_id}"
-                            )
-                        key = (
-                            override_name
-                            if override_name
-                            else f"hc{hc_idx}_{sensor_id}"
-                        )
-                        data[key] = value
-                    except Exception as ex:
-                        _LOGGER.debug(
-                            "Error reading register %d: %s",
-                            address,
-                            ex,
-                        )
+
+                    # Sammle Register-Request statt sofort zu lesen
+                    self._add_register_request(address, sensor_info, f"hc{hc_idx}_{sensor_id}")
 
             # Dummy-Keys für Template-Sensoren einfügen
             # Erzeuge alle möglichen Template-Sensor-IDs
@@ -1624,6 +1633,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("DEBUG-001: Starting energy consumption tracking")
             await self._track_energy_consumption(data)
             _LOGGER.debug("DEBUG-002: Energy consumption tracking completed")
+
+            # 🚀 NEUE OPTIMIERUNG: Lese alle gesammelten Register in einem großen Batch
+            global_data = await self._read_all_registers_globally()
+            data.update(global_data)
+            _LOGGER.debug(f"Global register reading completed: {len(global_data)} values")
 
             _LOGGER.debug("DEBUG-003: Returning data from _async_update_data")
             return data

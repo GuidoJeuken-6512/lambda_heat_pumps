@@ -588,13 +588,18 @@ async def async_setup_entry(
     
     _LOGGER.info(f"Registered {len(energy_entities)} energy consumption entities")
 
-    # Load template sensors from template_sensor.py
+    # Load template sensors from template_sensor.py (parallel, non-blocking)
     from .template_sensor import async_setup_entry as setup_template_sensors
 
-    try:
-        await setup_template_sensors(hass, entry, async_add_entities)
-    except Exception as e:
-        _LOGGER.error("Error setting up template sensors: %s", e)
+    async def setup_templates():
+        try:
+            await setup_template_sensors(hass, entry, async_add_entities)
+        except Exception as e:
+            _LOGGER.error("Error setting up template sensors: %s", e)
+
+    # Starte Template Sensor Setup im Hintergrund (non-blocking)
+    hass.async_create_task(setup_templates())
+    _LOGGER.debug("Started template sensor setup in background")
 
     # Markiere Coordinator-Initialisierung als abgeschlossen
     # Dies ermöglicht die Flankenerkennung nach der Entity-Registrierung

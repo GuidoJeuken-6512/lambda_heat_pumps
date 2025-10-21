@@ -5,7 +5,6 @@ from datetime import timedelta
 
 import logging
 import asyncio
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -26,7 +25,6 @@ from .automations import setup_cycling_automations, cleanup_cycling_automations
 # from .migration import async_migrate_entry as migrate_entry
 
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
-from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
@@ -108,55 +106,76 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Ensure lambda_wp_config.yaml exists (create from template if missing)
     await ensure_lambda_config(hass)
 
-    # --- Module auto-detection mit Retry ---
-    detected_counts = None
-    for attempt in range(AUTO_DETECT_RETRIES):
-        try:
-            coordinator = LambdaDataUpdateCoordinator(hass, entry)
-            await coordinator.async_init()
-            client = getattr(coordinator, "client", None)
-            slave_id = getattr(coordinator, "slave_id", 1)
-            if client is not None:
-                detected_counts = await auto_detect_modules(client, slave_id)
-                updated = await update_entry_with_detected_modules(
-                    hass, entry, detected_counts
-                )
+    # --- Intelligente Auto-Detection ---
+    # Erstelle einen Coordinator für beide Zwecke (Auto-Detection + Produktivbetrieb)
+    coordinator = LambdaDataUpdateCoordinator(hass, entry)
+    await coordinator.async_init()
+    
+    # Prüfe ob Module Counts bereits vorhanden sind (bestehendes Setup)
+    has_module_counts = (
+        "num_hps" in entry.data and 
+        "num_hc" in entry.data
+    )
+    
+    if has_module_counts:
+        # Bestehende Config: Auto-Detection im Hintergrund (non-blocking)
+        _LOGGER.info("Using existing module counts, starting background auto-detection")
+        
+        async def background_auto_detect():
+            try:
+                _LOGGER.debug("Background auto-detection started")
+                detected = await auto_detect_modules(coordinator.client, coordinator.slave_id)
+                updated = await update_entry_with_detected_modules(hass, entry, detected)
                 if updated:
-                    _LOGGER.info(
-                        "Config entry updated with detected module counts: %s",
-                        detected_counts,
-                    )
-                break
-            else:
-                _LOGGER.warning(
-                    "[Auto-detect attempt %d/%d] Could not get Modbus client for "
-                    "auto-detection; using config values.",
-                    attempt + 1,
-                    AUTO_DETECT_RETRIES,
-                )
-        except Exception as ex:
-            _LOGGER.warning(
-                "[Auto-detect attempt %d/%d] Module auto-detection failed: %s",
-                attempt + 1,
-                AUTO_DETECT_RETRIES,
-                ex,
-            )
-        if detected_counts is None and attempt < AUTO_DETECT_RETRIES - 1:
-            await asyncio.sleep(AUTO_DETECT_RETRY_DELAY)
-
-    # Use detected counts if available, else fallback to config
-    if detected_counts:
-        num_hps = detected_counts.get("hp", 1)
-        num_boil = detected_counts.get("boil", 1)
-        num_buff = detected_counts.get("buff", 0)
-        num_sol = detected_counts.get("sol", 0)
-        num_hc = detected_counts.get("hc", 1)
-    else:
+                    _LOGGER.info("Background auto-detection updated module counts: %s", detected)
+                else:
+                    _LOGGER.debug("Background auto-detection: no module count changes needed")
+            except Exception as ex:
+                _LOGGER.debug("Background auto-detection failed: %s", ex)
+        
+        # Starte Auto-Detection im Hintergrund (non-blocking)
+        hass.async_create_task(background_auto_detect())
+        _LOGGER.info("Started background auto-detection (non-blocking)")
+        
+        # Verwende vorhandene Module Counts
         num_hps = entry.data.get("num_hps", 1)
         num_boil = entry.data.get("num_boil", 1)
         num_buff = entry.data.get("num_buff", 0)
         num_sol = entry.data.get("num_sol", 0)
         num_hc = entry.data.get("num_hc", 1)
+    else:
+        # Ersteinrichtung: Auto-Detection synchron (blockierend)
+        _LOGGER.info("First-time setup, running auto-detection synchronously")
+        detected_counts = None
+        for attempt in range(2):  # Reduziert von 3 auf 2 Versuche
+            try:
+                detected_counts = await auto_detect_modules(coordinator.client, coordinator.slave_id)
+                updated = await update_entry_with_detected_modules(hass, entry, detected_counts)
+                if updated:
+                    _LOGGER.info("Auto-detection updated module counts: %s", detected_counts)
+                break
+            except Exception as ex:
+                _LOGGER.warning(
+                    "[Auto-detect attempt %d/2] Module auto-detection failed: %s",
+                    attempt + 1,
+                    ex,
+                )
+                if attempt < 1:  # Nur einmal retry
+                    await asyncio.sleep(0.5)  # Reduziert von 1s auf 0.5s
+        
+        # Use detected counts if available, else fallback to defaults
+        if detected_counts:
+            num_hps = detected_counts.get("hp", 1)
+            num_boil = detected_counts.get("boil", 1)
+            num_buff = detected_counts.get("buff", 0)
+            num_sol = detected_counts.get("sol", 0)
+            num_hc = detected_counts.get("hc", 1)
+        else:
+            num_hps = entry.data.get("num_hps", 1)
+            num_boil = entry.data.get("num_boil", 1)
+            num_buff = entry.data.get("num_buff", 0)
+            num_sol = entry.data.get("num_sol", 0)
+            num_hc = entry.data.get("num_hc", 1)
 
     _LOGGER.debug(
         "Device counts - HPs: %d, Boilers: %d, Buffers: %d, Solar: %d, HCs: %d",
@@ -175,12 +194,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         generate_base_addresses("sol", num_sol),
         generate_base_addresses("hc", num_hc),
     )
-    # Create coordinator (again, for main use)
-    coordinator = LambdaDataUpdateCoordinator(hass, entry)
-    # Create coordinator
-    # coordinator = LambdaDataUpdateCoordinator(hass, entry)  # Doppelter Aufruf - entfernt
+    # Coordinator ist bereits erstellt und initialisiert - verwende den bestehenden
     try:
-        await coordinator.async_init()
         
         # ⭐ KORRIGIERT: Endianness-Konfiguration VOR dem ersten async_refresh()
         from .modbus_utils import get_int32_byte_order
@@ -191,8 +206,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.warning("Fehler bei Byte-Order-Bestimmung: %s", e)
             coordinator._int32_byte_order = "big"  # Fallback auf Standard
         
-        # Warte auf die erste Datenabfrage mit Retry-Logik
-        max_retries = 3
+        # Warte auf die erste Datenabfrage mit optimierter Retry-Logik
+        max_retries = 2  # Reduziert von 3 auf 2
         for attempt in range(max_retries):
             try:
                 await coordinator.async_refresh()
@@ -205,7 +220,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         max_retries,
                     )
                     if attempt < max_retries - 1:
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(0.3)  # Reduziert von 1s auf 0.3s
             except Exception as ex:
                 _LOGGER.warning(
                     "Attempt %d/%d: Error refreshing coordinator: %s",
@@ -214,7 +229,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     ex,
                 )
                 if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(0.3)  # Reduziert von 1s auf 0.3s
 
         if not coordinator.data:
             _LOGGER.error(
