@@ -9,6 +9,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -587,13 +588,18 @@ async def async_setup_entry(
     
     _LOGGER.info(f"Registered {len(energy_entities)} energy consumption entities")
 
-    # Load template sensors from template_sensor.py
+    # Load template sensors from template_sensor.py (parallel, non-blocking)
     from .template_sensor import async_setup_entry as setup_template_sensors
 
-    try:
-        await setup_template_sensors(hass, entry, async_add_entities)
-    except Exception as e:
-        _LOGGER.error("Error setting up template sensors: %s", e)
+    async def setup_templates():
+        try:
+            await setup_template_sensors(hass, entry, async_add_entities)
+        except Exception as e:
+            _LOGGER.error("Error setting up template sensors: %s", e)
+
+    # Starte Template Sensor Setup im Hintergrund (non-blocking)
+    hass.async_create_task(setup_templates())
+    _LOGGER.debug("Started template sensor setup in background")
 
     # Markiere Coordinator-Initialisierung als abgeschlossen
     # Dies ermöglicht die Flankenerkennung nach der Entity-Registrierung
@@ -1019,10 +1025,10 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
     def set_energy_value(self, value):
         """Set the energy value and update state."""
-        self._energy_value = float(value)  # Stelle sicher, dass es ein Float ist
-        # Stelle sicher, dass der State korrekt aktualisiert wird
+        old_value = self._energy_value
+        self._energy_value = float(value)
         self.async_write_ha_state()
-        _LOGGER.debug(f"Energy sensor {self.entity_id} value set to {value}")
+        _LOGGER.debug(f"Energy sensor {self.entity_id} value updated from {old_value:.2f} to {self._energy_value:.2f}")
 
     def update_yesterday_value(self):
         """Update yesterday value with current total value (called at midnight)."""
@@ -1078,36 +1084,20 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
     async def restore_state(self, last_state):
         """Restore the state from the last state."""
-        if last_state is not None:
+        if last_state is not None and last_state.state != STATE_UNKNOWN:
             try:
                 self._energy_value = float(last_state.state)
-                _LOGGER.debug(f"Restored energy value for {self.entity_id}: {self._energy_value}")
-                
-                # Lade den bereits angewendeten Offset aus den Attributen (wie bei Cycling)
+                _LOGGER.debug(f"Restored energy value for {self.entity_id}: {self._energy_value:.2f}")
+                # Restore applied_offset if it exists (for total sensors)
                 if hasattr(last_state, 'attributes') and last_state.attributes:
                     self._applied_offset = last_state.attributes.get("applied_offset", 0.0)
-                    # Lade Previous Period-Werte
-                    self._previous_monthly_value = last_state.attributes.get("previous_monthly_value", 0.0)
-                    self._previous_yearly_value = last_state.attributes.get("previous_yearly_value", 0.0)
-                else:
-                    self._applied_offset = 0.0
-                    self._previous_monthly_value = 0.0
-                    self._previous_yearly_value = 0.0
-            except (ValueError, TypeError):
-                _LOGGER.warning(f"Could not restore energy value for {self.entity_id}: {last_state.state}")
+            except ValueError as e:
+                _LOGGER.error(f"Failed to restore state for {self.entity_id}: {e}")
                 self._energy_value = 0.0
-                self._applied_offset = 0.0
-                self._previous_monthly_value = 0.0
-                self._previous_yearly_value = 0.0
         else:
             self._energy_value = 0.0
-            self._applied_offset = 0.0
-            self._previous_monthly_value = 0.0
-            self._previous_yearly_value = 0.0
-        
-        # Apply energy consumption offsets for total sensors
-        if self._reset_interval == "total":
-            await self._apply_energy_offset()
+            _LOGGER.debug(f"No state to restore for {self.entity_id}, initializing to 0.0")
+        self.async_write_ha_state()
 
     async def _apply_energy_offset(self):
         """Apply energy consumption offset for total sensors (only once, like cycling sensors)."""
@@ -1163,36 +1153,19 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         """Handle reset signal."""
         _LOGGER.info(f"Resetting energy sensor {self.entity_id}")
         
-        if self._reset_interval == "monthly":
-            # Speichere aktuellen Wert vor Reset
-            self._previous_monthly_value = self._energy_value
-            _LOGGER.info(f"Monthly sensor {self.entity_id}: Saved previous value {self._previous_monthly_value:.2f} kWh")
-        elif self._reset_interval == "yearly":
-            # Speichere aktuellen Wert vor Reset
-            self._previous_yearly_value = self._energy_value
-            _LOGGER.info(f"Yearly sensor {self.entity_id}: Saved previous value {self._previous_yearly_value:.2f} kWh")
-        
-        # Reset nur für daily, 2h, 4h Sensoren
-        if self._reset_interval in ["daily", "2h", "4h"]:
+        # Einfache Reset-Logik: Alle außer Total werden auf 0 gesetzt
+        if self._reset_interval != "total":
             self._energy_value = 0.0
+            _LOGGER.info(f"Sensor {self.entity_id} reset to 0.0 kWh.")
+        else:
+            _LOGGER.debug(f"Total sensor {self.entity_id} not reset.")
         
         self.async_write_ha_state()
 
     @property
     def native_value(self) -> float:
         """Return the current value."""
-        if self._reset_interval == "daily":
-            # Daily-Wert = Total - Yesterday
-            return max(0.0, self._energy_value - self._yesterday_value)
-        elif self._reset_interval == "monthly":
-            # Monthly-Wert = Total - Previous Monthly
-            return max(0.0, self._energy_value - self._previous_monthly_value)
-        elif self._reset_interval == "yearly":
-            # Yearly-Wert = Total - Previous Yearly
-            return max(0.0, self._energy_value - self._previous_yearly_value)
-        else:
-            # Total-Wert
-            return self._energy_value
+        return self._energy_value
 
     @property
     def extra_state_attributes(self):
@@ -1204,15 +1177,6 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             "hp_index": self._hp_index,
             "applied_offset": self._applied_offset,
         }
-        
-        # Füge Period-spezifische Werte hinzu
-        if self._reset_interval == "daily":
-            attrs["yesterday_value"] = self._yesterday_value
-        elif self._reset_interval == "monthly":
-            attrs["previous_monthly_value"] = self._previous_monthly_value
-        elif self._reset_interval == "yearly":
-            attrs["previous_yearly_value"] = self._previous_yearly_value
-            
         return attrs
 
     @property

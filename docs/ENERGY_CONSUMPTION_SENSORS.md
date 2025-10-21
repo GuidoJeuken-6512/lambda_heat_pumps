@@ -37,6 +37,8 @@ The Energy Consumption Sensors provide **detailed energy tracking by operating m
 - **Automatic Unit Conversion**: Supports Wh, kWh, and MWh with automatic conversion to kWh
 - **Retry Mechanism**: Robust handling of sensor availability during startup
 - **Overflow Protection**: Handles sensor value overflows and prevents incorrect calculations
+- **Zero-Value Protection**: Prevents incorrect delta calculations when sensors show 0 values during startup or sensor changes
+- **Continuous JSON Persistence**: Own Modbus sensors are continuously synchronized to JSON for better sensor change handling
 
 ## Architecture
 
@@ -93,18 +95,24 @@ The Energy Consumption Sensors provide **detailed energy tracking by operating m
 
 #### Energy Calculation
 ```python
-# Energy delta calculation with overflow protection
+# Energy delta calculation with overflow protection and zero-value protection
 energy_delta = calculate_energy_delta(
     current_reading=current_kwh,
     last_reading=last_kwh,
     max_delta=100.0  # Maximum allowed delta (kWh)
 )
+
+# Zero-value protection prevents incorrect calculations during startup/sensor changes
+if current_energy_kwh <= 0.0 or last_energy <= 0.0:
+    # Skip delta calculation, set new baseline
+    return 0.0
 ```
 
 #### Input Sensor Configuration
 - **Source**: `sensor.eu08l_hp1_compressor_power_consumption_accumulated`
 - **Unit**: kWh (converted from Wh)
 - **Update Frequency**: Every 30 seconds (coordinator update interval)
+- **JSON Persistence**: Own Modbus sensors are continuously saved to JSON for robust sensor change handling
 
 ### 3. Configuration
 
@@ -274,6 +282,39 @@ Sensor change detection is automatic and requires no configuration. It works wit
 - **Prevents Incorrect Calculations**: Avoids energy consumption spikes when changing sensors
 - **Seamless Migration**: Easy to switch between different energy meters
 - **Automatic Recovery**: Handles sensor unavailability during startup
+- **Zero-Value Protection**: Prevents large energy jumps when sensors show 0 values during startup
+- **Continuous Synchronization**: Own Modbus sensors are continuously saved to JSON for immediate availability after sensor changes
+
+## Enhanced Sensor Change Handling
+
+The integration includes **enhanced sensor change handling** with multiple protection mechanisms:
+
+### Protection Mechanisms
+
+#### 1. Zero-Value Protection
+- **Purpose**: Prevents incorrect delta calculations when sensors show 0 values during startup or sensor changes
+- **Implementation**: Skips delta calculation and sets new baseline when either current or last reading is ≤ 0.0
+- **Logging**: Clear log messages indicate when zero-value protection is active
+
+#### 2. Continuous JSON Persistence
+- **Purpose**: Ensures own Modbus sensors are always available after sensor changes
+- **Implementation**: Own sensors (`sensor.eu08l_hp1_compressor_power_consumption_accumulated`) are continuously saved to JSON every 30 seconds
+- **Benefit**: Immediate availability of last known values during sensor transitions
+
+#### 3. Two-Value Validation
+- **Purpose**: Ensures stable sensor readings before starting delta calculations
+- **Implementation**: Delta calculation only starts after two consecutive values > 0.0
+- **Benefit**: Prevents large energy jumps during sensor initialization
+
+### Example Log Output
+```
+SENSOR-PERSIST: Saved current Modbus value for HP1: 3109.39 kWh
+Energy tracking for HP1: Current value is 0.0 (likely startup/sensor change), skipping delta calculation
+Energy delta 2393.0 kWh (last_reading was 0, likely sensor change or restart) - BLOCKING DELTA
+```
+
+### Configuration
+Enhanced sensor change handling is automatic and requires no configuration. It works with any energy source sensor and provides robust protection against incorrect calculations.
 
 ## Automatic Unit Conversion
 
@@ -407,18 +448,24 @@ Die Energieverbrauchs-Sensoren bieten **detailliertes Energietracking nach Betri
 
 #### Energie-Berechnung
 ```python
-# Energie-Delta-Berechnung mit Überlauf-Schutz
+# Energie-Delta-Berechnung mit Überlauf-Schutz und Null-Wert-Schutz
 energy_delta = calculate_energy_delta(
     current_reading=current_kwh,
     last_reading=last_kwh,
     max_delta=100.0  # Maximal erlaubtes Delta (kWh)
 )
+
+# Null-Wert-Schutz verhindert falsche Berechnungen beim Start/Sensor-Wechsel
+if current_energy_kwh <= 0.0 or last_energy <= 0.0:
+    # Delta-Berechnung überspringen, neue Baseline setzen
+    return 0.0
 ```
 
 #### Eingabe-Sensor-Konfiguration
 - **Quelle**: `sensor.eu08l_hp1_compressor_power_consumption_accumulated`
 - **Einheit**: kWh (von Wh konvertiert)
 - **Update-Frequenz**: Alle 30 Sekunden (Coordinator-Update-Intervall)
+- **JSON-Persistierung**: Eigene Modbus-Sensoren werden kontinuierlich in JSON gespeichert für robuste Sensor-Wechsel-Behandlung
 
 ### 3. Konfiguration
 
@@ -570,6 +617,8 @@ energy_consumption_sensors:
 - **Sensor-Wechsel-Erkennung**: Automatische Erkennung von Energie-Quellsensor-Änderungen
 - **Einheitenkonvertierung**: Automatische Konvertierung zwischen Wh, kWh und MWh
 - **Retry-Mechanismus**: Behandelt Sensor-Unverfügbarkeit beim Start mit Retry-Logik
+- **Null-Wert-Schutz**: Verhindert falsche Delta-Berechnungen wenn Sensoren 0-Werte beim Start oder Sensor-Wechsel zeigen
+- **Kontinuierliche JSON-Persistierung**: Eigene Modbus-Sensoren werden kontinuierlich in JSON synchronisiert für bessere Sensor-Wechsel-Behandlung
 
 ## Sensor-Wechsel-Erkennung
 
@@ -588,6 +637,39 @@ Die Sensor-Wechsel-Erkennung ist automatisch und erfordert keine Konfiguration. 
 - **Verhindert falsche Berechnungen**: Vermeidet Energieverbrauchsspitzen beim Wechseln von Sensoren
 - **Nahtlose Migration**: Einfacher Wechsel zwischen verschiedenen Energiezählern
 - **Automatische Wiederherstellung**: Behandelt Sensor-Unverfügbarkeit beim Start
+- **Null-Wert-Schutz**: Verhindert große Energiesprünge wenn Sensoren 0-Werte beim Start zeigen
+- **Kontinuierliche Synchronisation**: Eigene Modbus-Sensoren werden kontinuierlich in JSON gespeichert für sofortige Verfügbarkeit nach Sensor-Wechseln
+
+## Verbesserte Sensor-Wechsel-Behandlung
+
+Die Integration beinhaltet **verbesserte Sensor-Wechsel-Behandlung** mit mehreren Schutzmechanismen:
+
+### Schutzmechanismen
+
+#### 1. Null-Wert-Schutz
+- **Zweck**: Verhindert falsche Delta-Berechnungen wenn Sensoren 0-Werte beim Start oder Sensor-Wechsel zeigen
+- **Implementierung**: Überspringt Delta-Berechnung und setzt neue Baseline wenn entweder aktueller oder letzter Wert ≤ 0.0 ist
+- **Protokollierung**: Klare Log-Nachrichten zeigen an, wann Null-Wert-Schutz aktiv ist
+
+#### 2. Kontinuierliche JSON-Persistierung
+- **Zweck**: Stellt sicher, dass eigene Modbus-Sensoren nach Sensor-Wechseln immer verfügbar sind
+- **Implementierung**: Eigene Sensoren (`sensor.eu08l_hp1_compressor_power_consumption_accumulated`) werden kontinuierlich alle 30 Sekunden in JSON gespeichert
+- **Vorteil**: Sofortige Verfügbarkeit der letzten bekannten Werte während Sensor-Übergängen
+
+#### 3. Zwei-Wert-Validierung
+- **Zweck**: Stellt stabile Sensor-Lesungen sicher, bevor Delta-Berechnungen beginnen
+- **Implementierung**: Delta-Berechnung startet erst nach zwei aufeinanderfolgenden Werten > 0.0
+- **Vorteil**: Verhindert große Energiesprünge während der Sensor-Initialisierung
+
+### Beispiel Log-Ausgabe
+```
+SENSOR-PERSIST: Saved current Modbus value for HP1: 3109.39 kWh
+Energy tracking for HP1: Current value is 0.0 (likely startup/sensor change), skipping delta calculation
+Energy delta 2393.0 kWh (last_reading was 0, likely sensor change or restart) - BLOCKING DELTA
+```
+
+### Konfiguration
+Die verbesserte Sensor-Wechsel-Behandlung ist automatisch und erfordert keine Konfiguration. Sie funktioniert mit jedem Energie-Quellsensor und bietet robusten Schutz gegen falsche Berechnungen.
 
 ## Automatische Einheitenkonvertierung
 

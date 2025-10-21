@@ -2,7 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-1.4.0-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/releases)
+[![version](https://img.shields.io/badge/version-1.4.1-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/releases)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -59,6 +59,7 @@ After initial setup, you can modify additional settings in the integration optio
    - Temperature step size
    - Room thermostat control (using external sensors)
    - PV surplus control for solar power integration
+   - Update interval for the sensors
 
 **Features:**
 - **Full Modbus/TCP Support**: Complete support for Lambda heat pumps via Modbus/TCP
@@ -139,6 +140,7 @@ Nach der Ersteinrichtung können Sie zusätzliche Einstellungen in den Integrati
    - Temperaturstufengröße
    - Raumthermostatsteuerung (mit externen Sensoren)
    - PV Überschuss zur Heizkurvenanhebung der Lambda
+   - Update Intervall für die Sensoren
 
 ---
 
@@ -298,7 +300,6 @@ The integration supports controlling the heat pump based on available PV surplus
 ### Configuration:
 1. **Enable PV Surplus**: Activate "PV Surplus" in integration options
 2. **Select PV Sensor**: Choose a PV power sensor (e.g., template sensor for PV surplus)
-3. **Adjust Interval**: Configure the write interval in options
 
 ### Supported Sensors:
 - **Watt Sensors**: Direct usage (e.g., 1500 W)
