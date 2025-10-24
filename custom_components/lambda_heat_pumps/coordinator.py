@@ -72,6 +72,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         if self.debug_mode:
             _LOGGER.setLevel(logging.DEBUG)
         self.client = None
+        self._last_connection_time = None  # Track connection time for 60-second rule
         self.config_entry_id = entry.entry_id
         self._config_dir = hass.config.config_dir
         self._config_path = os.path.join(self._config_dir, "lambda_heat_pumps")
@@ -149,31 +150,22 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Coordinator-Initialisierung abgeschlossen - Flankenerkennung aktiviert")
 
     async def _load_offsets_and_persisted(self):
-        # Lade Offsets aus lambda_wp_config.yaml
-        config_dir = self.hass.config.config_dir
-        config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
-        _LOGGER.info(f"Loading config from: {config_path}")
+        # Lade Offsets aus lambda_wp_config.yaml über das zentrale Config-System
+        from .utils import load_lambda_config
         
-        if os.path.exists(config_path):
-            _LOGGER.info("Config file exists, loading...")
-
-            def _read_config():
-                with open(config_path) as f:
-                    content = f.read()
-                    config = yaml.safe_load(content) or {}
-                    return config
-
-            try:
-                config = await self.hass.async_add_executor_job(_read_config)
-                _LOGGER.info(f"Loaded config keys: {list(config.keys())}")
-                self._cycling_offsets = config.get("cycling_offsets", {})
-                self._energy_offsets = config.get("energy_consumption_offsets", {})
-                self._energy_sensor_configs = config.get("energy_consumption_sensors", {})
-                _LOGGER.info(f"Loaded energy sensor configs: {self._energy_sensor_configs}")
-            except Exception as e:
-                _LOGGER.error(f"Error loading config: {e}")
-        else:
-            _LOGGER.warning(f"Config file not found: {config_path}")
+        try:
+            config = await load_lambda_config(self.hass)
+            _LOGGER.info(f"Loaded config keys: {list(config.keys())}")
+            self._cycling_offsets = config.get("cycling_offsets", {})
+            self._energy_offsets = config.get("energy_consumption_offsets", {})
+            self._energy_sensor_configs = config.get("energy_consumption_sensors", {})
+            _LOGGER.info(f"Loaded energy sensor configs: {self._energy_sensor_configs}")
+        except Exception as e:
+            _LOGGER.error(f"Error loading config: {e}")
+            # Fallback zu leeren Werten
+            self._cycling_offsets = {}
+            self._energy_offsets = {}
+            self._energy_sensor_configs = {}
 
         # Lade persistierte Zählerstände (falls vorhanden)
         if os.path.exists(self._persist_file):
@@ -921,22 +913,27 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             from pymodbus.client import AsyncModbusTcpClient
 
-            if (
-                self.client
-                and hasattr(self.client, "connected")
-                and self.client.connected
-            ):
-                return
+            # Close existing connection if any
+            if self.client and hasattr(self.client, "close"):
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+                self.client = None
 
+            _LOGGER.debug("Creating new Modbus client for %s:%s", self.host, self.port)
             self.client = AsyncModbusTcpClient(
                 host=self.host, port=self.port, timeout=10
             )
 
             if not await self.client.connect():
                 msg = f"Failed to connect to {self.host}:{self.port}"
+                _LOGGER.error(msg)
+                self.client = None
                 raise UpdateFailed(msg)
 
-            _LOGGER.debug("Connected to Lambda device at %s:%s", self.host, self.port)
+                _LOGGER.info("Successfully connected to Lambda device at %s:%s", self.host, self.port)
+                self._last_connection_time = time.time()  # Track connection time
 
         except Exception as e:
             _LOGGER.error("Connection to %s:%s failed: %s", self.host, self.port, e)
@@ -947,18 +944,17 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
     async def _is_connection_healthy(self) -> bool:
         """Check if the Modbus connection is healthy."""
         if not self.client:
+            _LOGGER.debug("Modbus client is None, connection unhealthy")
             return False
         
-        try:
-            # Try a simple read to test connection health
-            # Use register 0 (General Error Number) as a health check
-            result = await asyncio.wait_for(
-                self.client.read_holding_registers(0, count=1, slave=self.slave_id),
-                timeout=5  # Short timeout for health check
-            )
-            return result is not None
-        except Exception:
+        # Check if client has connected attribute and is connected
+        if not hasattr(self.client, 'connected') or not self.client.connected:
+            _LOGGER.debug("Modbus client not connected, connection unhealthy")
             return False
+        
+        # Lambda WP hält Verbindung 60 Sekunden offen - keine aggressiven Health Checks
+        # Nur prüfen ob Client existiert und connected ist
+        return True
 
     async def _async_update_data(self):
         """Fetch data from Lambda device."""
@@ -969,8 +965,18 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return self.data
             
             # Check connection health and reconnect if necessary
+            # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen reconnecten
             if not self.client or not await self._is_connection_healthy():
-                _LOGGER.debug("Connection unhealthy, reconnecting to %s:%s", self.host, self.port)
+                _LOGGER.info("Connection lost, reconnecting to %s:%s", self.host, self.port)
+                await self._connect()
+            elif self._last_connection_time and (time.time() - self._last_connection_time) > 60:
+                # Verbindung ist älter als 60 Sekunden - Lambda WP hat sie möglicherweise geschlossen
+                _LOGGER.debug("Connection older than 60 seconds, reconnecting to %s:%s", self.host, self.port)
+                await self._connect()
+            
+            # Zusätzliche Sicherheitsprüfung: Client muss existieren
+            if not self.client:
+                _LOGGER.error("Modbus client is None after connection check, attempting reconnect")
                 await self._connect()
 
             # Get firmware version for sensor filtering

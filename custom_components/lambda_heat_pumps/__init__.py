@@ -111,12 +111,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # --- Module auto-detection mit Retry ---
     detected_counts = None
     for attempt in range(AUTO_DETECT_RETRIES):
+        client = None
         try:
-            coordinator = LambdaDataUpdateCoordinator(hass, entry)
-            await coordinator.async_init()
-            client = getattr(coordinator, "client", None)
-            slave_id = getattr(coordinator, "slave_id", 1)
-            if client is not None:
+            # Direkter Modbus-Client für Auto-Detection (ohne YAML-Loading)
+            from pymodbus.client import AsyncModbusTcpClient
+            
+            from .const import LAMBDA_MODBUS_PORT, LAMBDA_MODBUS_UNIT_ID
+            
+            host = entry.data["host"]
+            port = entry.data.get("port", LAMBDA_MODBUS_PORT)
+            slave_id = entry.data.get("slave_id", LAMBDA_MODBUS_UNIT_ID)
+            
+            _LOGGER.debug("Creating direct Modbus client for auto-detection: %s:%s", host, port)
+            client = AsyncModbusTcpClient(host=host, port=port, timeout=10)
+            
+            if await client.connect():
                 detected_counts = await auto_detect_modules(client, slave_id)
                 updated = await update_entry_with_detected_modules(
                     hass, entry, detected_counts
@@ -129,7 +138,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 break
             else:
                 _LOGGER.warning(
-                    "[Auto-detect attempt %d/%d] Could not get Modbus client for "
+                    "[Auto-detect attempt %d/%d] Could not connect to Modbus device for "
                     "auto-detection; using config values.",
                     attempt + 1,
                     AUTO_DETECT_RETRIES,
@@ -141,6 +150,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 AUTO_DETECT_RETRIES,
                 ex,
             )
+        finally:
+            # Cleanup: Schließe direkten Modbus-Client
+            if client is not None:
+                try:
+                    await client.close()
+                except Exception:
+                    pass  # Ignore cleanup errors
+                    
         if detected_counts is None and attempt < AUTO_DETECT_RETRIES - 1:
             await asyncio.sleep(AUTO_DETECT_RETRY_DELAY)
 
@@ -175,9 +192,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         generate_base_addresses("sol", num_sol),
         generate_base_addresses("hc", num_hc),
     )
-    # Create coordinator (again, for main use)
-    coordinator = LambdaDataUpdateCoordinator(hass, entry)
-    # Create coordinator
+    # Create coordinator for main use
     coordinator = LambdaDataUpdateCoordinator(hass, entry)
     try:
         await coordinator.async_init()
@@ -276,7 +291,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    _LOGGER.debug("Unloading Lambda integration for entry: %s", entry.entry_id)
+    _LOGGER.info("Unloading Lambda integration for entry: %s", entry.entry_id)
 
     unload_ok = True
 
@@ -314,13 +329,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     await coordinator.async_shutdown()
             except Exception:
                 _LOGGER.exception("Error during coordinator shutdown")
-                unload_ok = False
-            finally:
-                hass.data[DOMAIN].pop(entry.entry_id, None)
-
-        # If this was the last entry, unload services
-        if DOMAIN in hass.data and not hass.data[DOMAIN]:
+        
+        # Remove entry from hass.data
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        
+        # Stop services if this is the last entry
+        if DOMAIN in hass.data and len(hass.data[DOMAIN]) == 0:
             try:
+                from .services import async_unload_services
                 await async_unload_services(hass)
             except Exception:
                 _LOGGER.exception("Error unloading services")

@@ -62,6 +62,13 @@ async def async_read_holding_registers(
     """Read holding registers with Lambda-specific timeout and retry logic."""
     last_exception = None
     
+    # Check if client exists and is connected
+    if not client:
+        raise Exception("Modbus client is None - connection lost")
+    
+    if not hasattr(client, 'connected') or not client.connected:
+        raise Exception("Modbus client not connected")
+    
     for attempt in range(LAMBDA_MAX_RETRIES):
         try:
             # For pymodbus 3.11.1, use only address as positional, rest as kwargs

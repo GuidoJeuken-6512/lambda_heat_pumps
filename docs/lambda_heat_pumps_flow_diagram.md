@@ -32,7 +32,13 @@ flowchart TD
     
     T --> U[Setup Platforms]
     U --> V[Setup Services]
-    V --> W[Setup Cycling Automations]
+    V --> V1[Check Existing Services]
+    V1 -->|Services exist| V2[Stop Old Services]
+    V1 -->|No services| V3[Setup New Services]
+    V2 --> V3
+    V3 --> V4[Setup Service Timers]
+    V4 --> V5[Register Service Callbacks]
+    V5 --> W[Setup Cycling Automations]
     W --> X[Add Update Listener]
     X --> Y[Setup Complete]
     
@@ -47,6 +53,20 @@ flowchart TD
     CC3 --> DD[Update Entity States]
     DD --> EE[Trigger Entity Updates]
     EE --> Z
+    
+    %% Service Update Cycle (parallel to data cycle)
+    Y --> ZZ[Service Timer Cycle]
+    ZZ --> AAA[Check Service Options]
+    AAA --> BBB[Room Thermostat Control?]
+    BBB -->|Yes| CCC[Write Room Temperature]
+    BBB -->|No| DDD[Skip Room Temperature]
+    CCC --> EEE[PV Surplus Control?]
+    DDD --> EEE
+    EEE -->|Yes| FFF[Write PV Surplus]
+    EEE -->|No| GGG[Skip PV Surplus]
+    FFF --> HHH[Wait 30 seconds]
+    GGG --> HHH
+    HHH --> ZZ
     
     %% Platform Setup Details
     U --> U1[Sensor Platform]
@@ -74,8 +94,14 @@ flowchart TD
     GG --> HH[Unload Platforms]
     HH --> II[Shutdown Coordinator]
     II --> JJ[Remove from hass.data]
-    JJ --> KK[Unload Services if last entry]
-    KK --> LL[Unload Complete]
+    JJ --> KK[Check if last entry]
+    KK -->|Last entry| LL[Unload Services]
+    KK -->|Not last| MM1[Skip Service Unload]
+    LL --> LL1[Stop Service Timers]
+    LL1 --> LL2[Clear Service Callbacks]
+    LL2 --> LL3[Remove from hass.data]
+    LL3 --> LL4[Unload Complete]
+    MM1 --> LL4
     
     %% Reload Process
     MM[async_reload_entry] --> NN[Check Entry Valid]
@@ -138,7 +164,12 @@ flowchart TD
   - Klimasteuerung für Wärmepumpen
 
 ### 5. **Services & Automations**
-- **Services**: Manuelle Steuerung der Wärmepumpen
+- **Services**: 
+  - **Timer-basierte Services**: Automatische Modbus-Writes alle 30 Sekunden
+  - **Room Thermostat Control**: Schreiben von Raumtemperaturen in Modbus-Register
+  - **PV Surplus Control**: Schreiben von PV-Überschuss-Daten in Modbus-Register
+  - **Service-Management**: Automatisches Stoppen alter Services bei Reload
+  - **Manuelle Services**: Direkte Steuerung der Wärmepumpen
 - **Cycling Automations**: Automatisches Tracking von Heizzyklen
 
 ### 6. **Datenupdate-Zyklus** (kontinuierlich)
@@ -155,6 +186,21 @@ flowchart TD
   - Entity-States aktualisieren
   - Home Assistant über Änderungen benachrichtigen
 
+### 6.1. **Service-Update-Zyklus** (parallel zum Datenupdate)
+- **Zweck**: Automatische Steuerung der Wärmepumpen
+- **Funktionen**:
+  - **Timer-basierte Ausführung**: Alle 30 Sekunden
+  - **Room Thermostat Control**: 
+    - Prüfung der Option in Config-Entry
+    - Lesen der konfigurierten Raumtemperatur-Sensoren
+    - Schreiben in Modbus-Register (Standard: 5004)
+  - **PV Surplus Control**:
+    - Prüfung der Option in Config-Entry
+    - Lesen der konfigurierten PV-Power-Sensoren
+    - Schreiben in Modbus-Register (Standard: 102)
+    - Unterstützung für verschiedene Modi (INT16/UINT16)
+  - **Fehlerbehandlung**: Graceful Degradation bei Modbus-Fehlern
+
 ### 7. **Migration** (`async_migrate_entry`)
 - **Zweck**: Aktualisierung zwischen Integration-Versionen
 - **Funktionen**:
@@ -167,10 +213,15 @@ flowchart TD
   - Cycling-Automationen aufräumen
   - Platforms entladen
   - Coordinator herunterfahren
-  - Services entfernen (wenn letzter Eintrag)
+  - **Service-Management**:
+    - Prüfung ob letzter Eintrag
+    - Stoppen aller Service-Timer
+    - Löschen der Service-Callbacks
+    - Entfernen aus hass.data
 - **Reload** (`async_reload_entry`):
   - Eintrag validieren
   - Aktuellen Eintrag entladen
+  - **Service-Cleanup**: Automatisches Stoppen alter Services
   - Neu einrichten
 
 ## Technische Details
@@ -196,6 +247,29 @@ flowchart TD
 - `lambda_wp_config.yaml`: Hauptkonfiguration der Wärmepumpen
 - `cycle_energy_persist.json`: Persistente Speicherung von Zyklus- und Energiedaten
 - `manifest.json`: Integration-Metadaten und Abhängigkeiten
+
+## Service-Konfiguration
+
+### Room Thermostat Control
+- **Option**: `room_thermostat_control` in Config-Entry
+- **Sensoren**: Konfigurierbare Raumtemperatur-Sensoren pro Heizkreis
+- **Register**: Standard 5004 (konfigurierbar)
+- **Format**: Temperatur in 0.1°C (z.B. 223 = 22.3°C)
+
+### PV Surplus Control
+- **Option**: `pv_surplus` in Config-Entry
+- **Sensor**: Konfigurierbarer PV-Power-Sensor
+- **Register**: Standard 102 (konfigurierbar)
+- **Modi**:
+  - **INT16**: Positive und negative Werte (2's Complement)
+  - **UINT16**: Nur positive Werte
+- **Einheit**: Watt (automatische Konvertierung von kW)
+
+### Service-Management
+- **Timer-Intervall**: 30 Sekunden (konfigurierbar)
+- **Automatisches Cleanup**: Services werden beim Reload automatisch gestoppt
+- **Fehlerbehandlung**: Graceful Degradation bei Modbus-Fehlern
+- **Logging**: Umfassendes Info-Level Logging für Debugging
 
 ## Energieverbrauch-Sensoren Details
 

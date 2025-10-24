@@ -137,6 +137,12 @@ async def _process_room_temperature_entry(
             entry_id,
         )
         return
+    
+    # Check if coordinator client is connected
+    # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen überspringen
+    if not hasattr(coordinator.client, 'connected') or not coordinator.client.connected:
+        _LOGGER.info("Modbus client not connected for entry_id %s, skipping operation", entry_id)
+        return
 
     # Für jeden Heizkreis prüfen und aktualisieren
     for hc_idx in range(1, num_hc + 1):
@@ -343,10 +349,12 @@ async def _handle_write_room_and_pv(hass: HomeAssistant) -> None:
     """
     lambda_entries = hass.data.get(DOMAIN, {})
     if not lambda_entries:
-        _LOGGER.debug("No Lambda WP integrations found yet, skipping write operation")
+        _LOGGER.info("No Lambda WP integrations found yet, skipping write operation")
         return
 
-    for entry_id, entry_data in lambda_entries.items():
+    # Create a copy of the dictionary to avoid "dictionary changed size during iteration"
+    entries_copy = dict(lambda_entries)
+    for entry_id, entry_data in entries_copy.items():
         await _write_room_and_pv_for_entry(hass, entry_id, entry_data)
 
 
@@ -365,15 +373,29 @@ async def _write_room_and_pv_for_entry(
             entry_id,
         )
         return
+    
+    # Check if coordinator client is connected
+    # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen überspringen
+    if not hasattr(coordinator.client, 'connected') or not coordinator.client.connected:
+        _LOGGER.info("Modbus client not connected for entry_id %s, skipping operation", entry_id)
+        return
 
+    # Debug: Log current options
+    _LOGGER.info("Entry %s options: room_thermostat_control=%s, pv_surplus=%s", 
+                 entry_id, 
+                 config_entry.options.get("room_thermostat_control", False),
+                 config_entry.options.get("pv_surplus", False))
+    
     # Raumthermostat schreiben
     if config_entry.options.get("room_thermostat_control", False):
+        _LOGGER.info("Writing room temperatures for entry %s", entry_id)
         await _write_room_temperatures(
             hass, config_entry, coordinator, entry_id, entry_data
         )
 
     # PV-Überschuss schreiben
     if config_entry.options.get("pv_surplus", False):
+        _LOGGER.info("Writing PV surplus for entry %s", entry_id)
         await _write_pv_surplus(hass, config_entry, coordinator, entry_id, entry_data)
 
 
@@ -454,13 +476,19 @@ async def _write_pv_surplus(
             write_type = "UINT16 (fallback)"
 
         _LOGGER.info(
-            "[Scheduled] Writing PV surplus to register %s: %s W (Source: %s %s, Mode: %s)",
-            102,
-            raw_value,
+            "PV-surplus gesendet: Value nativ %s %s, value %s W (Register: %s, Mode: %s)",
             state.state,
             unit,
+            raw_value,
+            102,
             write_type,
         )
+
+        # Check if coordinator client is connected
+        # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen überspringen
+        if not coordinator.client or not hasattr(coordinator.client, 'connected') or not coordinator.client.connected:
+            _LOGGER.debug("Modbus client not connected, skipping PV surplus write")
+            return
 
         await async_write_registers(
             coordinator.client,
@@ -474,11 +502,19 @@ async def _write_pv_surplus(
 
 async def async_setup_services(hass: HomeAssistant) -> None:
     """Set up Lambda WP services."""
-    _LOGGER.debug("Service setup completed successfully")
+    _LOGGER.info("Setting up Lambda WP services...")
+
+    # Check if services are already set up and stop them first
+    if "_lambda_service_callbacks" in hass.data:
+        _LOGGER.info("Services already exist, stopping old services first...")
+        await async_unload_services(hass)
 
     # Speichere die Unsubscribe-Funktionen pro Entry,
     # um sie später entfernen zu können
     unsub_update_callbacks = {}
+    
+    # Store callbacks in hass.data for cleanup
+    hass.data["_lambda_service_callbacks"] = unsub_update_callbacks
 
     async def async_update_room_temperature(call: ServiceCall) -> None:
         """Update room temperature from the selected sensor to Modbus register."""
@@ -506,8 +542,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
         # Gemeinsamer Timer für beide Schreibvorgänge
         update_interval = timedelta(seconds=DEFAULT_WRITE_INTERVAL)
+        _LOGGER.info("Setting up scheduled updates with interval: %s seconds", DEFAULT_WRITE_INTERVAL)
 
         async def scheduled_update_callback(_):
+            _LOGGER.info("Scheduled update callback triggered")
             await async_write_room_and_pv()
 
         unsub = async_track_time_interval(
@@ -516,6 +554,7 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             update_interval,
         )
         unsub_update_callbacks["write_room_and_pv"] = unsub
+        _LOGGER.info("Scheduled updates setup completed")
 
     # Bei Änderungen in der Konfiguration die Timers neu einrichten
     @callback
@@ -529,6 +568,25 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     # Initialen Setup durchführen
     setup_scheduled_updates()
+
+
+async def async_unload_services(hass: HomeAssistant) -> None:
+    """Unload Lambda WP services and stop all timers."""
+    _LOGGER.info("Unloading Lambda WP services...")
+    
+    # Stop all service callbacks
+    if "_lambda_service_callbacks" in hass.data:
+        callbacks = hass.data["_lambda_service_callbacks"]
+        for callback_name, unsub in callbacks.items():
+            try:
+                unsub()
+                _LOGGER.info("Stopped service callback: %s", callback_name)
+            except Exception as e:
+                _LOGGER.warning("Error stopping callback %s: %s", callback_name, e)
+        callbacks.clear()
+        del hass.data["_lambda_service_callbacks"]
+    
+    _LOGGER.info("Lambda WP services unloaded successfully")
 
     # Registriere Services
     hass.services.async_register(

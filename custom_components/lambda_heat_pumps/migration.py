@@ -29,7 +29,8 @@ from .const_migration import (
 )
 from .utils import (
     analyze_file_ageing,
-    delete_files
+    delete_files,
+    migrate_lambda_config_sections
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -297,6 +298,9 @@ async def migrate_to_cycling_offsets(
     """
     Migration zu Cycling-Offsets (Version 3).
     
+    DEPRECATED: Use migrate_to_unified_config() (Version 7) instead.
+    This function is kept for backward compatibility.
+    
     Args:
         hass: Home Assistant Instanz
         config_entry: Config Entry
@@ -357,6 +361,9 @@ async def migrate_to_energy_consumption(
 ) -> bool:
     """
     Migration zu Energy Consumption Sensoren (Version 4).
+    
+    DEPRECATED: Use migrate_to_unified_config() (Version 7) instead.
+    This function is kept for backward compatibility.
     
     Args:
         hass: Home Assistant Instanz
@@ -494,6 +501,52 @@ async def migrate_to_config_restructure(
 # MIGRATIONS-DISPATCHER
 # =============================================================================
 
+async def migrate_to_unified_config(
+    hass: HomeAssistant, 
+    config_entry: ConfigEntry
+) -> bool:
+    """
+    Migration zu unified config (Version 7).
+    Template-basierte Migration aller Konfigurationsabschnitte.
+    
+    Args:
+        hass: Home Assistant Instanz
+        config_entry: Config Entry
+    
+    Returns:
+        bool: True wenn Migration erfolgreich
+    """
+    try:
+        entry_id = config_entry.entry_id
+        _LOGGER.info(
+            "Starte unified config migration für Config %s", 
+            entry_id
+        )
+        
+        # Verwende die neue template-basierte Migration
+        success = await migrate_lambda_config_sections(hass)
+        
+        if success:
+            _LOGGER.info(
+                "Unified config migration für Config %s erfolgreich abgeschlossen", 
+                entry_id
+            )
+        else:
+            _LOGGER.info(
+                "Unified config migration für Config %s - keine Änderungen erforderlich", 
+                entry_id
+            )
+        
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(
+            "Fehler bei unified config migration für Config %s: %s", 
+            entry_id, e
+        )
+        return False
+
+
 # Dictionary mit allen Migrationsfunktionen
 MIGRATION_FUNCTIONS = {
     MigrationVersion.LEGACY_NAMES: migrate_to_legacy_names,
@@ -501,6 +554,7 @@ MIGRATION_FUNCTIONS = {
     MigrationVersion.ENERGY_CONSUMPTION: migrate_to_energy_consumption,
     MigrationVersion.ENTITY_OPTIMIZATION: migrate_to_entity_optimization,
     MigrationVersion.CONFIG_RESTRUCTURE: migrate_to_config_restructure,
+    MigrationVersion.UNIFIED_CONFIG_MIGRATION: migrate_to_unified_config,
 }
 
 

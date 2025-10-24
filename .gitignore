@@ -22,14 +22,10 @@
 !CHANGELOG.md
 !requirements.txt
 !requirements_test.txt
+
+# Docs directory and all subdirectories
 !docs/
-!docs/*.md
-!docs/*.png
-!docs/to_dos/*.md    
-!docs/fix_reports/*.md
-!docs/devices_entities/
-!docs/devices_entities/**/*.md
-!docs/create_sensor_excel.py
+!docs/**
 
 
 # GitHub Actions Workflows

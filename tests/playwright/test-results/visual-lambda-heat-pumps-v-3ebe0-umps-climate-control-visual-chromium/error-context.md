@@ -1,0 +1,109 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e2]:
+  - img "Home Assistant" [ref=e4]
+  - generic [ref=e5]:
+    - generic [ref=e8]:
+      - heading "Welcome home!" [level=1] [ref=e9]
+      - generic [ref=e11]:
+        - generic [ref=e14]:
+          - generic: Username*
+          - textbox "Username*" [active] [ref=e15]:
+            - /placeholder: ""
+        - generic [ref=e17]:
+          - generic [ref=e19]:
+            - generic: Password*
+            - textbox "Password*" [ref=e20]:
+              - /placeholder: ""
+          - generic "Show password" [ref=e24]:
+            - button "Show password" [ref=e25] [cursor=pointer]:
+              - generic [ref=e27]:
+                - img
+      - generic [ref=e28]:
+        - generic [ref=e30]:
+          - generic [ref=e32] [cursor=pointer]:
+            - checkbox "Keep me logged in" [checked] [ref=e33]
+            - generic:
+              - img
+          - generic [ref=e35]: Keep me logged in
+        - link "Forgot password?" [ref=e36] [cursor=pointer]:
+          - /url: https://www.home-assistant.io/docs/locked_out/#forgot-password
+      - button "Log in" [ref=e39] [cursor=pointer]:
+        - generic [ref=e40]: Log in
+    - generic [ref=e41]:
+      - generic [ref=e44]:
+        - combobox [ref=e45] [cursor=pointer]:
+          - generic:
+            - generic: English
+          - generic:
+            - img
+        - generic:
+          - generic:
+            - generic: Afrikaans
+            - generic: العربية
+            - generic: Български
+            - generic: বাংলা
+            - generic: Bosanski
+            - generic: Català
+            - generic: Čeština
+            - generic: Cymraeg
+            - generic: Dansk
+            - generic: Deutsch
+            - generic: Ελληνικά
+            - generic: English
+            - generic: English (GB)
+            - generic: Esperanto
+            - generic: Español
+            - generic: Español (Latin America)
+            - generic: Eesti
+            - generic: Euskara
+            - generic: فارسی
+            - generic: Suomi
+            - generic: Frysk
+            - generic: Français
+            - generic: Gaeilge
+            - generic: Galego
+            - generic: Schwiizerdütsch
+            - generic: עברית
+            - generic: हिन्दी
+            - generic: Hrvatski
+            - generic: Magyar
+            - generic: Հայերեն
+            - generic: Indonesia
+            - generic: Italiano
+            - generic: Íslenska
+            - generic: 日本語
+            - generic: Kartuli
+            - generic: 한국어
+            - generic: Lëtzebuergesch
+            - generic: Lietuvių
+            - generic: Latviešu
+            - generic: Македонски
+            - generic: മലയാളം
+            - generic: Nederlands
+            - generic: Norsk Bokmål
+            - generic: Norsk Nynorsk
+            - generic: Polski
+            - generic: Português
+            - generic: Português (BR)
+            - generic: Română
+            - generic: Русский
+            - generic: Slovenčina
+            - generic: Slovenščina
+            - generic: Српски
+            - generic: Srpski
+            - generic: Svenska
+            - generic: Shqip
+            - generic: தமிழ்
+            - generic: తెలుగు
+            - generic: ภาษาไทย
+            - generic: Türkçe
+            - generic: Українська
+            - generic: اُردُو
+            - generic: Tiếng Việt
+            - generic: 简体中文
+            - generic: 繁體中文
+      - link "Help" [ref=e46] [cursor=pointer]:
+        - /url: https://www.home-assistant.io/docs/authentication/
+```

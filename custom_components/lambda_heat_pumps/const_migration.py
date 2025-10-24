@@ -18,6 +18,7 @@ class MigrationVersion(IntEnum):
     ENERGY_CONSUMPTION = 4        # lambda_wp_config.yaml: energy_consumption_sensors & energy_consumption_offsets
     ENTITY_OPTIMIZATION = 5       # Entity-Struktur optimieren
     CONFIG_RESTRUCTURE = 6        # Konfigurationsschema ändern
+    UNIFIED_CONFIG_MIGRATION = 7  # Template-basierte Migration aller Config-Abschnitte
     
     # Hilfsmethoden
     @classmethod
