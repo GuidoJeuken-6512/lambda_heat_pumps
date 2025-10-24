@@ -187,19 +187,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             num_hc = entry.data.get("num_hc", 1)
 
     # Generate base addresses for all modules
-    base_addresses = generate_base_addresses(
-        generate_base_addresses("hp", num_hps),
-        generate_base_addresses("boil", num_boil),
-        generate_base_addresses("buff", num_buff),
-        generate_base_addresses("sol", num_sol),
-        generate_base_addresses("hc", num_hc),
-    )
+    base_addresses = {
+        **generate_base_addresses("hp", num_hps),
+        **generate_base_addresses("boil", num_boil),
+        **generate_base_addresses("buff", num_buff),
+        **generate_base_addresses("sol", num_sol),
+        **generate_base_addresses("hc", num_hc),
+    }
 
     # Coordinator ist bereits erstellt und initialisiert - verwende den bestehenden
     try:
         # ⭐ KORRIGIERT: Endianness-Konfiguration VOR dem ersten async_refresh()
         from .modbus_utils import get_int32_byte_order
-        coordinator.byte_order = get_int32_byte_order()
+        coordinator.byte_order = get_int32_byte_order(hass)
 
         # Setze die generierten Base Addresses
         coordinator.base_addresses = base_addresses
@@ -207,6 +207,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Starte den ersten Datenupdate (mit Performance-Optimierungen)
         await coordinator.async_refresh()
 
+        # Store coordinator in hass.data (always overwrite to ensure fresh coordinator)
+        if DOMAIN not in hass.data:
+            hass.data[DOMAIN] = {}
         hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
 
         # Set up platforms with error handling
@@ -299,16 +302,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Remove entry from hass.data
         hass.data[DOMAIN].pop(entry.entry_id, None)
         
-        # Stop services if this is the last entry
+        # Stop services for this entry (always, not just for last entry)
+        try:
+            from .services import async_unload_services
+            await async_unload_services(hass)
+            _LOGGER.info("Services unloaded for entry: %s", entry.entry_id)
+        except Exception:
+            _LOGGER.exception("Error unloading services")
+            unload_ok = False
+        
+        # Clean up domain data if this is the last entry
         if DOMAIN in hass.data and len(hass.data[DOMAIN]) == 0:
-            try:
-                from .services import async_unload_services
-                await async_unload_services(hass)
-            except Exception:
-                _LOGGER.exception("Error unloading services")
-                unload_ok = False
-            finally:
-                hass.data.pop(DOMAIN, None)
+            hass.data.pop(DOMAIN, None)
 
         if not unload_ok:
             _LOGGER.warning("Failed to fully unload Lambda Heat Pumps integration")

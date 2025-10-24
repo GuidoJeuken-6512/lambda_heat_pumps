@@ -25,6 +25,19 @@ STATE_UNKNOWN = "unknown"
 
 _LOGGER = logging.getLogger(__name__)
 
+
+def should_start_scheduler(hass: HomeAssistant) -> bool:
+    """Prüfe ob mindestens eine Option aktiv ist."""
+    lambda_entries = hass.data.get(DOMAIN, {})
+    for entry_id, entry_data in lambda_entries.items():
+        config_entry = hass.config_entries.async_get_entry(entry_id)
+        if config_entry and config_entry.options:
+            if (config_entry.options.get("room_thermostat_control", False) or 
+                config_entry.options.get("pv_surplus", False)):
+                return True
+    return False
+
+
 # Service Schema
 UPDATE_ROOM_TEMPERATURE_SCHEMA = vol.Schema(
     {
@@ -352,6 +365,11 @@ async def _handle_write_room_and_pv(hass: HomeAssistant) -> None:
         _LOGGER.info("No Lambda WP integrations found yet, skipping write operation")
         return
 
+    # Prüfe ob mindestens eine Option aktiv ist
+    if not should_start_scheduler(hass):
+        _LOGGER.debug("No service options are active, skipping write operation")
+        return
+
     # Create a copy of the dictionary to avoid "dictionary changed size during iteration"
     entries_copy = dict(lambda_entries)
     for entry_id, entry_data in entries_copy.items():
@@ -381,20 +399,25 @@ async def _write_room_and_pv_for_entry(
         return
 
     # Debug: Log current options
+    room_thermostat_control = config_entry.options.get("room_thermostat_control", False)
+    pv_surplus = config_entry.options.get("pv_surplus", False)
     _LOGGER.info("Entry %s options: room_thermostat_control=%s, pv_surplus=%s", 
-                 entry_id, 
-                 config_entry.options.get("room_thermostat_control", False),
-                 config_entry.options.get("pv_surplus", False))
+                 entry_id, room_thermostat_control, pv_surplus)
+
+    # Prüfe ob mindestens eine Option für diese Entry aktiv ist
+    if not room_thermostat_control and not pv_surplus:
+        _LOGGER.debug("No service options are active for entry %s, skipping write operation", entry_id)
+        return
     
     # Raumthermostat schreiben
-    if config_entry.options.get("room_thermostat_control", False):
+    if room_thermostat_control:
         _LOGGER.info("Writing room temperatures for entry %s", entry_id)
         await _write_room_temperatures(
             hass, config_entry, coordinator, entry_id, entry_data
         )
 
     # PV-Überschuss schreiben
-    if config_entry.options.get("pv_surplus", False):
+    if pv_surplus:
         _LOGGER.info("Writing PV surplus for entry %s", entry_id)
         await _write_pv_surplus(hass, config_entry, coordinator, entry_id, entry_data)
 
@@ -540,6 +563,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             unsub()
         unsub_update_callbacks.clear()
 
+        # Prüfe ob mindestens eine Option aktiv ist
+        if not should_start_scheduler(hass):
+            _LOGGER.info("No service options are active, skipping scheduler setup")
+            return
+
         # Gemeinsamer Timer für beide Schreibvorgänge
         update_interval = timedelta(seconds=DEFAULT_WRITE_INTERVAL)
         _LOGGER.info("Setting up scheduled updates with interval: %s seconds", DEFAULT_WRITE_INTERVAL)
@@ -572,25 +600,6 @@ async def async_setup_services(hass: HomeAssistant) -> None:
     # WICHTIG: Speichere die setup-Funktion für späteres Restart nach Reload
     hass.data.setdefault(f"{DOMAIN}_services", {})["setup_scheduled_updates"] = setup_scheduled_updates
 
-
-async def async_unload_services(hass: HomeAssistant) -> None:
-    """Unload Lambda WP services and stop all timers."""
-    _LOGGER.info("Unloading Lambda WP services...")
-    
-    # Stop all service callbacks
-    if "_lambda_service_callbacks" in hass.data:
-        callbacks = hass.data["_lambda_service_callbacks"]
-        for callback_name, unsub in callbacks.items():
-            try:
-                unsub()
-                _LOGGER.info("Stopped service callback: %s", callback_name)
-            except Exception as e:
-                _LOGGER.warning("Error stopping callback %s: %s", callback_name, e)
-        callbacks.clear()
-        del hass.data["_lambda_service_callbacks"]
-    
-    _LOGGER.info("Lambda WP services unloaded successfully")
-
     # Registriere Services
     hass.services.async_register(
         DOMAIN,
@@ -616,35 +625,32 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         schema=WRITE_MODBUS_REGISTER_SCHEMA,
     )
 
-    # Unregister-Callback für das Entfernen aller Unsubscriber
-    @callback
-    def async_unload_services_callback() -> None:
-        """Unload services callback."""
-        for unsub in unsub_update_callbacks.values():
-            unsub()
-        unsub_update_callbacks.clear()
-
-    # Speichere Unsubscribe-Funktion in hass.data
-    hass.data.setdefault(f"{DOMAIN}_services", {})["unsub_callbacks"] = (
-        async_unload_services_callback
-    )
-
 
 async def async_unload_services(hass: HomeAssistant) -> None:
-    """Unload Lambda WP services."""
+    """Unload Lambda WP services and stop all timers."""
+    _LOGGER.info("Unloading Lambda WP services...")
+    
+    # Stop all service callbacks
+    if "_lambda_service_callbacks" in hass.data:
+        callbacks = hass.data["_lambda_service_callbacks"]
+        for callback_name, unsub in callbacks.items():
+            try:
+                unsub()
+                _LOGGER.info("Stopped service callback: %s", callback_name)
+            except Exception as e:
+                _LOGGER.warning("Error stopping callback %s: %s", callback_name, e)
+        callbacks.clear()
+        del hass.data["_lambda_service_callbacks"]
+    
+    # Remove services
     if hass.services.has_service(DOMAIN, "update_room_temperature"):
         hass.services.async_remove(DOMAIN, "update_room_temperature")
-
-    # Unsubscribe von allen Timern
-    if (
-        f"{DOMAIN}_services" in hass.data
-        and "unsub_callbacks" in hass.data[f"{DOMAIN}_services"]
-    ):
-        hass.data[f"{DOMAIN}_services"]["unsub_callbacks"]()
-        # WICHTIG: Lösche NUR die unsub_callbacks, NICHT die setup_scheduled_updates Funktion!
-        # Diese wird beim Reload benötigt, um Timer mit neuen Einstellungen neu zu starten
-        if "unsub_callbacks" in hass.data[f"{DOMAIN}_services"]:
-            del hass.data[f"{DOMAIN}_services"]["unsub_callbacks"]
+    if hass.services.has_service(DOMAIN, "read_modbus_register"):
+        hass.services.async_remove(DOMAIN, "read_modbus_register")
+    if hass.services.has_service(DOMAIN, "write_modbus_register"):
+        hass.services.async_remove(DOMAIN, "write_modbus_register")
+    
+    _LOGGER.info("Lambda WP services unloaded successfully")
 
 
 async def setup_scheduled_timer(hass: HomeAssistant) -> None:

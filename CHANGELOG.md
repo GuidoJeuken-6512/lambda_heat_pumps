@@ -15,6 +15,7 @@
 - Test optimization: 57 tests successfully repaired and optimized
 - Gitignore correction: Fixed .gitignore for proper inclusion of all docs subdirectories
 - Service documentation: Created comprehensive documentation for future service optimizations
+- **Service Scheduler Optimization**: Implemented intelligent service scheduler that only activates when PV-Surplus or Room Thermostat control options are enabled, significantly reducing resource usage when services are not needed
 
 ---
 
@@ -209,6 +210,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Test-Optimierung**: 57 Tests erfolgreich repariert und optimiert
 - **Gitignore-Korrektur**: Korrigiert .gitignore für ordnungsgemäße Einbindung aller docs-Unterverzeichnisse
 - **Service-Dokumentation**: Erstellt umfassende Dokumentation für zukünftige Service-Optimierungen
+- **Service-Scheduler-Optimierung**: Implementierte intelligente Service-Scheduler, die nur aktiviert werden, wenn PV-Surplus oder Raumthermostat-Steuerungsoptionen aktiviert sind, wodurch der Ressourcenverbrauch erheblich reduziert wird, wenn Services nicht benötigt werden
 
 ---
 
