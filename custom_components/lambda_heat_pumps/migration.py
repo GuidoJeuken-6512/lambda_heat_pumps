@@ -874,4 +874,8 @@ async def perform_option_c_migration(hass: HomeAssistant) -> Dict[str, Any]:
         successful_migrations, total_entries
     )
     
-    return result 
+    return result
+
+
+# Export für Home Assistant
+__all__ = ['async_migrate_entry'] 

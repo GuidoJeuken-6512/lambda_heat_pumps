@@ -23,7 +23,7 @@ from .coordinator import LambdaDataUpdateCoordinator
 from .services import async_setup_services, async_unload_services
 from .utils import generate_base_addresses, ensure_lambda_config
 from .automations import setup_cycling_automations, cleanup_cycling_automations
-# from .migration import async_migrate_entry as migrate_entry
+from .migration import async_migrate_entry
 
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
 from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
@@ -325,3 +325,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except Exception as ex:
         _LOGGER.error("Error during unload: %s", ex, exc_info=True)
         return False
+
+
+# Export für Home Assistant
+__all__ = ['async_migrate_entry']
