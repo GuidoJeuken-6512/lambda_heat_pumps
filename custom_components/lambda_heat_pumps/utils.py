@@ -1142,11 +1142,13 @@ async def increment_energy_consumption_counter(
 ):
     """
     Increment energy consumption counters for a given mode and heat pump.
-    Analog zu increment_cycling_counter aber für Energieverbrauch.
+    
+    Einfacher Delta-Ansatz: Alle Sensoren (total, daily, monthly, yearly) bekommen
+    das gleiche Delta addiert: sensor.value = sensor.value + delta
     
     Args:
         hass: HomeAssistant instance
-        mode: One of ["heating", "hot_water", "cooling", "defrost"]
+        mode: One of ["heating", "hot_water", "cooling", "defrost", "stby"]
         hp_index: Index of the heat pump (1-based)
         energy_delta: Energy consumption delta in kWh
         name_prefix: Name prefix (e.g. "eu08l")
@@ -1161,134 +1163,60 @@ async def increment_energy_consumption_counter(
         _LOGGER.debug("Energy delta %.2f is not positive, skipping increment", energy_delta)
         return
     
-    # Zusätzliche Prüfung: Nur verarbeiten wenn energy_delta signifikant ist
     if energy_delta < 0.001:
         _LOGGER.debug("Energy delta %.6f is too small, skipping increment", energy_delta)
         return
 
     device_prefix = f"hp{hp_index}"
     
-    # Liste aller Sensor-Typen, die erhöht werden sollen
-    sensor_types = [
-        f"{mode}_energy_total",
-        f"{mode}_energy_daily",
-        f"{mode}_energy_monthly",
-        f"{mode}_energy_yearly",
-    ]
-    
-    # Sammle alle Änderungen für eine einzige Logging-Meldung
+    # Alle Sensor-Perioden, die aktualisiert werden sollen
+    sensor_periods = ["total", "daily", "monthly", "yearly", "2h", "4h"]
     changes_summary = []
     
-    for sensor_id in sensor_types:
-        # Bestimme die Period basierend auf dem Sensor-Typ
-        if sensor_id.endswith("_total"):
-            period = "total"
-        elif sensor_id.endswith("_daily"):
-            period = "daily"
-        elif sensor_id.endswith("_monthly"):
-            period = "monthly"
-        elif sensor_id.endswith("_yearly"):
-            period = "yearly"
-        else:
-            period = "total"  # Fallback
-            
+    for period in sensor_periods:
+        # Generiere Entity-ID für diesen Sensor
         names = generate_energy_sensor_names(
-            device_prefix,
-            mode,
-            period,
-            name_prefix,
-            use_legacy_modbus_names,
+            device_prefix, mode, period, name_prefix, use_legacy_modbus_names
         )
         entity_id = names["entity_id"]
 
-        # Check if entity is already registered
+        # Prüfe ob Entity registriert ist
         entity_registry = async_get_entity_registry(hass)
         entity_entry = entity_registry.async_get(entity_id)
         if entity_entry is None:
-            # Dynamische Meldungsunterdrückung
             coordinator = _get_coordinator(hass)
             if coordinator:
                 warning_count = coordinator._energy_warnings.get(entity_id, 0)
                 coordinator._energy_warnings[entity_id] = warning_count + 1
-                
                 if warning_count < coordinator._max_energy_warnings:
                     _LOGGER.debug(
-                        f"Energy entity {entity_id} not yet registered (attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                        f"Energy entity {entity_id} not yet registered "
+                        f"(attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
                     )
-                else:
-                    _LOGGER.warning(
-                        f"Energy entity {entity_id} not yet registered after {coordinator._max_energy_warnings} attempts"
-                    )
-            else:
-                _LOGGER.warning(
-                    f"Skipping energy counter increment: {entity_id} not yet registered"
-                )
             continue
 
-        # Zusätzliche Prüfung: Ist die Entity tatsächlich verfügbar?
+        # Prüfe ob State verfügbar ist
         state_obj = hass.states.get(entity_id)
         if state_obj is None:
-            # Dynamische Meldungsunterdrückung für State-Problem
-            coordinator = _get_coordinator(hass)
-            if coordinator:
-                state_warning_key = f"{entity_id}_state"
-                warning_count = coordinator._energy_warnings.get(state_warning_key, 0)
-                coordinator._energy_warnings[state_warning_key] = warning_count + 1
-                
-                if warning_count < coordinator._max_energy_warnings:
-                    _LOGGER.debug(
-                        f"Energy entity {entity_id} state not available yet (attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
-                    )
-                else:
-                    _LOGGER.warning(
-                        f"Energy entity {entity_id} state not available after {coordinator._max_energy_warnings} attempts"
-                    )
-            else:
-                _LOGGER.warning(
-                    f"Skipping energy counter increment: {entity_id} state not available yet"
-                )
             continue
 
-        # Erfolgreiche Registrierung - Reset Counter
+        # Reset Warning Counter bei erfolgreicher Registrierung
         coordinator = _get_coordinator(hass)
-        if coordinator:
-            if entity_id in coordinator._energy_warnings:
-                del coordinator._energy_warnings[entity_id]
-            state_warning_key = f"{entity_id}_state"
-            if state_warning_key in coordinator._energy_warnings:
-                del coordinator._energy_warnings[state_warning_key]
+        if coordinator and entity_id in coordinator._energy_warnings:
+            del coordinator._energy_warnings[entity_id]
 
-        # Get current state
+        # Hole aktuellen Wert des Sensors
         if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
-            current = 0.0
+            current_value = 0.0
         else:
             try:
-                current = float(state_obj.state)
+                current_value = float(state_obj.state)
             except Exception:
-                current = 0.0
+                current_value = 0.0
 
-        # Offset nur für Total-Sensoren anwenden
-        offset = 0.0
-        if energy_offsets is not None and sensor_id.endswith("_total"):
-            device_key = device_prefix
-            if device_key in energy_offsets:
-                device_offsets = energy_offsets[device_key]
-                if isinstance(device_offsets, dict):
-                    offset = float(device_offsets.get(sensor_id, 0.0))
-                else:
-                    _LOGGER.warning(f"Invalid energy offsets structure for {device_key}: {device_offsets}")
-
-        # Debug: Check energy_delta type
-        if not isinstance(energy_delta, (int, float)):
-            _LOGGER.error(f"energy_delta is not a number: {type(energy_delta)} = {energy_delta}")
-            return
-        
-        new_value = current + energy_delta
-
-        # Versuche die Entity-Instanz zu finden
+        # Finde die Entity-Instanz
         energy_entity = None
         try:
-            # Suche in der Energy-Entities-Struktur
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
                 if isinstance(comp_data, dict) and "energy_entities" in comp_data:
                     energy_entity = comp_data["energy_entities"].get(entity_id)
@@ -1297,27 +1225,43 @@ async def increment_energy_consumption_counter(
         except Exception as e:
             _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
 
-        final_value = new_value + offset
+        # Berechne neuen Wert: Einfache Delta-Addition
+        new_value = current_value + energy_delta
         
-        # Nur loggen wenn sich der Wert tatsächlich ändert
-        value_changed = abs(final_value - current) > 0.001  # Toleranz für Rundungsfehler
-        
-        if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
-            energy_entity.set_energy_value(final_value)
-            if value_changed:
-                # Sammle Änderung für zentrale Logging-Meldung
-                changes_summary.append(f"{entity_id} = {final_value:.2f} kWh (was {current:.2f})")
-        else:
-            # Fallback: State setzen wie bisher
-            # Energy entity not found, using fallback state update (normal behavior)
-            hass.states.async_set(
-                entity_id, final_value, state_obj.attributes if state_obj else {}
-            )
-            if value_changed:
-                # Sammle Änderung für zentrale Logging-Meldung
-                changes_summary.append(f"{entity_id} = {final_value:.2f} kWh (was {current:.2f})")
+        # Offset nur für Total-Sensor berücksichtigen
+        if period == "total" and energy_offsets is not None:
+            device_key = device_prefix
+            if device_key in energy_offsets:
+                device_offsets = energy_offsets[device_key]
+                if isinstance(device_offsets, dict):
+                    sensor_id = f"{mode}_energy_total"
+                    offset = float(device_offsets.get(sensor_id, 0.0))
+                    # Prüfe ob Offset bereits angewendet wurde
+                    if hasattr(energy_entity, "_applied_offset"):
+                        if energy_entity._applied_offset != offset:
+                            new_value += offset - energy_entity._applied_offset
+                            energy_entity._applied_offset = offset
+                            _LOGGER.info(f"Applied offset {offset:.2f} kWh to {entity_id}")
 
-        # Optional: Entity zum Update zwingen (z.B. für Recorder)
+        # Setze neuen Wert
+        if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
+            energy_entity.set_energy_value(new_value)
+            if abs(new_value - current_value) > 0.001:
+                changes_summary.append(
+                    f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
+                )
+        else:
+            # Fallback: State setzen
+            _LOGGER.debug(f"Using fallback state update for {entity_id}")
+            hass.states.async_set(
+                entity_id, new_value, state_obj.attributes if state_obj else {}
+            )
+            if abs(new_value - current_value) > 0.001:
+                changes_summary.append(
+                    f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
+                )
+
+        # Optional: Entity zum Update zwingen
         try:
             await async_update_entity(hass, entity_id)
         except Exception as e:
@@ -1388,6 +1332,52 @@ def validate_energy_consumption_config(config: dict) -> bool:
                 return False
     
     return True
+
+
+def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) -> dict:
+    """
+    Validiere externe Sensoren und gib bereinigte Konfiguration zurück.
+    
+    Args:
+        hass: Home Assistant Instanz
+        energy_sensor_configs: Dictionary mit Sensor-Konfigurationen
+    
+    Returns:
+        dict: Bereinigte Konfiguration (fehlerhafte Sensoren entfernt)
+    """
+    validated_configs = {}
+    fallback_used = False
+    
+    for hp_key, sensor_config in energy_sensor_configs.items():
+        sensor_id = sensor_config.get("sensor_entity_id")
+        
+        if not sensor_id:
+            _LOGGER.warning(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Keine sensor_entity_id konfiguriert")
+            continue
+        
+        # Prüfe ob Sensor existiert
+        sensor_state = hass.states.get(sensor_id)
+        
+        if sensor_state is None:
+            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' existiert nicht!")
+            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Bitte prüfen Sie die Sensor-ID in lambda_wp_config.yaml")
+            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Fallback auf internen Modbus-Sensor")
+            fallback_used = True
+            continue
+        
+        # Prüfe ob Sensor verfügbar ist
+        if sensor_state.state in ("unknown", "unavailable", None):
+            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist nicht verfügbar (State: {sensor_state.state})")
+            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert")
+        
+        # Sensor ist gültig
+        validated_configs[hp_key] = sensor_config
+        _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet")
+    
+    if fallback_used:
+        _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: Einige externe Sensoren sind fehlerhaft - verwende interne Modbus-Sensoren als Fallback")
+    
+    return validated_configs
 
 
 # =============================================================================
@@ -1855,7 +1845,7 @@ def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
     # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
     is_change = stored_normalized != current_normalized
     if is_change:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt: '{stored_normalized}' -> '{current_normalized}'")
+        _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Sensor wurde gewechselt - '{stored_normalized}' -> '{current_normalized}'. {current_normalized} wird zur Verbrauchsberechnung verwendet")
     else:
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
     

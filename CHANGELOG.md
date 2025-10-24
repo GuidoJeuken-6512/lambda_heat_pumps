@@ -18,6 +18,39 @@
 
 ---
 
+### [1.4.1] - 2025-10-21
+
+#### New Features
+- **Massive Performance Improvements**: Dramatically improved integration startup and update performance
+  - **Startup Time**: Reduced by ~72% (from ~7.3s to ~2.05s) through intelligent background auto-detection
+  - **Update Cycles**: Reduced by ~50% (from >30s to <15s) through global register deduplication
+  - **Modbus Traffic**: Reduced by ~80% through elimination of duplicate register reads
+- **Intelligent Auto-Detection**: Implemented background auto-detection for existing configurations, eliminating startup delays while maintaining hardware change detection
+- **Global Register Cache**: Added comprehensive register deduplication system that eliminates duplicate Modbus reads across all modules (HP, Boiler, Buffer, Solar, HC)
+- **Optimized Batch Reading**: Improved Modbus batch reading with larger consecutive register ranges and reduced individual read thresholds
+- **Parallel Template Setup**: Template sensors now load in background tasks, preventing startup blocking
+- **Persist I/O Optimization**: Added debouncing and dirty-flag mechanisms to reduce unnecessary file writes
+- **Connection Health Optimization**: Reduced connection timeout from 5s to 2s for faster failure detection
+
+#### Improvements
+- **Enhanced Energy Tracking**: Improved energy consumption tracking with automatic unit conversion (Wh/kWh/MWh)
+- **Robust Sensor Handling**: Added retry mechanism for sensor availability during startup
+- **Comprehensive Logging**: Added detailed logging for sensor change detection and energy calculations
+- **Monthly & Yearly Power Consumption Sensors**: Added monthly and yearly energy consumption sensors for long-term tracking
+- **Service Setup Optimization**: Services are now set up only once, regardless of the number of entries
+- **Configuration Flow Improvements**: Enhanced validation for existing connections and IP addresses, removed obsolete modules
+- **Generalized Reset Functions**: Implemented generalized reset functions for all sensor types with extended tests
+- **Code Cleanup**: Cleaned up const.py, YAML templates, and general code structure
+- **Documentation Updates**: Updated documentation and created program flow diagrams
+
+#### Technical Changes
+- Automatic `lambda_wp_config.yaml` creation from `LAMBDA_WP_CONFIG_TEMPLATE`
+- Integration of config file creation into existing migration pipeline
+- Enhanced error handling in `LambdaDataUpdateCoordinator`
+- Improved sensor attribute loading with better error recovery
+
+---
+
 ### [1.4.0] - 2025-10-05
 
 #### New Features
@@ -176,6 +209,39 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Test-Optimierung**: 57 Tests erfolgreich repariert und optimiert
 - **Gitignore-Korrektur**: Korrigiert .gitignore für ordnungsgemäße Einbindung aller docs-Unterverzeichnisse
 - **Service-Dokumentation**: Erstellt umfassende Dokumentation für zukünftige Service-Optimierungen
+
+---
+
+### [1.4.1] - 2025-10-21
+
+#### Neue Funktionen
+- **Massive Performance-Verbesserungen**: Dramatisch verbesserte Start- und Update-Performance der Integration
+  - **Startzeit**: Reduziert um ~72% (von ~7,3s auf ~2,05s) durch intelligente Background-Auto-Detection
+  - **Update-Zyklen**: Reduziert um ~50% (von >30s auf <15s) durch globale Register-Deduplizierung
+  - **Modbus-Traffic**: Reduziert um ~80% durch Eliminierung von Duplikat-Register-Reads
+- **Intelligente Auto-Detection**: Implementierte Background-Auto-Detection für bestehende Konfigurationen, eliminiert Startverzögerungen bei gleichzeitiger Aufrechterhaltung der Hardware-Änderungserkennung
+- **Globaler Register-Cache**: Hinzugefügtes umfassendes Register-Deduplizierungssystem, das Duplikat-Modbus-Reads über alle Module (HP, Boiler, Buffer, Solar, HC) eliminiert
+- **Optimiertes Batch-Reading**: Verbesserte Modbus-Batch-Reads mit größeren zusammenhängenden Register-Bereichen und reduzierten individuellen Read-Schwellenwerten
+- **Paralleles Template-Setup**: Template-Sensoren laden nun in Background-Tasks, verhindert Start-Blockierung
+- **Persist-I/O-Optimierung**: Hinzugefügte Debouncing- und Dirty-Flag-Mechanismen zur Reduzierung unnötiger Datei-Schreibvorgänge
+- **Verbindungs-Health-Optimierung**: Reduzierte Verbindungs-Timeout von 5s auf 2s für schnellere Fehlererkennung
+
+#### Verbesserungen
+- **Erweiterte Energieverfolgung**: Verbesserte Verbrauchsverfolgung mit automatischer Einheitenkonvertierung (Wh/kWh/MWh)
+- **Robuste Sensor-Behandlung**: Hinzugefügter Retry-Mechanismus für Sensor-Verfügbarkeit beim Start
+- **Umfassende Protokollierung**: Hinzugefügte detaillierte Protokollierung für Sensor-Wechsel-Erkennung und Energieberechnungen
+- **Monatliche & Jährliche Verbrauchssensoren**: Hinzugefügte monatliche und jährliche Energieverbrauchssensoren für Langzeitverfolgung
+- **Service-Setup-Optimierung**: Dienste werden nun nur einmal eingerichtet, unabhängig von der Anzahl der Einträge
+- **Konfigurationsfluss-Verbesserungen**: Erweiterte Validierung für bestehende Verbindungen und IP-Adressen, veraltete Module entfernt
+- **Generalisierte Reset-Funktionen**: Implementierte generalisierte Reset-Funktionen für alle Sensor-Typen mit erweiterten Tests
+- **Code-Bereinigung**: Bereinigt const.py, YAML-Templates und allgemeine Codestruktur
+- **Dokumentations-Updates**: Aktualisierte Dokumentation und erstellte Programmablaufdiagramme
+
+#### Technische Änderungen
+- Automatische `lambda_wp_config.yaml`-Erstellung aus `LAMBDA_WP_CONFIG_TEMPLATE`
+- Integration der Konfigurationsdatei-Erstellung in bestehende Migrations-Pipeline
+- Erweiterte Fehlerbehandlung in `LambdaDataUpdateCoordinator`
+- Verbesserte Sensor-Attribut-Ladung mit besserer Fehlerwiederherstellung
 
 ---
 

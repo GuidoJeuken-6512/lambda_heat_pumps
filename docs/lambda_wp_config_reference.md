@@ -64,43 +64,51 @@ cycling_offsets:
 
 ### 4. Energy Consumption Sensors
 
-To calculate the power consumption according to the operating mode, we use the standard Lambda sensor “sensor.eu08l_hp1_compressor_power_consumption_accumulated” (HeatPump1). If another consumption meter, such as a Shelly3EM, is connected before the system, the sensor can be used to calculate the consumption values. 
+To calculate the power consumption according to the operating mode, we use the standard Lambda sensor "sensor.eu08l_hp1_compressor_power_consumption_accumulated" (HeatPump1). If another consumption meter, such as a Shelly3EM, is connected before the system, the sensor can be used to calculate the consumption values. 
+
+**Note**: These sensors must provide energy consumption data in Wh or kWh. The system automatically converts to kWh for calculations.
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    sensor_entity_id: "sensor.lambda_wp_verbrauch"  # Example: External consumption sensor
   hp2:
-    sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
+    sensor_entity_id: "sensor.lambda_wp_verbrauch2" # Example: Second consumption sensor
   hp3:
     sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Custom sensor
 ```
 
-**Purpose**: Define which sensors provide base energy consumption data (kWh)  
+**Purpose**: Define which sensors provide base energy consumption data  
 **Format**: Objects by heat pump with `sensor_entity_id`  
-**Default**: Uses default sensor entity IDs
+**Default**: Uses default sensor entity IDs  
+**Units**: Sensors must provide data in Wh or kWh (automatic conversion to kWh)
 
 ### 5. Energy Consumption Offsets
 
 Add offsets to energy consumption values for total sensors. Useful when replacing heat pumps or resetting counters.
 
+**⚠️ IMPORTANT: All values must be specified in kWh!**
+
 ```yaml
 energy_consumption_offsets:
   hp1:
-    heating_energy_total: 0       # kWh offset for HP1 heating total
-    hot_water_energy_total: 0     # kWh offset for HP1 hot water total
-    cooling_energy_total: 0       # kWh offset for HP1 cooling total
-    defrost_energy_total: 0       # kWh offset for HP1 defrost total
+    heating_energy_total: 0.0       # kWh offset for HP1 heating total
+    hot_water_energy_total: 0.0     # kWh offset for HP1 hot water total
+    cooling_energy_total: 0.0       # kWh offset for HP1 cooling total
+    defrost_energy_total: 0.0       # kWh offset for HP1 defrost total
   hp2:
-    heating_energy_total: 150.5   # Example: HP2 already consumed 150.5 kWh heating
-    hot_water_energy_total: 45.2  # Example: HP2 already consumed 45.2 kWh hot water
-    cooling_energy_total: 12.8    # Example: HP2 already consumed 12.8 kWh cooling
-    defrost_energy_total: 3.1     # Example: HP2 already consumed 3.1 kWh defrost
+    heating_energy_total: 150.5     # Example: HP2 already consumed 150.5 kWh heating
+    hot_water_energy_total: 45.25   # Example: HP2 already consumed 45.25 kWh hot water
+    cooling_energy_total: 12.8      # Example: HP2 already consumed 12.8 kWh cooling
+    defrost_energy_total: 3.1       # Example: HP2 already consumed 3.1 kWh defrost
 ```
 
 **Purpose**: Compensate for existing energy consumption when replacing hardware  
 **Format**: Nested objects by heat pump with energy values in kWh  
-**Default**: Empty object (no offsets)
+**Default**: Empty object (no offsets)  
+**Units**: All values must be in kWh (kilowatt-hours)  
+**Application**: Only applied to TOTAL sensors, not Daily/Monthly/Yearly sensors  
+**Decimal notation**: Use dot (.) as decimal separator in YAML, comma (,) in display
 
 ### 6. Modbus Configuration
 
@@ -257,41 +265,49 @@ cycling_offsets:
 
 Zur Berechnung der Stromaufnahme nach Betriebsart nehmen wir im standart den Lambda eigene Sensor "sensor.eu08l_hp1_compressor_power_consumption_accumulated"  (HeatPump1), ist eine anderer Verbrauchsmesser, wie z.B. ein Shelly3EM vorgeschaltet, kann der Sensor zur Berechnung der Verbrauchswerte genutzt werden.
 
+**Hinweis**: Diese Sensoren müssen Energieverbrauchsdaten in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh für die Berechnungen.
+
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    sensor_entity_id: "sensor.lambda_wp_verbrauch"  # Beispiel: Externer Verbrauchssensor
   hp2:
-    sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
+    sensor_entity_id: "sensor.lambda_wp_verbrauch2" # Beispiel: Zweiter Verbrauchssensor
   hp3:
     sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Benutzerdefinierter Sensor
 ```
 
-**Zweck**: Definiert welche Sensoren Basis-Energieverbrauchsdaten (kWh) liefern  
+**Zweck**: Definiert welche Sensoren Basis-Energieverbrauchsdaten liefern  
 **Format**: Objekte nach Wärmepumpe mit `sensor_entity_id`  
-**Standard**: Verwendet Standard-Sensor-Entity-IDs
+**Standard**: Verwendet Standard-Sensor-Entity-IDs  
+**Einheiten**: Sensoren müssen Daten in Wh oder kWh liefern (automatische Konvertierung zu kWh)
 
 #### 5. Energieverbrauchs-Offsets
 
 Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
+**⚠️ WICHTIG: Alle Werte müssen in kWh angegeben werden!**
+
 ```yaml
 energy_consumption_offsets:
   hp1:
-    heating_energy_total: 0       # kWh Offset für HP1 Heizungs-Total
-    hot_water_energy_total: 0     # kWh Offset für HP1 Warmwasser-Total
-    cooling_energy_total: 0       # kWh Offset für HP1 Kühlungs-Total
-    defrost_energy_total: 0       # kWh Offset für HP1 Abtau-Total
+    heating_energy_total: 0.0       # kWh Offset für HP1 Heizungs-Total
+    hot_water_energy_total: 0.0     # kWh Offset für HP1 Warmwasser-Total
+    cooling_energy_total: 0.0       # kWh Offset für HP1 Kühlungs-Total
+    defrost_energy_total: 0.0       # kWh Offset für HP1 Abtau-Total
   hp2:
-    heating_energy_total: 150.5   # Beispiel: HP2 verbrauchte bereits 150,5 kWh Heizung
-    hot_water_energy_total: 45.2  # Beispiel: HP2 verbrauchte bereits 45,2 kWh Warmwasser
-    cooling_energy_total: 12.8    # Beispiel: HP2 verbrauchte bereits 12,8 kWh Kühlung
-    defrost_energy_total: 3.1     # Beispiel: HP2 verbrauchte bereits 3,1 kWh Abtau
+    heating_energy_total: 150.5     # Beispiel: HP2 verbrauchte bereits 150,5 kWh Heizung
+    hot_water_energy_total: 45.25   # Beispiel: HP2 verbrauchte bereits 45,25 kWh Warmwasser
+    cooling_energy_total: 12.8      # Beispiel: HP2 verbrauchte bereits 12,8 kWh Kühlung
+    defrost_energy_total: 3.1       # Beispiel: HP2 verbrauchte bereits 3,1 kWh Abtau
 ```
 
 **Zweck**: Bestehenden Energieverbrauch beim Hardware-Austausch kompensieren  
 **Format**: Verschachtelte Objekte nach Wärmepumpe mit Energie-Werten in kWh  
-**Standard**: Leeres Objekt (keine Offsets)
+**Standard**: Leeres Objekt (keine Offsets)  
+**Einheiten**: Alle Werte müssen in kWh (Kilowattstunden) angegeben werden  
+**Anwendung**: Nur auf TOTAL-Sensoren angewendet, nicht auf Daily/Monthly/Yearly Sensoren  
+**Dezimalnotation**: Punkt (.) als Dezimaltrennzeichen in YAML, Komma (,) in der Anzeige
 
 #### 6. Modbus-Konfiguration
 

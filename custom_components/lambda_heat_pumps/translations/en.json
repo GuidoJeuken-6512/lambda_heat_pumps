@@ -59,6 +59,7 @@
         },
         "data_description": {
           "firmware_version": "Select the firmware version of your Lambda heat pump",
+          "update_interval": "Update interval for Modbus queries (10-300 seconds). Lower values = more frequent updates, but more Modbus traffic.",
           "room_thermostat_control": "Enable integration with external room thermostats",
           "pv_surplus": "Enable PV surplus control for optimized energy consumption"
         }

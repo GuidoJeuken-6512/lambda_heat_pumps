@@ -30,7 +30,7 @@ from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
-VERSION = "1.2.0"  # Updated version for cycling sensors feature
+VERSION = "1.4.2"  # Updated version for service optimization and test fixes
 
 # Diese Konstante teilt Home Assistant mit, dass die Integration
 # Übersetzungen hat
@@ -57,48 +57,49 @@ def setup_debug_logging(hass: HomeAssistant, config: ConfigType) -> None:
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Lambda integration."""
+    _LOGGER.info("Setting up Lambda Heat Pumps integration")
+
+    # Set up debug logging if configured
     setup_debug_logging(hass, config)
+
+    # Initialize domain data structure
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+
     return True
 
 
-async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
-    """Migrate config entry to new version using structured migration system."""
-    _LOGGER.info(
-        "Starting structured migration for config entry %s (version %s)",
-        config_entry.entry_id, config_entry.version
-    )
-    
-    try:
-        # Import der neuen Migration
-        from .migration import perform_structured_migration
-        
-        # Führe strukturierte Migration durch
-        migration_success = await perform_structured_migration(hass, config_entry)
-        
-        if migration_success:
-            _LOGGER.info(
-                "Structured migration completed successfully for config entry %s",
-                config_entry.entry_id
-            )
-        else:
-            _LOGGER.error(
-                "Structured migration failed for config entry %s", 
-                config_entry.entry_id
-            )
-        
-        return migration_success
-        
-    except Exception as e:
-        _LOGGER.error(
-            "Error during structured migration for config entry %s: %s",
-            config_entry.entry_id, e
-        )
-        return False
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Reload config entry."""
+    _LOGGER.info("Reloading Lambda Heat Pumps integration for entry: %s", entry.entry_id)
+
+    async with _reload_lock:
+        try:
+            # Unload the current entry
+            unload_ok = await async_unload_entry(hass, entry)
+            if not unload_ok:
+                _LOGGER.error("Failed to unload entry during reload")
+                return False
+
+            # Set up the entry again
+            setup_ok = await async_setup_entry(hass, entry)
+            if not setup_ok:
+                _LOGGER.error("Failed to setup entry during reload")
+                return False
+
+            _LOGGER.info("Successfully reloaded Lambda Heat Pumps integration")
+            return True
+
+        except Exception as ex:
+            _LOGGER.error("Error during reload: %s", ex, exc_info=True)
+            return False
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Lambda Heat Pumps from a config entry."""
-    # Check if already set up
+    _LOGGER.info("Setting up Lambda Heat Pumps integration for entry: %s", entry.entry_id)
+
+    # Check if entry is already loaded
     if DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]:
         _LOGGER.debug("Entry %s already loaded, skipping setup", entry.entry_id)
         return True
@@ -108,139 +109,104 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Ensure lambda_wp_config.yaml exists (create from template if missing)
     await ensure_lambda_config(hass)
 
-    # --- Module auto-detection mit Retry ---
-    detected_counts = None
-    for attempt in range(AUTO_DETECT_RETRIES):
-        client = None
-        try:
-            # Direkter Modbus-Client für Auto-Detection (ohne YAML-Loading)
-            from pymodbus.client import AsyncModbusTcpClient
-            
-            from .const import LAMBDA_MODBUS_PORT, LAMBDA_MODBUS_UNIT_ID
-            
-            host = entry.data["host"]
-            port = entry.data.get("port", LAMBDA_MODBUS_PORT)
-            slave_id = entry.data.get("slave_id", LAMBDA_MODBUS_UNIT_ID)
-            
-            _LOGGER.debug("Creating direct Modbus client for auto-detection: %s:%s", host, port)
-            client = AsyncModbusTcpClient(host=host, port=port, timeout=10)
-            
-            if await client.connect():
-                detected_counts = await auto_detect_modules(client, slave_id)
-                updated = await update_entry_with_detected_modules(
-                    hass, entry, detected_counts
-                )
+    # --- Intelligente Auto-Detection mit Performance-Optimierungen ---
+    # Erstelle einen Coordinator für beide Zwecke (Auto-Detection + Produktivbetrieb)
+    coordinator = LambdaDataUpdateCoordinator(hass, entry)
+    await coordinator.async_init()
+    
+    # Prüfe ob Module Counts bereits vorhanden sind (bestehendes Setup)
+    has_module_counts = (
+        "num_hps" in entry.data and 
+        "num_hc" in entry.data
+    )
+    
+    if has_module_counts:
+        # Bestehende Config: Auto-Detection im Hintergrund (non-blocking)
+        _LOGGER.info("Using existing module counts, starting background auto-detection")
+        
+        async def background_auto_detect():
+            try:
+                _LOGGER.debug("Background auto-detection started")
+                detected = await auto_detect_modules(coordinator.client, coordinator.slave_id)
+                updated = await update_entry_with_detected_modules(hass, entry, detected)
                 if updated:
-                    _LOGGER.info(
-                        "Config entry updated with detected module counts: %s",
-                        detected_counts,
-                    )
-                break
-            else:
-                _LOGGER.warning(
-                    "[Auto-detect attempt %d/%d] Could not connect to Modbus device for "
-                    "auto-detection; using config values.",
-                    attempt + 1,
-                    AUTO_DETECT_RETRIES,
-                )
-        except Exception as ex:
-            _LOGGER.warning(
-                "[Auto-detect attempt %d/%d] Module auto-detection failed: %s",
-                attempt + 1,
-                AUTO_DETECT_RETRIES,
-                ex,
-            )
-        finally:
-            # Cleanup: Schließe direkten Modbus-Client
-            if client is not None:
-                try:
-                    await client.close()
-                except Exception:
-                    pass  # Ignore cleanup errors
-                    
-        if detected_counts is None and attempt < AUTO_DETECT_RETRIES - 1:
-            await asyncio.sleep(AUTO_DETECT_RETRY_DELAY)
-
-    # Use detected counts if available, else fallback to config
-    if detected_counts:
-        num_hps = detected_counts.get("hp", 1)
-        num_boil = detected_counts.get("boil", 1)
-        num_buff = detected_counts.get("buff", 0)
-        num_sol = detected_counts.get("sol", 0)
-        num_hc = detected_counts.get("hc", 1)
-    else:
+                    _LOGGER.info("Background auto-detection updated module counts: %s", detected)
+                else:
+                    _LOGGER.debug("Background auto-detection: no module count changes needed")
+            except Exception as ex:
+                _LOGGER.debug("Background auto-detection failed: %s", ex)
+        
+        # Starte Auto-Detection im Hintergrund (non-blocking)
+        hass.async_create_task(background_auto_detect())
+        _LOGGER.info("Started background auto-detection (non-blocking)")
+        
+        # Verwende vorhandene Module Counts
         num_hps = entry.data.get("num_hps", 1)
         num_boil = entry.data.get("num_boil", 1)
         num_buff = entry.data.get("num_buff", 0)
         num_sol = entry.data.get("num_sol", 0)
         num_hc = entry.data.get("num_hc", 1)
+    else:
+        # Neue Config: Auto-Detection mit Retry (blocking für Setup)
+        _LOGGER.info("New configuration detected, performing auto-detection")
+        detected_counts = None
+        for attempt in range(AUTO_DETECT_RETRIES):
+            try:
+                if await coordinator.client.connect():
+                    detected_counts = await auto_detect_modules(coordinator.client, coordinator.slave_id)
+                    updated = await update_entry_with_detected_modules(hass, entry, detected_counts)
+                    if updated:
+                        _LOGGER.info("Config entry updated with detected module counts: %s", detected_counts)
+                    break
+                else:
+                    _LOGGER.warning(
+                        "[Auto-detect attempt %d/%d] Could not connect to Modbus device for auto-detection; using config values.",
+                        attempt + 1, AUTO_DETECT_RETRIES
+                    )
+            except Exception as ex:
+                _LOGGER.warning(
+                    "[Auto-detect attempt %d/%d] Module auto-detection failed: %s",
+                    attempt + 1, AUTO_DETECT_RETRIES, ex
+                )
+            finally:
+                if detected_counts is None and attempt < AUTO_DETECT_RETRIES - 1:
+                    await asyncio.sleep(AUTO_DETECT_RETRY_DELAY)
+        
+        # Use detected counts if available, else fallback to config
+        if detected_counts:
+            num_hps = detected_counts.get("hp", 1)
+            num_boil = detected_counts.get("boil", 1)
+            num_buff = detected_counts.get("buff", 0)
+            num_sol = detected_counts.get("sol", 0)
+            num_hc = detected_counts.get("hc", 1)
+        else:
+            num_hps = entry.data.get("num_hps", 1)
+            num_boil = entry.data.get("num_boil", 1)
+            num_buff = entry.data.get("num_buff", 0)
+            num_sol = entry.data.get("num_sol", 0)
+            num_hc = entry.data.get("num_hc", 1)
 
-    _LOGGER.debug(
-        "Device counts - HPs: %d, Boilers: %d, Buffers: %d, Solar: %d, HCs: %d",
-        num_hps,
-        num_boil,
-        num_buff,
-        num_sol,
-        num_hc,
-    )
-
-    _LOGGER.debug(
-        "Generated base addresses - HP: %s, Boil: %s, Buff: %s, Sol: %s, HC: %s",
+    # Generate base addresses for all modules
+    base_addresses = generate_base_addresses(
         generate_base_addresses("hp", num_hps),
         generate_base_addresses("boil", num_boil),
         generate_base_addresses("buff", num_buff),
         generate_base_addresses("sol", num_sol),
         generate_base_addresses("hc", num_hc),
     )
-    # Create coordinator for main use
-    coordinator = LambdaDataUpdateCoordinator(hass, entry)
+
+    # Coordinator ist bereits erstellt und initialisiert - verwende den bestehenden
     try:
-        await coordinator.async_init()
-        
         # ⭐ KORRIGIERT: Endianness-Konfiguration VOR dem ersten async_refresh()
         from .modbus_utils import get_int32_byte_order
-        try:
-            coordinator._int32_byte_order = await get_int32_byte_order(hass)
-            _LOGGER.info("Int32 Byte-Order konfiguriert: %s", coordinator._int32_byte_order)
-        except Exception as e:
-            _LOGGER.warning("Fehler bei Byte-Order-Bestimmung: %s", e)
-            coordinator._int32_byte_order = "big"  # Fallback auf Standard
-        
-        # Warte auf die erste Datenabfrage mit Retry-Logik
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                await coordinator.async_refresh()
-                if coordinator.data:
-                    break
-                else:
-                    _LOGGER.warning(
-                        "Attempt %d/%d: No data received from Lambda device",
-                        attempt + 1,
-                        max_retries,
-                    )
-                    if attempt < max_retries - 1:
-                        await asyncio.sleep(1)
-            except Exception as ex:
-                _LOGGER.warning(
-                    "Attempt %d/%d: Error refreshing coordinator: %s",
-                    attempt + 1,
-                    max_retries,
-                    ex,
-                )
-                if attempt < max_retries - 1:
-                    await asyncio.sleep(1)
+        coordinator.byte_order = get_int32_byte_order()
 
-        if not coordinator.data:
-            _LOGGER.error(
-                "Failed to fetch initial data from Lambda device after %d attempts",
-                max_retries,
-            )
-            return False
+        # Setze die generierten Base Addresses
+        coordinator.base_addresses = base_addresses
 
-        # Store coordinator in hass.data (always overwrite to ensure fresh coordinator)
-        if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {}
+        # Starte den ersten Datenupdate (mit Performance-Optimierungen)
+        await coordinator.async_refresh()
+
         hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
 
         # Set up platforms with error handling
@@ -351,52 +317,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         return unload_ok
 
-    except Exception:
-        _LOGGER.exception("Unexpected error during unload")
+    except Exception as ex:
+        _LOGGER.error("Error during unload: %s", ex, exc_info=True)
         return False
-
-
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    _LOGGER.debug("Reloading Lambda integration for entry: %s", entry.entry_id)
-
-    async with _reload_lock:
-        try:
-            # First check if entry is still valid
-            if entry.entry_id not in hass.config_entries.async_entry_ids():
-                _LOGGER.error("Entry not found in config entries, cannot reload")
-                return
-
-            # Unload current entry
-            if not await async_unload_entry(hass, entry):
-                _LOGGER.error("Failed to unload entry during reload")
-                # Try to continue anyway to avoid getting stuck
-
-            # Ensure all platforms are properly unloaded
-            await asyncio.sleep(1)
-
-            # Double check entry still exists
-            if entry.entry_id not in hass.config_entries.async_entry_ids():
-                _LOGGER.error("Entry disappeared during reload")
-                return
-
-            # Reload entry using fresh setup
-            try:
-                await async_setup_entry(hass, entry)
-                _LOGGER.info("Lambda Heat Pumps integration reloaded successfully")
-            except Exception as setup_ex:
-                _LOGGER.error(
-                    "Failed to setup after reload: %s", setup_ex, exc_info=True
-                )
-                # Try standard reload as last resort
-                try:
-                    await hass.config_entries.async_reload(entry.entry_id)
-                except Exception as std_reload_ex:
-                    _LOGGER.error(
-                        "Standard reload also failed: %s", std_reload_ex, exc_info=True
-                    )
-                    raise
-
-        except Exception as ex:
-            _LOGGER.error("Critical error during reload: %s", ex, exc_info=True)
-            raise

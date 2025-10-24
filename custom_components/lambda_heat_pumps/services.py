@@ -568,6 +568,9 @@ async def async_setup_services(hass: HomeAssistant) -> None:
 
     # Initialen Setup durchführen
     setup_scheduled_updates()
+    
+    # WICHTIG: Speichere die setup-Funktion für späteres Restart nach Reload
+    hass.data.setdefault(f"{DOMAIN}_services", {})["setup_scheduled_updates"] = setup_scheduled_updates
 
 
 async def async_unload_services(hass: HomeAssistant) -> None:
@@ -638,4 +641,22 @@ async def async_unload_services(hass: HomeAssistant) -> None:
         and "unsub_callbacks" in hass.data[f"{DOMAIN}_services"]
     ):
         hass.data[f"{DOMAIN}_services"]["unsub_callbacks"]()
-        del hass.data[f"{DOMAIN}_services"]
+        # WICHTIG: Lösche NUR die unsub_callbacks, NICHT die setup_scheduled_updates Funktion!
+        # Diese wird beim Reload benötigt, um Timer mit neuen Einstellungen neu zu starten
+        if "unsub_callbacks" in hass.data[f"{DOMAIN}_services"]:
+            del hass.data[f"{DOMAIN}_services"]["unsub_callbacks"]
+
+
+async def setup_scheduled_timer(hass: HomeAssistant) -> None:
+    """Restart scheduled timer after reload (when services already exist)."""
+    services_data = hass.data.get(f"{DOMAIN}_services", {})
+    setup_func = services_data.get("setup_scheduled_updates")
+    
+    if setup_func:
+        setup_func()
+        _LOGGER.info("Scheduled timer restarted successfully after reload")
+    else:
+        _LOGGER.error(
+            "Cannot restart scheduled timer: setup function not found after reload. "
+            "This should not happen! Check service initialization."
+        )
