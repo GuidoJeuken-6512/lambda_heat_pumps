@@ -775,7 +775,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
                 last_value = last_state.state
                 if last_value not in (None, "unknown", "unavailable"):
                     self._cycling_value = int(float(last_value))
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Cycling sensor {self.entity_id} restored from database: {self._cycling_value}"
                     )
                 else:
@@ -1281,7 +1281,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
                 last_value = last_state.state
                 if last_value not in (None, "unknown", "unavailable"):
                     self._yesterday_value = int(float(last_value))
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         f"Yesterday sensor {self.entity_id} restored from database: {self._yesterday_value}"
                     )
                 else:

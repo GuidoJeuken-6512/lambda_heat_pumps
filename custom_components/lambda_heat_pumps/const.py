@@ -1054,18 +1054,18 @@ HC_SENSOR_TEMPLATES = {
         "writeable": True,
         "state_class": "measurement",
     },
-    "target_temp_flow_line": {
-        "relative_address": 7,
-        "name": "Target Flow Line Temperature",
-        "unit": "°C",
-        "scale": 0.1,
-        "precision": 1,
-        "data_type": "int16",
-        "firmware_version": 3,
-        "device_type": "hc",
-        "writeable": False,
-        "state_class": "measurement",
-    },
+     "target_temp_flow_line": {
+         "relative_address": 7,
+         "name": "Target Flow Line Temperature",
+         "unit": "°C",
+         "scale": 0.1,
+         "precision": 1,
+         "data_type": "int16",
+         "firmware_version": 3,
+         "device_type": "hc",
+         "writeable": False,
+         "state_class": "measurement",
+     },
 }
 
 # General Sensors
@@ -1244,7 +1244,8 @@ CLIMATE_TEMPLATES = {
 DEFAULT_UPDATE_INTERVAL = 30
 
 # Default interval for writing room temperature and PV surplus (in seconds)
-DEFAULT_WRITE_INTERVAL = 30
+# Changed from 30 to 41 to avoid timing collisions with coordinator reads (30s)
+DEFAULT_WRITE_INTERVAL = 41
 
 # Lambda-specific Modbus configuration
 LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout

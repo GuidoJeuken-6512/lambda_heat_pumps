@@ -1893,3 +1893,64 @@ def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
     persist_data["sensor_ids"][hp_key] = normalized_sensor_id
     
     _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{normalized_sensor_id}'")
+
+
+async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> None:
+    """Zentrale Shutdown-Funktion für alle Lambda Heat Pumps Komponenten.
+    
+    Args:
+        hass: Home Assistant instance
+        entry_id: Config entry ID to cleanup
+    """
+    _LOGGER.info("🧹 CLEANUP: Starting centralized cleanup for entry: %s", entry_id)
+    
+    try:
+        # 1. Cleanup Coordinator
+        if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
+            coordinator_data = hass.data[DOMAIN][entry_id]
+            if "coordinator" in coordinator_data:
+                coordinator = coordinator_data["coordinator"]
+                _LOGGER.info("🧹 CLEANUP: Shutting down coordinator (coordinator_id=%s)", id(coordinator))
+                try:
+                    await coordinator.async_shutdown()
+                    _LOGGER.info("✅ CLEANUP: Coordinator shutdown completed")
+                except Exception as coord_ex:
+                    _LOGGER.error("❌ CLEANUP: Error during coordinator shutdown: %s", coord_ex)
+                finally:
+                    # Entferne Coordinator aus hass.data
+                    coordinator_data.pop("coordinator", None)
+        
+        # 2. Cleanup Services
+        try:
+            from .services import async_unload_services
+            _LOGGER.info("🧹 CLEANUP: Unloading services...")
+            await async_unload_services(hass)
+            _LOGGER.info("✅ CLEANUP: Services unloaded")
+        except Exception as service_ex:
+            _LOGGER.error("❌ CLEANUP: Error during services cleanup: %s", service_ex)
+        
+        # 3. Cleanup Automations
+        try:
+            from .automations import cleanup_cycling_automations
+            _LOGGER.info("🧹 CLEANUP: Cleaning up automations...")
+            cleanup_cycling_automations(hass, entry_id)
+            _LOGGER.info("✅ CLEANUP: Automations cleaned up")
+        except Exception as auto_ex:
+            _LOGGER.error("❌ CLEANUP: Error during automations cleanup: %s", auto_ex)
+        
+        # 4. Remove entry from hass.data
+        if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
+            hass.data[DOMAIN].pop(entry_id, None)
+            _LOGGER.info("✅ CLEANUP: Entry removed from hass.data")
+        
+        # 5. Final cleanup check
+        if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
+            _LOGGER.warning("⚠️ CLEANUP: Entry still exists in hass.data after cleanup")
+        else:
+            _LOGGER.info("✅ CLEANUP: Entry successfully removed from hass.data")
+            
+    except Exception as ex:
+        _LOGGER.error("❌ CLEANUP: Error during centralized cleanup: %s", ex)
+        raise
+    
+    _LOGGER.info("🎉 CLEANUP: Centralized cleanup completed for entry: %s", entry_id)

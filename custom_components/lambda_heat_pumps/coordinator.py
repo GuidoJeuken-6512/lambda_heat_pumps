@@ -38,7 +38,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
 )
-from .modbus_utils import async_read_holding_registers, combine_int32_registers
+from .modbus_utils import async_read_holding_registers, combine_int32_registers, wait_for_stable_connection
 import time
 
 _LOGGER = logging.getLogger(__name__)
@@ -743,21 +743,46 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     self._batch_failures[batch_key] = self._batch_failures.get(batch_key, 0) + 1
                     
                     if self._batch_failures[batch_key] <= self._max_batch_failures:
-                        _LOGGER.warning(
-                            f"Batch read failed for {start_addr}-{start_addr + count - 1} (attempt {self._batch_failures[batch_key]}/{self._max_batch_failures})"
+                        _LOGGER.info(
+                            "❌ MODBUS READ FAILED: Batch read error, addresses=%s, attempt=%d/%d, caller=_async_update_data",
+                            f"{start_addr}-{start_addr + count - 1}", self._batch_failures[batch_key], self._max_batch_failures
                         )
                     else:
                         _LOGGER.info(
                             f"Switching to individual reads for {start_addr}-{start_addr + count - 1} after {self._max_batch_failures} failures"
                         )
                         self._individual_read_addresses.add(batch_key)
+                else:
+                    # Erfolgreicher Batch-Read
+                    _LOGGER.debug(
+                        "✅ MODBUS READ SUCCESS: Batch read successful, addresses=%s, caller=_async_update_data",
+                        f"{start_addr}-{start_addr + count - 1}"
+                    )
                     
-                    # Fallback zu Individual-Reads
-                    for addr in batch:
-                        await self._read_single_register(
-                            addr, address_list[addr], sensor_mapping, data
-                        )
-                    continue
+                    # Process batch results - KEIN Fallback zu Individual-Reads!
+                    for i, addr in enumerate(batch):
+                        sensor_info = address_list[addr]
+                        sensor_id = sensor_mapping[addr]
+                        
+                        # Extrahiere Wert aus Batch-Result
+                        if i < len(result.registers):
+                            value = result.registers[i]
+                            
+                            # Cache den Wert global
+                            self._global_register_cache[addr] = value
+                            
+                            # Verarbeite den Wert basierend auf dem Datentyp
+                            if sensor_info.get("data_type") == "int32":
+                                # Für INT32: Kombiniere mit nächstem Register
+                                if i + 1 < len(result.registers):
+                                    next_value = result.registers[i + 1]
+                                    combined_value = self._combine_int32_registers(value, next_value, sensor_info.get("byte_order", "big"))
+                                    data[sensor_id] = combined_value
+                                    # Überspringe das nächste Register (bereits verarbeitet)
+                                    i += 1
+                            else:
+                                # Für INT16/UINT16: Direkte Verwendung
+                                data[sensor_id] = value
                 
                 # Erfolgreicher Batch-Read - Reset Fehlerzähler
                 if batch_key in self._batch_failures:
@@ -765,39 +790,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 if batch_key in self._individual_read_addresses:
                     self._individual_read_addresses.remove(batch_key)
                     _LOGGER.info(f"Batch reads restored for {start_addr}-{start_addr + count - 1}")
-
-                # Process batch results
-                for i, addr in enumerate(batch):
-                    sensor_info = address_list[addr]
-                    sensor_id = sensor_mapping[addr]
-                    try:
-                        if sensor_info.get("data_type") == "int32":
-                            # Should not happen in batch, but safety check
-                            if i + 1 < len(result.registers):
-                                value = (result.registers[i] << 16) | result.registers[
-                                    i + 1
-                                ]
-                                value = to_signed_32bit(value)
-                            else:
-                                continue
-                        else:
-                            value = result.registers[i]
-                            if sensor_info.get("data_type") == "int16":
-                                value = to_signed_16bit(value)
-                        if "scale" in sensor_info:
-                            value = value * sensor_info["scale"]
-                        data[sensor_id] = value
-                        
-                        # Cache den Wert im globalen Cache für andere Module
-                        self._global_register_cache[addr] = value
-                        _LOGGER.debug(f"Cached register {addr} = {value} (batch)")
-                    except Exception as ex:
-                        _LOGGER.debug(
-                            f"Error processing register {addr} in batch: {ex}"
-                        )
             except Exception as ex:
-                _LOGGER.warning(
-                    f"Error reading batch {batch[0]}-{batch[-1]}: {ex}, falling back to individual reads"
+                _LOGGER.info(
+                    "❌ MODBUS READ FAILED: Batch read error, addresses=%s, error=%s, caller=_async_update_data",
+                    f"{batch[0]}-{batch[-1]}", ex
                 )
                 for addr in batch:
                     await self._read_single_register(
@@ -844,7 +840,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug(f"Cached register {address} = {value}")
 
         except Exception as ex:
-            _LOGGER.debug(f"Error reading register {address}: {ex}")
+            _LOGGER.info(f"❌ MODBUS READ FAILED: address={address}, error={ex}, caller=_async_update_data")
 
     async def _read_general_sensors_batch(self, data):
         """Read general sensors using global register collection."""
@@ -1120,43 +1116,32 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 and hasattr(self.client, "connected")
                 and self.client.connected
             ):
+                _LOGGER.info("🔌 MODBUS CONNECT: Already connected to %s:%s", self.host, self.port)
                 return
 
+            _LOGGER.info("🔌 MODBUS CONNECT: Starting connection to %s:%s (coordinator_id=%s)", self.host, self.port, id(self))
             self.client = AsyncModbusTcpClient(
                 host=self.host, port=self.port, timeout=10
             )
 
             if not await self.client.connect():
                 msg = f"Failed to connect to {self.host}:{self.port}"
+                _LOGGER.info("❌ MODBUS CONNECT: Failed to connect to %s:%s", self.host, self.port)
                 raise UpdateFailed(msg)
 
-            _LOGGER.debug("Connected to Lambda device at %s:%s", self.host, self.port)
+            _LOGGER.info("✅ MODBUS CONNECT: Successfully connected to %s:%s (coordinator_id=%s)", self.host, self.port, id(self))
 
         except Exception as e:
-            _LOGGER.error("Connection to %s:%s failed: %s", self.host, self.port, e)
+            _LOGGER.info("❌ MODBUS CONNECT: Failed to connect to %s:%s, error=%s (coordinator_id=%s)", self.host, self.port, e, id(self))
             self.client = None
             msg = f"Connection failed: {e}"
             raise UpdateFailed(msg) from e
 
-    async def _is_connection_healthy(self) -> bool:
-        """Check if the Modbus connection is healthy."""
-        if not self.client:
-            return False
-        
-        try:
-            # Try a simple read to test connection health
-            # Use register 0 (General Error Number) as a health check
-            result = await asyncio.wait_for(
-                self.client.read_holding_registers(0, count=1, slave=self.slave_id),
-                timeout=2  # Reduziert von 5s auf 2s für schnelleren Health Check
-            )
-            return result is not None
-        except Exception:
-            return False
 
     async def _async_update_data(self):
         """Fetch data from Lambda device."""
         try:
+            _LOGGER.info("🔄 PRODUCTION: Starting data update (coordinator_id=%s)", id(self))
             # Check if Home Assistant is shutting down
             if self.hass.is_stopping:
                 _LOGGER.debug("Home Assistant is stopping, skipping data update")
@@ -1167,10 +1152,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             self._global_register_requests = {}  # Sammle alle Register-Requests vor dem Lesen
             _LOGGER.debug("Reset global register cache for new update cycle")
             
-            # Check connection health and reconnect if necessary
-            if not self.client or not await self._is_connection_healthy():
-                _LOGGER.debug("Connection unhealthy, reconnecting to %s:%s", self.host, self.port)
-                await self._connect()
+            # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor Datenupdate
+            _LOGGER.info("🔍 COORDINATOR: Checking connection stability before data update...")
+            await wait_for_stable_connection(self)
+            _LOGGER.info("✅ COORDINATOR: Connection stable, proceeding with data update")
 
             # Get firmware version for sensor filtering
             fw_version = get_firmware_version_int(self.entry)
@@ -1244,10 +1229,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             self.entry.data.get("slave_id", 1),
                         )
                         if hasattr(result, "isError") and result.isError():
-                            _LOGGER.debug(
-                                "Error reading register %d: %s",
-                                address,
-                                result,
+                            _LOGGER.info(
+                                "❌ MODBUS READ FAILED: address=%d, result=%s, caller=_async_update_data",
+                                address, result
                             )
                             continue
                         if count == 2:
@@ -1303,10 +1287,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             self.entry.data.get("slave_id", 1),
                         )
                         if hasattr(result, "isError") and result.isError():
-                            _LOGGER.debug(
-                                "Error reading register %d: %s",
-                                address,
-                                result,
+                            _LOGGER.info(
+                                "❌ MODBUS READ FAILED: address=%d, result=%s, caller=_async_update_data",
+                                address, result
                             )
                             continue
                         if count == 2:
@@ -1362,10 +1345,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             self.entry.data.get("slave_id", 1),
                         )
                         if hasattr(result, "isError") and result.isError():
-                            _LOGGER.debug(
-                                "Error reading register %d: %s",
-                                address,
-                                result,
+                            _LOGGER.info(
+                                "❌ MODBUS READ FAILED: address=%d, result=%s, caller=_async_update_data",
+                                address, result
                             )
                             continue
                         if count == 2:
@@ -1642,7 +1624,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             await self._track_energy_consumption(data)
             _LOGGER.debug("DEBUG-002: Energy consumption tracking completed")
 
-            _LOGGER.debug("DEBUG-003: Returning data from _async_update_data")
+            _LOGGER.info("✅ PRODUCTION: Data update completed successfully (coordinator_id=%s)", id(self))
             return data
 
         except Exception as ex:

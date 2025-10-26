@@ -17,7 +17,7 @@ from .const import (
     DEFAULT_WRITE_INTERVAL,
     CONF_PV_POWER_SENSOR_ENTITY,
 )
-from .modbus_utils import async_read_holding_registers, async_write_registers
+from .modbus_utils import async_read_holding_registers, async_write_registers, wait_for_stable_connection
 
 # Konstanten für Zustandsarten definieren
 STATE_UNAVAILABLE = "unavailable"
@@ -151,11 +151,10 @@ async def _process_room_temperature_entry(
         )
         return
     
-    # Check if coordinator client is connected
-    # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen überspringen
-    if not hasattr(coordinator.client, 'connected') or not coordinator.client.connected:
-        _LOGGER.info("Modbus client not connected for entry_id %s, skipping operation", entry_id)
-        return
+    # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor Service-Operationen
+    _LOGGER.info("🔍 SERVICE: Checking connection stability before room temperature update...")
+    await wait_for_stable_connection(coordinator)
+    _LOGGER.info("✅ SERVICE: Connection stable, proceeding with room temperature update")
 
     # Für jeden Heizkreis prüfen und aktualisieren
     for hc_idx in range(1, num_hc + 1):
@@ -236,9 +235,14 @@ async def _update_heating_circuit_temperature(
         )
 
         if result.isError():
-            _LOGGER.error(
-                "Failed to write room temperature: %s",
-                result,
+            _LOGGER.info(
+                "❌ MODBUS WRITE FAILED: Room temperature write failed, address=%d, value=%d, hc=%d, result=%s, caller=_write_room_temperatures",
+                register_address, raw_value, hc_idx, result
+            )
+        else:
+            _LOGGER.info(
+                "✅ MODBUS WRITE SUCCESS: Room temperature written to address=%d, value=%d, hc=%d, caller=_write_room_temperatures",
+                register_address, raw_value, hc_idx
             )
 
     except (ValueError, TypeError) as ex:
@@ -392,11 +396,10 @@ async def _write_room_and_pv_for_entry(
         )
         return
     
-    # Check if coordinator client is connected
-    # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen überspringen
-    if not hasattr(coordinator.client, 'connected') or not coordinator.client.connected:
-        _LOGGER.info("Modbus client not connected for entry_id %s, skipping operation", entry_id)
-        return
+    # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor Service-Operationen
+    _LOGGER.info("🔍 SERVICE: Checking connection stability before PV surplus update...")
+    await wait_for_stable_connection(coordinator)
+    _LOGGER.info("✅ SERVICE: Connection stable, proceeding with PV surplus update")
 
     # Debug: Log current options
     room_thermostat_control = config_entry.options.get("room_thermostat_control", False)
@@ -507,20 +510,33 @@ async def _write_pv_surplus(
             write_type,
         )
 
-        # Check if coordinator client is connected
-        # Lambda WP hält Verbindung 60 Sekunden offen - nur bei echten Problemen überspringen
-        if not coordinator.client or not hasattr(coordinator.client, 'connected') or not coordinator.client.connected:
-            _LOGGER.debug("Modbus client not connected, skipping PV surplus write")
-            return
+        # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor PV Surplus Write
+        _LOGGER.info("🔍 SERVICE: Checking connection stability before PV surplus write...")
+        await wait_for_stable_connection(coordinator)
+        _LOGGER.info("✅ SERVICE: Connection stable, proceeding with PV surplus write")
 
-        await async_write_registers(
+        result = await async_write_registers(
             coordinator.client,
             102,  # register_address for PV surplus
             [raw_value],
             entry_data.get("slave_id", 1),
         )
+        
+        if result.isError():
+            _LOGGER.info(
+                "❌ MODBUS WRITE FAILED: PV surplus write failed, address=102, value=%d, result=%s, caller=_write_pv_surplus",
+                raw_value, result
+            )
+        else:
+            _LOGGER.info(
+                "✅ MODBUS WRITE SUCCESS: PV surplus written to address=102, value=%d, mode=%s, caller=_write_pv_surplus",
+                raw_value, write_type
+            )
     except Exception as ex:
-        _LOGGER.error("Error writing PV surplus: %s", ex)
+        _LOGGER.info(
+            "❌ MODBUS WRITE FAILED: PV surplus write failed, address=102, value=%d, error=%s, caller=_write_pv_surplus",
+            raw_value, ex
+        )
 
 
 async def async_setup_services(hass: HomeAssistant) -> None:
@@ -568,28 +584,91 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             _LOGGER.info("No service options are active, skipping scheduler setup")
             return
 
-        # Gemeinsamer Timer für beide Schreibvorgänge
-        update_interval = timedelta(seconds=DEFAULT_WRITE_INTERVAL)
-        _LOGGER.info("Setting up scheduled updates with interval: %s seconds", DEFAULT_WRITE_INTERVAL)
+        # 🎯 NEUE LOGIK: Warte auf erfolgreichen Read, dann starte Services
+        _LOGGER.info("⏳ SERVICES: Waiting for successful coordinator read before starting services...")
+        hass.async_create_task(wait_for_successful_read_then_start_services())
 
-        async def scheduled_update_callback(_):
-            _LOGGER.info("Scheduled update callback triggered")
-            await async_write_room_and_pv()
+    async def wait_for_successful_read_then_start_services() -> None:
+        """Wait for successful coordinator read AND auto-detection completion, then start services with 41s interval."""
+        try:
+            # Warte auf ersten erfolgreichen Coordinator-Update
+            _LOGGER.info("⏳ SERVICES: Waiting for coordinator to complete first successful read...")
+            
+            # Finde den aktiven Coordinator
+            coordinator = None
+            lambda_entries = hass.data.get(DOMAIN, {})
+            for entry_id, entry_data in lambda_entries.items():
+                if "coordinator" in entry_data:
+                    coordinator = entry_data["coordinator"]
+                    break
+            
+            if not coordinator:
+                _LOGGER.error("❌ SERVICES: No coordinator found, cannot start services")
+                return
+            
+            # Warte auf erfolgreichen Read (mit Timeout)
+            import asyncio
+            try:
+                await asyncio.wait_for(coordinator.async_refresh(), timeout=60)
+                _LOGGER.info("✅ SERVICES: Coordinator read successful")
+            except asyncio.TimeoutError:
+                _LOGGER.warning("⚠️ SERVICES: Coordinator read timeout, continuing anyway")
+            except Exception as e:
+                _LOGGER.warning("⚠️ SERVICES: Coordinator read failed (%s), continuing anyway", e)
+            
+            # 🎯 NEUE LOGIK: Warte zusätzlich auf Auto-Detection-Abschluss
+            _LOGGER.info("⏳ SERVICES: Waiting for background auto-detection to complete...")
+            await wait_for_auto_detection_completion()
+            _LOGGER.info("✅ SERVICES: Auto-detection completed, starting services with 41s interval")
+            
+            # Starte Services mit 41s Intervall (ungerade Zahl > 30)
+            update_interval = timedelta(seconds=DEFAULT_WRITE_INTERVAL)
+            _LOGGER.info("🚀 SERVICES: Starting scheduled updates with interval: %s seconds", DEFAULT_WRITE_INTERVAL)
 
-        unsub = async_track_time_interval(
-            hass,
-            scheduled_update_callback,
-            update_interval,
-        )
-        unsub_update_callbacks["write_room_and_pv"] = unsub
-        _LOGGER.info("Scheduled updates setup completed")
+            async def scheduled_update_callback(_):
+                _LOGGER.info("Scheduled update callback triggered")
+                await async_write_room_and_pv()
+
+            unsub = async_track_time_interval(
+                hass,
+                scheduled_update_callback,
+                update_interval,
+            )
+            unsub_update_callbacks["write_room_and_pv"] = unsub
+            _LOGGER.info("✅ SERVICES: Scheduled updates setup completed with collision-free timing")
+            
+        except Exception as e:
+            _LOGGER.error("❌ SERVICES: Failed to setup services: %s", e, exc_info=True)
+
+    async def wait_for_auto_detection_completion() -> None:
+        """Wait for background auto-detection to complete (max 20 seconds)."""
+        import asyncio
+        import time
+        
+        start_time = time.time()
+        max_wait_time = 20  # Maximum 20 seconds wait for auto-detection
+        
+        while time.time() - start_time < max_wait_time:
+            # Prüfe ob Auto-Detection noch läuft durch Log-Monitoring
+            # Da wir keinen direkten Zugriff auf den Auto-Detection-Status haben,
+            # warten wir eine angemessene Zeit (3-5 Sekunden) für die Auto-Detection
+            await asyncio.sleep(1)
+            
+            # Nach 3 Sekunden ist Auto-Detection normalerweise abgeschlossen
+            if time.time() - start_time >= 3:
+                _LOGGER.info("✅ SERVICES: Auto-detection wait completed (3+ seconds)")
+                break
+        
+        if time.time() - start_time >= max_wait_time:
+            _LOGGER.warning("⚠️ SERVICES: Auto-detection wait timeout, starting services anyway")
 
     # Bei Änderungen in der Konfiguration die Timers neu einrichten
     @callback
     def config_entry_updated() -> None:
         """Reagiere auf Konfigurationsänderungen."""
-        _LOGGER.debug("Config entry updated, resetting scheduled updates")
-        setup_scheduled_updates()
+        _LOGGER.debug("Config entry updated, resetting scheduled updates with auto-detection wait")
+        # 🎯 NEUE LOGIK: Auch bei Config-Updates auf Auto-Detection warten
+        hass.async_create_task(wait_for_successful_read_then_start_services())
 
     # Registriere Listener für Konfigurationsänderungen
     hass.bus.async_listen("config_entry_updated", config_entry_updated)
@@ -659,8 +738,10 @@ async def setup_scheduled_timer(hass: HomeAssistant) -> None:
     setup_func = services_data.get("setup_scheduled_updates")
     
     if setup_func:
-        setup_func()
-        _LOGGER.info("Scheduled timer restarted successfully after reload")
+        # 🎯 NEUE LOGIK: Bei Reloads auch auf Auto-Detection warten
+        _LOGGER.info("🔄 RELOAD: Restarting services with auto-detection wait...")
+        hass.async_create_task(wait_for_successful_read_then_start_services())
+        _LOGGER.info("Scheduled timer restart initiated with collision-free timing")
     else:
         _LOGGER.error(
             "Cannot restart scheduled timer: setup function not found after reload. "

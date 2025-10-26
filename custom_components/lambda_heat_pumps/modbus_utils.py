@@ -64,9 +64,11 @@ async def async_read_holding_registers(
     
     # Check if client exists and is connected
     if not client:
+        _LOGGER.info("❌ MODBUS READ: Connection not healthy for address %d", address)
         raise Exception("Modbus client is None - connection lost")
     
     if not hasattr(client, 'connected') or not client.connected:
+        _LOGGER.info("❌ MODBUS READ: Connection not healthy for address %d", address)
         raise Exception("Modbus client not connected")
     
     for attempt in range(LAMBDA_MAX_RETRIES):
@@ -128,7 +130,10 @@ async def async_read_holding_registers(
         if "Home Assistant is stopping" in str(last_exception) or "CancelledError" in str(last_exception):
             _LOGGER.debug("Modbus read cancelled at address %d (HA stopping): %s", address, last_exception)
         else:
-            _LOGGER.exception("Modbus read error at address %d: %s", address, last_exception)
+            _LOGGER.info(
+                "❌ MODBUS READ FAILED: address=%d, retries=%d, error=%s, caller=async_read_holding_registers",
+                address, LAMBDA_MAX_RETRIES, last_exception
+            )
         raise last_exception
 
 
@@ -188,7 +193,10 @@ async def async_write_register(
         if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
             _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
         else:
-            _LOGGER.exception("Modbus write error at address %d: %s", address, e)
+            _LOGGER.info(
+                "❌ MODBUS WRITE FAILED: address=%d, value=%d, error=%s, caller=async_write_register",
+                address, value, e
+            )
         raise
 
 
@@ -211,7 +219,10 @@ async def async_write_registers(
         if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
             _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
         else:
-            _LOGGER.error("Modbus write error at address %d: %s", address, e)
+            _LOGGER.info(
+                "❌ MODBUS WRITE FAILED: address=%d, values=%s, error=%s, caller=async_write_registers",
+                address, values, e
+            )
         raise
 
 
@@ -349,3 +360,79 @@ def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
     else:  # big-endian (Standard)
         # Big-Endian: Höhere Bits zuerst (aktuelle Implementierung)
         return (registers[0] << 16) | registers[1]
+
+
+async def wait_for_stable_connection(coordinator) -> None:
+    """Wait for stable Modbus connection before starting operations.
+    
+    Args:
+        coordinator: LambdaDataUpdateCoordinator instance
+        
+    This function ensures the Modbus connection is stable before
+    starting operations, preventing "Cancel send" errors.
+    """
+    max_attempts = 10
+    attempt = 0
+    
+    _LOGGER.info("🔍 CONNECTION: Starting wait_for_stable_connection (coordinator_id=%s)", id(coordinator))
+    
+    while attempt < max_attempts:
+        try:
+            # Teste Verbindung mit eigenständiger Health-Check
+            if await _test_connection_health(coordinator):
+                _LOGGER.info("✅ CONNECTION: Connection stable after %d attempts", attempt + 1)
+                return
+            
+            attempt += 1
+            _LOGGER.info("⏳ CONNECTION: Connection not stable yet, attempt %d/%d", attempt, max_attempts)
+            await asyncio.sleep(1)  # 1 Sekunde warten
+            
+        except Exception as e:
+            attempt += 1
+            _LOGGER.info("⏳ CONNECTION: Connection test failed (attempt %d/%d): %s", attempt, max_attempts, e)
+            await asyncio.sleep(1)
+    
+    _LOGGER.warning("⚠️ CONNECTION: Connection not stable after %d attempts, proceeding anyway", max_attempts)
+
+
+async def _test_connection_health(coordinator) -> bool:
+    """Test if the Modbus connection is healthy with robust API compatibility."""
+    if not coordinator.client:
+        _LOGGER.info("🔍 CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
+        return False
+    
+    try:
+        _LOGGER.info("🔍 CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
+        # Try a simple read to test connection health using robust API compatibility
+        # Use register 0 (General Error Number) as a health check
+        result = await asyncio.wait_for(
+            _health_check_read(coordinator.client, coordinator.slave_id),
+            timeout=2  # 2 Sekunden Timeout für schnellen Health Check
+        )
+        if result is not None:
+            _LOGGER.info("✅ CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
+            return True
+        else:
+            _LOGGER.info("❌ CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
+            return False
+    except Exception as e:
+        _LOGGER.info("❌ CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
+        return False
+
+
+async def _health_check_read(client, slave_id):
+    """Robust health check read with API compatibility fallbacks."""
+    try:
+        # Try with slave parameter (most common in 3.x)
+        return await client.read_holding_registers(0, count=1, slave=slave_id)
+    except (TypeError, AttributeError):
+        try:
+            # Try with unit parameter
+            return await client.read_holding_registers(0, count=1, unit=slave_id)
+        except (TypeError, AttributeError):
+            try:
+                # Try without slave/unit parameter
+                return await client.read_holding_registers(0, count=1)
+            except TypeError:
+                # Last resort: only address and count as positional
+                return await client.read_holding_registers(0, 1)

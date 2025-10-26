@@ -16,19 +16,33 @@ flowchart TD
     F -->|Not loaded| H[ensure_lambda_config]
     
     H --> I[Module Auto-Detection]
-    I --> J[Create Coordinator]
+    I --> I1[Check if Reload]
+    I1 -->|Reload| I2[Wait 38 seconds]
+    I1 -->|First Start| I3[Start Immediately]
+    I2 --> I4[Wait for Stable Connection]
+    I3 --> I4
+    I4 --> I4A[wait_for_stable_connection]
+    I4A --> I4B[Test Connection Health]
+    I4B --> I4C[Connection Stable?]
+    I4C -->|Yes| I5
+    I4C -->|No| I4D[Wait 1 second]
+    I4D --> I4E[Max Attempts Reached?]
+    I4E -->|Yes| I4F[Proceed Anyway]
+    I4E -->|No| I4B
+    I4F --> I5[Auto-detect Module Counts]
+    I5 --> I5A[Test Register Accessibility]
+    I5A --> I5B[Count Available Modules]
+    I5B --> I5C[Update Module Counts]
+    I5C --> J[Create Coordinator]
     J --> K[Initialize Modbus Client]
-    K --> L[Auto-detect Module Counts]
-    L --> M[Update Config Entry]
-    
-    M --> N[Generate Base Addresses]
-    N --> O[Create Main Coordinator]
-    O --> P[Initialize Coordinator]
-    P --> Q[First Data Refresh with Retry]
-    
-    Q --> R[Data Available?]
-    R -->|No| S[Error - Setup Failed]
-    R -->|Yes| T[Store Coordinator in hass.data]
+    K --> L[Update Config Entry]
+    L --> M[Generate Base Addresses]
+    M --> N[Create Main Coordinator]
+    N --> O[Initialize Coordinator]
+    O --> P[First Data Refresh with Retry]
+    P --> Q[Data Available?]
+    Q -->|No| S[Error - Setup Failed]
+    Q -->|Yes| T[Store Coordinator in hass.data]
     
     T --> U[Setup Platforms]
     U --> V[Setup Services]
@@ -42,10 +56,36 @@ flowchart TD
     W --> X[Add Update Listener]
     X --> Y[Setup Complete]
     
+    %% Service Setup Details
+    V3 --> V3A[Wait for Coordinator Read]
+    V3A --> V3B[Wait for Auto-Detection]
+    V3B --> V3C[Setup 41s Timer]
+    V3C --> V4
+    
+    %% Service Connection Stability Check
+    V3A --> V3A1[Coordinator Read Success?]
+    V3A1 -->|Yes| V3B
+    V3A1 -->|No| V3A2[Wait and Retry]
+    V3A2 --> V3A
+    
+    V3B --> V3B1[Auto-Detection Complete?]
+    V3B1 -->|Yes| V3C
+    V3B1 -->|No| V3B2[Wait 3+ seconds]
+    V3B2 --> V3B
+    
     %% Data Update Cycle
     Y --> Z[Coordinator Update Cycle]
-    Z --> AA[Read Modbus Registers]
-    AA --> BB[Process Raw Data]
+    Z --> Z1[Check Connection Stability]
+    Z1 --> AA[Read Modbus Registers]
+    AA --> AA1[Batch Read Optimization]
+    AA1 --> AA1A[Group Consecutive Registers]
+    AA1A --> AA1B[Read Batch]
+    AA1B --> AA1C[Batch Success?]
+    AA1C -->|Yes| AA1D[Process Batch Results]
+    AA1C -->|No| AA1E[Fallback to Individual Reads]
+    AA1D --> AA2[Process Batch Results]
+    AA1E --> AA2
+    AA2 --> BB[Process Raw Data]
     BB --> CC[Calculate Derived Values]
     CC --> CC1[Track Energy Consumption]
     CC1 --> CC2[Update Cycling Counters]
@@ -56,17 +96,48 @@ flowchart TD
     
     %% Service Update Cycle (parallel to data cycle)
     Y --> ZZ[Service Timer Cycle]
-    ZZ --> AAA[Check Service Options]
+    ZZ --> ZZ1[Wait for Coordinator Read]
+    ZZ1 --> ZZ1A[Coordinator Read Success?]
+    ZZ1A -->|Yes| ZZ2[Wait for Auto-Detection]
+    ZZ1A -->|No| ZZ1B[Wait and Retry]
+    ZZ1B --> ZZ1
+    ZZ2 --> ZZ2A[Auto-Detection Complete?]
+    ZZ2A -->|Yes| AAA[Check Service Options]
+    ZZ2A -->|No| ZZ2B[Wait 3+ seconds]
+    ZZ2B --> ZZ2
     AAA --> BBB[Room Thermostat Control?]
-    BBB -->|Yes| CCC[Write Room Temperature]
+    BBB -->|Yes| CCC[Check Connection Stability]
     BBB -->|No| DDD[Skip Room Temperature]
-    CCC --> EEE[PV Surplus Control?]
+    CCC --> CCC1[Write Room Temperature]
+    CCC1 --> EEE[PV Surplus Control?]
     DDD --> EEE
-    EEE -->|Yes| FFF[Write PV Surplus]
+    EEE -->|Yes| FFF[Check Connection Stability]
     EEE -->|No| GGG[Skip PV Surplus]
-    FFF --> HHH[Wait 30 seconds]
+    FFF --> FFF1[Write PV Surplus]
+    FFF1 --> HHH[Wait 41 seconds]
     GGG --> HHH
     HHH --> ZZ
+    
+    %% Service Connection Stability Check
+    CCC --> CCC1A[wait_for_stable_connection]
+    CCC1A --> CCC1B[Test Connection Health]
+    CCC1B --> CCC1C[Connection Stable?]
+    CCC1C -->|Yes| CCC1
+    CCC1C -->|No| CCC1D[Wait 1 second]
+    CCC1D --> CCC1E[Max Attempts Reached?]
+    CCC1E -->|Yes| CCC1F[Proceed Anyway]
+    CCC1E -->|No| CCC1B
+    CCC1F --> CCC1
+    
+    FFF --> FFF1A[wait_for_stable_connection]
+    FFF1A --> FFF1B[Test Connection Health]
+    FFF1B --> FFF1C[Connection Stable?]
+    FFF1C -->|Yes| FFF1
+    FFF1C -->|No| FFF1D[Wait 1 second]
+    FFF1D --> FFF1E[Max Attempts Reached?]
+    FFF1E -->|Yes| FFF1F[Proceed Anyway]
+    FFF1E -->|No| FFF1B
+    FFF1F --> FFF1
     
     %% Platform Setup Details
     U --> U1[Sensor Platform]
@@ -89,24 +160,36 @@ flowchart TD
     Q1 -->|No| Q2[Wait and Retry]
     Q2 --> Q
     
-    %% Unload Process
-    FF[async_unload_entry] --> GG[Cleanup Cycling Automations]
-    GG --> HH[Unload Platforms]
-    HH --> II[Shutdown Coordinator]
-    II --> JJ[Remove from hass.data]
-    JJ --> KK[Check if last entry]
-    KK -->|Last entry| LL[Unload Services]
-    KK -->|Not last| MM1[Skip Service Unload]
-    LL --> LL1[Stop Service Timers]
-    LL1 --> LL2[Clear Service Callbacks]
-    LL2 --> LL3[Remove from hass.data]
-    LL3 --> LL4[Unload Complete]
-    MM1 --> LL4
+    %% Connection Stability Check
+    Z1 --> Z1A[wait_for_stable_connection]
+    Z1A --> Z1B[Test Connection Health]
+    Z1B --> Z1C[Connection Stable?]
+    Z1C -->|Yes| AA
+    Z1C -->|No| Z1D[Wait 1 second]
+    Z1D --> Z1E[Max Attempts Reached?]
+    Z1E -->|Yes| Z1F[Proceed Anyway]
+    Z1E -->|No| Z1B
+    Z1F --> AA
     
-    %% Reload Process
+    %% Unload Process (Zentrale Cleanup-Funktion)
+    FF[async_unload_entry] --> GG[async_cleanup_all_components]
+    GG --> GG1[Shutdown Coordinator]
+    GG1 --> GG2[Close Modbus Connection]
+    GG2 --> GG3[Unload Services]
+    GG3 --> GG4[Cleanup Automations]
+    GG4 --> GG5[Remove from hass.data]
+    GG5 --> GG6[Verify Cleanup Success]
+    GG6 --> GG7[Unload Complete]
+    
+    %% Reload Process (Verbesserte Cleanup-Logik)
     MM[async_reload_entry] --> NN[Check Entry Valid]
-    NN --> OO[Unload Current Entry]
-    OO --> PP[Wait for Cleanup]
+    NN --> OO[Centralized Cleanup]
+    OO --> OO1[Shutdown Old Coordinator]
+    OO1 --> OO2[Close Old Modbus Connection]
+    OO2 --> OO3[Unload Old Services]
+    OO3 --> OO4[Cleanup Old Automations]
+    OO4 --> OO5[Remove from hass.data]
+    OO5 --> PP[Wait for Cleanup]
     PP --> QQ[Setup Entry Again]
     QQ --> Y
     
