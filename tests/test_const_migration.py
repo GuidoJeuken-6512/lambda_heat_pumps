@@ -40,6 +40,8 @@ class TestMigrationVersion:
         assert MigrationVersion.ENERGY_CONSUMPTION == 4
         assert MigrationVersion.ENTITY_OPTIMIZATION == 5
         assert MigrationVersion.CONFIG_RESTRUCTURE == 6
+        assert MigrationVersion.UNIFIED_CONFIG_MIGRATION == 7
+        assert MigrationVersion.REGISTER_ORDER_TERMINOLOGY == 8
     
     def test_migration_version_names(self):
         """Test: Überprüfe die Namen der MigrationVersion Enum."""
@@ -52,8 +54,8 @@ class TestMigrationVersion:
     def test_get_latest(self):
         """Test: Überprüfe die get_latest Methode."""
         latest = MigrationVersion.get_latest()
-        assert latest == MigrationVersion.CONFIG_RESTRUCTURE
-        assert latest.value == 6
+        assert latest == MigrationVersion.REGISTER_ORDER_TERMINOLOGY
+        assert latest.value == 8
     
     def test_get_pending_migrations(self):
         """Test: Überprüfe die get_pending_migrations Methode."""
@@ -64,7 +66,9 @@ class TestMigrationVersion:
             MigrationVersion.CYCLING_OFFSETS,
             MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
-            MigrationVersion.CONFIG_RESTRUCTURE
+            MigrationVersion.CONFIG_RESTRUCTURE,
+            MigrationVersion.UNIFIED_CONFIG_MIGRATION,
+            MigrationVersion.REGISTER_ORDER_TERMINOLOGY
         ]
         assert pending == expected
         
@@ -74,12 +78,14 @@ class TestMigrationVersion:
             MigrationVersion.CYCLING_OFFSETS,
             MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
-            MigrationVersion.CONFIG_RESTRUCTURE
+            MigrationVersion.CONFIG_RESTRUCTURE,
+            MigrationVersion.UNIFIED_CONFIG_MIGRATION,
+            MigrationVersion.REGISTER_ORDER_TERMINOLOGY
         ]
         assert pending == expected
         
-        # Von Version 6 (aktuellste)
-        pending = MigrationVersion.get_pending_migrations(6)
+        # Von Version 8 (aktuellste)
+        pending = MigrationVersion.get_pending_migrations(8)
         assert pending == []
         
         # Von Version 0 (vor der ersten Version)
@@ -90,7 +96,9 @@ class TestMigrationVersion:
             MigrationVersion.CYCLING_OFFSETS,
             MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
-            MigrationVersion.CONFIG_RESTRUCTURE
+            MigrationVersion.CONFIG_RESTRUCTURE,
+            MigrationVersion.UNIFIED_CONFIG_MIGRATION,
+            MigrationVersion.REGISTER_ORDER_TERMINOLOGY
         ]
         assert pending == expected
     
@@ -169,14 +177,16 @@ class TestMigrationNames:
     def test_migration_names_dict(self):
         """Test: Überprüfe Migration-Namen Dictionary."""
         assert isinstance(MIGRATION_NAMES, dict)
-        assert len(MIGRATION_NAMES) == 5  # 5 Migrationen definiert
+        assert len(MIGRATION_NAMES) == 6  # 6 Migrationen definiert
         
         # Überprüfe alle Migration-Namen
         expected_names = [
             "legacy_names_migration",
             "cycling_offsets_migration",
+            "energy_consumption_migration",
             "entity_optimization_migration",
-            "config_restructure_migration"
+            "config_restructure_migration",
+            "register_order_terminology_migration"
         ]
         
         for name in expected_names:
@@ -189,10 +199,14 @@ class TestMigrationNames:
                 "legacy_names_migration")
         assert (MIGRATION_NAMES[MigrationVersion.CYCLING_OFFSETS] == 
                 "cycling_offsets_migration")
+        assert (MIGRATION_NAMES[MigrationVersion.ENERGY_CONSUMPTION] == 
+                "energy_consumption_migration")
         assert (MIGRATION_NAMES[MigrationVersion.ENTITY_OPTIMIZATION] == 
                 "entity_optimization_migration")
         assert (MIGRATION_NAMES[MigrationVersion.CONFIG_RESTRUCTURE] == 
                 "config_restructure_migration")
+        assert (MIGRATION_NAMES[MigrationVersion.REGISTER_ORDER_TERMINOLOGY] == 
+                "register_order_terminology_migration")
 
 
 class TestDefaultValues:

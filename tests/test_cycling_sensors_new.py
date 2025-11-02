@@ -121,8 +121,9 @@ def test_lambda_yesterday_sensor_set_cycling_value(mock_entry, mock_coordinator)
     # Mock async_write_ha_state
     sensor.async_write_ha_state = Mock()
     
-    # Test setting yesterday value
-    sensor.set_cycling_value(42)
+    # Test setting yesterday value (async method)
+    import asyncio
+    asyncio.run(sensor.set_cycling_value(42))
     assert sensor._yesterday_value == 42
     sensor.async_write_ha_state.assert_called_once()
 
@@ -199,15 +200,16 @@ def test_lambda_cycling_sensor_reset_handlers(mock_entry, mock_coordinator):
     # Set initial value
     daily_sensor._cycling_value = 50
     
-    # Test daily reset
-    daily_sensor._handle_daily_reset("test_entry")
+    # Test daily reset (async method)
+    import asyncio
+    asyncio.run(daily_sensor._handle_daily_reset("test_entry"))
     assert daily_sensor._cycling_value == 0
     daily_sensor.async_write_ha_state.assert_called_once()
     
     # Test with wrong entry_id
     daily_sensor._cycling_value = 50
     daily_sensor.async_write_ha_state.reset_mock()
-    daily_sensor._handle_daily_reset("wrong_entry")
+    asyncio.run(daily_sensor._handle_daily_reset("wrong_entry"))
     assert daily_sensor._cycling_value == 50  # Should not reset
     daily_sensor.async_write_ha_state.assert_not_called()
 
@@ -234,8 +236,9 @@ def test_lambda_cycling_sensor_2h_reset_handler(mock_entry, mock_coordinator):
     # Set initial value
     sensor._cycling_value = 30
     
-    # Test 2h reset
-    sensor._handle_2h_reset("test_entry")
+    # Test 2h reset (async method)
+    import asyncio
+    asyncio.run(sensor._handle_2h_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 
@@ -262,8 +265,9 @@ def test_lambda_cycling_sensor_4h_reset_handler(mock_entry, mock_coordinator):
     # Set initial value
     sensor._cycling_value = 75
     
-    # Test 4h reset
-    sensor._handle_4h_reset("test_entry")
+    # Test 4h reset (async method)
+    import asyncio
+    asyncio.run(sensor._handle_4h_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 

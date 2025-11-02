@@ -404,6 +404,9 @@ async def load_lambda_config(hass: HomeAssistant) -> dict:
         "disabled_registers": set(),
         "sensors_names_override": {},
         "cycling_offsets": {},
+        "energy_consumption_sensors": {},
+        "energy_consumption_offsets": {},
+        "modbus": {},
     }
 
     if not os.path.exists(lambda_config_path):
@@ -507,6 +510,7 @@ async def load_lambda_config(hass: HomeAssistant) -> dict:
             "disabled_registers": disabled_registers,
             "sensors_names_override": sensors_names_override,
             "cycling_offsets": cycling_offsets,
+            "energy_consumption_sensors": config.get("energy_consumption_sensors", {}),
             "energy_consumption_offsets": energy_consumption_offsets,
             "modbus": config.get("modbus", {}),  # Include modbus configuration
         }

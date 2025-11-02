@@ -31,8 +31,16 @@ class TestServices:
 @pytest.mark.asyncio
 async def test_setup_services_async(mock_hass):
     """Test async setup services."""
+    from unittest.mock import MagicMock
+    
+    # Ensure hass.data is a dictionary (iterable)
+    if not isinstance(mock_hass.data, dict):
+        mock_hass.data = {}
+    
     mock_hass.loop = Mock()
     mock_hass.loop.time = Mock(return_value=1000.0)
+    mock_hass.services = MagicMock()
+    mock_hass.services.async_register = AsyncMock()
 
     with patch(
         "custom_components.lambda_heat_pumps.services.async_track_time_interval"

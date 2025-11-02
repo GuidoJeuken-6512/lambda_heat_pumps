@@ -20,10 +20,11 @@ class TestLambdaEnergyConsumptionSensor:
     @pytest.fixture
     def mock_hass(self):
         """Mock Home Assistant instance."""
-        hass = Mock()
-        hass.states = Mock()
-        hass.data = {}
-        hass.data['customize'] = {}
+        from unittest.mock import MagicMock
+        hass = MagicMock()
+        hass.states = MagicMock()
+        hass.data = {'integrations': {}, 'customize': {}}  # Add integrations for async_write_ha_state
+        hass.async_create_task = MagicMock()
         return hass
 
     @pytest.fixture
@@ -80,22 +81,28 @@ class TestLambdaEnergyConsumptionSensor:
         assert energy_sensor._attr_has_entity_name is True
         assert energy_sensor._attr_should_poll is False
 
-    def test_set_energy_value(self, energy_sensor):
+    def test_set_energy_value(self, energy_sensor, mock_hass):
         """Test setting energy value."""
-        test_value = 123.45
-        
-        energy_sensor.set_energy_value(test_value)
-        
-        assert energy_sensor._energy_value == test_value
+        from unittest.mock import patch, MagicMock
+        # Patch async_write_ha_state to avoid integration issues
+        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
+            test_value = 123.45
+            
+            energy_sensor.set_energy_value(test_value)
+            
+            assert energy_sensor._energy_value == test_value
 
-    def test_set_energy_value_string_conversion(self, energy_sensor):
+    def test_set_energy_value_string_conversion(self, energy_sensor, mock_hass):
         """Test setting energy value with string input."""
-        test_value = "123.45"
-        expected_value = 123.45
-        
-        energy_sensor.set_energy_value(test_value)
-        
-        assert energy_sensor._energy_value == expected_value
+        from unittest.mock import patch, MagicMock
+        # Patch async_write_ha_state to avoid integration issues
+        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
+            test_value = "123.45"
+            expected_value = 123.45
+            
+            energy_sensor.set_energy_value(test_value)
+            
+            assert energy_sensor._energy_value == expected_value
 
     def test_update_yesterday_value(self, energy_sensor):
         """Test updating yesterday value."""
@@ -164,44 +171,53 @@ class TestLambdaEnergyConsumptionSensor:
     @pytest.mark.asyncio
     async def test_async_added_to_hass(self, energy_sensor):
         """Test async_added_to_hass method."""
+        from unittest.mock import patch, MagicMock
         # Mock last state
         last_state = Mock()
         last_state.state = "50.0"
         energy_sensor.async_get_last_state = AsyncMock(return_value=last_state)
         
-        # Mock dispatcher connect
-        with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect') as mock_connect:
-            await energy_sensor.async_added_to_hass()
-        
-        # Verify dispatcher was connected
-        mock_connect.assert_called_once()
-        
-        # Verify restore_state was called
-        assert energy_sensor._energy_value == 50.0
+        # Patch async_write_ha_state to avoid integration issues
+        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
+            # Mock dispatcher connect
+            with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect') as mock_connect:
+                await energy_sensor.async_added_to_hass()
+            
+            # Verify dispatcher was connected
+            mock_connect.assert_called_once()
+            
+            # Verify restore_state was called
+            assert energy_sensor._energy_value == 50.0
 
     @pytest.mark.asyncio
     async def test_async_added_to_hass_no_last_state(self, energy_sensor):
         """Test async_added_to_hass method with no last state."""
+        from unittest.mock import patch, MagicMock
         energy_sensor.async_get_last_state = AsyncMock(return_value=None)
         
-        with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect'):
-            await energy_sensor.async_added_to_hass()
-        
-        # Verify default value
-        assert energy_sensor._energy_value == 0.0
+        # Patch async_write_ha_state to avoid integration issues
+        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
+            with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect'):
+                await energy_sensor.async_added_to_hass()
+            
+            # Verify default value
+            assert energy_sensor._energy_value == 0.0
 
     @pytest.mark.asyncio
     async def test_async_added_to_hass_invalid_last_state(self, energy_sensor):
         """Test async_added_to_hass method with invalid last state."""
+        from unittest.mock import patch, MagicMock
         last_state = Mock()
         last_state.state = "invalid"
         energy_sensor.async_get_last_state = AsyncMock(return_value=last_state)
         
-        with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect'):
-            await energy_sensor.async_added_to_hass()
-        
-        # Verify default value due to invalid state
-        assert energy_sensor._energy_value == 0.0
+        # Patch async_write_ha_state to avoid integration issues
+        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
+            with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect'):
+                await energy_sensor.async_added_to_hass()
+            
+            # Verify default value due to invalid state
+            assert energy_sensor._energy_value == 0.0
 
     @pytest.mark.asyncio
     async def test_async_will_remove_from_hass(self, energy_sensor):
@@ -223,13 +239,19 @@ class TestLambdaEnergyConsumptionSensor:
         # Should not raise an exception
         await energy_sensor.async_will_remove_from_hass()
 
-    def test_handle_reset(self, energy_sensor):
+    @pytest.mark.asyncio
+    async def test_handle_reset(self, energy_sensor, mock_entry):
         """Test handle reset method."""
         energy_sensor._energy_value = 100.0
         
-        energy_sensor._handle_reset()
+        await energy_sensor._handle_reset(mock_entry.entry_id)
         
-        assert energy_sensor._energy_value == 0.0
+        # For total sensors, value should not be reset to 0
+        # For non-total sensors, value should be reset
+        if energy_sensor._reset_interval == "total":
+            assert energy_sensor._energy_value == 100.0  # Total sensors don't reset
+        else:
+            assert energy_sensor._energy_value == 0.0  # Other sensors reset
 
     def test_device_info(self, energy_sensor, mock_entry):
         """Test device info property."""

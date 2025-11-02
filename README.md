@@ -75,7 +75,7 @@ After initial setup, you can modify additional settings in the integration optio
 - **Room Thermostat Control**: External sensor integration for precise temperature control
 - **PV Surplus Control**: Solar power integration for optimal energy usage
 - **Advanced Configuration**: YAML-based configuration with debug logging
-- **Endianness Configuration**: Configurable byte order for different Lambda models
+- **Register Order Configuration**: Configurable register order for 32-bit values from multiple 16-bit registers
 
 **Documentation:**
 - [English Guide](docs/lambda_heat_pumps_en.md)
@@ -169,33 +169,36 @@ cycling_offsets:
   hp1:
     heating_cycling_total: 100
     hot_water_cycling_total: 50
-# Endianness-Konfiguration für verschiedene Lambda-Modelle
-endianness: "big"  # "big" oder "little" - Standard: "big"
+# Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
+modbus:
+  int32_register_order: "high_first"  # "high_first" oder "low_first" - Standard: "high_first"
 ```
 
 ---
 
-## ⚙️ Endianness-Konfiguration
+## ⚙️ Register-Reihenfolge-Konfiguration
 
-Die Integration unterstützt **konfigurierbare Byte-Reihenfolge** (Endianness) für verschiedene Lambda-Modelle:
+Die Integration unterstützt **konfigurierbare Register-Reihenfolge** für 32-Bit-Werte aus mehreren 16-Bit-Registern. Dies bezieht sich auf die Reihenfolge der Register (Register/Word Order) bei der Kombination mehrerer Register zu einem 32-Bit-Wert.
 
 ### Konfiguration
-In der `lambda_wp_config.yaml` können Sie die Endianness festlegen:
+In der `lambda_wp_config.yaml` können Sie die Register-Reihenfolge festlegen:
 
 ```yaml
-# Endianness-Konfiguration
-endianness: "big"    # Big-Endian (Standard)
-# oder
-endianness: "little" # Little-Endian
+# Modbus-Konfiguration
+modbus:
+  # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
+  # "high_first" = Höherwertiges Register zuerst (Standard)
+  # "low_first" = Niedrigwertiges Register zuerst
+  int32_register_order: "high_first"  # oder "low_first"
 ```
 
 ### Wann ist das wichtig?
-- **Big-Endian**: Standard für die meisten Lambda-Modelle
-- **Little-Endian**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen
-- **Automatische Erkennung**: Die Integration versucht automatisch die richtige Endianness zu erkennen
+- **"high_first"**: Standard für die meisten Lambda-Modelle (höherwertiges Register zuerst)
+- **"low_first"**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen (niedrigwertiges Register zuerst)
+- **Rückwärtskompatibilität**: Alte Config mit `int32_byte_order` oder alten Werten (`big`/`little`) wird automatisch erkannt und migriert
 
 ### Fehlerbehebung
-Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Endianness-Einstellung.
+Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung.
 
 ---
 
@@ -254,33 +257,36 @@ cycling_offsets:
   hp1:
     heating_cycling_total: 100
     hot_water_cycling_total: 50
-# Endianness configuration for different Lambda models
-endianness: "big"  # "big" or "little" - Default: "big"
+# Register order for 32-bit registers (int32 sensors)
+modbus:
+  int32_register_order: "high_first"  # "high_first" or "low_first" - Default: "high_first"
 ```
 
 ---
 
-## ⚙️ Endianness Configuration
+## ⚙️ Register Order Configuration
 
-The integration supports **configurable byte order** (Endianness) for different Lambda models:
+The integration supports **configurable register order** for 32-bit values from multiple 16-bit registers. This refers to the order of registers (Register/Word Order) when combining multiple registers into a 32-bit value.
 
 ### Configuration
-In the `lambda_wp_config.yaml` you can set the endianness:
+In the `lambda_wp_config.yaml` you can set the register order:
 
 ```yaml
-# Endianness configuration
-endianness: "big"    # Big-Endian (Default)
-# or
-endianness: "little" # Little-Endian
+# Modbus configuration
+modbus:
+  # Register order for 32-bit registers (int32 sensors)
+  # "high_first" = High-order register first (Default)
+  # "low_first" = Low-order register first
+  int32_register_order: "high_first"  # or "low_first"
 ```
 
 ### When is this important?
-- **Big-Endian**: Default for most Lambda models
-- **Little-Endian**: Required for certain Lambda models or firmware versions
-- **Automatic Detection**: The integration tries to automatically detect the correct endianness
+- **"high_first"**: Default for most Lambda models (high-order register first)
+- **"low_first"**: Required for certain Lambda models or firmware versions (low-order register first)
+- **Backward Compatibility**: Old config with `int32_byte_order` or old values (`big`/`little`) is automatically detected and migrated
 
 ### Troubleshooting
-If you see incorrect values in the sensors, try the other endianness setting.
+If you see incorrect values in the sensors, try the other register order setting.
 
 ---
 

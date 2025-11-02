@@ -7,7 +7,11 @@ from unittest.mock import Mock
 @pytest.fixture
 def mock_hass():
     """Mock Home Assistant instance."""
-    return Mock()
+    hass = Mock()
+    hass.data = {}  # Make hass.data a dictionary so it's iterable
+    hass.config = Mock()
+    hass.config.config_dir = "/tmp/test_config"
+    return hass
 
 
 @pytest.fixture

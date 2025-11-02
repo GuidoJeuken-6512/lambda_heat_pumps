@@ -304,61 +304,110 @@ def read_input_registers(client, address: int, count: int, slave_id: int = 1) ->
 
 
 # =============================================================================
-# INT32 ENDIANNESS SUPPORT (Issue #22)
+# INT32 REGISTER ORDER SUPPORT (Issue #22)
 # =============================================================================
 
-async def get_int32_byte_order(hass) -> str:
+async def get_int32_register_order(hass) -> str:
     """
-    Lädt Endianness-Konfiguration aus lambda_wp_config.yaml.
+    Lädt Register-Reihenfolge-Konfiguration aus lambda_wp_config.yaml.
+    
+    Es handelt sich um die Reihenfolge der 16-Bit-Register bei 32-Bit-Werten
+    (Register/Word Order), nicht um Byte-Endianness innerhalb eines Registers.
     
     Args:
         hass: Home Assistant Instanz
     
     Returns:
-        str: "big" oder "little" (Standard: "big")
+        str: "high_first" oder "low_first" (Standard: "high_first")
+        
+    Note:
+        "high_first" = Höherwertiges Register zuerst (Register[0] << 16 | Register[1])
+        "low_first" = Niedrigwertiges Register zuerst (Register[1] << 16 | Register[0])
+        
+        Rückwärtskompatibilität: "big" wird zu "high_first", "little" zu "low_first" konvertiert
     """
     try:
         from .utils import load_lambda_config
         config = await load_lambda_config(hass)
         modbus_config = config.get("modbus", {})
         
-        # Hole explizite Einstellung (Standard: "big")
-        byte_order = modbus_config.get("int32_byte_order", "big")
+        # Prüfe zuerst neue Config, dann alte (für Rückwärtskompatibilität)
+        register_order = modbus_config.get("int32_register_order")
+        if register_order is None:
+            # Rückwärtskompatibilität: Alte Config migrieren
+            old_byte_order = modbus_config.get("int32_byte_order")
+            if old_byte_order is not None:
+                _LOGGER.info(
+                    "Migration: int32_byte_order gefunden, verwende Wert für int32_register_order. "
+                    "Bitte migrieren Sie Ihre Config zu modbus.int32_register_order"
+                )
+                register_order = old_byte_order
+            else:
+                register_order = "high_first"  # Standard
+        
+        # Rückwärtskompatibilität: Konvertiere alte Werte
+        if register_order == "big":
+            register_order = "high_first"
+            _LOGGER.info(
+                "Veralteter Wert 'big' verwendet. Bitte aktualisieren Sie Ihre Config auf 'high_first'"
+            )
+        elif register_order == "little":
+            register_order = "low_first"
+            _LOGGER.info(
+                "Veralteter Wert 'little' verwendet. Bitte aktualisieren Sie Ihre Config auf 'low_first'"
+            )
         
         # Validiere Wert
-        if byte_order not in ["big", "little"]:
-            _LOGGER.warning("Ungültige int32_byte_order: %s, verwende 'big'", byte_order)
-            return "big"
+        if register_order not in ["high_first", "low_first"]:
+            _LOGGER.warning("Ungültige int32_register_order: %s, verwende 'high_first'", register_order)
+            return "high_first"
             
-        return byte_order
+        return register_order
         
     except Exception as e:
-        _LOGGER.warning("Fehler beim Laden der Endianness-Konfiguration: %s", e)
-        return "big"  # Sicherer Fallback auf aktuelles Verhalten
+        _LOGGER.warning("Fehler beim Laden der Register-Reihenfolge-Konfiguration: %s", e)
+        return "high_first"  # Sicherer Fallback auf aktuelles Verhalten
 
 
-def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
+def combine_int32_registers(registers: list, register_order: str = "high_first") -> int:
     """
     Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert.
     
     Args:
         registers: Liste mit 2 Register-Werten
-        byte_order: "big" oder "little"
+        register_order: "high_first" oder "low_first" - Reihenfolge der Register
+                       "high_first" = Höherwertiges Register zuerst (Register[0] enthält MSW)
+                       "low_first" = Niedrigwertiges Register zuerst (Register[0] enthält LSW)
     
     Returns:
         int: 32-Bit-Wert
         
     Raises:
         ValueError: Wenn weniger als 2 Register vorhanden sind
+        
+    Note:
+        Dies betrifft die Register-Reihenfolge (Word Order), nicht die Byte-Endianness
+        innerhalb eines Registers. Modbus verwendet standardmäßig Big-Endian für Bytes
+        innerhalb eines Registers, aber die Reihenfolge mehrerer Register ist geräteabhängig.
+        
+        Rückwärtskompatibilität: "big" wird zu "high_first", "little" zu "low_first" behandelt
     """
     if len(registers) < 2:
         raise ValueError("Mindestens 2 Register erforderlich für int32")
     
-    if byte_order == "little":
-        # Little-Endian: Niedrigere Bits zuerst
+    # Rückwärtskompatibilität für alte Werte
+    if register_order == "big":
+        register_order = "high_first"
+    elif register_order == "little":
+        register_order = "low_first"
+    
+    if register_order == "low_first":
+        # Low-order register first: Niedrigwertiges Register zuerst
+        # Register[0] = LSW, Register[1] = MSW
         return (registers[1] << 16) | registers[0]
-    else:  # big-endian (Standard)
-        # Big-Endian: Höhere Bits zuerst (aktuelle Implementierung)
+    else:  # high_first (Standard)
+        # High-order register first: Höherwertiges Register zuerst
+        # Register[0] = MSW, Register[1] = LSW
         return (registers[0] << 16) | registers[1]
 
 

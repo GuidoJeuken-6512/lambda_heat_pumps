@@ -239,7 +239,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "COP",
         "unit": None,
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -348,7 +348,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "VdA Rating",
         "unit": "%",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -360,7 +360,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Hot Gas Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -373,7 +373,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Subcooling Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -386,7 +386,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Suction Gas Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -399,7 +399,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Condensation Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -412,7 +412,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Evaporation Temperature",
         "unit": "°C",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "int16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -425,7 +425,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "EqM Rating",
         "unit": "%",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -437,7 +437,7 @@ HP_SENSOR_TEMPLATES = {
         "name": "Expansion Valve Opening Angle",
         "unit": "%",
         "scale": 0.01,
-        "precision": 6,
+        "precision": 2,
         "data_type": "uint16",
         "firmware_version": 1,
         "device_type": "Hp",
@@ -1280,7 +1280,7 @@ CALCULATED_SENSOR_TEMPLATES = {
     "cop_calc": {
         "name": "COP Calculated",
         "unit": None,
-        "precision": 6,
+        "precision": 2,
         "data_type": "calculated",
         "firmware_version": 1,
         "device_type": "hp",
@@ -2034,12 +2034,14 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    defrost_energy_total: 3.1       # Beispiel: HP2 bereits 3,1 kWh Abtauen verbraucht
 
 # Modbus configuration
-# Endianness for 32-bit registers (int32 sensors)
-# Some Lambda devices may require different byte order for correct int32 value interpretation
-# "big" = Big-Endian (default, current behavior)
-# "little" = Little-Endian (alternative byte order for some devices)
+# Register order for 32-bit registers (int32 sensors)
+# This refers to the order of 16-bit registers when combining to 32-bit values (Register/Word Order),
+# NOT byte endianness within a register. Modbus uses Big-Endian for bytes within a register,
+# but the order of multiple registers varies by device manufacturer.
+# "high_first" = High-order register first (Register[0] contains MSW) - default
+# "low_first" = Low-order register first (Register[0] contains LSW)
 # Example:
 #modbus:
-#  int32_byte_order: "big"  # or "little"
+#  int32_register_order: "high_first"  # or "low_first"
 """
 

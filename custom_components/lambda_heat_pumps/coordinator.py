@@ -104,8 +104,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._enabled_addresses = set()  # Aktuell aktivierte Register-Adressen
         self._entity_addresses = {}  # Mapping entity_id -> address from sensors
         
-        # Int32 Endianness Support (Issue #22)
-        self._int32_byte_order = "big"  # Default value
+        # Int32 Register Order Support (Issue #22)
+        self._int32_register_order = "high_first"  # Default value
         self._entity_address_mapping = {}  # Initialize entity address mapping
         self._entity_registry = None  # Initialize entity registry reference
         self._registry_listener = None  # Initialize registry listener reference
@@ -760,7 +760,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     
                     # Process batch results - KEIN Fallback zu Individual-Reads!
-                    for i, addr in enumerate(batch):
+                    i = 0
+                    while i < len(batch):
+                        addr = batch[i]
                         sensor_info = address_list[addr]
                         sensor_id = sensor_mapping[addr]
                         
@@ -768,21 +770,41 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         if i < len(result.registers):
                             value = result.registers[i]
                             
-                            # Cache den Wert global
-                            self._global_register_cache[addr] = value
-                            
                             # Verarbeite den Wert basierend auf dem Datentyp
                             if sensor_info.get("data_type") == "int32":
                                 # Für INT32: Kombiniere mit nächstem Register
                                 if i + 1 < len(result.registers):
                                     next_value = result.registers[i + 1]
-                                    combined_value = self._combine_int32_registers(value, next_value, sensor_info.get("byte_order", "big"))
-                                    data[sensor_id] = combined_value
+                                    # Verwende Sensor-spezifische register_order falls vorhanden, sonst globale Konfiguration
+                                    # Rückwärtskompatibilität: byte_order wird auch akzeptiert
+                                    register_order = sensor_info.get("register_order") or sensor_info.get("byte_order") or self._int32_register_order
+                                    value = combine_int32_registers([value, next_value], register_order)
+                                    value = to_signed_32bit(value)
                                     # Überspringe das nächste Register (bereits verarbeitet)
                                     i += 1
+                                else:
+                                    _LOGGER.warning(
+                                        "Missing second register for int32 sensor %s at address %d (batch ended)",
+                                        sensor_id, addr
+                                    )
+                                    i += 1
+                                    continue
                             else:
-                                # Für INT16/UINT16: Direkte Verwendung
-                                data[sensor_id] = value
+                                # Für INT16/UINT16: Signed-Konvertierung falls nötig
+                                if sensor_info.get("data_type") == "int16":
+                                    value = to_signed_16bit(value)
+                            
+                            # WICHTIG: Scale-Wert anwenden (war zuvor fehlend!)
+                            if "scale" in sensor_info:
+                                value = value * sensor_info["scale"]
+                            
+                            # Cache den skalierten Wert global
+                            self._global_register_cache[addr] = value
+                            
+                            # Speichere den skalierten Wert
+                            data[sensor_id] = value
+                        
+                        i += 1
                 
                 # Erfolgreicher Batch-Read - Reset Fehlerzähler
                 if batch_key in self._batch_failures:
@@ -822,9 +844,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             if count == 2:
-                value = combine_int32_registers(result.registers, self._int32_byte_order)
-                if sensor_info.get("data_type") == "int32":
-                    value = to_signed_32bit(value)
+                value = combine_int32_registers(result.registers, self._int32_register_order)
+                value = to_signed_32bit(value)
             else:
                 value = result.registers[0]
                 if sensor_info.get("data_type") == "int16":
@@ -1235,9 +1256,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = combine_int32_registers(result.registers, self._int32_byte_order)
-                            if sensor_info.get("data_type") == "int32":
-                                value = to_signed_32bit(value)
+                            value = combine_int32_registers(result.registers, self._int32_register_order)
+                            value = to_signed_32bit(value)
                         else:
                             value = result.registers[0]
                             if sensor_info.get("data_type") == "int16":
@@ -1293,9 +1313,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = combine_int32_registers(result.registers, self._int32_byte_order)
-                            if sensor_info.get("data_type") == "int32":
-                                value = to_signed_32bit(value)
+                            value = combine_int32_registers(result.registers, self._int32_register_order)
+                            value = to_signed_32bit(value)
                         else:
                             value = result.registers[0]
                             if sensor_info.get("data_type") == "int16":
@@ -1351,9 +1370,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             )
                             continue
                         if count == 2:
-                            value = combine_int32_registers(result.registers, self._int32_byte_order)
-                            if sensor_info.get("data_type") == "int32":
-                                value = to_signed_32bit(value)
+                            value = combine_int32_registers(result.registers, self._int32_register_order)
+                            value = to_signed_32bit(value)
                         else:
                             value = result.registers[0]
                             if sensor_info.get("data_type") == "int16":

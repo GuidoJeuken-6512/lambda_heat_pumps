@@ -547,6 +547,95 @@ async def migrate_to_unified_config(
         return False
 
 
+async def migrate_to_register_order_terminology(
+    hass: HomeAssistant, 
+    config_entry: ConfigEntry
+) -> bool:
+    """
+    Migration zu Register-Order-Terminologie (Version 8).
+    Migriert modbus.int32_byte_order zu modbus.int32_register_order.
+    
+    Args:
+        hass: Home Assistant Instanz
+        config_entry: Config Entry
+    
+    Returns:
+        bool: True wenn Migration erfolgreich
+    """
+    try:
+        entry_id = config_entry.entry_id
+        _LOGGER.info(
+            "Starte Register-Order-Terminologie-Migration für Config %s", 
+            entry_id
+        )
+        
+        config_dir = hass.config.config_dir
+        lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+        
+        if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+            _LOGGER.info(
+                "lambda_wp_config.yaml nicht gefunden, keine Migration erforderlich"
+            )
+            return True
+        
+        # Lade aktuelle Config
+        content = await hass.async_add_executor_job(
+            lambda: open(lambda_config_path, "r", encoding="utf-8").read()
+        )
+        config = yaml.safe_load(content) or {}
+        
+        # Prüfe ob Migration erforderlich ist
+        modbus_config = config.get("modbus", {})
+        if "int32_byte_order" not in modbus_config:
+            _LOGGER.info(
+                "modbus.int32_byte_order nicht gefunden, keine Migration erforderlich"
+            )
+            return True
+        
+        # Backup erstellen
+        backup_success, backup_path = await create_lambda_config_backup(
+            hass, 
+            MigrationVersion.REGISTER_ORDER_TERMINOLOGY
+        )
+        if not backup_success:
+            _LOGGER.warning("Backup konnte nicht erstellt werden, setze Migration fort")
+        
+        # Migration durchführen
+        old_value = modbus_config.pop("int32_byte_order")
+        modbus_config["int32_register_order"] = old_value
+        
+        # Stelle sicher, dass modbus-Sektion existiert
+        if "modbus" not in config:
+            config["modbus"] = {}
+        config["modbus"] = modbus_config
+        
+        # Aktualisiere YAML-Content
+        # Ersetze int32_byte_order durch int32_register_order im Text
+        updated_content = content.replace(
+            "int32_byte_order", 
+            "int32_register_order"
+        )
+        
+        # Schreibe aktualisierte Config
+        await hass.async_add_executor_job(
+            lambda: open(lambda_config_path, "w", encoding="utf-8").write(updated_content)
+        )
+        
+        _LOGGER.info(
+            "Register-Order-Terminologie-Migration für Config %s erfolgreich abgeschlossen. "
+            "Backup erstellt: %s", 
+            entry_id, backup_path if backup_success else "N/A"
+        )
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(
+            "Fehler bei Register-Order-Terminologie-Migration für Config %s: %s", 
+            entry_id, e
+        )
+        return False
+
+
 # Dictionary mit allen Migrationsfunktionen
 MIGRATION_FUNCTIONS = {
     MigrationVersion.LEGACY_NAMES: migrate_to_legacy_names,
@@ -555,6 +644,7 @@ MIGRATION_FUNCTIONS = {
     MigrationVersion.ENTITY_OPTIMIZATION: migrate_to_entity_optimization,
     MigrationVersion.CONFIG_RESTRUCTURE: migrate_to_config_restructure,
     MigrationVersion.UNIFIED_CONFIG_MIGRATION: migrate_to_unified_config,
+    MigrationVersion.REGISTER_ORDER_TERMINOLOGY: migrate_to_register_order_terminology,
 }
 
 

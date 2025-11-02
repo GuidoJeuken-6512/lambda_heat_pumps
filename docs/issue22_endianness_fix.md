@@ -1,4 +1,4 @@
-# Issue #22: Endianness Fix für int32 Entities
+# Issue #22: Register Order Fix für int32 Entities
 
 ## Problembeschreibung
 
@@ -9,54 +9,63 @@
 - **Betroffene Sensoren**: Energie-Akkumulations-Sensoren (Wh/kWh)
 
 ### Root Cause
-**Endianness-Problem** bei der Interpretation von 32-Bit-Werten aus zwei 16-Bit-Modbus-Registern.
+**Register-Reihenfolge-Problem** bei der Interpretation von 32-Bit-Werten aus zwei 16-Bit-Modbus-Registern.
+
+**Wichtig:** Es handelt sich um die **Reihenfolge der Register (Register/Word Order)**, nicht um Byte-Endianness innerhalb eines Registers. Modbus verwendet standardmäßig Big-Endian für Bytes innerhalb eines 16-Bit-Registers, aber die Reihenfolge mehrerer Register ist nicht standardisiert und variiert je nach Hersteller.
 
 Die Integration kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert:
 ```python
-# Big-Endian (Standard)
-value = (register[0] << 16) | register[1]
+# Big-Endian Register Order (Standard): Höherwertiges Register zuerst
+value = (register[0] << 16) | register[1]  # Register[0] = MSW, Register[1] = LSW
 
-# Little-Endian (für manche Geräte erforderlich)  
-value = (register[1] << 16) | register[0]
+# Little-Endian Register Order (für manche Geräte erforderlich): Niedrigwertiges Register zuerst
+value = (register[1] << 16) | register[0]  # Register[0] = LSW, Register[1] = MSW
 ```
 
-**Verschiedene Lambda-Geräte** erfordern unterschiedliche Byte-Reihenfolgen.
+**Verschiedene Lambda-Geräte** erfordern unterschiedliche Register-Reihenfolgen.
 
 ## Lösung
 
 ### Implementierung
 
-#### 1. Konfigurierbare Endianness-Behandlung
+#### 1. Konfigurierbare Register-Reihenfolge-Behandlung
 
 **Neue Funktionen in `modbus_utils.py`:**
 ```python
-async def get_int32_byte_order(hass) -> str:
-    """Lädt Endianness-Konfiguration aus lambda_wp_config.yaml."""
+async def get_int32_register_order(hass) -> str:
+    """Lädt Register-Reihenfolge-Konfiguration aus lambda_wp_config.yaml."""
     config = await load_lambda_config(hass)
     modbus_config = config.get("modbus", {})
-    return modbus_config.get("int32_byte_order", "big")
+    # Rückwärtskompatibilität: Unterstützt auch int32_byte_order (alte Config)
+    return modbus_config.get("int32_register_order") or modbus_config.get("int32_byte_order", "big")
 
-def combine_int32_registers(registers: list, byte_order: str = "big") -> int:
-    """Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert."""
-    if byte_order == "little":
+def combine_int32_registers(registers: list, register_order: str = "big") -> int:
+    """Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert.
+    
+    register_order: "big" = Höherwertiges Register zuerst (Standard)
+                   "little" = Niedrigwertiges Register zuerst
+    """
+    if register_order == "little":
         return (registers[1] << 16) | registers[0]
-    else:  # big-endian
+    else:  # big-endian register order
         return (registers[0] << 16) | registers[1]
 ```
 
-#### 1.1. Erweiterte Endianness-Konfiguration
+#### 1.1. Erweiterte Register-Reihenfolge-Konfiguration
 
-**Neue vereinfachte Konfiguration in `lambda_wp_config.yaml`:**
+**Neue Konfiguration in `lambda_wp_config.yaml`:**
 ```yaml
-# Endianness-Konfiguration für verschiedene Lambda-Modelle
-endianness: "big"    # Big-Endian (Standard)
-# oder
-endianness: "little" # Little-Endian
+# Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
+modbus:
+  int32_register_order: "big"    # Big-Endian Register Order (Standard)
+  # oder
+  int32_register_order: "little"  # Little-Endian Register Order
 ```
 
-**Automatische Erkennung und Fallback:**
-- Die Integration versucht automatisch die richtige Endianness zu erkennen
-- Fallback auf Big-Endian bei Konfigurationsfehlern
+**Rückwärtskompatibilität:**
+- Alte Config mit `int32_byte_order` wird automatisch erkannt und verwendet
+- Migration zu `int32_register_order` erfolgt automatisch
+- Fallback auf Big-Endian Register Order bei Konfigurationsfehlern
 - Umfassendes Logging für Debugging
 
 #### 2. Coordinator-Integration
@@ -64,56 +73,57 @@ endianness: "little" # Little-Endian
 **In `coordinator.py`:**
 ```python
 # Import der neuen Funktionen
-from .modbus_utils import get_int32_byte_order, combine_int32_registers
+from .modbus_utils import get_int32_register_order, combine_int32_registers
 
-# Endianness-Konfiguration beim Verbindungsaufbau
+# Register-Order-Konfiguration beim Verbindungsaufbau
 async def _connect(self):
     # ... Verbindungslogik ...
     
-    # Load endianness configuration once
-    self._int32_byte_order = await get_int32_byte_order(self.hass)
-    _LOGGER.info("Int32 Byte-Order konfiguriert: %s", self._int32_byte_order)
+    # Load register order configuration once
+    self._int32_register_order = await get_int32_register_order(self.hass)
+    _LOGGER.info("Int32 Register Order konfiguriert: %s", self._int32_register_order)
 
 # Ersetze alle betroffenen Stellen:
 # Alt: value = (result.registers[0] << 16) | result.registers[1]
-# Neu: value = combine_int32_registers(result.registers, self._int32_byte_order)
+# Neu: value = combine_int32_registers(result.registers, self._int32_register_order)
 ```
 
 #### 2.1. Verbesserte Integration in async_setup_entry
 
-**Endianness-Konfiguration wird jetzt früher geladen:**
+**Register-Order-Konfiguration wird jetzt früher geladen:**
 ```python
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    # Endianness-Konfiguration vor dem ersten async_refresh()
-    endianness = await get_int32_byte_order(hass)
-    _LOGGER.info("Endianness-Konfiguration geladen: %s", endianness)
+    # Register-Order-Konfiguration vor dem ersten async_refresh()
+    register_order = await get_int32_register_order(hass)
+    _LOGGER.info("Register-Order-Konfiguration geladen: %s", register_order)
     
     # Weitere Setup-Logik...
 ```
 
 **Vorteile:**
-- Endianness wird vor dem ersten Modbus-Zugriff konfiguriert
+- Register Order wird vor dem ersten Modbus-Zugriff konfiguriert
 - Verhindert falsche Werte beim ersten Start
 - Bessere Fehlerbehandlung und Logging
 
 #### 3. Konfigurationsdatei
 
-**Vereinfachte Konfiguration in `lambda_wp_config.yaml`:**
+**Konfiguration in `lambda_wp_config.yaml`:**
 ```yaml
-# Endianness-Konfiguration für verschiedene Lambda-Modelle
-endianness: "big"    # Big-Endian (Standard)
-# oder
-endianness: "little" # Little-Endian
+# Modbus configuration
+modbus:
+  # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
+  # Dies bezieht sich auf die Reihenfolge der 16-Bit-Register bei 32-Bit-Werten
+  # (Register/Word Order), nicht auf Byte-Endianness innerhalb eines Registers
+  # "big" = Höherwertiges Register zuerst (Standard)
+  # "little" = Niedrigwertiges Register zuerst
+  int32_register_order: "big"  # oder "little"
 ```
 
-**Alternative detaillierte Konfiguration:**
+**Rückwärtskompatibilität (Legacy-Support):**
 ```yaml
-# Modbus configuration (Legacy-Support)
+# Alte Config wird weiterhin unterstützt, aber automatisch migriert
 modbus:
-  # Endianness für 32-Bit-Register (int32-Sensoren)
-  # "big" = Big-Endian (Standard)
-  # "little" = Little-Endian (alternative Byte-Reihenfolge)
-  int32_byte_order: "big"  # oder "little"
+  int32_byte_order: "big"  # Wird automatisch zu int32_register_order migriert
 ```
 
 #### 4. Template-Erweiterung
@@ -145,7 +155,7 @@ modbus:
 
 **Alle verwenden jetzt:**
 ```python
-value = combine_int32_registers(result.registers, self._int32_byte_order)
+value = combine_int32_registers(result.registers, self._int32_register_order)
 ```
 
 **Zusätzliche Verbesserungen:**
@@ -157,26 +167,24 @@ value = combine_int32_registers(result.registers, self._int32_byte_order)
 
 #### Für Benutzer mit falschen int32-Werten:
 ```yaml
-# Vereinfachte Konfiguration
-endianness: "little"
-
-# Oder detaillierte Konfiguration (Legacy)
+# Register-Reihenfolge ändern
 modbus:
-  int32_byte_order: "little"
+  int32_register_order: "little"
 ```
 
 #### Für bestehende Benutzer:
 ```yaml
-# Standard-Konfiguration (Big-Endian)
-endianness: "big"
+# Standard-Konfiguration (Big-Endian Register Order)
+modbus:
+  int32_register_order: "big"
 
-# Oder gar nicht setzen (Standard ist Big-Endian)
+# Oder gar nicht setzen (Standard ist "big")
 ```
 
 #### Fehlerbehebung:
-Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Endianness-Einstellung:
-1. **Falsche Werte** → Wechseln Sie zu `endianness: "little"`
-2. **Korrekte Werte** → Behalten Sie `endianness: "big"` bei
+Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge:
+1. **Falsche Werte** → Wechseln Sie zu `modbus.int32_register_order: "little"`
+2. **Korrekte Werte** → Behalten Sie `modbus.int32_register_order: "big"` bei (oder lassen Sie es leer)
 
 ### Performance-Optimierung
 
@@ -201,21 +209,25 @@ Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Endianne
 
 Da Wärmepumpen über Jahre laufen und Energie akkumulieren, sind **32-Bit-Werte notwendig**.
 
-### Byte-Reihenfolge-Unterschiede
+### Register-Reihenfolge-Unterschiede
 
-**Big-Endian (Standard):**
+**Big-Endian Register Order (Standard):**
 ```
-Register[0]: 0x1234 (höhere 16 Bits)
-Register[1]: 0x5678 (niedrigere 16 Bits)
+Register[0]: 0x1234 (MSW - höhere 16 Bits)
+Register[1]: 0x5678 (LSW - niedrigere 16 Bits)
 Ergebnis: 0x12345678 = 305419896
+Formel: (Register[0] << 16) | Register[1]
 ```
 
-**Little-Endian (alternative):**
+**Little-Endian Register Order (alternative):**
 ```
-Register[0]: 0x1234 (niedrigere 16 Bits)  
-Register[1]: 0x5678 (höhere 16 Bits)
-Ergebnis: 0x56781234 = 1450709556
+Register[0]: 0x5678 (LSW - niedrigere 16 Bits)  
+Register[1]: 0x1234 (MSW - höhere 16 Bits)
+Ergebnis: 0x12345678 = 305419896 (gleiches Ergebnis nach Vertauschung)
+Formel: (Register[1] << 16) | Register[0]
 ```
+
+**Wichtig:** Dies betrifft nur die Reihenfolge der Register, nicht die Byte-Endianness innerhalb eines Registers.
 
 ### Betroffene Sensoren
 
@@ -253,19 +265,20 @@ Basierend auf `const.py` sind das **Energie-Sensoren** mit `data_type: "int32"`:
 
 ## Fazit
 
-Das Problem tritt auf, weil **einige Lambda-Geräte eine andere Byte-Reihenfolge-Interpretation für int32-Werte erfordern**. Die Lösung ist eine **konfigurierbare Endianness-Behandlung**, die es Benutzern ermöglicht, die richtige Byte-Reihenfolge für ihr spezifisches Gerät auszuwählen.
+Das Problem tritt auf, weil **einige Lambda-Geräte eine andere Register-Reihenfolge für int32-Werte erfordern**. Die Lösung ist eine **konfigurierbare Register-Reihenfolge-Behandlung**, die es Benutzern ermöglicht, die richtige Register-Reihenfolge für ihr spezifisches Gerät auszuwählen.
 
-### Aktuelle Implementierung (Version 1.4.0)
+### Aktuelle Implementierung (Version 1.4.0+)
 
-Die Endianness-Konfiguration wurde **vereinfacht und verbessert**:
+Die Register-Reihenfolge-Konfiguration wurde **korrigiert und verbessert**:
 
-1. **Vereinfachte Konfiguration**: Neue `endianness`-Option in `lambda_wp_config.yaml`
-2. **Frühe Konfiguration**: Endianness wird vor dem ersten Modbus-Zugriff geladen
-3. **Automatische Erkennung**: Integration versucht automatisch die richtige Endianness zu erkennen
-4. **Verbesserte Fehlerbehandlung**: Detailliertes Logging und robuste Fallback-Mechanismen
-5. **Legacy-Support**: Alte `modbus.int32_byte_order`-Konfiguration wird weiterhin unterstützt
+1. **Korrekte Terminologie**: Umbenennung von "Endianness/Byte-Order" zu "Register-Order" 
+2. **Klare Dokumentation**: Erklärung des Unterschieds zwischen Register-Order und Byte-Endianness
+3. **Frühe Konfiguration**: Register Order wird vor dem ersten Modbus-Zugriff geladen
+4. **Automatische Migration**: Alte `modbus.int32_byte_order` wird automatisch zu `modbus.int32_register_order` migriert
+5. **Verbesserte Fehlerbehandlung**: Detailliertes Logging und robuste Fallback-Mechanismen
+6. **Rückwärtskompatibilität**: Alte Config-Werte werden weiterhin erkannt und verwendet
 
-Dieses Issue unterstreicht die Wichtigkeit einer **flexiblen und robusten Modbus-Implementierung**, die mit verschiedenen Hardware-Konfigurationen umgehen kann.
+Dieses Issue unterstreicht die Wichtigkeit einer **flexiblen und robusten Modbus-Implementierung**, die mit verschiedenen Hardware-Konfigurationen umgehen kann, und zeigt die Bedeutung korrekter technischer Terminologie.
 
 ## Referenzen
 

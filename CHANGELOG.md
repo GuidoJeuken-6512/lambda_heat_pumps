@@ -10,6 +10,13 @@
 - Fixed failing tests by replacing Mock objects with proper test implementations
 - Improved test reliability and reduced false failures
 - Fixed integration reload errors
+- Fixed `default_config` in `load_lambda_config()` to include all required keys (`energy_consumption_sensors`, `energy_consumption_offsets`, `modbus`)
+
+#### Changed
+- **Register Order Values**: Changed configuration values from `"big"`/`"little"` to `"high_first"`/`"low_first"` for better clarity
+  - Old values (`big`/`little`) are still supported with automatic conversion
+  - New default is `"high_first"` (replaces `"big"`)
+  - Improved documentation and comments to clarify register order vs. byte endianness
 
 #### Improvements
 - Test optimization: 57 tests successfully repaired and optimized
@@ -56,11 +63,11 @@
 
 #### New Features
 - **Energy Consumption Sensors by Operating Mode**: Added configurable energy consumption sensors that track energy usage by operating mode (heating, hot water, cooling, defrost) with customizable source sensors (Issue #21)
-- **Endianness Configuration**: Added endianness switch configuration in `lambda_wp_config.yaml` for proper data interpretation (Issue #22)
+- **Register Order Configuration**: Added register order configuration in `lambda_wp_config.yaml` for proper 32-bit value interpretation from multiple 16-bit registers (Issue #22)
 - **Sensor Change Detection**: Implemented automatic detection of energy sensor changes with intelligent handling of sensor value transitions to prevent incorrect energy consumption calculations
 
 #### Bug Fixes
-- **Endianness Fix**: Fixed endianness issues with initial quick fix approach (Issue #22)
+- **Register Order Fix**: Fixed register order issues for 32-bit values with initial quick fix approach (Issue #22)
 - **Daily Sensor Reset Automation**: Fixed errors in automation for resetting daily sensors (Issue #29)
 - **Auto-Detection**: Fixed auto-detection not recognizing existing configurations (IP/Port/SlaveId)
 - **DCHP Discovery**: Fixed DCHP discovery error messages
@@ -205,6 +212,13 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Test-Reparaturen**: Behoben fehlgeschlagene Tests durch Ersetzen von Mock-Objekten mit ordnungsgemäßen Test-Implementierungen
 - **Verbesserte Test-Zuverlässigkeit**: Reduzierte false-positive Test-Fehler und verbesserte Test-Stabilität
 - **Integration-Reload-Fehler**: Behoben Fehler beim Neuladen der Integration
+- **Konfigurations-Fix**: Behoben `default_config` in `load_lambda_config()` um alle erforderlichen Keys einzubinden (`energy_consumption_sensors`, `energy_consumption_offsets`, `modbus`)
+
+#### Geändert
+- **Register-Order-Werte**: Konfigurationswerte von `"big"`/`"little"` auf `"high_first"`/`"low_first"` geändert für bessere Klarheit
+  - Alte Werte (`big`/`little`) werden weiterhin mit automatischer Konvertierung unterstützt
+  - Neuer Standard ist `"high_first"` (ersetzt `"big"`)
+  - Verbesserte Dokumentation und Kommentare zur Klärung von Register-Reihenfolge vs. Byte-Endianness
 
 #### Verbesserungen
 - **Test-Optimierung**: 57 Tests erfolgreich repariert und optimiert
@@ -251,11 +265,11 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 #### Neue Funktionen
 - **Verbrauchssensoren nach Betriebsart**: Hinzugefügte konfigurierbare Verbrauchssensoren, die den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) mit anpassbaren Quellsensoren verfolgen (Issue #21)
-- **Endianness-Konfiguration**: Hinzugefügte Endianness-Umschaltung in `lambda_wp_config.yaml` für ordnungsgemäße Dateninterpretation (Issue #22)
+- **Register-Reihenfolge-Konfiguration**: Hinzugefügte Register-Reihenfolge-Konfiguration in `lambda_wp_config.yaml` für ordnungsgemäße 32-Bit-Wert-Interpretation aus mehreren 16-Bit-Registern (Issue #22)
 - **Sensor-Wechsel-Erkennung**: Implementierte automatische Erkennung von Energie-Sensor-Wechseln mit intelligenter Behandlung von Sensor-Wert-Übergängen zur Vermeidung falscher Verbrauchsberechnungen
 
 #### Fehlerbehebungen
-- **Endianness-Fix**: Behoben Endianness-Probleme mit initialem Quick-Fix-Ansatz (Issue #22)
+- **Register-Reihenfolge-Fix**: Behoben Register-Reihenfolge-Probleme für 32-Bit-Werte mit initialem Quick-Fix-Ansatz (Issue #22)
 - **Daily-Sensor-Reset-Automatisierung**: Behoben Fehler in der Automatisierung zum Zurücksetzen der täglichen Sensoren (Issue #29)
 - **Auto-Detection**: Behoben Auto-Detection erkannte bestehende Konfigurationen (IP/Port/SlaveId) nicht
 - **DCHP Discovery**: Behoben DCHP Discovery Fehlermeldungen

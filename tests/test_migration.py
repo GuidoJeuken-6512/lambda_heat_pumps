@@ -47,14 +47,17 @@ class TestMigrationArchitecture:
         assert MigrationVersion.INITIAL == 1
         assert MigrationVersion.LEGACY_NAMES == 2
         assert MigrationVersion.CYCLING_OFFSETS == 3
-        assert MigrationVersion.ENTITY_OPTIMIZATION == 4
-        assert MigrationVersion.CONFIG_RESTRUCTURE == 5
+        assert MigrationVersion.ENERGY_CONSUMPTION == 4
+        assert MigrationVersion.ENTITY_OPTIMIZATION == 5
+        assert MigrationVersion.CONFIG_RESTRUCTURE == 6
+        assert MigrationVersion.UNIFIED_CONFIG_MIGRATION == 7
+        assert MigrationVersion.REGISTER_ORDER_TERMINOLOGY == 8
     
     def test_migration_version_get_latest(self):
         """Test: get_latest() funktioniert korrekt."""
         latest = MigrationVersion.get_latest()
-        assert latest == MigrationVersion.CONFIG_RESTRUCTURE
-        assert latest.value == 5
+        assert latest == MigrationVersion.REGISTER_ORDER_TERMINOLOGY
+        assert latest.value == 8
     
     def test_migration_version_get_pending_migrations(self):
         """Test: get_pending_migrations() funktioniert korrekt."""
@@ -63,8 +66,11 @@ class TestMigrationArchitecture:
         expected = [
             MigrationVersion.LEGACY_NAMES,
             MigrationVersion.CYCLING_OFFSETS,
+            MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
-            MigrationVersion.CONFIG_RESTRUCTURE
+            MigrationVersion.CONFIG_RESTRUCTURE,
+            MigrationVersion.UNIFIED_CONFIG_MIGRATION,
+            MigrationVersion.REGISTER_ORDER_TERMINOLOGY
         ]
         assert pending == expected
         
@@ -72,13 +78,16 @@ class TestMigrationArchitecture:
         pending = MigrationVersion.get_pending_migrations(2)
         expected = [
             MigrationVersion.CYCLING_OFFSETS,
+            MigrationVersion.ENERGY_CONSUMPTION,
             MigrationVersion.ENTITY_OPTIMIZATION,
-            MigrationVersion.CONFIG_RESTRUCTURE
+            MigrationVersion.CONFIG_RESTRUCTURE,
+            MigrationVersion.UNIFIED_CONFIG_MIGRATION,
+            MigrationVersion.REGISTER_ORDER_TERMINOLOGY
         ]
         assert pending == expected
         
-        # Von Version 5 (aktuellste)
-        pending = MigrationVersion.get_pending_migrations(5)
+        # Von Version 8 (aktuellste)
+        pending = MigrationVersion.get_pending_migrations(8)
         assert pending == []
     
     @pytest.mark.asyncio

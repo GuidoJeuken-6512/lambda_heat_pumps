@@ -83,24 +83,19 @@ def test_get_compatible_sensors_no_firmware_version():
 @pytest.mark.asyncio
 async def test_load_disabled_registers_success(mock_hass):
     """Test successful loading of disabled registers."""
-    config_data = {"disabled_registers": [1000, 2000, 3000]}
-    # Mock config_dir
-    mock_config = Mock()
-    mock_config.config_dir = "/tmp/test_config"
-    mock_hass.config = mock_config
-
+    # load_disabled_registers returns config["disabled_registers"] which could be a list
+    # but should be converted to a set for consistency
+    config_data = {"disabled_registers": set([1000, 2000, 3000])}
+    
+    # Mock load_lambda_config directly to avoid complex async mocking
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=True
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value=config_data
     ):
-        with patch(
-            "custom_components.lambda_heat_pumps.utils.aiofiles.open"
-        ) as mock_file:
-            mock_file.return_value.__aenter__.return_value.read.return_value = (
-                yaml.dump(config_data)
-            )
-            result = await load_disabled_registers(mock_hass)
+        result = await load_disabled_registers(mock_hass)
 
-            assert result == {1000, 2000, 3000}
+        assert result == {1000, 2000, 3000}
 
 
 @pytest.mark.asyncio

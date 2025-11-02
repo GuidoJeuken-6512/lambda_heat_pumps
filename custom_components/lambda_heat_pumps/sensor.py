@@ -923,7 +923,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
 
     @property
     def native_unit_of_measurement(self):
-        return self._unit
+        return self._attr_native_unit_of_measurement
 
     @property
     def state_class(self):
@@ -1318,7 +1318,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
 
     @property
     def native_unit_of_measurement(self):
-        return self._unit
+        return self._attr_native_unit_of_measurement
 
     @property
     def state_class(self):
@@ -1593,7 +1593,7 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
     @property
     def native_unit_of_measurement(self) -> str | None:
         """Return the unit of measurement of the sensor."""
-        return self._unit
+        return self._attr_native_unit_of_measurement
 
     @property
     def state_class(self) -> SensorStateClass | None:

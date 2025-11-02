@@ -56,11 +56,23 @@ def mock_coordinator():
 
 
 @pytest.mark.asyncio
-async def test_climate_setup(hass, mock_config_entry, mock_coordinator):
+async def test_climate_setup(mock_hass, mock_config_entry, mock_coordinator):
     """Test climate entity setup."""
-    hass.data = {
+    from unittest.mock import AsyncMock
+    
+    mock_hass.data = {
         DOMAIN: {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
     }
+    
+    mock_config_entry.data = {
+        "name": "test",
+        "num_boil": 1,
+        "num_hc": 1,
+        "firmware_version": "V1.0.0",
+    }
+    mock_config_entry.options = {}
+    
+    mock_add_entities = AsyncMock()
 
     with patch(
         "custom_components.lambda_heat_pumps.climate.LambdaClimateEntity"
@@ -75,7 +87,10 @@ async def test_climate_setup(hass, mock_config_entry, mock_coordinator):
         instance._attr_target_temperature_step = 0.5
         instance._attr_temperature_unit = UnitOfTemperature.CELSIUS
 
-        await async_setup_entry(hass, mock_config_entry, mock_coordinator)
+        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+        
+        # Verify entities were added
+        mock_add_entities.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -89,7 +104,7 @@ async def test_lambda_climate_entity_properties():
 
     entry_mock = MagicMock()
     entry_mock.entry_id = "test_entry"
-    entry_mock.data = {"name": "test"}
+    entry_mock.data = {"name": "test", "use_legacy_modbus_names": True}
     entry_mock.options = {}
 
     device_type = "hot_water"
@@ -105,7 +120,8 @@ async def test_lambda_climate_entity_properties():
     )
     assert entity is not None
     assert entity._attr_name == "BOIL1 Hot Water"
-    assert entity._attr_unique_id == "boil1_hot_water"
+    # unique_id includes name_prefix when use_legacy_modbus_names is True
+    assert entity._attr_unique_id == "test_boil1_hot_water"
     assert entity._attr_min_temp == 40
     assert entity._attr_max_temp == 60
     assert entity.current_temperature == 60

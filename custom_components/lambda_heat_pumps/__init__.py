@@ -243,9 +243,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Coordinator ist bereits erstellt und initialisiert - verwende den bestehenden
     try:
-        # ⭐ KORRIGIERT: Endianness-Konfiguration VOR dem ersten async_refresh()
-        from .modbus_utils import get_int32_byte_order
-        coordinator.byte_order = get_int32_byte_order(hass)
+        # ⭐ KORRIGIERT: Register-Order-Konfiguration VOR dem ersten async_refresh()
+        from .modbus_utils import get_int32_register_order
+        coordinator._int32_register_order = await get_int32_register_order(hass)
+        _LOGGER.info("Register-Order konfiguriert: %s", coordinator._int32_register_order)
 
         # Setze die generierten Base Addresses
         coordinator.base_addresses = base_addresses
