@@ -4,6 +4,11 @@
 
 ## English Version
 
+#### New Features since last release
+- **Energy Consumption Sensors by Operating Mode**: Added configurable energy consumption sensors that track energy usage by operating mode (heating, hot water, cooling, defrost) with customizable source sensors (Issue #21)
+- **Register/Word Order Configuration**: Added register order configuration in `lambda_wp_config.yaml` for proper 32-bit value interpretation from multiple 16-bit registers (Issue #22)
+
+
 ### [1.4.2] - 2025-10-24
 
 #### Fixed
@@ -205,6 +210,11 @@ This release contains significant changes to the Entity Registry and sensor nami
 ---
 
 ## Deutsche Version {#deutsche-version}
+
+#### New Features seit dem letzten Release
+- **Verbrauchssensoren nach Betriebsart**: Hinzugefügte konfigurierbare Verbrauchssensoren, die den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) mit anpassbaren Quellsensoren verfolgen (Issue #21)
+- **Register-/Wort-Reihenfolge-Konfiguration**: Hinzugefügte Register-Reihenfolge-Konfiguration in `lambda_wp_config.yaml` für ordnungsgemäße 32-Bit-Wert-Interpretation aus mehreren 16-Bit-Registern (Issue #22)
+
 
 ### [1.4.2] - 2025-10-24
 
