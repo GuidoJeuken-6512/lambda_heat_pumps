@@ -698,18 +698,7 @@ BOIL_SENSOR_TEMPLATES = {
         "writeable": True,
         "state_class": "measurement",
     },
-    "dummy_fw2": {
-        "relative_address": 99,
-        "name": "Dummy Boiler FW2",
-        "unit": None,
-        "scale": 1,
-        "precision": 0,
-        "data_type": "int16",
-        "firmware_version": 2,
-        "device_type": "boil",
-        "writeable": False,
-        "state_class": "total",
-    },
+    
 }
 
 # Buffer Sensors
@@ -1193,18 +1182,7 @@ SENSOR_TYPES = {
         "writeable": False,
         "state_class": "measurement",
     },
-    "dummy_general_fw2": {
-        "address": 999,
-        "name": "Dummy General FW2",
-        "unit": None,
-        "scale": 1,
-        "precision": 0,
-        "data_type": "int16",
-        "firmware_version": 2,
-        "device_type": "main",
-        "writeable": False,
-        "state_class": "total",
-    },
+
 }
 
 # Climate Sensors
@@ -1270,7 +1248,9 @@ BASE_ADDRESSES = {
 # Individual Read Registers
 # These registers are read individually instead of in batches due to known issues
 INDIVIDUAL_READ_REGISTERS = [
-    1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059, 1060
+    1020, 1021,  # compressor_power_consumption_accumulated (int32) - requires individual read for correct register order handling
+    1022, 1023,  # compressor_thermal_energy_output_accumulated (int32) - requires individual read for correct register order handling
+    1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059, 1060, 5007
 ]
 
 
