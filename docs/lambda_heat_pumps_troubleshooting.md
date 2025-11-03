@@ -31,6 +31,35 @@ If the integration connects but frequently times out:
 
 ## Entity Issues
 
+### MODBUS READ FAILED Errors
+
+If you see repeated log messages like `❌ MODBUS READ FAILED: address=2004, error=...`:
+
+**What it means:**
+- The integration tried to read a Modbus register from your Lambda controller
+- The read operation failed, which could indicate:
+  - The register is not available on your specific device/model
+  - The register is only available under certain conditions
+  - A temporary communication issue occurred
+
+**When to take action:**
+- If the same address appears repeatedly in the logs (e.g., address=2004 appears consistently)
+- If the error message includes "Considering disabling the register" (this indicates a systematic problem)
+- This suggests the register is not available on your Wärmepumpe (heat pump) model
+
+**Solution:**
+Disable the problematic register in your `lambda_wp_config.yaml` file:
+
+```yaml
+disabled_registers:
+  - 2004  # Example: Disable register 2004 if it's not available
+  - 2005  # Add other problematic register addresses here
+```
+
+For more details about configuration options, see [Lambda WP Configuration Reference](lambda_wp_config_reference.md).
+
+**Note:** Some registers may be model-specific. If a register consistently fails, it's safe to disable it - the integration will skip reading it, preventing unnecessary error messages in your logs.
+
 ### Missing Entities
 
 If some expected entities are not appearing:
