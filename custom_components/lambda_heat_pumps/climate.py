@@ -96,6 +96,8 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
 
     @property
     def current_temperature(self):
+        if self.coordinator.data is None:
+            return None
         key = (
             f"boil{self._idx}_actual_high_temperature"
             if self._climate_type == "hot_water"
@@ -105,6 +107,8 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
 
     @property
     def target_temperature(self):
+        if self.coordinator.data is None:
+            return None
         key = (
             f"boil{self._idx}_target_high_temperature"
             if self._climate_type == "hot_water"

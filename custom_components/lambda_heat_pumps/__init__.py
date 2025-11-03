@@ -243,7 +243,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Coordinator ist bereits erstellt und initialisiert - verwende den bestehenden
     try:
-        # ⭐ KORRIGIERT: Register-Order-Konfiguration VOR dem ersten async_refresh()
+        # Register-Order-Konfiguration (muss vor async_refresh() erfolgen)
         from .modbus_utils import get_int32_register_order
         coordinator._int32_register_order = await get_int32_register_order(hass)
         _LOGGER.info("Register-Order konfiguriert: %s", coordinator._int32_register_order)
@@ -251,12 +251,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Setze die generierten Base Addresses
         coordinator.base_addresses = base_addresses
 
-        # Starte den ersten Datenupdate (mit Performance-Optimierungen)
-        _LOGGER.info("🔄 PRODUCTION: Starting first data update (coordinator_id=%s)", id(coordinator))
-        await coordinator.async_refresh()
-        _LOGGER.info("✅ PRODUCTION: First data update completed (coordinator_id=%s)", id(coordinator))
-
-        # Store coordinator in hass.data (always overwrite to ensure fresh coordinator)
+        # Store coordinator in hass.data VOR Platform-Setup (wird von sensor.py benötigt)
         if DOMAIN not in hass.data:
             hass.data[DOMAIN] = {}
         hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
@@ -274,6 +269,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     "Error cleaning up platforms: %s", unload_ex, exc_info=True
                 )
             return False
+
+        # Starte den ersten Datenupdate NACH Platform-Setup (damit Entitäten bereits registriert sind)
+        _LOGGER.info("🔄 PRODUCTION: Starting first data update (coordinator_id=%s)", id(coordinator))
+        await coordinator.async_refresh()
+        _LOGGER.info("✅ PRODUCTION: First data update completed (coordinator_id=%s)", id(coordinator))
 
         # Set up services (only once, regardless of number of entries)
         if not hass.services.has_service(DOMAIN, "read_modbus_register"):

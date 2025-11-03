@@ -631,6 +631,33 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Failed to create config directories: %s", str(e))
             raise
 
+    def _address_matches_individual_read_template(self, address: int, templates: list) -> bool:
+        """
+        Prüft ob eine Register-Adresse zu einem Individual-Read-Template passt.
+        
+        Für Register >= 1000: Konvertiert zu Template-Format (z.B. 5107 → "5n07")
+        und prüft gegen die Template-Liste.
+        Für Register < 1000: Direkter Vergleich mit Templates.
+        
+        Args:
+            address: Register-Adresse als Integer
+            templates: Liste von Templates (Strings wie "5n07" oder Integers < 1000)
+        
+        Returns:
+            True wenn Adresse zu einem Template passt
+        """
+        if address < 1000:
+            # Direkter Vergleich für statische Adressen < 1000
+            return address in templates or str(address) in templates
+        
+        # Für Register >= 1000: Konvertiere zu Template-Format
+        # Ersetze einfach das 2. Zeichen (Index 1) durch "n"
+        # z.B. 5007 → "5n07", 5107 → "5n07", 5207 → "5n07"
+        #     1020 → "1n20", 1050 → "1n50"
+        address_str = str(address)
+        template = address_str[0] + "n" + address_str[2:]
+        return template in templates
+
     async def _read_registers_batch(self, address_list, sensor_mapping):
         """Read multiple registers in robust, type-safe batches."""
         data = {}
@@ -756,9 +783,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         )
                     continue
 
-                # PrÃƒÂ¼fe ob Register in der Individual-Read-Liste stehen
-                if any(addr in INDIVIDUAL_READ_REGISTERS for addr in batch):
-                    _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (configured individual read)")
+                # Prüfe ob Register in der Individual-Read-Liste stehen
+                matched_addresses = [addr for addr in batch if self._address_matches_individual_read_template(addr, INDIVIDUAL_READ_REGISTERS)]
+                if matched_addresses:
+                    _LOGGER.debug(f"Using individual reads for {start_addr}-{start_addr + count - 1} (configured individual read) - matched addresses: {matched_addresses}")
                     for addr in batch:
                         await self._read_single_register(
                             addr, unique_addresses[addr], sensor_mapping, data

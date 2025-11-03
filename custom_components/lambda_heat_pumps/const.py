@@ -1247,10 +1247,13 @@ BASE_ADDRESSES = {
 
 # Individual Read Registers
 # These registers are read individually instead of in batches due to known issues
+# Format for registers >= 1000: "{first_digit}n{remaining_digits}" (e.g., "5n07" matches 5007, 5107, 5207, etc.)
+# Registers < 1000 are static addresses
 INDIVIDUAL_READ_REGISTERS = [
-    1020, 1021,  # compressor_power_consumption_accumulated (int32) - requires individual read for correct register order handling
-    1022, 1023,  # compressor_thermal_energy_output_accumulated (int32) - requires individual read for correct register order handling
-    1050, 1051, 1052, 1053, 1054, 1055, 1056, 1057, 1058, 1059, 1060, 5007
+    "1n20", "1n21",  # HP: compressor_power_consumption_accumulated (int32) - requires individual read for correct register order handling
+    "1n22", "1n23",  # HP: compressor_thermal_energy_output_accumulated (int32) - requires individual read for correct register order handling
+    "1n50", "1n51", "1n52", "1n53", "1n54", "1n55", "1n56", "1n57", "1n58", "1n59", "1n60",  # HP: other registers
+    "5n07",  # HC: target_temp_flow_line (applies to all heating circuits: 5007, 5107, 5207, etc.)
 ]
 
 
