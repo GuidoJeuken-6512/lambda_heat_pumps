@@ -153,7 +153,7 @@ HP_SENSOR_TEMPLATES = {
     "volume_flow_heat_sink": {
         "relative_address": 6,
         "name": "Volume Flow Heat Sink",
-        "unit": "l/min",
+        "unit": "l/h",
         "scale": 0.01,
         "precision": 1,
         "data_type": "int16",
