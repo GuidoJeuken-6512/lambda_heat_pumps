@@ -9,6 +9,12 @@
 - **Register/Word Order Configuration**: Added register order configuration in `lambda_wp_config.yaml` for proper 32-bit value interpretation from multiple 16-bit registers (Issue #22)
 
 
+### [1.4.3] - 2025-11-04
+#### Fixed
+- **ISSUE 39** Modbus batch reads incorrectly detect errors: Faster switching to individual reads so that correct sensors become available again
+- **ISSUE 22** Additional logging added to identify errors
+- **Unit of sensor volume_flow_heat_sink corrected** to l/h
+
 ### [1.4.2] - 2025-10-24
 
 #### Fixed
@@ -215,6 +221,11 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Verbrauchssensoren nach Betriebsart**: Hinzugefügte konfigurierbare Verbrauchssensoren, die den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) mit anpassbaren Quellsensoren verfolgen (Issue #21)
 - **Register-/Wort-Reihenfolge-Konfiguration**: Hinzugefügte Register-Reihenfolge-Konfiguration in `lambda_wp_config.yaml` für ordnungsgemäße 32-Bit-Wert-Interpretation aus mehreren 16-Bit-Registern (Issue #22)
 
+### [1.4.3] - 2025-11-04
+#### Fehlerbehebungen
+- **ISSUE 39**  Modebus batch Reads erkennen Fehler falsch: Schnelleres Umsschalten zu individual reads, damit korrekte Sensoren wieder zur Verfügung stehen
+- **ISSUE 22** Zusätzliches logging eingefügt, um Fehler zu identifizieren
+- **Einheit des Sensors volume_flow_heat_sink korregiert** zu l/h
 
 ### [1.4.2] - 2025-10-24
 
