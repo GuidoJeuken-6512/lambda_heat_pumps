@@ -36,6 +36,8 @@ from .const import (
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
     build_device_info,
+    build_subdevice_info,
+    extract_device_info_from_sensor_id,
     generate_base_addresses,
     generate_sensor_names,
     get_firmware_version_int,
@@ -935,6 +937,10 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
 
     @property
     def device_info(self):
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
         return build_device_info(self._entry)
 
     @property
@@ -1199,6 +1205,10 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device information."""
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
         return build_device_info(self._entry)
 
 
@@ -1331,6 +1341,10 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info."""
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
         return build_device_info(self._entry)
 
     @property
@@ -1682,6 +1696,11 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
     @property
     def device_info(self):
         """Return device info for this sensor."""
+        device_type, device_index = extract_device_info_from_sensor_id(
+            self._sensor_id
+        )
+        if device_type and device_index:
+            return build_subdevice_info(self._entry, device_type, device_index)
         return build_device_info(self._entry)
 
 
@@ -1770,6 +1789,13 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info."""
+        device_type, device_index = extract_device_info_from_sensor_id(self._sensor_id)
+        if not device_type and hasattr(self, "_device_type"):
+            device_type = getattr(self, "_device_type", None)
+        if not device_index and hasattr(self, "_hp_index"):
+            device_index = getattr(self, "_hp_index", None)
+        if device_type and device_index:
+            return build_subdevice_info(self._entry, device_type, device_index)
         return build_device_info(self._entry)
 
     @callback

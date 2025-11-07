@@ -128,6 +128,74 @@ def build_device_info(entry):
     }
 
 
+def build_subdevice_info(entry, device_type: str, device_index: int):
+    """Build device_info dict for module subdevices like HP1, HC2, etc."""
+
+    if not device_type or not device_index:
+        return build_device_info(entry)
+
+    DOMAIN = entry.domain if hasattr(entry, "domain") else "lambda_heat_pumps"
+    entry_id = entry.entry_id
+    fw_version = get_firmware_version(entry)
+    host = entry.data.get("host")
+    main_device_name = entry.data.get("name", "Lambda WP")
+
+    device_type_lc = device_type.lower()
+    device_type_names = {
+        "hp": "HP",
+        "boil": "Boiler",
+        "hc": "HC",
+        "buff": "Buffer",
+        "sol": "Solar",
+    }
+    display_type = device_type_names.get(device_type_lc, device_type.upper())
+    device_name = f"{main_device_name} - {display_type}{device_index}"
+
+    main_identifier = (DOMAIN, entry_id)
+    sub_identifier = (DOMAIN, entry_id, device_type_lc, device_index)
+
+    return {
+        "identifiers": {sub_identifier},
+        "name": device_name,
+        "manufacturer": "Lambda",
+        "model": fw_version,
+        "configuration_url": f"http://{host}",
+        "sw_version": fw_version,
+        "entry_type": None,
+        "suggested_area": None,
+        "via_device": main_identifier,
+        "hw_version": None,
+        "serial_number": None,
+    }
+
+
+def extract_device_info_from_sensor_id(sensor_id: str) -> tuple[str | None, int | None]:
+    """Extract device type and index from a sensor_id like 'hp1_operating_state'."""
+
+    if not sensor_id:
+        return None, None
+
+    device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+
+    for prefix in device_prefixes:
+        if sensor_id.startswith(prefix):
+            suffix = sensor_id[len(prefix) :]
+            digits = ""
+            for char in suffix:
+                if char.isdigit():
+                    digits += char
+                else:
+                    break
+            if digits:
+                try:
+                    return prefix, int(digits)
+                except ValueError:
+                    return None, None
+            return None, None
+
+    return None, None
+
+
 async def migrate_lambda_config(hass: HomeAssistant) -> bool:
     """Migrate existing lambda_wp_config.yaml to include cycling_offsets.
     

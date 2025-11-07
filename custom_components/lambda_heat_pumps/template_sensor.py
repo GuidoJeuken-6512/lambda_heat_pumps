@@ -23,6 +23,8 @@ from .const import (
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
     build_device_info,
+    build_subdevice_info,
+    extract_device_info_from_sensor_id,
     generate_sensor_names,
     generate_template_entity_prefix,
     load_lambda_config,
@@ -140,7 +142,7 @@ async def async_setup_entry(
                             unit=sensor_info.get("unit", ""),
                             state_class=sensor_info.get("state_class", ""),
                             device_class=sensor_info.get("device_class"),
-                            device_type=device_type.upper(),
+                            device_type=device_type,
                             precision=sensor_info.get("precision"),
                             entity_id=naming["entity_id"],
                             unique_id=naming["unique_id"],
@@ -183,7 +185,9 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
-        self._device_type = device_type
+        parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
+        self._device_type = (device_type or parsed_type or "").lower()
+        self._device_index = parsed_index
         self._precision = precision
         self._entity_id = entity_id
         self._unique_id = unique_id
@@ -236,6 +240,11 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info."""
+        parsed_type, parsed_index = extract_device_info_from_sensor_id(self._sensor_id)
+        device_type = self._device_type or parsed_type
+        device_index = self._device_index or parsed_index
+        if device_type and device_index:
+            return build_subdevice_info(self._entry, device_type, device_index)
         return build_device_info(self._entry)
 
     @callback

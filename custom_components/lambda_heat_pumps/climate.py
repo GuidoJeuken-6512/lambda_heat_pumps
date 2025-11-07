@@ -24,6 +24,7 @@ from .const import (
 from .utils import (
     generate_base_addresses,
     build_device_info,
+    build_subdevice_info,
     generate_sensor_names,
     get_firmware_version_int,
     get_compatible_sensors,
@@ -46,13 +47,14 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
         self._idx = idx
         self._base_address = base_address
         self._template = CLIMATE_TEMPLATES[climate_type]
+        self._device_type = self._template["device_type"]
 
         # Hole den Legacy-Modbus-Namen-Switch aus der Config
         use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
         name_prefix = entry.data.get("name", "").lower().replace(" ", "")
 
         # Verwende die Werte aus der CLIMATE_TEMPLATES Konfiguration
-        device_type = self._template["device_type"]  # "boil" oder "hc"
+        device_type = self._device_type  # "boil" oder "hc"
         sensor_id = climate_type  # "hot_water" oder "heating_circuit"
 
         # Verwende die zentrale Namensgenerierung
@@ -122,6 +124,8 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
 
     @property
     def device_info(self):
+        if self._device_type and self._idx:
+            return build_subdevice_info(self._entry, self._device_type, self._idx)
         return build_device_info(self._entry)
 
     async def async_set_temperature(self, **kwargs):
