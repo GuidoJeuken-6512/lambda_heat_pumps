@@ -13,6 +13,7 @@
 # Tests im Root nicht ignorieren
 !tests/
 !tests/**
+tests/playwright/
 
 # And not these files
 !.gitignore
