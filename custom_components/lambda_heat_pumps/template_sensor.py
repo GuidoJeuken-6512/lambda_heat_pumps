@@ -267,6 +267,7 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._template_str = template_str
         self._template = None  # Will be set in async_added_to_hass
         self._state = None
+        self._last_warning = None
 
     @property
     def name(self) -> str:
@@ -518,18 +519,41 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             self.async_write_ha_state()
             return
 
+        cold_entity = self._number_entities["heating_curve_cold_outside_temp"]
+        mid_entity = self._number_entities["heating_curve_mid_outside_temp"]
+        warm_entity = self._number_entities["heating_curve_warm_outside_temp"]
+
         y_cold = self._get_float_state(
-            self._number_entities["heating_curve_cold_outside_temp"],
+            cold_entity,
             self._defaults["heating_curve_cold_outside_temp"],
         )
-        y_mid = self._get_float_state(
-            self._number_entities["heating_curve_mid_outside_temp"],
-            self._defaults["heating_curve_mid_outside_temp"],
-        )
+        y_mid = self._get_float_state(mid_entity, self._defaults["heating_curve_mid_outside_temp"])
         y_warm = self._get_float_state(
-            self._number_entities["heating_curve_warm_outside_temp"],
+            warm_entity,
             self._defaults["heating_curve_warm_outside_temp"],
         )
+
+        warning = None
+        if y_cold is not None and y_mid is not None and y_cold >= y_mid:
+            warning = f"Heizkurve: cold ({y_cold}) >= mid ({y_mid})"
+        elif y_mid is not None and y_warm is not None and y_mid >= y_warm:
+            warning = f"Heizkurve: mid ({y_mid}) >= warm ({y_warm})"
+
+        if warning:
+            if warning != self._last_warning:
+                _LOGGER.warning(
+                    "%s — Werte unplausibel: %s (Entities: cold=%s, mid=%s, warm=%s)",
+                    self.entity_id,
+                    warning,
+                    cold_entity,
+                    mid_entity,
+                    warm_entity,
+                )
+                self._last_warning = warning
+            self._state = None
+            self.async_write_ha_state()
+            return
+        self._last_warning = None
 
         x_cold = self._temp_points.get("cold", -22.0)
         x_mid = self._temp_points.get("mid", 0.0)
