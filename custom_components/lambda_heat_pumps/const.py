@@ -1057,6 +1057,58 @@ HC_SENSOR_TEMPLATES = {
      },
 }
 
+HC_HEATING_CURVE_NUMBER_CONFIG = {
+    "heating_curve_cold_outside_temp": {
+        "name": "Heating Curve Cold Outside Temp",
+        "default": 45.0,
+        "min_value": 15.0,
+        "max_value": 75.0,
+        "step": 0.1,
+        "unit": "°C",
+        "outside_temp_point": -22.0,
+    },
+    "heating_curve_mid_outside_temp": {
+        "name": "Heating Curve Mid Outside Temp",
+        "default": 38.0,
+        "min_value": 15.0,
+        "max_value": 75.0,
+        "step": 0.1,
+        "unit": "°C",
+        "outside_temp_point": 0.0,
+    },
+    "heating_curve_warm_outside_temp": {
+        "name": "Heating Curve Warm Outside Temp",
+        "default": 30.0,
+        "min_value": 15.0,
+        "max_value": 75.0,
+        "step": 0.1,
+        "unit": "°C",
+        "outside_temp_point": 22.0,
+    },
+}
+
+HC_HEATING_CURVE_TEMPLATE_PARAMS = {
+    "ambient_sensor": "sensor.ambient_temperature_calculated",
+    "cold_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
+        "outside_temp_point"
+    ],
+    "mid_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_mid_outside_temp"][
+        "outside_temp_point"
+    ],
+    "warm_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_warm_outside_temp"][
+        "outside_temp_point"
+    ],
+    "default_cold": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
+        "default"
+    ],
+    "default_mid": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_mid_outside_temp"][
+        "default"
+    ],
+    "default_warm": HC_HEATING_CURVE_NUMBER_CONFIG[
+        "heating_curve_warm_outside_temp"
+    ]["default"],
+}
+
 # General Sensors
 SENSOR_TYPES = {
     # General Ambient
@@ -1471,6 +1523,39 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "defrost",
         "reset_interval": "daily",
         "description": "Tägliche Cycling-Zähler für Abtauen, werden täglich um Mitternacht auf 0 gesetzt.",
+    },
+    "heating_curve_flow_line_temperature_calc": {
+        "name": "Heating Curve Flow Line Temperature Calc",
+        "unit": "°C",
+        "precision": 1,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hc",
+        "writeable": False,
+        "state_class": "measurement",
+        "device_class": "temperature",
+        "format_params": HC_HEATING_CURVE_TEMPLATE_PARAMS,
+        "template": (
+            "{{% set t_out = states('{ambient_sensor}') | float(10) %}}"
+            "{{% set x_cold = {cold_point} %}}"
+            "{{% set x_mid = {mid_point} %}}"
+            "{{% set x_warm = {warm_point} %}}"
+            "{{% set y_cold = states('number.{full_entity_prefix}_heating_curve_cold_outside_temp') | float({default_cold}) %}}"
+            "{{% set y_mid = states('number.{full_entity_prefix}_heating_curve_mid_outside_temp') | float({default_mid}) %}}"
+            "{{% set y_warm = states('number.{full_entity_prefix}_heating_curve_warm_outside_temp') | float({default_warm}) %}}"
+            "{{% macro lin(x, xA, yA, xB, yB) -%}}"
+            "{{{{ yA + (x - xA) * (yB - yA) / (xB - xA) }}}}"
+            "{{%- endmacro %}}"
+            "{{% if t_out >= x_warm %}}"
+            "{{{{ y_warm | round(1) }}}}"
+            "{{% elif t_out > x_mid %}}"
+            "{{{{ lin(t_out, x_mid, y_mid, x_warm, y_warm) | float | round(1) }}}}"
+            "{{% elif t_out > x_cold %}}"
+            "{{{{ lin(t_out, x_cold, y_cold, x_mid, y_mid) | float | round(1) }}}}"
+            "{{% else %}}"
+            "{{{{ y_cold | round(1) }}}}"
+            "{{% endif %}}"
+        ),
     },
     # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
     "heating_cycling_2h": {

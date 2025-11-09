@@ -46,6 +46,7 @@ _reload_in_progress = False
 PLATFORMS = [
     Platform.SENSOR,
     Platform.CLIMATE,
+    Platform.NUMBER,
 ]
 
 # Config schema - only config entries are supported

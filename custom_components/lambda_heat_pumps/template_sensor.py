@@ -19,6 +19,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import (
     DOMAIN,
     CALCULATED_SENSOR_TEMPLATES,
+    HC_HEATING_CURVE_NUMBER_CONFIG,
 )
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
@@ -124,10 +125,82 @@ async def async_setup_entry(
                         device_offsets = cycling_offsets.get(device_prefix, {})
                         cycling_offset = device_offsets.get(sensor_id, 0)
                     # Template immer mit cycling_offset formatieren
-                    template_str = sensor_info["template"].format(
-                        full_entity_prefix=full_entity_prefix,
-                        cycling_offset=cycling_offset,
+                    format_kwargs = {
+                        "full_entity_prefix": full_entity_prefix,
+                        "cycling_offset": cycling_offset,
+                    }
+                    if "format_params" in sensor_info and isinstance(
+                        sensor_info["format_params"], dict
+                    ):
+                        format_kwargs.update(sensor_info["format_params"])
+                    is_heating_curve = (
+                        sensor_id == "heating_curve_flow_line_temperature_calc"
                     )
+                    if is_heating_curve:
+                        ambient_suffix = "ambient_temperature_calculated"
+                        if use_legacy_modbus_names and name_prefix:
+                            ambient_sensor_entity = (
+                                f"sensor.{name_prefix}_{ambient_suffix}"
+                            )
+                        else:
+                            ambient_sensor_entity = f"sensor.{ambient_suffix}"
+                        format_kwargs["ambient_sensor"] = ambient_sensor_entity
+
+                        number_entities = {}
+                        defaults = {}
+                        for key in [
+                            "heating_curve_cold_outside_temp",
+                            "heating_curve_mid_outside_temp",
+                            "heating_curve_warm_outside_temp",
+                        ]:
+                            number_spec = HC_HEATING_CURVE_NUMBER_CONFIG[key]
+                            number_names = generate_sensor_names(
+                                device_prefix=device_prefix,
+                                sensor_name=number_spec["name"],
+                                sensor_id=key,
+                                name_prefix=name_prefix,
+                                use_legacy_modbus_names=use_legacy_modbus_names,
+                            )
+                            number_entity_id = number_names["entity_id"].replace(
+                                "sensor.", "number.", 1
+                            )
+                            number_entities[key] = number_entity_id
+                            defaults[key] = number_spec["default"]
+
+                        template_sensors.append(
+                            LambdaHeatingCurveCalcSensor(
+                                coordinator=coordinator,
+                                entry=entry,
+                                sensor_id=f"{device_prefix}_{sensor_id}",
+                                name=naming["name"],
+                                unit=sensor_info.get("unit", ""),
+                                state_class=sensor_info.get("state_class", ""),
+                                device_class=sensor_info.get("device_class"),
+                                device_type=device_type,
+                                precision=sensor_info.get("precision"),
+                                entity_id=naming["entity_id"],
+                                unique_id=naming["unique_id"],
+                                ambient_sensor=ambient_sensor_entity,
+                                number_entities=number_entities,
+                                temp_points={
+                                    "cold": format_kwargs.get("cold_point"),
+                                    "mid": format_kwargs.get("mid_point"),
+                                    "warm": format_kwargs.get("warm_point"),
+                                },
+                                defaults=defaults,
+                            )
+                        )
+                        _LOGGER.info(
+                            "Heizkurven-Berechnung für %s nutzt ambient_sensor=%s, stützpunkte=[%s, %s, %s]",
+                            naming["entity_id"],
+                            ambient_sensor_entity,
+                            format_kwargs.get("cold_point"),
+                            format_kwargs.get("mid_point"),
+                            format_kwargs.get("warm_point"),
+                        )
+                        continue
+
+                    template_str = sensor_info["template"].format(**format_kwargs)
                     _LOGGER.debug(
                         "Creating template sensor %s with template: %s",
                         naming["entity_id"],
@@ -324,4 +397,170 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         # Initialize the template now that we have access to hass
         self._template = Template(self._template_str, self.hass)
 
+        self._handle_coordinator_update()
+
+
+class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
+    """Berechnet die Heizkurven-Vorlauftemperatur pro HC."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(
+        self,
+        coordinator: LambdaDataUpdateCoordinator,
+        entry: ConfigEntry,
+        sensor_id: str,
+        name: str,
+        unit: str,
+        state_class: str,
+        device_class: SensorDeviceClass,
+        device_type: str,
+        precision: int | float | None,
+        entity_id: str,
+        unique_id: str,
+        ambient_sensor: str,
+        number_entities: dict[str, str],
+        temp_points: dict[str, float],
+        defaults: dict[str, float],
+    ) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._sensor_id = sensor_id
+        self._name = name
+        self._unit = unit
+        self._state_class = state_class
+        self._device_class = device_class
+        self._device_type = device_type
+        self._precision = precision
+        self._entity_id = entity_id
+        self._unique_id = unique_id
+        self.entity_id = entity_id
+        self._ambient_sensor = ambient_sensor
+        self._number_entities = number_entities
+        self._temp_points = temp_points
+        self._defaults = defaults
+        self._state = None
+
+        parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
+        self._device_type = (device_type or parsed_type or "").lower()
+        self._device_index = parsed_index
+
+        if state_class == "measurement":
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif state_class == "total":
+            self._attr_state_class = SensorStateClass.TOTAL
+        elif state_class == "total_increasing":
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        else:
+            self._attr_state_class = None
+
+        if device_class == "temperature":
+            self._attr_device_class = SensorDeviceClass.TEMPERATURE
+        elif device_class == "power":
+            self._attr_device_class = SensorDeviceClass.POWER
+        elif device_class == "energy":
+            self._attr_device_class = SensorDeviceClass.ENERGY
+        else:
+            self._attr_device_class = None
+
+        self._attr_native_unit_of_measurement = unit
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def unique_id(self) -> str:
+        return self._unique_id
+
+    @property
+    def native_value(self):
+        return self._state
+
+    @property
+    def device_info(self):
+        parsed_type, parsed_index = extract_device_info_from_sensor_id(self._sensor_id)
+        device_type = self._device_type or parsed_type
+        device_index = self._device_index or parsed_index
+        if device_type and device_index:
+            return build_subdevice_info(self._entry, device_type, device_index)
+        return build_device_info(self._entry)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "ambient_sensor": self._ambient_sensor,
+            "number_entities": self._number_entities,
+            "temp_points": self._temp_points,
+        }
+
+    def _get_float_state(self, entity_id: str, default: float | None) -> float | None:
+        state_obj = self.hass.states.get(entity_id)
+        if not state_obj or state_obj.state in (None, "unknown", "unavailable"):
+            return default
+        try:
+            return float(state_obj.state)
+        except (ValueError, TypeError):
+            return default
+
+    @staticmethod
+    def _lerp(x: float, x_a: float, y_a: float, x_b: float, y_b: float) -> float:
+        if x_b == x_a:
+            return y_a
+        return y_a + (x - x_a) * (y_b - y_a) / (x_b - x_a)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        ambient = self._get_float_state(self._ambient_sensor, None)
+        if ambient is None:
+            self._state = None
+            self.async_write_ha_state()
+            return
+
+        y_cold = self._get_float_state(
+            self._number_entities["heating_curve_cold_outside_temp"],
+            self._defaults["heating_curve_cold_outside_temp"],
+        )
+        y_mid = self._get_float_state(
+            self._number_entities["heating_curve_mid_outside_temp"],
+            self._defaults["heating_curve_mid_outside_temp"],
+        )
+        y_warm = self._get_float_state(
+            self._number_entities["heating_curve_warm_outside_temp"],
+            self._defaults["heating_curve_warm_outside_temp"],
+        )
+
+        x_cold = self._temp_points.get("cold", -22.0)
+        x_mid = self._temp_points.get("mid", 0.0)
+        x_warm = self._temp_points.get("warm", 22.0)
+
+        result: float
+        if ambient >= x_warm:
+            result = y_warm
+        elif ambient > x_mid:
+            result = self._lerp(ambient, x_mid, y_mid, x_warm, y_warm)
+        elif ambient > x_cold:
+            result = self._lerp(ambient, x_cold, y_cold, x_mid, y_mid)
+        else:
+            result = y_cold
+
+        if self._precision is not None:
+            result = round(result, int(self._precision))
+
+        self._state = result
+        _LOGGER.info(
+            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%.2f°C, y_mid=%.2f°C, y_warm=%.2f°C -> %.2f°C",
+            self.entity_id,
+            ambient,
+            y_cold,
+            y_mid,
+            y_warm,
+            result,
+        )
+
+        self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         self._handle_coordinator_update()
