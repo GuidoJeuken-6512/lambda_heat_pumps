@@ -442,6 +442,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._temp_points = temp_points
         self._defaults = defaults
         self._state = None
+        self._last_warning = None
 
         parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
         self._device_type = (device_type or parsed_type or "").lower()
@@ -534,10 +535,10 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         )
 
         warning = None
-        if y_cold is not None and y_mid is not None and y_cold >= y_mid:
-            warning = f"Heizkurve: cold ({y_cold}) >= mid ({y_mid})"
-        elif y_mid is not None and y_warm is not None and y_mid >= y_warm:
-            warning = f"Heizkurve: mid ({y_mid}) >= warm ({y_warm})"
+        if y_cold is not None and y_mid is not None and y_cold <= y_mid:
+            warning = f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})"
+        elif y_mid is not None and y_warm is not None and y_mid <= y_warm:
+            warning = f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})"
 
         if warning:
             if warning != self._last_warning:
