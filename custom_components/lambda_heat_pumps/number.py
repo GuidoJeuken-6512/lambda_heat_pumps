@@ -8,7 +8,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, HC_HEATING_CURVE_NUMBER_CONFIG
+from .const import (
+    DOMAIN,
+    HC_HEATING_CURVE_NUMBER_CONFIG,
+    HC_ROOM_THERMOSTAT_NUMBER_CONFIG,
+)
 from .utils import (
     build_device_info,
     build_subdevice_info,
@@ -32,6 +36,7 @@ async def async_setup_entry(
     num_hc = entry.data.get("num_hc", 1)
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
     name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
 
     number_entities: list[LambdaHeatingCurveNumber] = []
 
@@ -66,6 +71,37 @@ async def async_setup_entry(
                     spec=spec,
                 )
             )
+
+        if room_thermostat_enabled:
+            for sensor_id, spec in HC_ROOM_THERMOSTAT_NUMBER_CONFIG.items():
+                names = generate_sensor_names(
+                    device_prefix,
+                    spec["name"],
+                    sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                )
+
+                base_entity_id = names["entity_id"]
+                if base_entity_id.startswith("sensor."):
+                    entity_id = base_entity_id.replace("sensor.", "number.", 1)
+                elif "." in base_entity_id:
+                    entity_id = f"number.{base_entity_id.split('.', 1)[1]}"
+                else:
+                    entity_id = f"number.{base_entity_id}"
+                unique_id = f"{names['unique_id']}_number"
+
+                number_entities.append(
+                    LambdaHeatingCurveNumber(
+                        entry=entry,
+                        hc_index=hc_index,
+                        sensor_id=sensor_id,
+                        name=names["name"],
+                        entity_id=entity_id,
+                        unique_id=unique_id,
+                        spec=spec,
+                    )
+                )
 
     if not number_entities:
         _LOGGER.debug("No heating curve numbers created for entry %s", entry.entry_id)
@@ -111,6 +147,9 @@ class LambdaHeatingCurveNumber(RestoreNumber, NumberEntity):
 
         default_value = spec.get("default", 0.0)
         self._attr_native_value = float(default_value)
+        precision = spec.get("precision")
+        if precision is not None:
+            self._attr_suggested_display_precision = precision
 
     async def async_added_to_hass(self) -> None:
         """Restore the previous state when added to Home Assistant."""

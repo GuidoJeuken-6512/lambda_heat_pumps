@@ -1087,6 +1087,26 @@ HC_HEATING_CURVE_NUMBER_CONFIG = {
     },
 }
 
+HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
+    "room_thermostat_offset": {
+        "name": "Room Thermostat Offset",
+        "default": 0.0,
+        "min_value": 0.0,
+        "max_value": 5.0,
+        "step": 0.1,
+        "precision": 1,
+        "unit": "°C",
+    },
+    "room_thermostat_factor": {
+        "name": "Room Thermostat Factor",
+        "default": 1.0,
+        "min_value": 1.0,
+        "max_value": 5.0,
+        "step": 0.1,
+        "precision": 1,
+    },
+}
+
 HC_HEATING_CURVE_TEMPLATE_PARAMS = {
     "ambient_sensor": "sensor.ambient_temperature_calculated",
     "cold_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
@@ -1107,6 +1127,7 @@ HC_HEATING_CURVE_TEMPLATE_PARAMS = {
     "default_warm": HC_HEATING_CURVE_NUMBER_CONFIG[
         "heating_curve_warm_outside_temp"
     ]["default"],
+    "supports_room_thermostat": True,
 }
 
 # General Sensors

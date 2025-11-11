@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     CALCULATED_SENSOR_TEMPLATES,
     HC_HEATING_CURVE_NUMBER_CONFIG,
+    HC_ROOM_THERMOSTAT_NUMBER_CONFIG,
 )
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
@@ -63,6 +64,7 @@ async def async_setup_entry(
     # Hole den Legacy-Modbus-Namen-Switch aus der Config
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
     name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
 
     # Lade cycling_offsets aus der Konfiguration
     lambda_config = await load_lambda_config(hass)
@@ -167,6 +169,29 @@ async def async_setup_entry(
                             number_entities[key] = number_entity_id
                             defaults[key] = number_spec["default"]
 
+                        if room_thermostat_enabled:
+                            for key, number_spec in HC_ROOM_THERMOSTAT_NUMBER_CONFIG.items():
+                                number_names = generate_sensor_names(
+                                    device_prefix=device_prefix,
+                                    sensor_name=number_spec["name"],
+                                    sensor_id=key,
+                                    name_prefix=name_prefix,
+                                    use_legacy_modbus_names=use_legacy_modbus_names,
+                                )
+                                base_entity_id = number_names["entity_id"]
+                                if base_entity_id.startswith("sensor."):
+                                    number_entity_id = base_entity_id.replace(
+                                        "sensor.", "number.", 1
+                                    )
+                                elif "." in base_entity_id:
+                                    number_entity_id = (
+                                        f"number.{base_entity_id.split('.', 1)[1]}"
+                                    )
+                                else:
+                                    number_entity_id = f"number.{base_entity_id}"
+                                number_entities[key] = number_entity_id
+                                defaults[key] = number_spec["default"]
+
                         template_sensors.append(
                             LambdaHeatingCurveCalcSensor(
                                 coordinator=coordinator,
@@ -188,6 +213,7 @@ async def async_setup_entry(
                                     "warm": format_kwargs.get("warm_point"),
                                 },
                                 defaults=defaults,
+                                room_thermostat_enabled=room_thermostat_enabled,
                             )
                         )
                         _LOGGER.info(
@@ -424,6 +450,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         number_entities: dict[str, str],
         temp_points: dict[str, float],
         defaults: dict[str, float],
+        room_thermostat_enabled: bool,
     ) -> None:
         super().__init__(coordinator)
         self._entry = entry
@@ -443,6 +470,10 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._defaults = defaults
         self._state = None
         self._last_warning = None
+        self._room_thermostat_enabled = room_thermostat_enabled
+        self._last_adjustment = 0.0
+        self._last_rt_delta = None
+        self._last_flow_offset = 0.0
 
         parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
         self._device_type = (device_type or parsed_type or "").lower()
@@ -467,6 +498,11 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             self._attr_device_class = None
 
         self._attr_native_unit_of_measurement = unit
+        if precision is not None:
+            try:
+                self._attr_suggested_display_precision = int(precision)
+            except (TypeError, ValueError):
+                pass
 
     @property
     def name(self) -> str:
@@ -493,8 +529,10 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self):
         return {
             "ambient_sensor": self._ambient_sensor,
-            "number_entities": self._number_entities,
-            "temp_points": self._temp_points,
+            "room_thermostat_enabled": self._room_thermostat_enabled,
+            "room_thermostat_adjustment": self._last_adjustment,
+            "room_thermostat_delta": self._last_rt_delta,
+            "flow_line_offset": self._last_flow_offset,
         }
 
     def _get_float_state(self, entity_id: str, default: float | None) -> float | None:
@@ -514,6 +552,9 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        self._last_adjustment = 0.0
+        self._last_rt_delta = None
+        self._last_flow_offset = 0.0
         ambient = self._get_float_state(self._ambient_sensor, None)
         if ambient is None:
             self._state = None
@@ -534,23 +575,24 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             self._defaults["heating_curve_warm_outside_temp"],
         )
 
-        warning = None
+        warnings: list[str] = []
         if y_cold is not None and y_mid is not None and y_cold <= y_mid:
-            warning = f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})"
+            warnings.append(f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})")
         elif y_mid is not None and y_warm is not None and y_mid <= y_warm:
-            warning = f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})"
+            warnings.append(f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})")
 
-        if warning:
-            if warning != self._last_warning:
+        if warnings:
+            warning_text = "; ".join(warnings)
+            if warning_text != self._last_warning:
                 _LOGGER.warning(
                     "%s — Werte unplausibel: %s (Entities: cold=%s, mid=%s, warm=%s)",
                     self.entity_id,
-                    warning,
+                    warning_text,
                     cold_entity,
                     mid_entity,
                     warm_entity,
                 )
-                self._last_warning = warning
+                self._last_warning = warning_text
             self._state = None
             self.async_write_ha_state()
             return
@@ -570,17 +612,107 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         else:
             result = y_cold
 
+        adjustment = 0.0
+        rt_delta = None
+        offset_value = None
+        factor_value = None
+
+        if self._room_thermostat_enabled:
+            offset_entity = self._number_entities.get("room_thermostat_offset")
+            factor_entity = self._number_entities.get("room_thermostat_factor")
+
+            if offset_entity and factor_entity:
+                offset_value = self._get_float_state(
+                    offset_entity, self._defaults.get("room_thermostat_offset", 1.0)
+                )
+                factor_value = self._get_float_state(
+                    factor_entity, self._defaults.get("room_thermostat_factor", 1.0)
+                )
+
+                if offset_value is None or factor_value is None:
+                    _LOGGER.warning(
+                        "%s — Raumthermostat-Werte fehlen (offset=%s, factor=%s), keine Verschiebung angewandt.",
+                        self.entity_id,
+                        offset_value,
+                        factor_value,
+                    )
+                elif factor_value <= 0:
+                    _LOGGER.warning(
+                        "%s — Raumthermostat-Faktor unplausibel (%.2f), keine Verschiebung angewandt.",
+                        self.entity_id,
+                        factor_value,
+                    )
+                else:
+                    data = self.coordinator.data or {}
+                    idx = self._device_index
+                    current_temp = (
+                        data.get(f"hc{idx}_room_device_temperature") if idx else None
+                    )
+                    target_temp = (
+                        data.get(f"hc{idx}_target_room_temperature") if idx else None
+                    )
+
+                    if current_temp is None or target_temp is None:
+                        _LOGGER.debug(
+                            "%s — Raumthermostatwerte fehlen im Coordinator (current=%s, target=%s)",
+                            self.entity_id,
+                            current_temp,
+                            target_temp,
+                        )
+                    else:
+                        try:
+                            rt_delta = float(target_temp) - float(current_temp)
+                            adjustment = (rt_delta - float(offset_value)) * float(
+                                factor_value
+                            )
+                            result += adjustment
+                        except (TypeError, ValueError):
+                            _LOGGER.warning(
+                                "%s — Raumthermostatberechnung fehlgeschlagen (delta=%s, offset=%s, factor=%s)",
+                                self.entity_id,
+                                rt_delta,
+                                offset_value,
+                                factor_value,
+                            )
+
+        flow_line_offset = 0.0
+        data = self.coordinator.data or {}
+        idx = self._device_index
+        if idx is not None:
+            offset_key = f"hc{idx}_set_flow_line_offset_temperature"
+            raw_offset = data.get(offset_key)
+            if raw_offset is not None:
+                try:
+                    flow_line_offset = float(raw_offset)
+                    result += flow_line_offset
+                except (TypeError, ValueError):
+                    _LOGGER.warning(
+                        "%s — Flow-Line-Offset (%s) konnte nicht verarbeitet werden: %s",
+                        self.entity_id,
+                        offset_key,
+                        raw_offset,
+                    )
+
         if self._precision is not None:
             result = round(result, int(self._precision))
 
         self._state = result
+        self._last_adjustment = adjustment
+        self._last_rt_delta = rt_delta
+        self._last_flow_offset = flow_line_offset
         _LOGGER.info(
-            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%.2f°C, y_mid=%.2f°C, y_warm=%.2f°C -> %.2f°C",
+            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%.2f°C, y_mid=%.2f°C, y_warm=%.2f°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C -> %.2f°C",
             self.entity_id,
             ambient,
             y_cold,
             y_mid,
             y_warm,
+            flow_line_offset,
+            self._room_thermostat_enabled,
+            f"{rt_delta:.2f}" if rt_delta is not None else "n/a",
+            f"{offset_value:.2f}" if offset_value is not None else "n/a",
+            f"{factor_value:.2f}" if factor_value is not None else "n/a",
+            adjustment,
             result,
         )
 
