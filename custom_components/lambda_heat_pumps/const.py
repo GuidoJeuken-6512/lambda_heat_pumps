@@ -1060,7 +1060,7 @@ HC_SENSOR_TEMPLATES = {
 HC_HEATING_CURVE_NUMBER_CONFIG = {
     "heating_curve_cold_outside_temp": {
         "name": "Heating Curve Cold Outside Temp",
-        "default": 45.0,
+        "default": 48.3,
         "min_value": 15.0,
         "max_value": 75.0,
         "step": 0.1,
@@ -1069,7 +1069,7 @@ HC_HEATING_CURVE_NUMBER_CONFIG = {
     },
     "heating_curve_mid_outside_temp": {
         "name": "Heating Curve Mid Outside Temp",
-        "default": 38.0,
+        "default": 39.0,
         "min_value": 15.0,
         "max_value": 75.0,
         "step": 0.1,
@@ -1078,7 +1078,7 @@ HC_HEATING_CURVE_NUMBER_CONFIG = {
     },
     "heating_curve_warm_outside_temp": {
         "name": "Heating Curve Warm Outside Temp",
-        "default": 30.0,
+        "default": 32.0,
         "min_value": 15.0,
         "max_value": 75.0,
         "step": 0.1,
