@@ -147,13 +147,7 @@ async def async_setup_entry(
                     entity_id = f"sensor.{name_prefix_lc}_{override_name}"
                     unique_id = f"{name_prefix_lc}_{override_name}"
                 else:
-                    prefix_upper = prefix.upper()
                     device_prefix = f"{prefix}{idx}"
-
-                    if prefix == "hc" and sensor_info.get("device_type") == "Climate":
-                        name = sensor_info["name"].format(idx)
-                    else:
-                        name = f"{prefix_upper}{idx} {sensor_info['name']}"
 
                     # Verwende die zentrale Namensgenerierung
                     names = generate_sensor_names(
@@ -167,6 +161,7 @@ async def async_setup_entry(
                     sensor_id_final = f"{prefix}{idx}_{sensor_id}"
                     entity_id = names["entity_id"]
                     unique_id = names["unique_id"]
+                    name = names["name"]
 
                 device_type = (
                     prefix.upper()

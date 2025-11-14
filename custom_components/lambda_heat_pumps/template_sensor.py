@@ -623,7 +623,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
 
             if offset_entity and factor_entity:
                 offset_value = self._get_float_state(
-                    offset_entity, self._defaults.get("room_thermostat_offset", 1.0)
+                    offset_entity, self._defaults.get("room_thermostat_offset", 0.0)
                 )
                 factor_value = self._get_float_state(
                     factor_entity, self._defaults.get("room_thermostat_factor", 1.0)
