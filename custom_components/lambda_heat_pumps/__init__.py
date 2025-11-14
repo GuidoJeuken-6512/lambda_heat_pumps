@@ -361,4 +361,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 # Export für Home Assistant
-__all__ = ['async_migrate_entry']
+__all__ = ['async_migrate_entry', 'TRANSLATION_SOURCES']

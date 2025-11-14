@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -640,6 +641,17 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_name = name
         self._attr_unique_id = unique_id
+        
+        # Extract base sensor_id for translation_key (e.g., "heating_cycling" from "heating_cycling_total")
+        # Remove suffixes like "_total", "_daily", "_2h", "_4h", "_yesterday"
+        base_sensor_id = sensor_id
+        for suffix in ["_total", "_daily", "_2h", "_4h", "_yesterday"]:
+            if sensor_id.endswith(suffix):
+                base_sensor_id = sensor_id[: -len(suffix)]
+                break
+        self._attr_translation_key = base_sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
+        
         # Initialisiere cycling_value mit 0
         self._cycling_value = 0
         # Yesterday-Wert für Daily-Berechnung
@@ -1003,6 +1015,17 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_name = name
         self._attr_unique_id = unique_id
+        
+        # Extract base sensor_id for translation_key (e.g., "heating_energy" from "heating_energy_total")
+        # Remove suffixes like "_total", "_daily", "_yesterday", "_monthly", "_yearly"
+        base_sensor_id = sensor_id
+        for suffix in ["_total", "_daily", "_yesterday", "_monthly", "_yearly"]:
+            if sensor_id.endswith(suffix):
+                base_sensor_id = sensor_id[: -len(suffix)]
+                break
+        self._attr_translation_key = base_sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
+        
         # Initialisiere energy_value mit 0.0
         self._energy_value = 0.0
         # Yesterday-Wert für Daily-Berechnung
@@ -1242,6 +1265,15 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_name = name
         self._attr_unique_id = unique_id
+        
+        # Extract base sensor_id for translation_key (e.g., "heating_cycling" from "heating_cycling_yesterday")
+        # Remove "_yesterday" suffix
+        base_sensor_id = sensor_id
+        if sensor_id.endswith("_yesterday"):
+            base_sensor_id = sensor_id[: -len("_yesterday")]
+        self._attr_translation_key = base_sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
+        
         # Yesterday-Wert (wird von Daily-Sensor übernommen)
         self._yesterday_value = 0
 
@@ -1393,6 +1425,20 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
         self._attr_name = name
         self._attr_unique_id = unique_id  # Immer die generierte ID verwenden
         self.entity_id = entity_id or f"sensor.{sensor_id}"
+        
+        # Extract base sensor_id for translation_key (remove device prefix if present)
+        # sensor_id might be "hp1_operating_state" or "ambient_temperature"
+        # translation_key should be "operating_state" or "ambient_temperature"
+        base_sensor_id = sensor_id
+        device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+        for prefix in device_prefixes:
+            # Check if sensor_id starts with prefix followed by digits and underscore
+            match = re.match(rf"^{prefix}\d+_(.+)$", sensor_id)
+            if match:
+                base_sensor_id = match.group(1)
+                break
+        self._attr_translation_key = base_sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
         self._unit = unit
         self._address = address
         self._scale = scale

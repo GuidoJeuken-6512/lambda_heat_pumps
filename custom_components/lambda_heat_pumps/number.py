@@ -136,6 +136,11 @@ class LambdaHeatingCurveNumber(RestoreNumber, NumberEntity):
         self.entity_id = entity_id
         self._attr_name = name
         self._attr_unique_id = unique_id
+        
+        # sensor_id for number entities is already the base sensor_id from config
+        # (e.g., "heating_curve_cold_outside_temp" or "room_thermostat_offset")
+        self._attr_translation_key = sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
 
         self._attr_native_unit_of_measurement = spec.get("unit")
         self._attr_native_min_value = spec.get("min_value")

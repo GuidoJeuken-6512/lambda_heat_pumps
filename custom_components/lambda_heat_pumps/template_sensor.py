@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -294,6 +295,20 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._template = None  # Will be set in async_added_to_hass
         self._state = None
         self._last_warning = None
+        
+        # Extract base sensor_id for translation_key (remove device prefix if present)
+        # sensor_id might be "hp1_cop_calc" or "heating_curve_flow_line_temperature_calc"
+        # translation_key should be "cop_calc" or "heating_curve_flow_line_temperature_calc"
+        base_sensor_id = sensor_id
+        device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+        for prefix in device_prefixes:
+            # Check if sensor_id starts with prefix followed by digits and underscore
+            match = re.match(rf"^{prefix}\d+_(.+)$", sensor_id)
+            if match:
+                base_sensor_id = match.group(1)
+                break
+        self._attr_translation_key = base_sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
 
     @property
     def name(self) -> str:
@@ -478,6 +493,20 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
         self._device_type = (device_type or parsed_type or "").lower()
         self._device_index = parsed_index
+        
+        # Extract base sensor_id for translation_key (remove device prefix if present)
+        # sensor_id might be "hc1_heating_curve_flow_line_temperature_calc"
+        # translation_key should be "heating_curve_flow_line_temperature_calc"
+        base_sensor_id = sensor_id
+        device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+        for prefix in device_prefixes:
+            # Check if sensor_id starts with prefix followed by digits and underscore
+            match = re.match(rf"^{prefix}\d+_(.+)$", sensor_id)
+            if match:
+                base_sensor_id = match.group(1)
+                break
+        self._attr_translation_key = base_sensor_id
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
 
         if state_class == "measurement":
             self._attr_state_class = SensorStateClass.MEASUREMENT

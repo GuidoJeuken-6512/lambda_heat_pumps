@@ -3,6 +3,7 @@
 from __future__ import annotations
 import logging
 import os
+import re
 import shutil
 import yaml
 from datetime import datetime
@@ -636,6 +637,187 @@ async def migrate_to_register_order_terminology(
         return False
 
 
+async def migrate_to_translation_keys(
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
+) -> bool:
+    """
+    Migration zu Translation Keys (Version 9).
+    Fügt translation_key zu allen bestehenden Entities in der Entity Registry hinzu.
+    
+    Args:
+        hass: Home Assistant Instanz
+        config_entry: Config Entry
+    
+    Returns:
+        bool: True wenn Migration erfolgreich
+    """
+    try:
+        entry_id = config_entry.entry_id
+        _LOGGER.info(
+            "Starte Translation Keys Migration für Config Entry %s",
+            entry_id
+        )
+        
+        # Get entity registry
+        registry = async_get_entity_registry(hass)
+        
+        # Get all entities for this integration
+        entities_to_update = []
+        for entity_id, entity_entry in registry.entities.items():
+            # Only process entities from this config entry
+            if entity_entry.config_entry_id != entry_id:
+                continue
+            
+            # Skip if translation_key is already set
+            if entity_entry.translation_key is not None:
+                continue
+            
+            # Extract base sensor_id from unique_id
+            unique_id = entity_entry.unique_id
+            base_sensor_id = None
+            
+            # Extract sensor_id based on entity platform and unique_id pattern
+            # For number entities: remove _number suffix if present
+            if entity_entry.platform == "number":
+                if unique_id.endswith("_number"):
+                    unique_id_base = unique_id[:-7]  # Remove "_number"
+                else:
+                    unique_id_base = unique_id
+                
+                # Extract sensor_id from unique_id
+                # Pattern: {name_prefix}_hc{hc_idx}_{sensor_id} or {name_prefix}_{sensor_id}
+                # Examples:
+                # - "eu08l_hc1_heating_curve_cold_outside_temp_number" -> "heating_curve_cold_outside_temp"
+                # - "eu08l_hc1_room_thermostat_offset_number" -> "room_thermostat_offset"
+                device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+                for prefix in device_prefixes:
+                    # Match pattern: {prefix}{digits}_{sensor_id}
+                    match = re.search(rf"_{prefix}\d+_(.+)$", unique_id_base)
+                    if match:
+                        base_sensor_id = match.group(1)
+                        break
+                
+                # If no device prefix found, try to extract known sensor_ids
+                if not base_sensor_id:
+                    # Known number entity sensor_ids
+                    known_sensor_ids = [
+                        "heating_curve_cold_outside_temp",
+                        "heating_curve_mid_outside_temp",
+                        "heating_curve_warm_outside_temp",
+                        "room_thermostat_offset",
+                        "room_thermostat_factor",
+                    ]
+                    for known_id in known_sensor_ids:
+                        if known_id in unique_id_base:
+                            base_sensor_id = known_id
+                            break
+                    
+                    # Last resort: take last meaningful parts
+                    if not base_sensor_id:
+                        parts = unique_id_base.split("_")
+                        if len(parts) >= 3:
+                            # Try last 3 parts for compound names
+                            base_sensor_id = "_".join(parts[-3:])
+                        elif len(parts) >= 2:
+                            base_sensor_id = "_".join(parts[-2:])
+            
+            # For sensor entities
+            elif entity_entry.platform == "sensor":
+                # Pattern: {name_prefix}_{device_prefix}_{sensor_id} or {name_prefix}_{sensor_id}
+                # Remove device prefix if present (hp1_, hc2_, etc.)
+                device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+                for prefix in device_prefixes:
+                    # Match pattern: {prefix}{digits}_{sensor_id}
+                    match = re.search(rf"_{prefix}\d+_(.+)$", unique_id)
+                    if match:
+                        extracted = match.group(1)
+                        # For cycling sensors: remove suffixes like _total, _daily, _2h, _4h, _yesterday
+                        for suffix in ["_total", "_daily", "_2h", "_4h", "_yesterday", "_monthly", "_yearly"]:
+                            if extracted.endswith(suffix):
+                                base_sensor_id = extracted[: -len(suffix)]
+                                break
+                        if not base_sensor_id:
+                            base_sensor_id = extracted
+                        break
+                
+                # If no device prefix found, try to extract from end (for general sensors)
+                if not base_sensor_id:
+                    parts = unique_id.split("_")
+                    if len(parts) >= 2:
+                        # Try last 2 parts
+                        potential_id = "_".join(parts[-2:])
+                        # Remove suffixes if present
+                        for suffix in ["_total", "_daily", "_2h", "_4h", "_yesterday", "_monthly", "_yearly"]:
+                            if potential_id.endswith(suffix):
+                                base_sensor_id = potential_id[: -len(suffix)]
+                                break
+                        if not base_sensor_id:
+                            base_sensor_id = potential_id
+                    elif len(parts) >= 1:
+                        base_sensor_id = parts[-1]
+            
+            # For climate entities
+            elif entity_entry.platform == "climate":
+                # Climate entities: extract from unique_id
+                # Pattern: {name_prefix}_hc{idx}_heating_circuit or {name_prefix}_boil{idx}_hot_water
+                match = re.search(r"_(heating_circuit|hot_water)$", unique_id)
+                if match:
+                    base_sensor_id = match.group(1)
+                else:
+                    # Try last part
+                    parts = unique_id.split("_")
+                    if len(parts) >= 1:
+                        base_sensor_id = parts[-1]
+            
+            if base_sensor_id:
+                entities_to_update.append((entity_id, base_sensor_id))
+                _LOGGER.debug(
+                    "Found entity %s (unique_id: %s) -> translation_key: %s",
+                    entity_id,
+                    unique_id,
+                    base_sensor_id,
+                )
+            else:
+                _LOGGER.warning(
+                    "Could not extract sensor_id from unique_id: %s (entity: %s)",
+                    unique_id,
+                    entity_id,
+                )
+        
+        # Update all entities
+        updated_count = 0
+        for entity_id, translation_key in entities_to_update:
+            try:
+                registry.async_update_entity(
+                    entity_id,
+                    translation_key=translation_key,
+                )
+                updated_count += 1
+            except Exception as e:
+                _LOGGER.error(
+                    "Error updating entity %s with translation_key %s: %s",
+                    entity_id,
+                    translation_key,
+                    e,
+                )
+        
+        _LOGGER.info(
+            "Translation Keys Migration abgeschlossen: %d von %d Entities aktualisiert",
+            updated_count,
+            len(entities_to_update),
+        )
+        return True
+        
+    except Exception as e:
+        _LOGGER.error(
+            "Fehler bei Translation Keys Migration für Config Entry %s: %s",
+            entry_id,
+            e,
+        )
+        return False
+
+
 # Dictionary mit allen Migrationsfunktionen
 MIGRATION_FUNCTIONS = {
     MigrationVersion.LEGACY_NAMES: migrate_to_legacy_names,
@@ -645,6 +827,7 @@ MIGRATION_FUNCTIONS = {
     MigrationVersion.CONFIG_RESTRUCTURE: migrate_to_config_restructure,
     MigrationVersion.UNIFIED_CONFIG_MIGRATION: migrate_to_unified_config,
     MigrationVersion.REGISTER_ORDER_TERMINOLOGY: migrate_to_register_order_terminology,
+    MigrationVersion.TRANSLATION_KEYS: migrate_to_translation_keys,
 }
 
 

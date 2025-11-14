@@ -71,6 +71,11 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
         self._attr_name = names["name"]
         self._attr_unique_id = names["unique_id"]
         self.entity_id = names["entity_id"]
+        
+        # Use climate_type as translation_key (e.g., "heating_circuit" or "hot_water")
+        self._attr_translation_key = climate_type
+        _LOGGER.info("Translation key set: sensor_id='%s', translation_key='%s'", sensor_id, self._attr_translation_key)
+        self._attr_has_entity_name = True
 
         # Temperaturbereich aus Entry-Optionen lesen
         if climate_type == "hot_water":

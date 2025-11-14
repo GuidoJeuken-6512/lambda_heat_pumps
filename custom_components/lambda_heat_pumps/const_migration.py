@@ -20,6 +20,7 @@ class MigrationVersion(IntEnum):
     CONFIG_RESTRUCTURE = 6        # Konfigurationsschema ändern
     UNIFIED_CONFIG_MIGRATION = 7  # Template-basierte Migration aller Config-Abschnitte
     REGISTER_ORDER_TERMINOLOGY = 8  # Terminologie-Korrektur: int32_byte_order → int32_register_order
+    TRANSLATION_KEYS = 9          # Entity translation_key Migration
     
     # Hilfsmethoden
     @classmethod
@@ -99,6 +100,7 @@ MIGRATION_NAMES = {
     MigrationVersion.ENTITY_OPTIMIZATION: "entity_optimization_migration",
     MigrationVersion.CONFIG_RESTRUCTURE: "config_restructure_migration",
     MigrationVersion.REGISTER_ORDER_TERMINOLOGY: "register_order_terminology_migration",
+    MigrationVersion.TRANSLATION_KEYS: "translation_keys_migration",
 }
 
 # Standardwerte für neue Config-Sektionen
