@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
+from types import SimpleNamespace
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
@@ -12,6 +13,7 @@ from custom_components.lambda_heat_pumps.const import (
     ENERGY_CONSUMPTION_MODES,
     ENERGY_CONSUMPTION_PERIODS,
 )
+from tests.conftest import DummyLoop
 
 
 class TestLambdaEnergyConsumptionSensor:
@@ -25,6 +27,10 @@ class TestLambdaEnergyConsumptionSensor:
         hass.states = MagicMock()
         hass.data = {'integrations': {}, 'customize': {}}  # Add integrations for async_write_ha_state
         hass.async_create_task = MagicMock()
+        hass.config = MagicMock()
+        hass.config.language = "en"
+        hass.config.locale = SimpleNamespace(language="en")
+        hass.loop = DummyLoop()
         return hass
 
     @pytest.fixture

@@ -1,6 +1,7 @@
 """Test the config flow module."""
 
 from unittest.mock import AsyncMock, Mock, patch
+from types import SimpleNamespace
 
 import pytest
 from homeassistant import config_entries
@@ -21,6 +22,7 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_SLAVE_ID,
     DOMAIN,
 )
+from tests.conftest import DummyLoop
 
 
 @pytest.fixture
@@ -29,6 +31,8 @@ def mock_hass():
     hass = Mock()
     hass.config = Mock()
     hass.config.config_dir = "/tmp/test_config"
+    hass.config.language = "en"
+    hass.config.locale = SimpleNamespace(language="en")
     hass.config_entries = Mock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.config_entries.async_entries = AsyncMock(return_value=[])
@@ -42,6 +46,7 @@ def mock_hass():
     hass.entity_registry.async_get_entries = AsyncMock(return_value=[])
     # Setze DOMAIN-Eintrag für Tests, die ihn benötigen
     hass.data[DOMAIN] = {}
+    hass.loop = DummyLoop()
     return hass
 
 

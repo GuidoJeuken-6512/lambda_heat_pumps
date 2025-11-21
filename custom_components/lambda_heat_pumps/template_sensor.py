@@ -29,6 +29,7 @@ from .utils import (
     extract_device_info_from_sensor_id,
     generate_sensor_names,
     generate_template_entity_prefix,
+    load_sensor_translations,
     load_lambda_config,
     get_firmware_version_int,
     get_compatible_sensors,
@@ -65,6 +66,7 @@ async def async_setup_entry(
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
     name_prefix = entry.data.get("name", "").lower().replace(" ", "")
     room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
+    sensor_translations = await load_sensor_translations(hass)
 
     # Lade cycling_offsets aus der Konfiguration
     lambda_config = await load_lambda_config(hass)
@@ -114,6 +116,7 @@ async def async_setup_entry(
                         sensor_id=sensor_id,
                         name_prefix=name_prefix,
                         use_legacy_modbus_names=use_legacy_modbus_names,
+                        translations=sensor_translations,
                     )
                     # Generate entity prefix for template
                     full_entity_prefix = generate_template_entity_prefix(
@@ -162,6 +165,7 @@ async def async_setup_entry(
                                 sensor_id=key,
                                 name_prefix=name_prefix,
                                 use_legacy_modbus_names=use_legacy_modbus_names,
+                                translations=sensor_translations,
                             )
                             number_entity_id = number_names["entity_id"].replace(
                                 "sensor.", "number.", 1
@@ -177,6 +181,7 @@ async def async_setup_entry(
                                     sensor_id=key,
                                     name_prefix=name_prefix,
                                     use_legacy_modbus_names=use_legacy_modbus_names,
+                                    translations=sensor_translations,
                                 )
                                 base_entity_id = number_names["entity_id"]
                                 if base_entity_id.startswith("sensor."):
@@ -700,18 +705,21 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._last_adjustment = adjustment
         self._last_rt_delta = rt_delta
         self._last_flow_offset = flow_line_offset
+        def _fmt(value: float | None) -> str:
+            return f"{value:.2f}" if value is not None else "n/a"
+
         _LOGGER.info(
-            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%.2f°C, y_mid=%.2f°C, y_warm=%.2f°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C -> %.2f°C",
+            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C -> %.2f°C",
             self.entity_id,
             ambient,
-            y_cold,
-            y_mid,
-            y_warm,
+            _fmt(y_cold),
+            _fmt(y_mid),
+            _fmt(y_warm),
             flow_line_offset,
             self._room_thermostat_enabled,
-            f"{rt_delta:.2f}" if rt_delta is not None else "n/a",
-            f"{offset_value:.2f}" if offset_value is not None else "n/a",
-            f"{factor_value:.2f}" if factor_value is not None else "n/a",
+            _fmt(rt_delta),
+            _fmt(offset_value),
+            _fmt(factor_value),
             adjustment,
             result,
         )

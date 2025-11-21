@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.helpers.entity_component import async_update_entity
+from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
     BASE_ADDRESSES,
@@ -24,6 +25,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_MISSING_SENSOR_TRANSLATIONS: set[str] = set()
 
 
 def _get_coordinator(hass: HomeAssistant):
@@ -684,12 +686,78 @@ def clamp_to_int16(value: float, context: str = "value") -> int:
         return raw_value
 
 
+async def load_sensor_translations(
+    hass: HomeAssistant, language: str | None = None
+) -> dict[str, str]:
+    """Load translated sensor names for the current language.
+
+    Args:
+        hass: Home Assistant instance
+        language: Optional language code (e.g. "de"). Defaults to hass config language.
+
+    Returns:
+        dict: Mapping sensor_id -> translated name
+    """
+    lang = language
+    if not lang:
+        lang = getattr(hass.config, "language", None)
+    if not lang:
+        config_locale = getattr(hass.config, "locale", None)
+        lang = getattr(config_locale, "language", None)
+    if not lang:
+        lang = "en"
+
+    try:
+        translation_data = await async_get_translations(
+            hass,
+            lang,
+            "entity",
+            integrations=[DOMAIN],
+        )
+    except Exception as err:
+        _LOGGER.warning(
+            "Konnte Sensor-Übersetzungen für Sprache %s nicht laden: %s",
+            lang,
+            err,
+        )
+        return {}
+
+    prefix = f"component.{DOMAIN}.entity.sensor."
+    suffix = ".name"
+    translations = {}
+
+    for key, value in translation_data.items():
+        if not isinstance(value, str):
+            continue
+        if not key.startswith(prefix) or not key.endswith(suffix):
+            continue
+        sensor_key = key[len(prefix) : -len(suffix)]
+        if sensor_key:
+            translations[sensor_key] = value
+
+    _LOGGER.debug(
+        "Geladene Sensor-Übersetzungen: %d Einträge für Sprache %s", len(translations), lang
+    )
+    return translations
+
+
+def _log_missing_translation(sensor_id: str) -> None:
+    """Log translation warning once per sensor_id."""
+    if not sensor_id or sensor_id in _MISSING_SENSOR_TRANSLATIONS:
+        return
+    _MISSING_SENSOR_TRANSLATIONS.add(sensor_id)
+    _LOGGER.warning(
+        "Keine Übersetzung für Sensor '%s' gefunden – verwende Fallback-Namen.", sensor_id
+    )
+
+
 def generate_sensor_names(
     device_prefix: str,
     sensor_name: str,
     sensor_id: str,
     name_prefix: str,
     use_legacy_modbus_names: bool,
+    translations: dict[str, str] | None = None,
 ) -> dict:
     """Generate consistent sensor names, entity IDs, and unique IDs.
 
@@ -706,11 +774,19 @@ def generate_sensor_names(
     # Display name logic - identical to sensor.py
     # Both legacy and standard modes use the same display name format
     # The name_prefix will be added automatically by Home Assistant's device naming
+    resolved_sensor_name = sensor_name
+    if translations is not None:
+        translated_name = translations.get(sensor_id)
+        if translated_name:
+            resolved_sensor_name = translated_name
+        else:
+            _log_missing_translation(sensor_id)
+
     if device_prefix == sensor_id:
         # Für General Sensors nur den sensor_name verwenden
-        display_name = sensor_name
+        display_name = resolved_sensor_name
     else:
-        display_name = f"{device_prefix.upper()} {sensor_name}"
+        display_name = f"{device_prefix.upper()} {resolved_sensor_name}"
 
     # Always use lowercase for name_prefix to unify entity_id generation
     name_prefix_lc = name_prefix.lower() if name_prefix else ""

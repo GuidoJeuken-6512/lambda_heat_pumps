@@ -1,6 +1,7 @@
 """Tests für die neue Cycling-Sensor-Architektur."""
 
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from types import SimpleNamespace
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -11,6 +12,7 @@ from custom_components.lambda_heat_pumps.sensor import (
     LambdaYesterdaySensor,
     async_setup_entry,
 )
+from tests.conftest import DummyLoop
 
 
 @pytest.fixture
@@ -19,12 +21,15 @@ def mock_hass():
     hass = Mock()
     hass.config = Mock()
     hass.config.config_dir = "/tmp/test_config"
+    hass.config.language = "en"
+    hass.config.locale = SimpleNamespace(language="en")
     hass.config_entries = Mock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.data = {}
     hass.states = Mock()
     hass.states.async_all = AsyncMock(return_value=[])
     hass.states.get = Mock()
+    hass.loop = DummyLoop()
     return hass
 
 

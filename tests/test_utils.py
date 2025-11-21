@@ -1,11 +1,13 @@
 """Test the utils module."""
 
+import logging
 import os
 from unittest.mock import AsyncMock, Mock, mock_open, patch
 
 import pytest
 import yaml
 
+import custom_components.lambda_heat_pumps.utils as utils_module
 from custom_components.lambda_heat_pumps.utils import (
     build_device_info,
     clamp_to_int16,
@@ -14,6 +16,7 @@ from custom_components.lambda_heat_pumps.utils import (
     get_compatible_sensors,
     is_register_disabled,
     load_disabled_registers,
+    load_sensor_translations,
     to_signed_16bit,
     to_signed_32bit,
     _get_coordinator,
@@ -212,6 +215,39 @@ def test_generate_base_addresses_zero_count():
     result = generate_base_addresses("hp", 0)
 
     assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_load_sensor_translations_success(mock_hass):
+    """Ensure load_sensor_translations parses sensor entries."""
+    mock_hass.config.language = "de"
+    translation_payload = {
+        "component.lambda_heat_pumps.entity.sensor.flow_line_temperature.name": "Vorlauf",
+        "component.lambda_heat_pumps.entity.number.ignored.name": "Ignored",
+    }
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.async_get_translations",
+        new_callable=AsyncMock,
+        return_value=translation_payload,
+    ):
+        result = await load_sensor_translations(mock_hass)
+
+    assert result == {"flow_line_temperature": "Vorlauf"}
+
+
+@pytest.mark.asyncio
+async def test_load_sensor_translations_failure(mock_hass):
+    """Ensure load_sensor_translations handles errors gracefully."""
+    mock_hass.config.language = "de"
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.async_get_translations",
+        new_callable=AsyncMock,
+        side_effect=Exception("boom"),
+    ), patch("custom_components.lambda_heat_pumps.utils._LOGGER") as mock_logger:
+        result = await load_sensor_translations(mock_hass)
+
+    assert result == {}
+    mock_logger.warning.assert_called_once()
 
 
 def test_to_signed_16bit_positive():
@@ -562,6 +598,47 @@ class TestGenerateSensorNames:
             cycling_yesterday["entity_id"]
             == f"sensor.{name_prefix}_hp1_heating_cycling_yesterday"
         )
+
+    def test_generate_sensor_names_uses_translations(self):
+        """Ensure translations override the default sensor name."""
+        name_prefix = "eu08l"
+        translations = {"flow_temp": "Vorlauf"}
+
+        result = generate_sensor_names(
+            "hp1",
+            "Flow Temperature",
+            "flow_temp",
+            name_prefix,
+            False,
+            translations=translations,
+        )
+
+        assert result["name"] == "HP1 Vorlauf"
+
+    def test_generate_sensor_names_missing_translation_warning(self, caplog):
+        """Ensure missing translations trigger a one-time warning."""
+        utils_module._MISSING_SENSOR_TRANSLATIONS.clear()
+        name_prefix = "eu08l"
+        with caplog.at_level(logging.WARNING):
+            generate_sensor_names(
+                "hp1",
+                "Flow Temperature",
+                "flow_temp_missing",
+                name_prefix,
+                False,
+                translations={},
+            )
+        assert "Keine Übersetzung" in caplog.text
+        caplog.clear()
+        generate_sensor_names(
+            "hp1",
+            "Flow Temperature",
+            "flow_temp_missing",
+            name_prefix,
+            False,
+            translations={},
+        )
+        assert caplog.text == ""
 
 
 def test_get_coordinator():

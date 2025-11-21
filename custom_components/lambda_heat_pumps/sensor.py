@@ -40,6 +40,7 @@ from .utils import (
     extract_device_info_from_sensor_id,
     generate_base_addresses,
     generate_sensor_names,
+    load_sensor_translations,
     get_firmware_version_int,
     get_compatible_sensors,
 )
@@ -90,6 +91,7 @@ async def async_setup_entry(
     # Hole den Legacy-Modbus-Namen-Switch aus der Config
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
     name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    sensor_translations = await load_sensor_translations(hass)
 
     # Get firmware version and filter compatible sensors
     fw_version = get_firmware_version_int(entry)
@@ -156,6 +158,7 @@ async def async_setup_entry(
                         sensor_id,
                         name_prefix,
                         use_legacy_modbus_names,
+                        translations=sensor_translations,
                     )
 
                     sensor_id_final = f"{prefix}{idx}_{sensor_id}"
@@ -239,6 +242,7 @@ async def async_setup_entry(
             sensor_id_final,  # sensor_id für die Namensgenerierung
             name_prefix,
             use_legacy_modbus_names,
+            translations=sensor_translations,
         )
 
         entity_id = names["entity_id"]
@@ -290,6 +294,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             cycling_sensor_ids.append(names["entity_id"])
 
@@ -332,6 +337,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             yesterday_sensor_ids.append(names["entity_id"])
 
@@ -373,6 +379,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             daily_sensor_ids.append(names["entity_id"])
 
@@ -546,6 +553,7 @@ async def async_setup_entry(
                     sensor_id,
                     name_prefix,
                     use_legacy_modbus_names,
+                    translations=sensor_translations,
                 )
                 
                 sensor = LambdaEnergyConsumptionSensor(
@@ -1405,6 +1413,9 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
         self._precision = precision
         self._options = options
         self._sensor_info = sensor_info or {}
+        self._base_state_name = None
+        if sensor_info:
+            self._base_state_name = sensor_info.get("name")
         self._entity_enabled = False  # Track if entity is enabled
 
         # Debug log sensor creation with register option
@@ -1554,14 +1565,17 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
 
             # Extract base name without index
             # (e.g. "HP1 Operating State" -> "Operating State")
-            base_name = self._attr_name or ""
-            if (
-                self._device_type
-                and base_name
-                and self._device_type.upper() in base_name
-            ):
-                # Remove prefix and index (e.g. "HP1 " or "BOIL2 ")
-                base_name = " ".join(base_name.split()[1:])
+            if self._base_state_name:
+                base_name = self._base_state_name
+            else:
+                base_name = self._attr_name or ""
+                if (
+                    self._device_type
+                    and base_name
+                    and self._device_type.upper() in base_name
+                ):
+                    # Remove prefix and index (e.g. "HP1 " oder "BOIL2 ")
+                    base_name = " ".join(base_name.split()[1:])
             # Ersetze auch Bindestriche durch Unterstriche
             if base_name:
                 mapping_name = (
@@ -1653,13 +1667,16 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
                 "Processing state sensor %s for enum options", self._sensor_id
             )
             # Get the mapping dictionary name
-            base_name = self._attr_name or ""
-            if (
-                self._device_type
-                and base_name
-                and self._device_type.upper() in base_name
-            ):
-                base_name = " ".join(base_name.split()[1:])
+            if self._base_state_name:
+                base_name = self._base_state_name
+            else:
+                base_name = self._attr_name or ""
+                if (
+                    self._device_type
+                    and base_name
+                    and self._device_type.upper() in base_name
+                ):
+                    base_name = " ".join(base_name.split()[1:])
 
             if base_name:
                 mapping_name = (

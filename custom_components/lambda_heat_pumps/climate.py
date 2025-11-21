@@ -26,6 +26,7 @@ from .utils import (
     build_device_info,
     build_subdevice_info,
     generate_sensor_names,
+    load_sensor_translations,
     get_firmware_version_int,
     get_compatible_sensors,
 )
@@ -40,7 +41,15 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
     _attr_should_poll = False
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
-    def __init__(self, coordinator, entry, climate_type, idx, base_address):
+    def __init__(
+        self,
+        coordinator,
+        entry,
+        climate_type,
+        idx,
+        base_address,
+        translations: dict[str, str] | None = None,
+    ):
         super().__init__(coordinator)
         self._entry = entry
         self._climate_type = climate_type  # "hot_water" oder "heating_circuit"
@@ -65,6 +74,7 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
             sensor_id,
             name_prefix,
             use_legacy_modbus_names,
+            translations=translations,
         )
 
         # Setze die Namen und IDs
@@ -171,6 +181,7 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     num_boil = entry.data.get("num_boil", 1)
     num_hc = entry.data.get("num_hc", 1)
+    sensor_translations = await load_sensor_translations(hass)
     
     # Get firmware version and filter compatible climate templates
     fw_version = get_firmware_version_int(entry)
@@ -196,6 +207,7 @@ async def async_setup_entry(
                     "hot_water",  # climate_type aus CLIMATE_TEMPLATES
                     idx,
                     boil_addresses[idx],
+                    sensor_translations,
                 )
             )
 
@@ -221,6 +233,7 @@ async def async_setup_entry(
                 "heating_circuit",  # climate_type aus CLIMATE_TEMPLATES
                 idx,
                 hc_addresses[idx],
+                sensor_translations,
             )
         )
 

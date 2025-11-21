@@ -17,6 +17,7 @@ from .utils import (
     build_device_info,
     build_subdevice_info,
     generate_sensor_names,
+    load_sensor_translations,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ async def async_setup_entry(
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
     name_prefix = entry.data.get("name", "").lower().replace(" ", "")
     room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
+    sensor_translations = await load_sensor_translations(hass)
 
     number_entities: list[LambdaHeatingCurveNumber] = []
 
@@ -49,6 +51,7 @@ async def async_setup_entry(
                 sensor_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
 
             base_entity_id = names["entity_id"]
@@ -80,6 +83,7 @@ async def async_setup_entry(
                     sensor_id,
                     name_prefix,
                     use_legacy_modbus_names,
+                    translations=sensor_translations,
                 )
 
                 base_entity_id = names["entity_id"]
