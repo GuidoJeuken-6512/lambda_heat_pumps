@@ -224,14 +224,14 @@ async def async_setup_entry(
 
         # Name und Entity-ID für General Sensors
         if use_legacy_modbus_names and "override_name" in sensor_info:
-            name = sensor_info["override_name"]
+            override_name = sensor_info["override_name"]
             sensor_id_final = sensor_info["override_name"]
             _LOGGER.info(
-                f"Override name for sensor '{sensor_id}': '{name}' "
+                f"Override name for sensor '{sensor_id}': '{override_name}' "
                 f"wird als Name und sensor_id verwendet."
             )
         else:
-            name = sensor_info["name"]
+            override_name = None
             sensor_id_final = sensor_id
 
         # Verwende die zentrale Namensgenerierung für General Sensors
@@ -247,13 +247,16 @@ async def async_setup_entry(
 
         entity_id = names["entity_id"]
         unique_id = names["unique_id"]
+        
+        # Wenn override_name verwendet wird, nutze diesen; sonst den übersetzten Namen
+        final_name = override_name if override_name else names["name"]
 
         sensors.append(
             LambdaSensor(
                 coordinator=coordinator,
                 entry=entry,
                 sensor_id=sensor_id_final,
-                name=name,
+                name=final_name,  # Verwende override_name oder den übersetzten Namen
                 unit=sensor_info.get("unit", ""),
                 address=address,
                 scale=sensor_info.get("scale", 1.0),
@@ -420,6 +423,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             two_hour_sensor_ids.append(names["entity_id"])
 
@@ -460,6 +464,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             four_hour_sensor_ids.append(names["entity_id"])
 

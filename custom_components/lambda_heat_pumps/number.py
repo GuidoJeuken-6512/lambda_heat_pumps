@@ -146,7 +146,7 @@ class LambdaHeatingCurveNumber(RestoreNumber, NumberEntity):
         self._attr_native_max_value = spec.get("max_value")
         self._attr_native_step = spec.get("step")
         self._attr_mode = NumberMode.BOX
-        self._attr_icon = "mdi:radiator"
+        self._attr_icon = "mdi:chart-bell-curve-cumulative"
         self._outside_temp_point = spec.get("outside_temp_point")
 
         default_value = spec.get("default", 0.0)

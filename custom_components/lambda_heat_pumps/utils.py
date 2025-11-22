@@ -791,7 +791,10 @@ def generate_sensor_names(
         # Für General Sensors nur den sensor_name verwenden
         display_name = resolved_sensor_name
     else:
-        display_name = f"{device_prefix.upper()} {resolved_sensor_name}"
+        # Sensor name without device prefix
+        display_name = resolved_sensor_name
+        # Sensor name with device prefix
+        # display_name = f"{device_prefix.upper()} {resolved_sensor_name}"
 
     # Always use lowercase for name_prefix to unify entity_id generation
     name_prefix_lc = name_prefix.lower() if name_prefix else ""

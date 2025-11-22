@@ -211,11 +211,11 @@
       "hot_water": { "name": "Warmwasser" }
     },
     "number": {
-      "heating_curve_cold_outside_temp": { "name": "Kalter Punkt" },
-      "heating_curve_mid_outside_temp": { "name": "Mittlerer Punkt" },
-      "heating_curve_warm_outside_temp": { "name": "Warmer Punkt" },
-      "room_thermostat_offset": { "name": "Raum Offset" },
-      "room_thermostat_factor": { "name": "Raum Faktor" }
+      "heating_curve_cold_outside_temp": { "name": "Kalter Punkt -22°C" },
+      "heating_curve_mid_outside_temp": { "name": "Mittlerer Punkt 0°C" },
+      "heating_curve_warm_outside_temp": { "name": "Warmer Punkt +22°C" },
+      "room_thermostat_offset": { "name": "Raum Tempertur Offset" },
+      "room_thermostat_factor": { "name": "Raum Tempertur Faktor" }
     }
   },
   "device": {
