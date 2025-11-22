@@ -689,14 +689,14 @@ def clamp_to_int16(value: float, context: str = "value") -> int:
 async def load_sensor_translations(
     hass: HomeAssistant, language: str | None = None
 ) -> dict[str, str]:
-    """Load translated sensor names for the current language.
+    """Load translated entity names for the current language (sensor, number, climate).
 
     Args:
         hass: Home Assistant instance
         language: Optional language code (e.g. "de"). Defaults to hass config language.
 
     Returns:
-        dict: Mapping sensor_id -> translated name
+        dict: Mapping entity_id -> translated name (includes sensor, number, and climate)
     """
     lang = language
     if not lang:
@@ -716,27 +716,32 @@ async def load_sensor_translations(
         )
     except Exception as err:
         _LOGGER.warning(
-            "Konnte Sensor-Übersetzungen für Sprache %s nicht laden: %s",
+            "Konnte Entity-Übersetzungen für Sprache %s nicht laden: %s",
             lang,
             err,
         )
         return {}
 
-    prefix = f"component.{DOMAIN}.entity.sensor."
-    suffix = ".name"
     translations = {}
-
-    for key, value in translation_data.items():
-        if not isinstance(value, str):
-            continue
-        if not key.startswith(prefix) or not key.endswith(suffix):
-            continue
-        sensor_key = key[len(prefix) : -len(suffix)]
-        if sensor_key:
-            translations[sensor_key] = value
+    
+    # Load translations from sensor, number, and climate categories
+    for category in ["sensor", "number", "climate"]:
+        prefix = f"component.{DOMAIN}.entity.{category}."
+        suffix = ".name"
+        
+        for key, value in translation_data.items():
+            if not isinstance(value, str):
+                continue
+            if not key.startswith(prefix) or not key.endswith(suffix):
+                continue
+            entity_key = key[len(prefix) : -len(suffix)]
+            if entity_key:
+                translations[entity_key] = value
 
     _LOGGER.debug(
-        "Geladene Sensor-Übersetzungen: %d Einträge für Sprache %s", len(translations), lang
+        "Geladene Entity-Übersetzungen: %d Einträge für Sprache %s (sensor/number/climate)", 
+        len(translations), 
+        lang
     )
     return translations
 
