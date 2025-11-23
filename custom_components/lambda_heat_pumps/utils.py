@@ -875,6 +875,10 @@ async def increment_cycling_counter(
         f"{mode}_cycling_4h"
     ]
     
+    # Für compressor_start: auch monthly hinzufügen
+    if mode == "compressor_start":
+        sensor_types.append(f"{mode}_cycling_monthly")
+    
     for sensor_id in sensor_types:
         names = generate_sensor_names(
             device_prefix,

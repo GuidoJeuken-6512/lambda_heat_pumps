@@ -281,6 +281,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_total"),
         ("cooling", "cooling_cycling_total"),
         ("defrost", "defrost_cycling_total"),
+        ("compressor_start", "compressor_start_cycling_total"),
     ]
     cycling_sensor_count = 0
     cycling_sensor_ids = []
@@ -368,6 +369,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_daily"),
         ("cooling", "cooling_cycling_daily"),
         ("defrost", "defrost_cycling_daily"),
+        ("compressor_start", "compressor_start_cycling_daily"),
     ]
     daily_sensor_count = 0
     daily_sensor_ids = []
@@ -409,6 +411,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_2h"),
         ("cooling", "cooling_cycling_2h"),
         ("defrost", "defrost_cycling_2h"),
+        ("compressor_start", "compressor_start_cycling_2h"),
     ]
     two_hour_sensor_count = 0
     two_hour_sensor_ids = []
@@ -450,6 +453,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_4h"),
         ("cooling", "cooling_cycling_4h"),
         ("defrost", "defrost_cycling_4h"),
+        ("compressor_start", "compressor_start_cycling_4h"),
     ]
     four_hour_sensor_count = 0
     four_hour_sensor_ids = []
@@ -485,6 +489,44 @@ async def async_setup_entry(
             sensors.append(four_hour_sensor)
             four_hour_sensor_count += 1
 
+    # --- Monthly Cycling Sensors (echte Entities - werden am 1. des Monats auf 0 gesetzt) ---
+    monthly_modes = [
+        ("compressor_start", "compressor_start_cycling_monthly"),
+    ]
+    monthly_sensor_count = 0
+    monthly_sensor_ids = []
+
+    for hp_idx in range(1, num_hps + 1):
+        for mode, template_id in monthly_modes:
+            template = CALCULATED_SENSOR_TEMPLATES[template_id]
+            device_prefix = f"hp{hp_idx}"
+            names = generate_sensor_names(
+                device_prefix,
+                template["name"],
+                template_id,
+                name_prefix,
+                use_legacy_modbus_names,
+                translations=sensor_translations,
+            )
+            monthly_sensor_ids.append(names["entity_id"])
+
+            monthly_sensor = LambdaCyclingSensor(
+                hass=hass,
+                entry=entry,
+                sensor_id=template_id,
+                name=names["name"],
+                entity_id=names["entity_id"],
+                unique_id=names["unique_id"],
+                unit=template["unit"],
+                state_class=template["state_class"],
+                device_class=template["device_class"],
+                device_type=template["device_type"],
+                hp_index=hp_idx,
+            )
+
+            sensors.append(monthly_sensor)
+            monthly_sensor_count += 1
+
     # Speichere die Cycling-Entities für schnellen Zugriff
     if "lambda_heat_pumps" not in hass.data:
         hass.data["lambda_heat_pumps"] = {}
@@ -512,6 +554,11 @@ async def async_setup_entry(
     # Füge 4H-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in four_hour_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
+    # Füge Monthly-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in monthly_sensor_ids:
             all_cycling_entities[sensor.entity_id] = sensor
     
     hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = all_cycling_entities

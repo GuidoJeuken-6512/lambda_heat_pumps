@@ -80,6 +80,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self._last_operating_state = {}
+        self._last_state = {}  # Für HP_STATE Flankenerkennung (z.B. START COMPRESSOR)
         self._heating_cycles = {}
         self._heating_energy = {}
         self._last_energy_update = {}
@@ -300,6 +301,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         normalized_operating_states = self._normalize_operating_states(
             getattr(self, "_last_operating_state", {})
         )
+        normalized_states = self._normalize_operating_states(
+            getattr(self, "_last_state", {})
+        )
         
         # Prüfe ob sensor_ids in der aktuellen Datei existieren und verwende sie falls self._sensor_ids leer ist
         sensor_ids_to_save = getattr(self, "_sensor_ids", {})
@@ -323,6 +327,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
             "last_operating_states": normalized_operating_states,
+            "last_states": normalized_states,
             "energy_consumption": self._energy_consumption,
             "last_energy_readings": self._last_energy_reading,
             "energy_offsets": self._energy_offsets,
@@ -396,6 +401,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Lade persistierte State-Informationen
         self._last_operating_state = data.get("last_operating_states", {})
+        self._last_state = data.get("last_states", {})
         
         # Lade persistierte Energy Consumption Daten
         self._energy_consumption = data.get("energy_consumption", {})
@@ -1340,9 +1346,16 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 "cooling": 3,  # CC
                 "defrost": 5,  # DEFROST
             }
+            # HP_STATE Modi (separat, da auf HP_STATE Register basierend)
+            HP_STATE_MODES = {
+                "compressor_start": 5,  # START COMPRESSOR
+            }
             # Initialisiere _last_operating_state nur wenn nicht bereits aus Persistierung geladen
             if not hasattr(self, "_last_operating_state"):
                 self._last_operating_state = {}
+            # Initialisiere _last_state nur wenn nicht bereits aus Persistierung geladen
+            if not hasattr(self, "_last_state"):
+                self._last_state = {}
 
             # Read general sensors with batch optimization
             await self._read_general_sensors_batch(data)
@@ -1760,6 +1773,114 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Aktualisiere _last_operating_state NACH der Flankenerkennung
                 self._last_operating_state[str(hp_idx)] = op_state_val
+            
+            # Flankenerkennung für HP_STATE (z.B. START COMPRESSOR)
+            for hp_idx in range(1, num_hps + 1):
+                state_val = data.get(f"hp{hp_idx}_state")
+                if state_val is None:
+                    continue
+
+                # Get last state
+                last_state = self._last_state.get(str(hp_idx), "UNBEKANNT")
+                
+                # Initialisierung beim ersten Update: Logge den aktuellen state
+                if last_state == "UNBEKANNT":
+                    _LOGGER.info(
+                        f"Initialisiere _last_state für HP {hp_idx} mit state {state_val}"
+                    )
+                
+                # Info-Meldung bei Änderung
+                if last_state != state_val:
+                    _LOGGER.info(
+                        "Wärmepumpe %d: state geändert von %s auf %s",
+                        hp_idx,
+                        last_state,
+                        state_val,
+                    )
+                # Speichere den alten Wert für die Flankenerkennung
+                last_state = self._last_state.get(str(hp_idx), "UNBEKANNT")
+                
+                for mode, mode_val in HP_STATE_MODES.items():
+                    cycling_key = f"{mode}_cycles"
+                    if not hasattr(self, cycling_key):
+                        setattr(self, cycling_key, {})
+                    cycles = getattr(self, cycling_key)
+                    
+                    # Flanke: state wechselt von etwas anderem auf mode_val
+                    # ABER: Nur wenn Initialisierung abgeschlossen ist
+                    _LOGGER.debug(f"FLANKENERKENNUNG HP_STATE DEBUG HP{hp_idx}: init_complete={self._initialization_complete}, last_state='{last_state}', mode_val={mode_val}, state_val='{state_val}'")
+                    
+                    if (self._initialization_complete and 
+                        last_state != "UNBEKANNT" and
+                        last_state != mode_val and 
+                        state_val == mode_val):
+                        
+                        # Prüfe, ob die Cycling-Entities bereits registriert sind
+                        cycling_entities_ready = False
+                        try:
+                            if (
+                                "lambda_heat_pumps" in self.hass.data
+                                and self.entry.entry_id
+                                in self.hass.data["lambda_heat_pumps"]
+                                and "cycling_entities"
+                                in self.hass.data["lambda_heat_pumps"][
+                                    self.entry.entry_id
+                                ]
+                            ):
+                                cycling_entities_ready = True
+                        except Exception:
+                            pass
+
+                        if cycling_entities_ready:
+                            # Zentrale Funktion für total-Zähler aufrufen
+                            await increment_cycling_counter(
+                                self.hass,
+                                mode=mode,
+                                hp_index=hp_idx,
+                                name_prefix=self.entry.data.get("name", "eu08l"),
+                                use_legacy_modbus_names=self._use_legacy_names,
+                                cycling_offsets=self._cycling_offsets,
+                            )
+                            # Get current cycling count for logging
+                            old_count = cycles.get(hp_idx, 0)
+                            
+                            # Debug: Check old_count type
+                            if not isinstance(old_count, (int, float)):
+                                _LOGGER.error(f"cycles[{hp_idx}] is not a number: {type(old_count)} = {old_count}")
+                                old_count = 0
+                            
+                            new_count = old_count + 1
+                            cycles[hp_idx] = new_count
+                            
+                            _LOGGER.info(
+                                f"🔄 FLANKENERKENNUNG HP_STATE: HP{hp_idx} {last_state} → {state_val} | Cycling {mode} erhöht: {old_count} → {new_count}"
+                            )
+                            _LOGGER.debug(
+                                f"Flankenwechsel Details HP_STATE: HP{hp_idx} state von '{last_state}' auf '{state_val}' geändert, {mode} Modus aktiviert"
+                            )
+                        else:
+                            _LOGGER.debug(
+                                "Wärmepumpe %d: %s Modus aktiviert (HP_STATE) "
+                                "(Cycling-Entities noch nicht bereit)",
+                                hp_idx,
+                                mode,
+                            )
+                    elif not self._initialization_complete:
+                        # Flankenerkennung während Initialisierung unterdrückt
+                        _LOGGER.debug(
+                            "Wärmepumpe %d: %s Modus erkannt (HP_STATE), aber Flankenerkennung "
+                            "während Initialisierung unterdrückt",
+                            hp_idx,
+                            mode,
+                        )
+                    else:
+                        # Flankenerkennung aus anderen Gründen nicht ausgelöst
+                        _LOGGER.debug(
+                            f"FLANKENERKENNUNG HP_STATE NICHT AUSGELÖST HP{hp_idx}: init_complete={self._initialization_complete}, last_state='{last_state}', mode_val={mode_val}, state_val='{state_val}'"
+                        )
+                
+                # Aktualisiere _last_state NACH der Flankenerkennung
+                self._last_state[str(hp_idx)] = state_val
             
             await self._persist_counters()
             

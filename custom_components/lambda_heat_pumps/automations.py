@@ -43,19 +43,23 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
     @callback
     def reset_2h_sensors(now: datetime) -> None:
         """Reset 2h sensors every 2 hours."""
-        _LOGGER.info("Resetting 2h cycling sensors")
+        _LOGGER.info("Resetting 2h cycling sensors (all modes)")
 
         # Sende Signal an alle 2H-Sensoren (asynchron)
-        hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_2H, entry_id))
+        hass.async_create_task(
+            _send_reset_signal_async(hass, SIGNAL_RESET_2H, entry_id)
+        )
 
     # 4-Stunden Reset der 4H-Sensoren
     @callback
     def reset_4h_sensors(now: datetime) -> None:
         """Reset 4h sensors every 4 hours."""
-        _LOGGER.info("Resetting 4h cycling sensors")
+        _LOGGER.info("Resetting 4h cycling sensors (all modes)")
 
         # Sende Signal an alle 4H-Sensoren (asynchron)
-        hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_4H, entry_id))
+        hass.async_create_task(
+            _send_reset_signal_async(hass, SIGNAL_RESET_4H, entry_id)
+        )
 
     # Monatlicher Reset der Monthly-Sensoren (1. des Monats um Mitternacht)
     @callback
@@ -63,9 +67,13 @@ def setup_cycling_automations(hass: HomeAssistant, entry_id: str) -> None:
         """Reset monthly sensors on the 1st of each month."""
         # Prüfe ob es der 1. des Monats ist
         if now.day == 1:
-            _LOGGER.info("Resetting monthly energy sensors on the 1st of the month")
+            _LOGGER.info(
+                "Resetting monthly sensors (cycling, energy) on 1st of month"
+            )
             # Sende Signal an alle Monthly-Sensoren (asynchron)
-            hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_MONTHLY, entry_id))
+            hass.async_create_task(
+                _send_reset_signal_async(hass, SIGNAL_RESET_MONTHLY, entry_id)
+            )
 
     # Jährlicher Reset der Yearly-Sensoren (1. Januar um Mitternacht)
     @callback
