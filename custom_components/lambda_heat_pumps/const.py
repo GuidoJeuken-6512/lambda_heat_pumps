@@ -1296,7 +1296,7 @@ DEFAULT_UPDATE_INTERVAL = 30
 
 # Default interval for writing room temperature and PV surplus (in seconds)
 # Changed from 30 to 41 to avoid timing collisions with coordinator reads (30s)
-DEFAULT_WRITE_INTERVAL = 41
+DEFAULT_WRITE_INTERVAL = 9
 
 # Lambda-specific Modbus configuration
 LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout
