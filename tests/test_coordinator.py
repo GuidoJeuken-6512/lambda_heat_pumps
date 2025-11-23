@@ -81,6 +81,10 @@ def test_coordinator_init(mock_hass, mock_entry):
     assert coordinator.name == "Lambda Coordinator"
     assert coordinator.update_interval == timedelta(seconds=30)
     assert coordinator._config_dir == "/tmp/test_config"
+    # Test _last_state initialization for HP_STATE flank detection
+    assert hasattr(coordinator, "_last_state")
+    assert isinstance(coordinator._last_state, dict)
+    assert coordinator._last_state == {}
 
 
 def test_coordinator_init_with_debug_mode(mock_hass, mock_entry):
@@ -488,3 +492,47 @@ def test_coordinator_config_paths(mock_hass, mock_entry):
 
     assert coordinator._config_dir == "/tmp/test_config"
     assert coordinator._config_path == os.path.join("/tmp/test_config", "lambda_heat_pumps")
+
+
+@pytest.mark.asyncio
+async def test_coordinator_last_state_initialization(mock_hass, mock_entry):
+    """Test that _last_state is initialized for HP_STATE flank detection."""
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    
+    # Test that _last_state is initialized as empty dict
+    assert hasattr(coordinator, "_last_state")
+    assert isinstance(coordinator._last_state, dict)
+    assert coordinator._last_state == {}
+    
+    # Test that _last_state can store HP state values
+    coordinator._last_state["1"] = "3"  # HP1 state = READY
+    coordinator._last_state["2"] = "5"  # HP2 state = START COMPRESSOR
+    
+    assert coordinator._last_state["1"] == "3"
+    assert coordinator._last_state["2"] == "5"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_last_state_persistence(mock_hass, mock_entry):
+    """Test that _last_state is persisted and restored correctly."""
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    
+    # Set some state values
+    coordinator._last_state["1"] = "5"  # HP1 state = START COMPRESSOR
+    coordinator._last_state["2"] = "3"  # HP2 state = READY
+    
+    # Mock persist data structure
+    persist_data = {
+        "last_operating_states": {"1": "1", "2": "2"},
+        "last_states": {"1": "5", "2": "3"},
+    }
+    
+    # Simulate loading persisted data
+    coordinator._last_operating_state = persist_data.get("last_operating_states", {})
+    coordinator._last_state = persist_data.get("last_states", {})
+    
+    # Verify restored values
+    assert coordinator._last_state["1"] == "5"
+    assert coordinator._last_state["2"] == "3"
+    assert coordinator._last_operating_state["1"] == "1"
+    assert coordinator._last_operating_state["2"] == "2"

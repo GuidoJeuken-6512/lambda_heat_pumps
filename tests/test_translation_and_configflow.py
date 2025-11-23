@@ -41,6 +41,15 @@ class TestTranslations(unittest.TestCase):
         self.assertIn("init", data["options"]["step"])
         self.assertIn("data", data["options"]["step"]["init"])
         self.assertIn("hot_water_min_temp", data["options"]["step"]["init"]["data"])
+        
+        # Prüfe Entity-Übersetzungen für neue Features
+        self.assertIn("entity", data)
+        self.assertIn("sensor", data["entity"])
+        self.assertIn("compressor_start_cycling_total", data["entity"]["sensor"])
+        self.assertIn("compressor_start_cycling_daily", data["entity"]["sensor"])
+        self.assertIn("compressor_start_cycling_2h", data["entity"]["sensor"])
+        self.assertIn("compressor_start_cycling_4h", data["entity"]["sensor"])
+        self.assertIn("compressor_start_cycling_monthly", data["entity"]["sensor"])
 
 
 class TestConfigFlow(unittest.TestCase):

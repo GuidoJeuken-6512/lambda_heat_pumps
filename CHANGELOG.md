@@ -5,9 +5,34 @@
 ## English Version
 
 #### New Features since last release
-- **Energy Consumption Sensors by Operating Mode**: Added configurable energy consumption sensors that track energy usage by operating mode (heating, hot water, cooling, defrost) with customizable source sensors (Issue #21)
-- **Register/Word Order Configuration**: Added register order configuration in `lambda_wp_config.yaml` for proper 32-bit value interpretation from multiple 16-bit registers (Issue #22)
+- **Device Hierarchy**: Separation into main devices and sub-devices for better organization and clearer entity structure
+- **Multilingual Support**: Comprehensive translations in German and English for all entity names
+- **Heating Curve Calculation**: Intelligent heating curve calculation with three support points (cold, mid, warm) and automatic flow temperature calculation
+- **Compressor Start Cycling Sensor**: New cycling sensor for tracking compressor start events with total, daily, 2h, 4h, and monthly variants
 
+### [2.0.0] - 2025-01-XX
+
+#### New Features
+- **Device Hierarchy**: Implemented separation into main devices and sub-devices for better organization and clearer entity structure
+- **Multilingual Support**: Added comprehensive translations in German and English for all entity names, ensuring proper localization support
+- **Heating Curve Calculation**: Implemented intelligent heating curve calculation with three support points (cold, mid, warm) and automatic flow temperature calculation based on outside temperature
+  - **Cold Point**: Defines the heating curve at low outside temperatures
+  - **Mid Point**: Defines the heating curve at medium outside temperatures
+  - **Warm Point**: Defines the heating curve at high outside temperatures
+  - **New Sensor**: `heating_curve_flow_line_temperature_calc` automatically calculates the optimal flow temperature based on current outside temperature and the configured support points
+- **Compressor Start Cycling Sensor**: Added new cycling sensor for tracking compressor start events
+  - **Total Sensor**: `compressor_start_cycling_total` - Tracks total compressor starts since installation
+  - **Daily Sensor**: `compressor_start_cycling_daily` - Tracks daily compressor starts (resets at midnight)
+  - **2H Sensor**: `compressor_start_cycling_2h` - Tracks 2-hour compressor starts (resets every 2 hours)
+  - **4H Sensor**: `compressor_start_cycling_4h` - Tracks 4-hour compressor starts (resets every 4 hours)
+  - **Monthly Sensor**: `compressor_start_cycling_monthly` - Tracks monthly compressor starts (resets on 1st of month)
+  - **Flank Detection**: Uses HP_STATE register (1002) instead of HP_OPERATING_STATE, detecting "START COMPRESSOR" state (value 5)
+
+#### Improvements
+- Enhanced entity naming with proper device and sub-device prefixes
+- Improved translation loading and application for all entity types
+- Better integration with Home Assistant's translation system
+- **Write Interval Optimization**: Reduced write interval from 41 seconds to 9 seconds for faster response times
 
 ### [1.4.3] - 2025-11-04
 #### Fixed
@@ -218,8 +243,34 @@ This release contains significant changes to the Entity Registry and sensor nami
 ## Deutsche Version {#deutsche-version}
 
 #### New Features seit dem letzten Release
-- **Verbrauchssensoren nach Betriebsart**: Hinzugefügte konfigurierbare Verbrauchssensoren, die den Energieverbrauch nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) mit anpassbaren Quellsensoren verfolgen (Issue #21)
-- **Register-/Wort-Reihenfolge-Konfiguration**: Hinzugefügte Register-Reihenfolge-Konfiguration in `lambda_wp_config.yaml` für ordnungsgemäße 32-Bit-Wert-Interpretation aus mehreren 16-Bit-Registern (Issue #22)
+- **Geräte-Hierarchie**: Aufteilung in Haupt- und Sub-Geräte für bessere Organisation und klarere Entity-Struktur
+- **Mehrsprachige Unterstützung**: Umfassende Übersetzungen in Deutsch und Englisch für alle Entity-Namen
+- **Heizkurven-Berechnung**: Intelligente Heizkurven-Berechnung mit drei Stützpunkten (Kalt, Mittel, Warm) und automatischer Vorlauftemperatur-Berechnung
+- **Kompressor-Start Cycling Sensor**: Neuer Cycling-Sensor zur Verfolgung von Kompressor-Start-Ereignissen mit total, daily, 2h, 4h und monthly Varianten
+
+### [2.0.0] - 2025-01-XX
+
+#### Neue Funktionen
+- **Geräte-Hierarchie**: Implementierte Aufteilung in Haupt- und Sub-Geräte für bessere Organisation und klarere Entity-Struktur
+- **Mehrsprachige Unterstützung**: Hinzugefügte umfassende Übersetzungen in Deutsch und Englisch für alle Entity-Namen, gewährleistet ordnungsgemäße Lokalisierungsunterstützung
+- **Heizkurven-Berechnung**: Implementierte intelligente Heizkurven-Berechnung mit drei Stützpunkten (Kalt, Mittel, Warm) und automatischer Vorlauftemperatur-Berechnung basierend auf Außentemperatur
+  - **Kalter Punkt**: Definiert die Heizkurve bei niedrigen Außentemperaturen
+  - **Mittlerer Punkt**: Definiert die Heizkurve bei mittleren Außentemperaturen
+  - **Warmer Punkt**: Definiert die Heizkurve bei hohen Außentemperaturen
+  - **Neuer Sensor**: `heating_curve_flow_line_temperature_calc` berechnet automatisch die optimale Vorlauftemperatur basierend auf aktueller Außentemperatur und den konfigurierten Stützpunkten
+- **Kompressor-Start Cycling Sensor**: Hinzugefügter neuer Cycling-Sensor zur Verfolgung von Kompressor-Start-Ereignissen
+  - **Total-Sensor**: `compressor_start_cycling_total` - Verfolgt Gesamtanzahl der Kompressor-Starts seit Installation
+  - **Daily-Sensor**: `compressor_start_cycling_daily` - Verfolgt tägliche Kompressor-Starts (Reset um Mitternacht)
+  - **2H-Sensor**: `compressor_start_cycling_2h` - Verfolgt 2-Stunden Kompressor-Starts (Reset alle 2 Stunden)
+  - **4H-Sensor**: `compressor_start_cycling_4h` - Verfolgt 4-Stunden Kompressor-Starts (Reset alle 4 Stunden)
+  - **Monthly-Sensor**: `compressor_start_cycling_monthly` - Verfolgt monatliche Kompressor-Starts (Reset am 1. des Monats)
+  - **Flankenerkennung**: Verwendet HP_STATE Register (1002) statt HP_OPERATING_STATE, erkennt "START COMPRESSOR" Status (Wert 5)
+
+#### Verbesserungen
+- Verbesserte Entity-Namensgebung mit ordnungsgemäßen Geräte- und Sub-Geräte-Präfixen
+- Verbesserte Übersetzungs-Ladung und -Anwendung für alle Entity-Typen
+- Bessere Integration mit Home Assistants Übersetzungssystem
+- **Write-Interval-Optimierung**: Reduziertes Write-Interval von 41 Sekunden auf 9 Sekunden für schnellere Reaktionszeiten
 
 ### [1.4.3] - 2025-11-04
 #### Fehlerbehebungen

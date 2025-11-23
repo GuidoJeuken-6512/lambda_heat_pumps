@@ -54,9 +54,9 @@ def test_scan_interval_constant():
 
 def test_write_interval_constant():
     """Test: Überprüfe die Write-Intervall-Konstante."""
-    # Mock the write interval constant
-    write_interval = 30
-    assert write_interval == 30
+    from custom_components.lambda_heat_pumps.const import DEFAULT_WRITE_INTERVAL
+    write_interval = DEFAULT_WRITE_INTERVAL
+    assert write_interval == 9  # Updated from 41 to 9 seconds
     assert isinstance(write_interval, int)
     assert write_interval > 0
     assert write_interval < 300

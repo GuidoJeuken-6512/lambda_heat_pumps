@@ -277,6 +277,110 @@ def test_lambda_cycling_sensor_4h_reset_handler(mock_entry, mock_coordinator):
     sensor.async_write_ha_state.assert_called_once()
 
 
+def test_lambda_cycling_sensor_monthly_reset_handler(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor monthly reset handler."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_monthly",
+        name="Compressor Start Cycling Monthly",
+        entity_id="sensor.test_compressor_start_cycling_monthly",
+        unique_id="test_compressor_start_cycling_monthly",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Mock async_write_ha_state
+    sensor.async_write_ha_state = Mock()
+    
+    # Set initial value
+    sensor._cycling_value = 100
+    
+    # Test monthly reset (async method)
+    import asyncio
+    asyncio.run(sensor._handle_monthly_reset("test_entry"))
+    assert sensor._cycling_value == 0
+    sensor.async_write_ha_state.assert_called_once()
+
+
+def test_compressor_start_cycling_sensor_init(mock_entry, mock_coordinator):
+    """Test compressor_start cycling sensor initialization."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_total",
+        name="Compressor Start Cycling Total",
+        entity_id="sensor.test_compressor_start_cycling_total",
+        unique_id="test_compressor_start_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    assert sensor._sensor_id == "compressor_start_cycling_total"
+    assert sensor._name == "Compressor Start Cycling Total"
+    assert sensor.entity_id == "sensor.test_compressor_start_cycling_total"
+    assert sensor._unique_id == "test_compressor_start_cycling_total"
+    assert sensor._unit == "cycles"
+    assert sensor._hp_index == 1
+    assert sensor._cycling_value == 0
+
+
+def test_compressor_start_cycling_sensor_2h_reset(mock_entry, mock_coordinator):
+    """Test compressor_start 2h sensor reset handler."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_2h",
+        name="Compressor Start Cycling 2h",
+        entity_id="sensor.test_compressor_start_cycling_2h",
+        unique_id="test_compressor_start_cycling_2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    sensor._cycling_value = 15
+    
+    import asyncio
+    asyncio.run(sensor._handle_2h_reset("test_entry"))
+    assert sensor._cycling_value == 0
+    sensor.async_write_ha_state.assert_called_once()
+
+
+def test_compressor_start_cycling_sensor_4h_reset(mock_entry, mock_coordinator):
+    """Test compressor_start 4h sensor reset handler."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_4h",
+        name="Compressor Start Cycling 4h",
+        entity_id="sensor.test_compressor_start_cycling_4h",
+        unique_id="test_compressor_start_cycling_4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    sensor._cycling_value = 25
+    
+    import asyncio
+    asyncio.run(sensor._handle_4h_reset("test_entry"))
+    assert sensor._cycling_value == 0
+    sensor.async_write_ha_state.assert_called_once()
+
+
 # Tests für cycling_entities Registrierung
 @pytest.mark.asyncio
 async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordinator):
@@ -315,6 +419,11 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
         mock_4h_sensor.entity_id = "sensor.test_heating_cycling_4h"
         mock_4h_sensor._sensor_id = "heating_cycling_4h"
         
+        # Create mock monthly sensor
+        mock_monthly_sensor = Mock()
+        mock_monthly_sensor.entity_id = "sensor.test_compressor_start_cycling_monthly"
+        mock_monthly_sensor._sensor_id = "compressor_start_cycling_monthly"
+        
         # Make cycling_class return different sensors based on sensor_id
         def cycling_sensor_side_effect(*args, **kwargs):
             sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
@@ -324,6 +433,8 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
                 return mock_2h_sensor
             elif '4h' in sensor_id:
                 return mock_4h_sensor
+            elif 'monthly' in sensor_id:
+                return mock_monthly_sensor
             else:
                 return mock_cycling_sensor
         
@@ -349,6 +460,13 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
         assert "sensor.test_hp1_heating_cycling_daily" in cycling_entities
         assert "sensor.test_hp1_heating_cycling_2h" in cycling_entities
         assert "sensor.test_hp1_heating_cycling_4h" in cycling_entities
+        
+        # Verify compressor_start sensors are registered
+        assert "sensor.test_hp1_compressor_start_cycling_total" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_daily" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_2h" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_4h" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_monthly" in cycling_entities
 
 
 @pytest.mark.asyncio

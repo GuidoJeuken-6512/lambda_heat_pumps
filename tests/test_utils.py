@@ -223,7 +223,9 @@ async def test_load_sensor_translations_success(mock_hass):
     mock_hass.config.language = "de"
     translation_payload = {
         "component.lambda_heat_pumps.entity.sensor.flow_line_temperature.name": "Vorlauf",
+        "component.lambda_heat_pumps.entity.sensor.compressor_start_cycling_total.name": "Kompressor Starts Gesamt",
         "component.lambda_heat_pumps.entity.number.ignored.name": "Ignored",
+        "component.lambda_heat_pumps.entity.climate.heating_circuit.name": "Heizkreis",
     }
     with patch(
         "custom_components.lambda_heat_pumps.utils.async_get_translations",
@@ -232,7 +234,11 @@ async def test_load_sensor_translations_success(mock_hass):
     ):
         result = await load_sensor_translations(mock_hass)
 
-    assert result == {"flow_line_temperature": "Vorlauf"}
+    assert result == {
+        "flow_line_temperature": "Vorlauf",
+        "compressor_start_cycling_total": "Kompressor Starts Gesamt",
+        "heating_circuit": "Heizkreis",
+    }
 
 
 @pytest.mark.asyncio
@@ -602,7 +608,10 @@ class TestGenerateSensorNames:
     def test_generate_sensor_names_uses_translations(self):
         """Ensure translations override the default sensor name."""
         name_prefix = "eu08l"
-        translations = {"flow_temp": "Vorlauf"}
+        translations = {
+            "flow_temp": "Vorlauf",
+            "compressor_start_cycling_total": "Kompressor Starts Gesamt",
+        }
 
         result = generate_sensor_names(
             "hp1",
@@ -614,6 +623,18 @@ class TestGenerateSensorNames:
         )
 
         assert result["name"] == "HP1 Vorlauf"
+        
+        # Test compressor_start translation
+        result_compressor = generate_sensor_names(
+            "hp1",
+            "Compressor Start Cycling Total",
+            "compressor_start_cycling_total",
+            name_prefix,
+            False,
+            translations=translations,
+        )
+        
+        assert result_compressor["name"] == "HP1 Kompressor Starts Gesamt"
 
     def test_generate_sensor_names_missing_translation_warning(self, caplog):
         """Ensure missing translations trigger a one-time warning."""
