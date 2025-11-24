@@ -179,7 +179,7 @@
       "compressor_start_cycling_2h": { "name": "Kompressor Starts 2h" },
       "compressor_start_cycling_4h": { "name": "Kompressor Starts 4h" },
       "compressor_start_cycling_monthly": { "name": "Kompressor Starts Monatlich" },
-      "heating_curve_flow_line_temperature_calc": { "name": "Heizkurve Vorlauf" },
+      "heating_curve_flow_line_temperature_calc": { "name": "Heizkurve Vorlauf ber." },
       "heating_energy_total": { "name": "Heizenergie Gesamt" },
       "heating_energy_daily": { "name": "Heizenergie Täglich" },
       "heating_energy_monthly": { "name": "Heizenergie Monatlich" },
@@ -216,9 +216,9 @@
       "hot_water": { "name": "Warmwasser" }
     },
     "number": {
-      "heating_curve_cold_outside_temp": { "name": "Kalter Punkt -22°C" },
-      "heating_curve_mid_outside_temp": { "name": "Mittlerer Punkt 0°C" },
-      "heating_curve_warm_outside_temp": { "name": "Warmer Punkt +22°C" },
+      "heating_curve_cold_outside_temp": { "name": "Heizkurve-22°C" },
+      "heating_curve_mid_outside_temp": { "name": "Heizkurve+-0°C" },
+      "heating_curve_warm_outside_temp": { "name": "Heizkurve+22°C" },
       "room_thermostat_offset": { "name": "Raum Tempertur Offset" },
       "room_thermostat_factor": { "name": "Raum Tempertur Faktor" }
     }

@@ -186,7 +186,7 @@
       "compressor_start_cycling_2h": { "name": "Compressor Starts 2h" },
       "compressor_start_cycling_4h": { "name": "Compressor Starts 4h" },
       "compressor_start_cycling_monthly": { "name": "Compressor Starts Monthly" },
-      "heating_curve_flow_line_temperature_calc": { "name": "Heating Curve Flow Temperature" },
+      "heating_curve_flow_line_temperature_calc": { "name": "Heating Curve Flow Temperature calc." },
       "heating_energy_total": { "name": "Heating Energy Total" },
       "heating_energy_daily": { "name": "Heating Energy Daily" },
       "heating_energy_monthly": { "name": "Heating Energy Monthly" },

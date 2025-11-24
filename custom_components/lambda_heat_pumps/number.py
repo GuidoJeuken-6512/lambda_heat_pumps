@@ -146,7 +146,16 @@ class LambdaHeatingCurveNumber(RestoreNumber, NumberEntity):
         self._attr_native_max_value = spec.get("max_value")
         self._attr_native_step = spec.get("step")
         self._attr_mode = NumberMode.BOX
-        self._attr_icon = "mdi:chart-bell-curve-cumulative"
+        
+        # Setze Icon basierend auf sensor_id
+        if sensor_id == "room_thermostat_offset":
+            self._attr_icon = "mdi:thermometer-lines"
+        elif sensor_id == "room_thermostat_factor":
+            self._attr_icon = "mdi:plus-minus"
+        else:
+            # Heizkurven-Entitäten behalten das Kurven-Icon
+            self._attr_icon = "mdi:chart-bell-curve-cumulative"
+        
         self._outside_temp_point = spec.get("outside_temp_point")
 
         default_value = spec.get("default", 0.0)
