@@ -17,6 +17,7 @@ from .utils import (
     build_device_info,
     build_subdevice_info,
     generate_sensor_names,
+    get_entity_icon,
     load_sensor_translations,
 )
 
@@ -147,14 +148,8 @@ class LambdaHeatingCurveNumber(RestoreNumber, NumberEntity):
         self._attr_native_step = spec.get("step")
         self._attr_mode = NumberMode.BOX
         
-        # Setze Icon basierend auf sensor_id
-        if sensor_id == "room_thermostat_offset":
-            self._attr_icon = "mdi:thermometer-lines"
-        elif sensor_id == "room_thermostat_factor":
-            self._attr_icon = "mdi:plus-minus"
-        else:
-            # Heizkurven-Entitäten behalten das Kurven-Icon
-            self._attr_icon = "mdi:chart-bell-curve-cumulative"
+        # Setze Icon aus der Config (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(spec, default_icon="mdi:chart-bell-curve-cumulative")
         
         self._outside_temp_point = spec.get("outside_temp_point")
 
