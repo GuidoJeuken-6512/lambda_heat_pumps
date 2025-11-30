@@ -28,6 +28,7 @@ from .utils import (
     build_subdevice_info,
     extract_device_info_from_sensor_id,
     generate_sensor_names,
+    get_entity_icon,
     generate_template_entity_prefix,
     load_sensor_translations,
     load_lambda_config,
@@ -219,6 +220,7 @@ async def async_setup_entry(
                                 },
                                 defaults=defaults,
                                 room_thermostat_enabled=room_thermostat_enabled,
+                                sensor_info=sensor_info,
                             )
                         )
                         _LOGGER.info(
@@ -251,6 +253,7 @@ async def async_setup_entry(
                             entity_id=naming["entity_id"],
                             unique_id=naming["unique_id"],
                             template_str=template_str,
+                            sensor_info=sensor_info,
                         )
                     )
 
@@ -279,6 +282,7 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         entity_id: str | None = None,
         unique_id: str | None = None,
         template_str: str = "",
+        sensor_info: dict | None = None,
     ) -> None:
         """Initialize the template sensor."""
         super().__init__(coordinator)
@@ -299,6 +303,9 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._template = None  # Will be set in async_added_to_hass
         self._state = None
         self._last_warning = None
+        
+        # Setze Icon aus sensor_info (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(sensor_info)
 
     @property
     def name(self) -> str:
@@ -456,6 +463,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         temp_points: dict[str, float],
         defaults: dict[str, float],
         room_thermostat_enabled: bool,
+        sensor_info: dict | None = None,
     ) -> None:
         super().__init__(coordinator)
         self._entry = entry
@@ -508,6 +516,9 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
                 self._attr_suggested_display_precision = int(precision)
             except (TypeError, ValueError):
                 pass
+        
+        # Setze Icon aus sensor_info (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(sensor_info)
 
     @property
     def name(self) -> str:

@@ -1066,6 +1066,7 @@ HC_HEATING_CURVE_NUMBER_CONFIG = {
         "step": 0.1,
         "unit": "°C",
         "outside_temp_point": -22.0,
+        "icon": "mdi:chart-bell-curve-cumulative",
     },
     "heating_curve_mid_outside_temp": {
         "name": "Heating Curve Mid Outside Temp",
@@ -1075,6 +1076,7 @@ HC_HEATING_CURVE_NUMBER_CONFIG = {
         "step": 0.1,
         "unit": "°C",
         "outside_temp_point": 0.0,
+        "icon": "mdi:chart-bell-curve-cumulative",
     },
     "heating_curve_warm_outside_temp": {
         "name": "Heating Curve Warm Outside Temp",
@@ -1084,6 +1086,7 @@ HC_HEATING_CURVE_NUMBER_CONFIG = {
         "step": 0.1,
         "unit": "°C",
         "outside_temp_point": 22.0,
+        "icon": "mdi:chart-bell-curve-cumulative",
     },
 }
 
@@ -1096,6 +1099,7 @@ HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
         "step": 0.1,
         "precision": 1,
         "unit": "°C",
+        "icon": "mdi:thermometer-lines",
     },
     "room_thermostat_factor": {
         "name": "Room Thermostat Factor",
@@ -1104,6 +1108,7 @@ HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
         "max_value": 5.0,
         "step": 0.1,
         "precision": 1,
+        "icon": "mdi:plus-minus",
     },
 }
 

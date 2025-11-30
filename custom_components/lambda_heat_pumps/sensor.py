@@ -43,6 +43,7 @@ from .utils import (
     load_sensor_translations,
     get_firmware_version_int,
     get_compatible_sensors,
+    get_entity_icon,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
 from .const_mapping import HP_STATE  # noqa: F401
@@ -1469,6 +1470,9 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
         if sensor_info:
             self._base_state_name = sensor_info.get("name")
         self._entity_enabled = False  # Track if entity is enabled
+        
+        # Setze Icon aus sensor_info (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(sensor_info)
 
         # Debug log sensor creation with register option
         if sensor_info and sensor_info.get("options", {}).get("register", False):

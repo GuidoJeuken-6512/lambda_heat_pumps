@@ -29,6 +29,7 @@ from .utils import (
     load_sensor_translations,
     get_firmware_version_int,
     get_compatible_sensors,
+    get_entity_icon,
 )
 from .modbus_utils import async_write_registers
 
@@ -105,6 +106,9 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
         hvac_modes_set = self._template.get("hvac_mode", {"heat"})
         self._attr_hvac_modes = [HVACMode(mode) for mode in hvac_modes_set]
         self._attr_hvac_mode = HVACMode.HEAT  # Default-Modus
+        
+        # Setze Icon aus Template (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(self._template)
 
     @property
     def current_temperature(self):

@@ -31,7 +31,7 @@ from .modbus_utils import wait_for_stable_connection
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
-VERSION = "1.4.2"  # Updated version for service optimization and test fixes
+# VERSION = "1.4.2"  # Updated version for service optimization and test fixes
 
 
 

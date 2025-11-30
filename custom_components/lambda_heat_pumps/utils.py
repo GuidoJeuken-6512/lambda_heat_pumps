@@ -7,7 +7,7 @@ import logging
 import os
 import yaml
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import Any, List, Optional, Tuple
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
@@ -818,6 +818,26 @@ def generate_sensor_names(
             unique_id = f"{device_prefix}_{sensor_id}"
 
     return {"name": display_name, "entity_id": entity_id, "unique_id": unique_id}
+
+
+def get_entity_icon(spec: dict[str, Any] | None, default_icon: str | None = None) -> str | None:
+    """Get icon from entity spec with fallback.
+    
+    Args:
+        spec: Entity specification dictionary (sensor_info, spec, etc.)
+        default_icon: Optional default icon to use if no icon is specified in spec
+        
+    Returns:
+        Icon string if found, default_icon if provided, or None
+    """
+    if not spec:
+        return default_icon
+    
+    icon = spec.get("icon")
+    if icon:
+        return icon
+    
+    return default_icon
 
 
 def generate_template_entity_prefix(
