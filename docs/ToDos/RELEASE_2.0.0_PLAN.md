@@ -11,7 +11,6 @@ Dieser Plan umfasst die Implementierung von 4 Hauptfeatures für Release 2.0.0:
 2. Heizkurve-Berechnung mit Eingabemöglichkeit
 3. Pro-Heizkreis Raumthermostat-Steuerung
 4. Dedicated Compressor Cycle Start Sensor
-5. 32 bit support für Services (read/Write) siehe plan
 
 ---
 
@@ -261,9 +260,9 @@ Neuer dedizierter Sensor `compressor_cycle_start` der nur bei echtem Compressor-
 - [x] Anpasse climate.py und template_sensor.py für Subdevice-Unterstützung
 
 ### Feature 2: Heizkurve
-- [ ] Erweitere const.py mit Sensor-Templates für Input-Sensoren (3 Number-Entities pro HC) und Template-Sensor
-- [ ] Implementiere Number-Entities in sensor.py oder neue number.py Datei
-- [ ] Implementiere Template-Sensor mit Heizkurven-Berechnung (fest codierte Vorlauftemperaturen)
+- [x] Erweitere const.py mit Sensor-Templates für Input-Sensoren (3 Number-Entities pro HC) und Template-Sensor
+- [x] Implementiere Number-Entities in sensor.py oder neue number.py Datei
+- [x] Implementiere Template-Sensor mit Heizkurven-Berechnung (fest codierte Vorlauftemperaturen)
 
 ### Feature 3: Pro-HC Raumthermostat
 - [ ] Ändere config_flow.py: Ersetze globale room_thermostat_control Option durch pro-HC Optionen
@@ -271,15 +270,15 @@ Neuer dedizierter Sensor `compressor_cycle_start` der nur bei echtem Compressor-
 - [ ] Implementiere Migration in migration.py: Global aktiviert → alle HCs aktivieren
 
 ### Feature 4: Compressor Sensor
-- [ ] Erweitere const.py mit Sensor-Templates für compressor_cycle_start (total, daily, yesterday, 2h, 4h)
-- [ ] Implementiere Flankenerkennung für Compressor-Starts in coordinator.py (State-Wechsel zu 2 = START COMPRESSOR)
-- [ ] Erstelle compressor_cycle_start Sensoren in sensor.py analog zu cycling sensors (inkl. Yesterday-Sensor)
+- [x] Erweitere const.py mit Sensor-Templates für compressor_start (total, daily, 2h, 4h, monthly) - Hinweis: Name ist "compressor_start" nicht "compressor_cycle_start"
+- [x] Implementiere Flankenerkennung für Compressor-Starts in coordinator.py (HP_STATE Register 1002, Wert 5 = START COMPRESSOR)
+- [x] Erstelle compressor_start Sensoren in sensor.py analog zu cycling sensors (kein Yesterday-Sensor, aber monthly)
 
 ### Allgemein
-- [ ] Aktualisiere Version auf 2.0.0 in __init__.py und manifest.json
-- [ ] Erstelle CHANGELOG.md Eintrag für Version 2.0.0 mit allen neuen Features
+- [x] Aktualisiere Version auf 2.0.0 in manifest.json
+- [x] Erstelle CHANGELOG.md Eintrag für Version 2.0.0 mit allen neuen Features
 
 ---
 
-**Letzte Aktualisierung**: 2025-11-07
+**Letzte Aktualisierung**: 2025-01-XX
 
