@@ -49,6 +49,7 @@ from .const import (
     PV_SURPLUS_MODE_OPTIONS,
     DEFAULT_PV_SURPLUS_MODE,
 )
+from .const_migration import MIGRATION_VERSION
 from .modbus_utils import async_read_holding_registers
 
 _LOGGER = logging.getLogger(__name__)
@@ -95,7 +96,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
 class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Lambda WP."""
 
-    VERSION = 4  # Erhöht von 2 auf 4 für Energy Consumption Migration
+    VERSION = MIGRATION_VERSION  # Wird automatisch aus const_migration.py importiert
 
     def __init__(self) -> None:
         """Initialize the config flow."""

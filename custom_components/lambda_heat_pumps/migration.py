@@ -778,9 +778,15 @@ async def perform_structured_migration(
                 
                 if success:
                     successful_migrations += 1
+                    # Version sofort nach erfolgreicher Migration aktualisieren
+                    # Verwendet die spezifische Versionsnummer dieser Migration
+                    hass.config_entries.async_update_entry(
+                        config_entry,
+                        version=migration_version.value
+                    )
                     _LOGGER.info(
-                        "Migration zu Version %s für Config %s erfolgreich", 
-                        migration_version.name, entry_id
+                        "Migration zu Version %s (v%d) für Config %s erfolgreich - Version aktualisiert", 
+                        migration_version.name, migration_version.value, entry_id
                     )
                 else:
                     _LOGGER.error(
@@ -914,6 +920,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     Returns:
         bool: True wenn Migration erfolgreich
     """
+    _LOGGER.info(
+        "🔄 MIGRATION: async_migrate_entry aufgerufen für Config %s (Version: %d)",
+        config_entry.entry_id, config_entry.version
+    )
     return await perform_structured_migration(hass, config_entry)
 
 

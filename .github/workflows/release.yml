@@ -1,0 +1,36 @@
+name: Create Release Asset
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Create ZIP Asset
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get release tag
+        id: get_tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create ZIP archive
+        run: |
+          cd custom_components
+          zip -r ../lambda_heat_pumps.zip lambda_heat_pumps/
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: lambda_heat_pumps.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+

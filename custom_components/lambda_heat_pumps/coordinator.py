@@ -672,14 +672,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         int32_addresses = {addr: info for addr, info in address_list.items() 
                            if info.get("data_type") == "int32"}
         if int32_addresses:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "INT32-REGISTER-DEBUG: address_list enthält %d int32-Register: %s",
                 len(int32_addresses), list(int32_addresses.keys())
             )
         
         # DEBUG: Prüfe spezifisch Register 1020/1022
         if 1020 in address_list or 1022 in address_list:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "INT32-REGISTER-DEBUG: Register 1020/1022 gefunden in address_list: "
                 "1020=%s, 1022=%s, enabled_addresses 1020=%s, 1022=%s",
                 1020 in address_list, 1022 in address_list,
@@ -692,7 +692,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         for address, sensor_info in address_list.items():
             # DEBUG: Spezifisch für 1020/1022
             if address in [1020, 1022]:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "INT32-REGISTER-DEBUG: Prüfe Register %d - "
                     "Im Cache: %s, Wert: %s",
                     address,
@@ -704,7 +704,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if address in self._global_register_cache:
                 # DEBUG: Für 1020/1022 - Zeige Cache-Status
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Register %d ist im Cache (Wert: %s) - wird verwendet",
                         address, self._global_register_cache[address]
                     )
@@ -850,7 +850,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     
                                     # DEBUG: Für 1020/1022
                                     if addr in [1020, 1022]:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             "INT32-REGISTER-DEBUG: Batch-Verarbeitung Register %d: "
                                             "Register[%d]=%d, Register[%d]=%d, order=%s",
                                             addr, i, value, i+1, next_value, register_order
@@ -861,7 +861,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     
                                     # DEBUG: Für 1020/1022
                                     if addr in [1020, 1022]:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
                                             addr, value
                                         )
@@ -917,7 +917,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             # DEBUG: Für 1020/1022
             if address in [1020, 1022]:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "INT32-REGISTER-DEBUG: _read_single_register aufgerufen für %d, "
                     "sensor_id=%s, count=%d, data_type=%s, register_order=%s",
                     address, sensor_id, count, sensor_info.get("data_type"),
@@ -941,7 +941,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if count == 2:
                 # DEBUG: Für 1020/1022
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Kombiniere Register %d: "
                         "Register[0]=%d, Register[1]=%d, order=%s",
                         address, result.registers[0], result.registers[1], 
@@ -951,7 +951,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 value = to_signed_32bit(value)
                 # DEBUG: Für 1020/1022
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
                         address, value
                     )
@@ -964,7 +964,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 value = value * sensor_info["scale"]
                 # DEBUG: Für 1020/1022
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Register %d nach Scale (%s): %s",
                         address, sensor_info["scale"], value
                     )
@@ -974,7 +974,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Cache den Wert im globalen Cache für andere Module
             self._global_register_cache[address] = value
             if address in [1020, 1022]:
-                _LOGGER.info(f"INT32-REGISTER-DEBUG: Cached register {address} = {value}")
+                _LOGGER.debug(f"INT32-REGISTER-DEBUG: Cached register {address} = {value}")
             else:
                 _LOGGER.debug(f"Cached register {address} = {value}")
 
@@ -1002,7 +1002,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # DEBUG: Spezifisch für int32-Sensoren
                 if sensor_info.get("data_type") == "int32":
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Sensor %s (hp%d_%s), address=%d, "
                         "enabled=%s, disabled=%s",
                         sensor_id, hp_idx, sensor_id, address,
@@ -1012,7 +1012,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 if not self.is_address_enabled_by_entity(address):
                     if address in [1020, 1022]:
-                        _LOGGER.warning(
+                        _LOGGER.debug(
                             "INT32-REGISTER-DEBUG: Register %d ist NICHT enabled - "
                             "Entity-basiertes Polling blockiert!",
                             address

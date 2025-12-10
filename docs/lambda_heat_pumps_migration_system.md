@@ -106,6 +106,8 @@ target_version = MigrationVersion.get_latest()
 - Ist `current_version >= target_version`? → Keine Migration erforderlich
 - Ermittelt alle ausstehenden Migrationen via `get_pending_migrations()`
 
+**Wichtig**: Neue Config Entries erhalten automatisch die aktuelle Version aus `MIGRATION_VERSION` (importiert aus `const_migration.py`), die automatisch aus `MigrationVersion.get_latest().value` abgeleitet wird.
+
 ### 3. Backup-Erstellung
 
 **Funktionen**:
@@ -128,8 +130,11 @@ target_version = MigrationVersion.get_latest()
 1. Migrationsfunktion aus `MIGRATION_FUNCTIONS` Dictionary laden
 2. Backup erstellen (Registry + Config)
 3. Migrationsfunktion aufrufen
-4. Bei Erfolg: Logging
-5. Bei Fehler: Rollback (falls aktiviert)
+4. Bei Erfolg: **Version im Config Entry sofort aktualisieren** auf `migration_version.value`
+5. Bei Erfolg: Logging mit Versionsnummer
+6. Bei Fehler: Rollback (falls aktiviert)
+
+**Wichtig**: Die Version wird **sofort nach jeder erfolgreichen Migration** aktualisiert, nicht erst am Ende aller Migrationen. Dies verhindert, dass bei einem Neustart während mehrerer Migrationen alle Migrationen erneut ausgeführt werden müssen.
 
 ### 5. Spezifische Migrationsfunktionen
 
@@ -210,6 +215,53 @@ target_version = MigrationVersion.get_latest()
   - Registry-Backups: 30 Tage
   - Config-Backups: 60 Tage
   - Alte .backup Dateien: 7 Tage
+
+## Versionsverwaltung
+
+### Zentrale Versionskonstante
+
+Die aktuelle Migration-Version wird zentral in `const_migration.py` verwaltet:
+
+```python
+# Aktuelle Migration-Version (wird automatisch aus MigrationVersion.get_latest() ermittelt)
+MIGRATION_VERSION = MigrationVersion.get_latest().value
+```
+
+**Vorteile**:
+- Zentrale Quelle für die aktuelle Version
+- Automatische Aktualisierung bei neuen Migration-Versionen
+- Keine manuelle Synchronisation erforderlich
+
+### Config Flow verwendet zentrale Konstante
+
+`config_flow.py` importiert und verwendet die zentrale Konstante:
+
+```python
+from .const_migration import MIGRATION_VERSION
+
+class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
+    VERSION = MIGRATION_VERSION  # Wird automatisch aus const_migration.py importiert
+```
+
+**Ergebnis**: Neue Config Entries erhalten automatisch die aktuelle Migration-Version (aktuell: 8).
+
+### Versionsaktualisierung nach Migration
+
+Nach jeder erfolgreichen Migration wird die Version im Config Entry sofort aktualisiert:
+
+```python
+# In perform_structured_migration() nach erfolgreicher Migration:
+if success:
+    hass.config_entries.async_update_entry(
+        config_entry,
+        version=migration_version.value
+    )
+```
+
+**Vorteile**:
+- **Robustheit bei Fehlern**: Wenn eine Migration fehlschlägt, ist die Version bereits auf die letzte erfolgreiche Migration gesetzt
+- **Fortschritt erhalten**: Bei Neustart wird nur ab der letzten erfolgreichen Migration fortgesetzt
+- **Reihenfolge-Fehler abgefangen**: Jede Migration wird einzeln dokumentiert
 
 ## Migrationsfunktionen Dictionary
 

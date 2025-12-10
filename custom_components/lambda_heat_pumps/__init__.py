@@ -24,7 +24,6 @@ from .services import async_setup_services, async_unload_services
 from .utils import generate_base_addresses, ensure_lambda_config
 from .automations import setup_cycling_automations, cleanup_cycling_automations
 from .migration import async_migrate_entry
-
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
 from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
 from .modbus_utils import wait_for_stable_connection

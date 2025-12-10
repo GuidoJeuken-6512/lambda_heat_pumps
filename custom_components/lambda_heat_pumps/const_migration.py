@@ -36,6 +36,11 @@ class MigrationVersion(IntEnum):
         ]
 
 
+# Aktuelle Migration-Version (wird automatisch aus MigrationVersion.get_latest() ermittelt)
+# Diese Konstante wird von config_flow.py verwendet, um neue Config Entries mit der aktuellen Version zu erstellen
+MIGRATION_VERSION = MigrationVersion.get_latest().value
+
+
 # =============================================================================
 # BACKUP UND CLEANUP KONSTANTEN
 # =============================================================================
