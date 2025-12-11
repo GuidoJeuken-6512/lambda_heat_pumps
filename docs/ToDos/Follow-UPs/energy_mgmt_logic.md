@@ -111,3 +111,4 @@ flowchart TD
     guard --> endNode[Ende Tick]
 
 
+<img width="2479" height="2268" alt="image" src="https://github.com/user-attachments/assets/c7e56373-a60a-4b64-8cac-17808d35e256" />
