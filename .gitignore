@@ -23,7 +23,6 @@ tests/playwright/
 !CHANGELOG.md
 !requirements.txt
 !requirements_test.txt
-!automations.yaml
 
 # Docs directory and all subdirectories
 !docs/
