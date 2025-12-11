@@ -1538,10 +1538,50 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
         sensor_state = hass.states.get(sensor_id)
         
         if sensor_state is None:
-            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' existiert nicht!")
-            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Bitte prüfen Sie die Sensor-ID in lambda_wp_config.yaml")
-            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Fallback auf internen Modbus-Sensor")
-            fallback_used = True
+            # Sensor nicht im State gefunden - prüfe Entity Registry
+            _LOGGER.warning(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' "
+                f"nicht im State gefunden, prüfe Entity Registry..."
+            )
+            
+            entity_registry = async_get_entity_registry(hass)
+            entity_entry = entity_registry.async_get(sensor_id)
+            
+            if entity_entry is None:
+                # Sensor existiert weder im State noch in der Registry
+                _LOGGER.error(
+                    f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' "
+                    f"existiert weder im State noch in der Entity Registry!"
+                )
+                _LOGGER.error(
+                    f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Bitte prüfen Sie die Sensor-ID "
+                    f"in lambda_wp_config.yaml"
+                )
+                _LOGGER.error(
+                    f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Fallback auf internen Modbus-Sensor"
+                )
+                fallback_used = True
+                continue
+            
+            # Sensor existiert in Registry, aber noch nicht im State
+            # Akzeptiere ihn trotzdem - er wird beim Start möglicherweise noch geladen
+            # Die Verbrauchsberechnung wartet dann automatisch auf den ersten Wert
+            # (ähnlich wie _energy_first_value_seen Mechanismus)
+            _LOGGER.info(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' "
+                f"in Entity Registry gefunden, aber noch nicht im State verfügbar"
+            )
+            _LOGGER.info(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird akzeptiert und "
+                f"wird zur Verbrauchsberechnung verwendet (kann beim Start noch nicht verfügbar sein)"
+            )
+            _LOGGER.info(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Zero-Value Protection wird automatisch "
+                f"aktiviert bis Sensor verfügbar ist (wie bei _energy_first_value_seen)"
+            )
+            
+            # Sensor ist gültig (existiert in Registry)
+            validated_configs[hp_key] = sensor_config
             continue
         
         # Prüfe ob Sensor verfügbar ist
