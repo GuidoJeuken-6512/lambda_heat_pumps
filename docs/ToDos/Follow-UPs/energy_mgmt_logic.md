@@ -60,15 +60,21 @@
 - Dry-run per window (low/medium/high) and verify current caps are enforced.
 
 
-
-
+%%{ init: { 'theme': 'base', 'themeVariables': {
+    'primaryColor': '#ffffff',        /* Weißer Hintergrund */
+    'primaryTextColor': '#000000',    /* Schwarze Schrift */
+    'primaryBorderColor': '#000000',  /* Schwarze Umrandung */
+    'lineColor': '#000000',           /* Schwarze Verbindungslinien */
+    'fontSize': '14px',
+    'edgeLabelBackground':'#ffffff'   /* Weiße Labels für Pfeile */
+} } }%%
 flowchart TD
     start[Tick] --> pv{PV > Last + Reserve?}
-    pv -- Ja --> pvCharge[PV lädt Batterie bis max Charge-Current]
+    pv -- Ja --> pvCharge[PV lädt Batterie bis max SOC]
     pv -- Nein --> socMin{SOC > Mindestwert?}
 
-    pvCharge --> pvGoal{SOC-Ziel vor 18:00 erreicht?}
-    pvGoal -- Nein --> pvGridHelp[Ergänze Grid-Ladung parallel zu PV bis max Charge-Current]
+    pvCharge --> pvGoal{SOC-Ziel vor 18:00 erreichbar laut PV-Prognose heute?}
+    pvGoal -- Nein --> pvGridHelp[Ergänze Grid-Ladung parallel zu PV bis max SOC]
     pvGoal -- Ja --> toTariff1[Geh zu Tarif-Logik]
     pvGridHelp --> toTariff1
 
@@ -109,6 +115,7 @@ flowchart TD
     gridN2 --> guard
     dischargeHigh --> guard
     guard --> endNode[Ende Tick]
+
 
 
 <img width="2479" height="2268" alt="image" src="https://github.com/user-attachments/assets/c7e56373-a60a-4b64-8cac-17808d35e256" />
