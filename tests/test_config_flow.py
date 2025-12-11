@@ -99,7 +99,9 @@ class TestLambdaConfigFlow:
         """Test config flow initialization."""
         flow = LambdaConfigFlow()
 
-        assert flow.VERSION == 2
+        # VERSION comes from MIGRATION_VERSION (currently 8)
+        from custom_components.lambda_heat_pumps.const_migration import MIGRATION_VERSION
+        assert flow.VERSION == MIGRATION_VERSION
         assert flow._data == {}
 
     @pytest.mark.asyncio
@@ -346,10 +348,8 @@ class TestLambdaOptionsFlow:
         mock_state2.name = "Temperature 2"
         mock_state2.domain = "sensor"
 
-        # Mock async_all als awaitable function
-        async def mock_async_all():
-            return [mock_state1, mock_state2]
-        mock_hass.states.async_all = mock_async_all
+        # Mock async_all - it's used without await in the code, so make it a regular function that returns a list
+        mock_hass.states.async_all = Mock(return_value=[mock_state1, mock_state2])
         mock_hass.states.get = Mock(
             side_effect=lambda eid: (
                 mock_state1 if eid == "sensor.temp1" else mock_state2

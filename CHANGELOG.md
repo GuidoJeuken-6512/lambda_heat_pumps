@@ -33,6 +33,7 @@
 - Improved translation loading and application for all entity types
 - Better integration with Home Assistant's translation system
 - **Write Interval Optimization**: Reduced write interval from 41 seconds to 9 seconds for faster response times
+- **External Energy Sensor Validation**: Enhanced validation of external energy consumption sensors with Entity Registry fallback check, allowing sensors to be accepted even when not yet available in state during startup. Runtime retry mechanism handles temporary unavailability gracefully.
 
 ### [1.4.3] - 2025-11-04
 #### Fixed
@@ -271,6 +272,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Verbesserte Übersetzungs-Ladung und -Anwendung für alle Entity-Typen
 - Bessere Integration mit Home Assistants Übersetzungssystem
 - **Write-Interval-Optimierung**: Reduziertes Write-Interval von 41 Sekunden auf 9 Sekunden für schnellere Reaktionszeiten
+- **Externe Verbrauchssensor-Validierung**: Verbesserte Validierung externer Verbrauchssensoren mit Entity Registry Fallback-Prüfung, ermöglicht Sensoren auch dann zu akzeptieren, wenn sie beim Start noch nicht im State verfügbar sind. Runtime Retry-Mechanismus behandelt temporäre Nicht-Verfügbarkeit elegant.
 
 ### [1.4.3] - 2025-11-04
 #### Fehlerbehebungen

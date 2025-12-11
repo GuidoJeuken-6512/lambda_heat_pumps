@@ -375,4 +375,173 @@ class TestLambdaEnergyConsumptionSensor:
             assert sensor._attr_state_class == expected
 
 
+@pytest.mark.asyncio
+async def test_energy_consumption_offset_application(mock_hass, mock_entry):
+    """Test that energy consumption offsets from lambda_wp_config.yaml are correctly applied to energy total sensors."""
+    sensor = LambdaEnergyConsumptionSensor(
+        hass=mock_hass,
+        entry=mock_entry,
+        sensor_id="heating_energy_total",
+        name="Heating Energy Total",
+        entity_id="sensor.test_hp1_heating_energy_total",
+        unique_id="test_hp1_heating_energy_total",
+        unit="kWh",
+        state_class="total_increasing",
+        device_class=SensorDeviceClass.ENERGY,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+        period="total",
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    
+    # Mock load_lambda_config to return energy consumption offsets from config
+    mock_config = {
+        "energy_consumption_offsets": {
+            "hp1": {
+                "heating_energy_total": 150.5,  # Offset from config (kWh)
+                "hot_water_energy_total": 0.0,
+                "cooling_energy_total": 0.0,
+                "defrost_energy_total": 0.0,
+            }
+        }
+    }
+    
+    # Create a mock last_state with initial value
+    mock_last_state = Mock()
+    mock_last_state.state = "50.0"  # Initial value from previous state
+    mock_last_state.attributes = {"applied_offset": 0.0}  # No offset applied yet
+    
+    # First restore state
+    await sensor.restore_state(mock_last_state)
+    
+    with patch("custom_components.lambda_heat_pumps.utils.load_lambda_config", return_value=mock_config):
+        # Call _apply_energy_offset directly (not called automatically in restore_state)
+        await sensor._apply_energy_offset()
+        
+        # Verify offset was applied: restored value (50.0) + offset (150.5) = 200.5
+        assert sensor._energy_value == 200.5
+        assert sensor._applied_offset == 150.5
+        sensor.async_write_ha_state.assert_called()
 
+
+@pytest.mark.asyncio
+async def test_energy_consumption_offset_no_config(mock_hass, mock_entry):
+    """Test that energy sensor works correctly when no offsets are configured."""
+    sensor = LambdaEnergyConsumptionSensor(
+        hass=mock_hass,
+        entry=mock_entry,
+        sensor_id="heating_energy_total",
+        name="Heating Energy Total",
+        entity_id="sensor.test_hp1_heating_energy_total",
+        unique_id="test_hp1_heating_energy_total",
+        unit="kWh",
+        state_class="total_increasing",
+        device_class=SensorDeviceClass.ENERGY,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+        period="total",
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    
+    # Mock config with no energy_consumption_offsets
+    mock_config = {}
+    
+    # Create a mock last_state with initial value
+    mock_last_state = Mock()
+    mock_last_state.state = "50.0"
+    mock_last_state.attributes = {"applied_offset": 0.0}
+    
+    # First restore state
+    await sensor.restore_state(mock_last_state)
+    
+    with patch("custom_components.lambda_heat_pumps.utils.load_lambda_config", return_value=mock_config):
+        # Call _apply_energy_offset directly (not called automatically in restore_state)
+        await sensor._apply_energy_offset()
+        
+        # Value should remain unchanged when no offset configured
+        assert sensor._energy_value == 50.0
+        assert sensor._applied_offset == 0.0
+
+
+@pytest.mark.asyncio
+async def test_energy_consumption_offset_multiple_hps(mock_hass, mock_entry):
+    """Test that energy offsets are correctly applied for different heat pumps (hp1, hp2)."""
+    # HP1 sensor
+    sensor_hp1 = LambdaEnergyConsumptionSensor(
+        hass=mock_hass,
+        entry=mock_entry,
+        sensor_id="heating_energy_total",
+        name="Heating Energy Total HP1",
+        entity_id="sensor.test_hp1_heating_energy_total",
+        unique_id="test_hp1_heating_energy_total",
+        unit="kWh",
+        state_class="total_increasing",
+        device_class=SensorDeviceClass.ENERGY,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+        period="total",
+    )
+    
+    sensor_hp1.async_write_ha_state = Mock()
+    
+    # HP2 sensor
+    sensor_hp2 = LambdaEnergyConsumptionSensor(
+        hass=mock_hass,
+        entry=mock_entry,
+        sensor_id="heating_energy_total",
+        name="Heating Energy Total HP2",
+        entity_id="sensor.test_hp2_heating_energy_total",
+        unique_id="test_hp2_heating_energy_total",
+        unit="kWh",
+        state_class="total_increasing",
+        device_class=SensorDeviceClass.ENERGY,
+        device_type="hp",
+        hp_index=2,
+        mode="heating",
+        period="total",
+    )
+    
+    sensor_hp2.async_write_ha_state = Mock()
+    
+    # Mock config with offsets for both HPs
+    mock_config = {
+        "energy_consumption_offsets": {
+            "hp1": {
+                "heating_energy_total": 150.5,
+            },
+            "hp2": {
+                "heating_energy_total": 300.25,
+            }
+        }
+    }
+    
+    # Create mock last_states for both sensors
+    mock_last_state_hp1 = Mock()
+    mock_last_state_hp1.state = "100.0"
+    mock_last_state_hp1.attributes = {"applied_offset": 0.0}
+    
+    mock_last_state_hp2 = Mock()
+    mock_last_state_hp2.state = "200.0"
+    mock_last_state_hp2.attributes = {"applied_offset": 0.0}
+    
+    # First restore states
+    await sensor_hp1.restore_state(mock_last_state_hp1)
+    await sensor_hp2.restore_state(mock_last_state_hp2)
+    
+    with patch("custom_components.lambda_heat_pumps.utils.load_lambda_config", return_value=mock_config):
+        # Call _apply_energy_offset directly (not called automatically in restore_state)
+        await sensor_hp1._apply_energy_offset()
+        await sensor_hp2._apply_energy_offset()
+        
+        # HP1: 100.0 + 150.5 = 250.5
+        assert sensor_hp1._energy_value == 250.5
+        assert sensor_hp1._applied_offset == 150.5
+        
+        # HP2: 200.0 + 300.25 = 500.25
+        assert sensor_hp2._energy_value == 500.25
+        assert sensor_hp2._applied_offset == 300.25

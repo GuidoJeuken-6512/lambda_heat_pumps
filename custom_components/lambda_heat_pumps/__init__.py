@@ -5,7 +5,6 @@ from datetime import timedelta
 
 import logging
 import asyncio
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -30,7 +29,6 @@ from .modbus_utils import wait_for_stable_connection
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
-# VERSION = "1.4.2"  # Updated version for service optimization and test fixes
 
 
 
