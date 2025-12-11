@@ -168,7 +168,23 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return await self._read_registers_batch(address_list, sensor_mapping)
 
     def _normalize_operating_states(self, states_dict):
-        """Normalisiere last_operating_states - konvertiere alle Schlüssel zu Strings."""
+        """Normalisiere last_operating_states (HP_OPERATING_STATE, Register 1003) - konvertiere alle Schlüssel zu Strings."""
+        if not isinstance(states_dict, dict):
+            return {}
+        
+        normalized = {}
+        for key, value in states_dict.items():
+            # Konvertiere Schlüssel zu String
+            normalized[str(key)] = value
+        
+        return normalized
+    
+    def _normalize_states(self, states_dict):
+        """Normalisiere last_states (HP_STATE, Register 1002) - konvertiere alle Schlüssel zu Strings.
+        
+        Diese Methode ist für HP_STATE Werte (z.B. START COMPRESSOR = 5) gedacht,
+        die sich semantisch von HP_OPERATING_STATE Werten unterscheiden.
+        """
         if not isinstance(states_dict, dict):
             return {}
         
@@ -298,10 +314,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             return
         
         # Stelle sicher, dass alle Schlüssel konsistent sind
+        # Verwende separate Normalisierungsmethoden für semantisch unterschiedliche State-Typen
         normalized_operating_states = self._normalize_operating_states(
             getattr(self, "_last_operating_state", {})
         )
-        normalized_states = self._normalize_operating_states(
+        normalized_states = self._normalize_states(
             getattr(self, "_last_state", {})
         )
         
@@ -1797,9 +1814,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         last_state,
                         state_val,
                     )
-                # Speichere den alten Wert für die Flankenerkennung
-                last_state = self._last_state.get(str(hp_idx), "UNBEKANNT")
                 
+                # Verwende last_state für Flankenerkennung (bereits bei Zeile 1801 gesetzt)
                 for mode, mode_val in HP_STATE_MODES.items():
                     cycling_key = f"{mode}_cycles"
                     if not hasattr(self, cycling_key):
