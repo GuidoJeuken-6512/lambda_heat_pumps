@@ -594,7 +594,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         warnings: list[str] = []
         if y_cold is not None and y_mid is not None and y_cold <= y_mid:
             warnings.append(f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})")
-        elif y_mid is not None and y_warm is not None and y_mid <= y_warm:
+        if y_mid is not None and y_warm is not None and y_mid <= y_warm:
             warnings.append(f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})")
 
         if warnings:
