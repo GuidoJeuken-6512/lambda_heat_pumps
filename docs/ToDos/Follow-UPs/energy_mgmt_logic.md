@@ -60,6 +60,16 @@
 - Dry-run per window (low/medium/high) and verify current caps are enforced.
 
 
+# Energy Management Logic (Deye Battery + PV + Dynamic Tariffs)
+
+... (oberer Teil unverändert) ...
+
+## Next
+- Translate this logic into Home Assistant automations/blueprints: conditions on time windows, SOC thresholds, forecasts; actions setting number.* and switch.* entities.
+- Dry-run per window (low/medium/high) and verify current caps are enforced.
+
+
+```mermaid
 %%{ init: { 'theme': 'base', 'themeVariables': {
     'primaryColor': '#ffffff',        /* Weißer Hintergrund */
     'primaryTextColor': '#000000',    /* Schwarze Schrift */
@@ -115,7 +125,8 @@ flowchart TD
     gridN2 --> guard
     dischargeHigh --> guard
     guard --> endNode[Ende Tick]
+```
 
-
+<img width="2479" height="2268" alt="image" src="https://github.com/user-attachments/assets/c7e56373-a60a-4b64-8cac-17808d35e256" />
 
 <img width="2479" height="2268" alt="image" src="https://github.com/user-attachments/assets/c7e56373-a60a-4b64-8cac-17808d35e256" />
