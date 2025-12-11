@@ -60,16 +60,32 @@
 - Dry-run per window (low/medium/high) and verify current caps are enforced.
 
 
+# Energy Management Logic (Deye Battery + PV + Dynamic Tariffs)
+
+... (oberer Teil unverändert) ...
+
+## Next
+- Translate this logic into Home Assistant automations/blueprints: conditions on time windows, SOC thresholds, forecasts; actions setting number.* and switch.* entities.
+- Dry-run per window (low/medium/high) and verify current caps are enforced.
 
 
+```mermaid
+%%{ init: { 'theme': 'base', 'themeVariables': {
+    'primaryColor': '#ffffff',        /* Weißer Hintergrund */
+    'primaryTextColor': '#000000',    /* Schwarze Schrift */
+    'primaryBorderColor': '#000000',  /* Schwarze Umrandung */
+    'lineColor': '#000000',           /* Schwarze Verbindungslinien */
+    'fontSize': '14px',
+    'edgeLabelBackground':'#ffffff'   /* Weiße Labels für Pfeile */
+} } }%%
 flowchart TD
-    start[Tick] --> pv{PV > Load + Reserve?}
-    pv -- Yes --> pvCharge[PV charges battery up to max Charge-Current]
-    pv -- No --> socMin{SOC > Minimum?}
+    start[Tick] --> pv{PV > Last + Reserve?}
+    pv -- Ja --> pvCharge[PV lädt Batterie bis max SOC]
+    pv -- Nein --> socMin{SOC > Mindestwert?}
 
-    pvCharge --> pvGoal{SOC target before 18:00 reached?}
-    pvGoal -- No --> pvGridHelp[Supplement grid charging parallel to PV up to max Charge-Current]
-    pvGoal -- Yes --> toTariff1[Go to tariff logic]
+    pvCharge --> pvGoal{SOC-Ziel vor 18:00 erreichbar laut PV-Prognose heute?}
+    pvGoal -- Nein --> pvGridHelp[Ergänze Grid-Ladung parallel zu PV bis max SOC]
+    pvGoal -- Ja --> toTariff1[Geh zu Tarif-Logik]
     pvGridHelp --> toTariff1
 
     socMin -- Yes --> discharge[Discharge for load]
@@ -108,5 +124,9 @@ flowchart TD
     gridN1 --> guard
     gridN2 --> guard
     dischargeHigh --> guard
-    guard --> endNode[End Tick]
+    guard --> endNode[Ende Tick]
+```
 
+<img width="2479" height="2268" alt="image" src="https://github.com/user-attachments/assets/c7e56373-a60a-4b64-8cac-17808d35e256" />
+
+<img width="2479" height="2268" alt="image" src="https://github.com/user-attachments/assets/c7e56373-a60a-4b64-8cac-17808d35e256" />

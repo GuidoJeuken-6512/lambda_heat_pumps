@@ -1,0 +1,193 @@
+- id: '1765467789737'
+  alias: MiniEMS - Energy Management
+  description: 'Coordinates battery charging/discharging with PV surplus, tariff windows,
+    and PV forecasts.
+
+    No helpers needed; adjust entity IDs and thresholds in the variables section.
+
+    '
+  triggers:
+  - minutes: /10
+    trigger: time_pattern
+  actions:
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ pv_surplus }}'
+      sequence:
+      - service: number.set_value
+        target:
+          entity_id: '{{ charge_current }}'
+        data:
+          value: '{{ charge_cap }}'
+      - service: number.set_value
+        target:
+          entity_id: '{{ grid_charge_current }}'
+        data:
+          value: 0
+      - service: switch.turn_off
+        target:
+          entity_id: '{{ grid_charge_switch }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ not pv_surplus }}'
+      sequence:
+      - choose:
+        - conditions:
+          - condition: template
+            value_template: '{{ tariff == ''high'' }}'
+          sequence:
+          - service: number.set_value
+            target:
+              entity_id: '{{ charge_current }}'
+            data:
+              value: '{{ max_charge_high }}'
+          - service: number.set_value
+            target:
+              entity_id: '{{ grid_charge_current }}'
+            data:
+              value: 0
+          - service: switch.turn_off
+            target:
+              entity_id: '{{ grid_charge_switch }}'
+          - condition: template
+            value_template: '{{ allow_discharge }}'
+          - service: number.set_value
+            target:
+              entity_id: '{{ discharge_current }}'
+            data:
+              value: 60
+        - conditions:
+          - condition: template
+            value_template: '{{ tariff == ''low'' }}'
+          sequence:
+          - target:
+              entity_id: '{{ charge_current }}'
+            data:
+              value: '{{ charge_cap }}'
+            service: number.set_value
+          - choose:
+            - conditions:
+              - condition: template
+                value_template: '{{ allow_grid_low }}'
+              sequence:
+              - target:
+                  entity_id: '{{ grid_charge_current }}'
+                data:
+                  value: '{{ grid_cap }}'
+                service: number.set_value
+              - target:
+                  entity_id: '{{ grid_charge_switch }}'
+                service: switch.turn_on
+            default:
+            - target:
+                entity_id: '{{ grid_charge_current }}'
+              data:
+                value: 0
+              service: number.set_value
+            - target:
+                entity_id: '{{ grid_charge_switch }}'
+              service: switch.turn_off
+        - conditions:
+          - condition: template
+            value_template: '{{ tariff == ''medium'' }}'
+          sequence:
+          - service: number.set_value
+            target:
+              entity_id: '{{ charge_current }}'
+            data:
+              value: '{{ charge_cap }}'
+          - choose:
+            - conditions:
+              - condition: template
+                value_template: '{{ allow_grid_medium }}'
+              sequence:
+              - service: number.set_value
+                target:
+                  entity_id: '{{ grid_charge_current }}'
+                data:
+                  value: '{{ grid_cap }}'
+              - service: switch.turn_on
+                target:
+                  entity_id: '{{ grid_charge_switch }}'
+            default:
+            - service: number.set_value
+              target:
+                entity_id: '{{ grid_charge_current }}'
+              data:
+                value: 0
+            - service: switch.turn_off
+              target:
+                entity_id: '{{ grid_charge_switch }}'
+  - choose:
+    - conditions:
+      - condition: template
+        value_template: '{{ soc <= soc_min }}'
+      sequence:
+      - target:
+          entity_id: '{{ discharge_current }}'
+        data:
+          value: 0
+        service: number.set_value
+  - service: logbook.log
+    data:
+      name: MiniEMS
+      message: 'Tick -> tariff={{ tariff }}, pv_surplus={{ pv_surplus }}, soc={{ soc
+        | round(1) }}%, target={{ target_soc }}%, charge_cap={{ charge_cap }}A, grid_cap={{
+        grid_cap }}A
+
+        '
+    target:
+      entity_id: '{{ soc_sensor }}'
+  mode: restart
+  variables:
+    soc_sensor: sensor.deye8k_battery
+    pv_power_sensor: sensor.pv_power_sum_calc
+    load_power_sensor: sensor.deye8k_load_power
+    grid_charge_switch: switch.deye8k_battery_grid_charging
+    grid_charge_current: number.deye8k_battery_grid_charging_current
+    charge_current: number.deye8k_battery_max_charging_current
+    discharge_current: number.deye8k_battery_max_discharging_current
+    pv_forecast_today: sensor.solcast_pv_forecast_prognose_verbleibende_leistung_heute
+    pv_forecast_tomorrow: sensor.solcast_pv_forecast_prognose_morgen
+    reserve_w: 300
+    soc_min: 20
+    target_soc_low: 90
+    target_soc_medium: 75
+    target_soc_high: 60
+    max_charge_low: 60
+    max_charge_medium: 40
+    max_charge_high: 10
+    grid_limit_low: 40
+    grid_limit_medium: 20
+    grid_limit_high: 0
+    forecast_margin_wh: 1500
+    now_hour: '{{ now().hour }}'
+    pv_w: '{{ states(pv_power_sensor) | float(0) }}'
+    load_w: '{{ states(load_power_sensor) | float(0) }}'
+    soc: '{{ states(soc_sensor) | float(0) }}'
+    today_wh: '{{ states(pv_forecast_today) | float(0) * 1000 }}'
+    tomorrow_wh: '{{ states(pv_forecast_tomorrow) | float(0) * 1000 }}'
+    pv_surplus: '{{ pv_w > (load_w + reserve_w) }}'
+    tariff: '{% set h = now().hour %} {% if 2 <= h < 6 %} medium {% elif 6 <= h <
+      12 %} low {% elif 12 <= h < 16 %} low {% elif 18 <= h < 21 %} high {% else %}
+      medium {% endif %}
+
+      '
+    target_soc: "{% if tariff == 'low' %}\n  {{ target_soc_low }}\n{% elif tariff
+      == 'medium' %}\n  {{ target_soc_medium }}\n{% else %}\n  {{ target_soc_high
+      }}\n{% endif %}\n"
+    charge_cap: "{% if tariff == 'low' %}\n  {{ max_charge_low }}\n{% elif tariff
+      == 'medium' %}\n  {{ max_charge_medium }}\n{% else %}\n  {{ max_charge_high
+      }}\n{% endif %}\n"
+    grid_cap: "{% if tariff == 'low' %}\n  {{ grid_limit_low }}\n{% elif tariff ==
+      'medium' %}\n  {{ grid_limit_medium }}\n{% else %}\n  {{ grid_limit_high }}\n{%
+      endif %}\n"
+    allow_grid_low: "{# 00-06 window: use tomorrow forecast; 12-16 window: use remaining
+      today #} {% if 0 <= now().hour < 6 %}\n  {{ soc < target_soc and (tomorrow_wh
+      + forecast_margin_wh) < 0 }}\n{% elif 12 <= now().hour < 16 %}\n  {{ soc < target_soc
+      and (today_wh + forecast_margin_wh) < 0 }}\n{% else %}\n  {{ soc < target_soc
+      }}\n{% endif %}\n"
+    allow_grid_medium: '{{ soc < target_soc }}'
+    allow_discharge: '{{ soc > soc_min }}'
