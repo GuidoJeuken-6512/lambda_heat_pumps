@@ -6,14 +6,14 @@ import asyncio
 import logging
 import os
 import yaml
-import aiofiles
 from datetime import datetime
-from typing import List, Tuple, Optional
+from typing import Any, List, Optional, Tuple
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.helpers.entity_component import async_update_entity
+from homeassistant.helpers.translation import async_get_translations
 
 from .const import (
     BASE_ADDRESSES,
@@ -25,6 +25,7 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+_MISSING_SENSOR_TRANSLATIONS: set[str] = set()
 
 
 def _get_coordinator(hass: HomeAssistant):
@@ -126,6 +127,74 @@ def build_device_info(entry):
         "hw_version": None,
         "serial_number": None,
     }
+
+
+def build_subdevice_info(entry, device_type: str, device_index: int):
+    """Build device_info dict for module subdevices like HP1, HC2, etc."""
+
+    if not device_type or not device_index:
+        return build_device_info(entry)
+
+    DOMAIN = entry.domain if hasattr(entry, "domain") else "lambda_heat_pumps"
+    entry_id = entry.entry_id
+    fw_version = get_firmware_version(entry)
+    host = entry.data.get("host")
+    main_device_name = entry.data.get("name", "Lambda WP")
+
+    device_type_lc = device_type.lower()
+    device_type_names = {
+        "hp": "HP",
+        "boil": "Boiler",
+        "hc": "HC",
+        "buff": "Buffer",
+        "sol": "Solar",
+    }
+    display_type = device_type_names.get(device_type_lc, device_type.upper())
+    device_name = f"{main_device_name} - {display_type}{device_index}"
+
+    main_identifier = (DOMAIN, entry_id)
+    sub_identifier = (DOMAIN, entry_id, device_type_lc, device_index)
+
+    return {
+        "identifiers": {sub_identifier},
+        "name": device_name,
+        "manufacturer": "Lambda",
+        "model": fw_version,
+        "configuration_url": f"http://{host}",
+        "sw_version": fw_version,
+        "entry_type": None,
+        "suggested_area": None,
+        "via_device": main_identifier,
+        "hw_version": None,
+        "serial_number": None,
+    }
+
+
+def extract_device_info_from_sensor_id(sensor_id: str) -> tuple[str | None, int | None]:
+    """Extract device type and index from a sensor_id like 'hp1_operating_state'."""
+
+    if not sensor_id:
+        return None, None
+
+    device_prefixes = ["hp", "boil", "hc", "buff", "sol"]
+
+    for prefix in device_prefixes:
+        if sensor_id.startswith(prefix):
+            suffix = sensor_id[len(prefix) :]
+            digits = ""
+            for char in suffix:
+                if char.isdigit():
+                    digits += char
+                else:
+                    break
+            if digits:
+                try:
+                    return prefix, int(digits)
+                except ValueError:
+                    return None, None
+            return None, None
+
+    return None, None
 
 
 async def migrate_lambda_config(hass: HomeAssistant) -> bool:
@@ -617,12 +686,83 @@ def clamp_to_int16(value: float, context: str = "value") -> int:
         return raw_value
 
 
+async def load_sensor_translations(
+    hass: HomeAssistant, language: str | None = None
+) -> dict[str, str]:
+    """Load translated entity names for the current language (sensor, number, climate).
+
+    Args:
+        hass: Home Assistant instance
+        language: Optional language code (e.g. "de"). Defaults to hass config language.
+
+    Returns:
+        dict: Mapping entity_id -> translated name (includes sensor, number, and climate)
+    """
+    lang = language
+    if not lang:
+        lang = getattr(hass.config, "language", None)
+    if not lang:
+        config_locale = getattr(hass.config, "locale", None)
+        lang = getattr(config_locale, "language", None)
+    if not lang:
+        lang = "en"
+
+    try:
+        translation_data = await async_get_translations(
+            hass,
+            lang,
+            "entity",
+            integrations=[DOMAIN],
+        )
+    except Exception as err:
+        _LOGGER.warning(
+            "Konnte Entity-Übersetzungen für Sprache %s nicht laden: %s",
+            lang,
+            err,
+        )
+        return {}
+
+    translations = {}
+    
+    # Load translations from sensor, number, and climate categories
+    for category in ["sensor", "number", "climate"]:
+        prefix = f"component.{DOMAIN}.entity.{category}."
+        suffix = ".name"
+        
+        for key, value in translation_data.items():
+            if not isinstance(value, str):
+                continue
+            if not key.startswith(prefix) or not key.endswith(suffix):
+                continue
+            entity_key = key[len(prefix) : -len(suffix)]
+            if entity_key:
+                translations[entity_key] = value
+
+    _LOGGER.debug(
+        "Geladene Entity-Übersetzungen: %d Einträge für Sprache %s (sensor/number/climate)", 
+        len(translations), 
+        lang
+    )
+    return translations
+
+
+def _log_missing_translation(sensor_id: str) -> None:
+    """Log translation warning once per sensor_id."""
+    if not sensor_id or sensor_id in _MISSING_SENSOR_TRANSLATIONS:
+        return
+    _MISSING_SENSOR_TRANSLATIONS.add(sensor_id)
+    _LOGGER.warning(
+        "Keine Übersetzung für Sensor '%s' gefunden – verwende Fallback-Namen.", sensor_id
+    )
+
+
 def generate_sensor_names(
     device_prefix: str,
     sensor_name: str,
     sensor_id: str,
     name_prefix: str,
     use_legacy_modbus_names: bool,
+    translations: dict[str, str] | None = None,
 ) -> dict:
     """Generate consistent sensor names, entity IDs, and unique IDs.
 
@@ -639,11 +779,22 @@ def generate_sensor_names(
     # Display name logic - identical to sensor.py
     # Both legacy and standard modes use the same display name format
     # The name_prefix will be added automatically by Home Assistant's device naming
+    resolved_sensor_name = sensor_name
+    if translations is not None:
+        translated_name = translations.get(sensor_id)
+        if translated_name:
+            resolved_sensor_name = translated_name
+        else:
+            _log_missing_translation(sensor_id)
+
     if device_prefix == sensor_id:
         # Für General Sensors nur den sensor_name verwenden
-        display_name = sensor_name
+        display_name = resolved_sensor_name
     else:
-        display_name = f"{device_prefix.upper()} {sensor_name}"
+        # Sensor name without device prefix
+        display_name = resolved_sensor_name
+        # Sensor name with device prefix
+        # display_name = f"{device_prefix.upper()} {resolved_sensor_name}"
 
     # Always use lowercase for name_prefix to unify entity_id generation
     name_prefix_lc = name_prefix.lower() if name_prefix else ""
@@ -667,6 +818,26 @@ def generate_sensor_names(
             unique_id = f"{device_prefix}_{sensor_id}"
 
     return {"name": display_name, "entity_id": entity_id, "unique_id": unique_id}
+
+
+def get_entity_icon(spec: dict[str, Any] | None, default_icon: str | None = None) -> str | None:
+    """Get icon from entity spec with fallback.
+    
+    Args:
+        spec: Entity specification dictionary (sensor_info, spec, etc.)
+        default_icon: Optional default icon to use if no icon is specified in spec
+        
+    Returns:
+        Icon string if found, default_icon if provided, or None
+    """
+    if not spec:
+        return default_icon
+    
+    icon = spec.get("icon")
+    if icon:
+        return icon
+    
+    return default_icon
 
 
 def generate_template_entity_prefix(
@@ -723,6 +894,10 @@ async def increment_cycling_counter(
         f"{mode}_cycling_2h",
         f"{mode}_cycling_4h"
     ]
+    
+    # Für compressor_start: auch monthly hinzufügen
+    if mode == "compressor_start":
+        sensor_types.append(f"{mode}_cycling_monthly")
     
     for sensor_id in sensor_types:
         names = generate_sensor_names(
@@ -1363,10 +1538,50 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
         sensor_state = hass.states.get(sensor_id)
         
         if sensor_state is None:
-            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' existiert nicht!")
-            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Bitte prüfen Sie die Sensor-ID in lambda_wp_config.yaml")
-            _LOGGER.error(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Fallback auf internen Modbus-Sensor")
-            fallback_used = True
+            # Sensor nicht im State gefunden - prüfe Entity Registry
+            _LOGGER.warning(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' "
+                f"nicht im State gefunden, prüfe Entity Registry..."
+            )
+            
+            entity_registry = async_get_entity_registry(hass)
+            entity_entry = entity_registry.async_get(sensor_id)
+            
+            if entity_entry is None:
+                # Sensor existiert weder im State noch in der Registry
+                _LOGGER.error(
+                    f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' "
+                    f"existiert weder im State noch in der Entity Registry!"
+                )
+                _LOGGER.error(
+                    f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Bitte prüfen Sie die Sensor-ID "
+                    f"in lambda_wp_config.yaml"
+                )
+                _LOGGER.error(
+                    f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Fallback auf internen Modbus-Sensor"
+                )
+                fallback_used = True
+                continue
+            
+            # Sensor existiert in Registry, aber noch nicht im State
+            # Akzeptiere ihn trotzdem - er wird beim Start möglicherweise noch geladen
+            # Die Verbrauchsberechnung wartet dann automatisch auf den ersten Wert
+            # (ähnlich wie _energy_first_value_seen Mechanismus)
+            _LOGGER.info(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' "
+                f"in Entity Registry gefunden, aber noch nicht im State verfügbar"
+            )
+            _LOGGER.info(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird akzeptiert und "
+                f"wird zur Verbrauchsberechnung verwendet (kann beim Start noch nicht verfügbar sein)"
+            )
+            _LOGGER.info(
+                f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Zero-Value Protection wird automatisch "
+                f"aktiviert bis Sensor verfügbar ist (wie bei _energy_first_value_seen)"
+            )
+            
+            # Sensor ist gültig (existiert in Registry)
+            validated_configs[hp_key] = sensor_config
             continue
         
         # Prüfe ob Sensor verfügbar ist

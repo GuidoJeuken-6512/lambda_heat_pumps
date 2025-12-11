@@ -36,10 +36,14 @@ from .const import (
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
     build_device_info,
+    build_subdevice_info,
+    extract_device_info_from_sensor_id,
     generate_base_addresses,
     generate_sensor_names,
+    load_sensor_translations,
     get_firmware_version_int,
     get_compatible_sensors,
+    get_entity_icon,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
 from .const_mapping import HP_STATE  # noqa: F401
@@ -88,6 +92,7 @@ async def async_setup_entry(
     # Hole den Legacy-Modbus-Namen-Switch aus der Config
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
     name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    sensor_translations = await load_sensor_translations(hass)
 
     # Get firmware version and filter compatible sensors
     fw_version = get_firmware_version_int(entry)
@@ -145,13 +150,7 @@ async def async_setup_entry(
                     entity_id = f"sensor.{name_prefix_lc}_{override_name}"
                     unique_id = f"{name_prefix_lc}_{override_name}"
                 else:
-                    prefix_upper = prefix.upper()
                     device_prefix = f"{prefix}{idx}"
-
-                    if prefix == "hc" and sensor_info.get("device_type") == "Climate":
-                        name = sensor_info["name"].format(idx)
-                    else:
-                        name = f"{prefix_upper}{idx} {sensor_info['name']}"
 
                     # Verwende die zentrale Namensgenerierung
                     names = generate_sensor_names(
@@ -160,11 +159,13 @@ async def async_setup_entry(
                         sensor_id,
                         name_prefix,
                         use_legacy_modbus_names,
+                        translations=sensor_translations,
                     )
 
                     sensor_id_final = f"{prefix}{idx}_{sensor_id}"
                     entity_id = names["entity_id"]
                     unique_id = names["unique_id"]
+                    name = names["name"]
 
                 device_type = (
                     prefix.upper()
@@ -224,14 +225,14 @@ async def async_setup_entry(
 
         # Name und Entity-ID für General Sensors
         if use_legacy_modbus_names and "override_name" in sensor_info:
-            name = sensor_info["override_name"]
+            override_name = sensor_info["override_name"]
             sensor_id_final = sensor_info["override_name"]
             _LOGGER.info(
-                f"Override name for sensor '{sensor_id}': '{name}' "
+                f"Override name for sensor '{sensor_id}': '{override_name}' "
                 f"wird als Name und sensor_id verwendet."
             )
         else:
-            name = sensor_info["name"]
+            override_name = None
             sensor_id_final = sensor_id
 
         # Verwende die zentrale Namensgenerierung für General Sensors
@@ -242,17 +243,21 @@ async def async_setup_entry(
             sensor_id_final,  # sensor_id für die Namensgenerierung
             name_prefix,
             use_legacy_modbus_names,
+            translations=sensor_translations,
         )
 
         entity_id = names["entity_id"]
         unique_id = names["unique_id"]
+        
+        # Wenn override_name verwendet wird, nutze diesen; sonst den übersetzten Namen
+        final_name = override_name if override_name else names["name"]
 
         sensors.append(
             LambdaSensor(
                 coordinator=coordinator,
                 entry=entry,
                 sensor_id=sensor_id_final,
-                name=name,
+                name=final_name,  # Verwende override_name oder den übersetzten Namen
                 unit=sensor_info.get("unit", ""),
                 address=address,
                 scale=sensor_info.get("scale", 1.0),
@@ -277,6 +282,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_total"),
         ("cooling", "cooling_cycling_total"),
         ("defrost", "defrost_cycling_total"),
+        ("compressor_start", "compressor_start_cycling_total"),
     ]
     cycling_sensor_count = 0
     cycling_sensor_ids = []
@@ -293,6 +299,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             cycling_sensor_ids.append(names["entity_id"])
 
@@ -335,6 +342,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             yesterday_sensor_ids.append(names["entity_id"])
 
@@ -362,6 +370,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_daily"),
         ("cooling", "cooling_cycling_daily"),
         ("defrost", "defrost_cycling_daily"),
+        ("compressor_start", "compressor_start_cycling_daily"),
     ]
     daily_sensor_count = 0
     daily_sensor_ids = []
@@ -376,6 +385,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             daily_sensor_ids.append(names["entity_id"])
 
@@ -402,6 +412,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_2h"),
         ("cooling", "cooling_cycling_2h"),
         ("defrost", "defrost_cycling_2h"),
+        ("compressor_start", "compressor_start_cycling_2h"),
     ]
     two_hour_sensor_count = 0
     two_hour_sensor_ids = []
@@ -416,6 +427,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             two_hour_sensor_ids.append(names["entity_id"])
 
@@ -442,6 +454,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_4h"),
         ("cooling", "cooling_cycling_4h"),
         ("defrost", "defrost_cycling_4h"),
+        ("compressor_start", "compressor_start_cycling_4h"),
     ]
     four_hour_sensor_count = 0
     four_hour_sensor_ids = []
@@ -456,6 +469,7 @@ async def async_setup_entry(
                 template_id,
                 name_prefix,
                 use_legacy_modbus_names,
+                translations=sensor_translations,
             )
             four_hour_sensor_ids.append(names["entity_id"])
 
@@ -475,6 +489,44 @@ async def async_setup_entry(
 
             sensors.append(four_hour_sensor)
             four_hour_sensor_count += 1
+
+    # --- Monthly Cycling Sensors (echte Entities - werden am 1. des Monats auf 0 gesetzt) ---
+    monthly_modes = [
+        ("compressor_start", "compressor_start_cycling_monthly"),
+    ]
+    monthly_sensor_count = 0
+    monthly_sensor_ids = []
+
+    for hp_idx in range(1, num_hps + 1):
+        for mode, template_id in monthly_modes:
+            template = CALCULATED_SENSOR_TEMPLATES[template_id]
+            device_prefix = f"hp{hp_idx}"
+            names = generate_sensor_names(
+                device_prefix,
+                template["name"],
+                template_id,
+                name_prefix,
+                use_legacy_modbus_names,
+                translations=sensor_translations,
+            )
+            monthly_sensor_ids.append(names["entity_id"])
+
+            monthly_sensor = LambdaCyclingSensor(
+                hass=hass,
+                entry=entry,
+                sensor_id=template_id,
+                name=names["name"],
+                entity_id=names["entity_id"],
+                unique_id=names["unique_id"],
+                unit=template["unit"],
+                state_class=template["state_class"],
+                device_class=template["device_class"],
+                device_type=template["device_type"],
+                hp_index=hp_idx,
+            )
+
+            sensors.append(monthly_sensor)
+            monthly_sensor_count += 1
 
     # Speichere die Cycling-Entities für schnellen Zugriff
     if "lambda_heat_pumps" not in hass.data:
@@ -503,6 +555,11 @@ async def async_setup_entry(
     # Füge 4H-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in four_hour_sensor_ids:
+            all_cycling_entities[sensor.entity_id] = sensor
+    
+    # Füge Monthly-Sensoren hinzu
+    for sensor in sensors:
+        if hasattr(sensor, 'entity_id') and sensor.entity_id in monthly_sensor_ids:
             all_cycling_entities[sensor.entity_id] = sensor
     
     hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = all_cycling_entities
@@ -549,6 +606,7 @@ async def async_setup_entry(
                     sensor_id,
                     name_prefix,
                     use_legacy_modbus_names,
+                    translations=sensor_translations,
                 )
                 
                 sensor = LambdaEnergyConsumptionSensor(
@@ -935,6 +993,10 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
 
     @property
     def device_info(self):
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
         return build_device_info(self._entry)
 
     @property
@@ -1199,6 +1261,10 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device information."""
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
         return build_device_info(self._entry)
 
 
@@ -1331,6 +1397,10 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info."""
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
         return build_device_info(self._entry)
 
     @property
@@ -1396,7 +1466,13 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
         self._precision = precision
         self._options = options
         self._sensor_info = sensor_info or {}
+        self._base_state_name = None
+        if sensor_info:
+            self._base_state_name = sensor_info.get("name")
         self._entity_enabled = False  # Track if entity is enabled
+        
+        # Setze Icon aus sensor_info (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(sensor_info)
 
         # Debug log sensor creation with register option
         if sensor_info and sensor_info.get("options", {}).get("register", False):
@@ -1545,14 +1621,17 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
 
             # Extract base name without index
             # (e.g. "HP1 Operating State" -> "Operating State")
-            base_name = self._attr_name or ""
-            if (
-                self._device_type
-                and base_name
-                and self._device_type.upper() in base_name
-            ):
-                # Remove prefix and index (e.g. "HP1 " or "BOIL2 ")
-                base_name = " ".join(base_name.split()[1:])
+            if self._base_state_name:
+                base_name = self._base_state_name
+            else:
+                base_name = self._attr_name or ""
+                if (
+                    self._device_type
+                    and base_name
+                    and self._device_type.upper() in base_name
+                ):
+                    # Remove prefix and index (e.g. "HP1 " oder "BOIL2 ")
+                    base_name = " ".join(base_name.split()[1:])
             # Ersetze auch Bindestriche durch Unterstriche
             if base_name:
                 mapping_name = (
@@ -1644,13 +1723,16 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
                 "Processing state sensor %s for enum options", self._sensor_id
             )
             # Get the mapping dictionary name
-            base_name = self._attr_name or ""
-            if (
-                self._device_type
-                and base_name
-                and self._device_type.upper() in base_name
-            ):
-                base_name = " ".join(base_name.split()[1:])
+            if self._base_state_name:
+                base_name = self._base_state_name
+            else:
+                base_name = self._attr_name or ""
+                if (
+                    self._device_type
+                    and base_name
+                    and self._device_type.upper() in base_name
+                ):
+                    base_name = " ".join(base_name.split()[1:])
 
             if base_name:
                 mapping_name = (
@@ -1682,6 +1764,11 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
     @property
     def device_info(self):
         """Return device info for this sensor."""
+        device_type, device_index = extract_device_info_from_sensor_id(
+            self._sensor_id
+        )
+        if device_type and device_index:
+            return build_subdevice_info(self._entry, device_type, device_index)
         return build_device_info(self._entry)
 
 
@@ -1770,6 +1857,13 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info."""
+        device_type, device_index = extract_device_info_from_sensor_id(self._sensor_id)
+        if not device_type and hasattr(self, "_device_type"):
+            device_type = getattr(self, "_device_type", None)
+        if not device_index and hasattr(self, "_hp_index"):
+            device_index = getattr(self, "_hp_index", None)
+        if device_type and device_index:
+            return build_subdevice_info(self._entry, device_type, device_index)
         return build_device_info(self._entry)
 
     @callback

@@ -119,7 +119,8 @@ async def test_lambda_climate_entity_properties():
         base_address,
     )
     assert entity is not None
-    assert entity._attr_name == "BOIL1 Hot Water"
+    # Entity name no longer includes device prefix (BOIL1), just the sensor name
+    assert entity._attr_name == "Hot Water"
     # unique_id includes name_prefix when use_legacy_modbus_names is True
     assert entity._attr_unique_id == "test_boil1_hot_water"
     assert entity._attr_min_temp == 40
@@ -134,7 +135,8 @@ async def test_lambda_climate_entity_set_temperature():
     coordinator_mock = MagicMock()
     coordinator_mock.data = {}
     coordinator_mock.client = MagicMock()
-    coordinator_mock.client.write_registers = MagicMock(
+    # async_write_registers uses await client.write_registers, so it must be AsyncMock
+    coordinator_mock.client.write_registers = AsyncMock(
         return_value=MagicMock(isError=lambda: False)
     )
     coordinator_mock.async_refresh = AsyncMock()
@@ -167,22 +169,21 @@ async def test_lambda_climate_entity_set_temperature():
 
     # Mock async_write_ha_state um Home Assistant Konfiguration zu vermeiden
     with patch.object(entity, "async_write_ha_state"):
-        await entity.async_set_temperature(temperature=60)
+        # Patch async_write_registers to verify it's called correctly
+        with patch("custom_components.lambda_heat_pumps.climate.async_write_registers") as mock_write:
+            mock_write.return_value = MagicMock(isError=lambda: False)
+            await entity.async_set_temperature(temperature=60)
 
-    # Überprüfe, ob async_add_executor_job mit den korrekten Parametern aufgerufen wurde
-    hass_mock.async_add_executor_job.assert_called_once()
-    call_args = hass_mock.async_add_executor_job.call_args[0]
-    # Jetzt wird write_registers aus modbus_utils verwendet
-    from custom_components.lambda_heat_pumps.modbus_utils import write_registers
-
-    assert call_args[0] == write_registers
-    # client (coordinator_mock.client)
-    assert call_args[1] == coordinator_mock.client
-    # base_address + relative_set_address (sollte 2050 sein für hot_water)
-    assert call_args[2] == 2050
-    # Temperatur * scale (10.0)
-    assert call_args[3] == [600]
-    assert call_args[4] == 1  # slave_id
+            # Verify async_write_registers was called with correct parameters
+            mock_write.assert_called_once()
+            call_args = mock_write.call_args
+            # client (coordinator_mock.client)
+            assert call_args[0][0] == coordinator_mock.client
+            # base_address + relative_set_address (sollte 2050 sein für hot_water)
+            assert call_args[0][1] == 2050
+            # Temperatur * scale (10.0) - temperature 60 * scale 10 = 600
+            assert call_args[0][2] == [600]
+            assert call_args[0][3] == 1  # slave_id
 
     # Überprüfe, ob der Coordinator-Cache aktualisiert wurde
     assert coordinator_mock.data["boil1_target_high_temperature"] == 60
@@ -217,4 +218,8 @@ async def test_lambda_climate_entity_device_info():
 
     device_info = entity.device_info
     assert device_info is not None
-    assert device_info["identifiers"] == {("lambda_heat_pumps", "test_entry")}
+    # For hot_water, device_type is "boil", so it should return subdevice info
+    # Subdevice identifier: (domain, entry_id, device_type, device_index)
+    assert device_info["identifiers"] == {("lambda_heat_pumps", "test_entry", "boil", 1)}
+    assert device_info["via_device"] == ("lambda_heat_pumps", "test_entry")
+    assert "Boiler1" in device_info["name"] or "test - Boiler1" in device_info["name"]

@@ -2,6 +2,7 @@
 
 import pytest
 from unittest.mock import Mock, AsyncMock
+from types import SimpleNamespace
 
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
@@ -11,6 +12,7 @@ from custom_components.lambda_heat_pumps.migration import (
     MigrationVersion
 )
 from custom_components.lambda_heat_pumps.const_migration import MigrationVersion as ConstMigrationVersion
+from tests.conftest import DummyLoop
 
 
 class TestMigrationArchitecture:
@@ -21,6 +23,10 @@ class TestMigrationArchitecture:
         """Erstelle einen Mock für Home Assistant."""
         hass = Mock(spec=HomeAssistant)
         hass.async_add_executor_job = AsyncMock()
+        hass.config = Mock()
+        hass.config.language = "en"
+        hass.config.locale = SimpleNamespace(language="en")
+        hass.loop = DummyLoop()
         return hass
     
     @pytest.fixture

@@ -29,7 +29,7 @@
 - **Config Flow**: Setup-Prozess und Validierung
 
 #### 5. Modul-Initialisierung
-- **Konstanten-Definition**: DOMAIN, PLATFORMS, VERSION
+- **Konstanten-Definition**: DOMAIN, PLATFORMS
 - **Debug-Logging**: Konfiguration und Setup
 - **Import-Funktionalität**: Alle wichtigen Funktionen
 

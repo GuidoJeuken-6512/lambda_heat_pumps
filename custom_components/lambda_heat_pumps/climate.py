@@ -24,9 +24,12 @@ from .const import (
 from .utils import (
     generate_base_addresses,
     build_device_info,
+    build_subdevice_info,
     generate_sensor_names,
+    load_sensor_translations,
     get_firmware_version_int,
     get_compatible_sensors,
+    get_entity_icon,
 )
 from .modbus_utils import async_write_registers
 
@@ -39,20 +42,29 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
     _attr_should_poll = False
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
-    def __init__(self, coordinator, entry, climate_type, idx, base_address):
+    def __init__(
+        self,
+        coordinator,
+        entry,
+        climate_type,
+        idx,
+        base_address,
+        translations: dict[str, str] | None = None,
+    ):
         super().__init__(coordinator)
         self._entry = entry
         self._climate_type = climate_type  # "hot_water" oder "heating_circuit"
         self._idx = idx
         self._base_address = base_address
         self._template = CLIMATE_TEMPLATES[climate_type]
+        self._device_type = self._template["device_type"]
 
         # Hole den Legacy-Modbus-Namen-Switch aus der Config
         use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
         name_prefix = entry.data.get("name", "").lower().replace(" ", "")
 
         # Verwende die Werte aus der CLIMATE_TEMPLATES Konfiguration
-        device_type = self._template["device_type"]  # "boil" oder "hc"
+        device_type = self._device_type  # "boil" oder "hc"
         sensor_id = climate_type  # "hot_water" oder "heating_circuit"
 
         # Verwende die zentrale Namensgenerierung
@@ -63,6 +75,7 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
             sensor_id,
             name_prefix,
             use_legacy_modbus_names,
+            translations=translations,
         )
 
         # Setze die Namen und IDs
@@ -93,6 +106,9 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
         hvac_modes_set = self._template.get("hvac_mode", {"heat"})
         self._attr_hvac_modes = [HVACMode(mode) for mode in hvac_modes_set]
         self._attr_hvac_mode = HVACMode.HEAT  # Default-Modus
+        
+        # Setze Icon aus Template (zentrale Steuerung)
+        self._attr_icon = get_entity_icon(self._template)
 
     @property
     def current_temperature(self):
@@ -122,6 +138,8 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
 
     @property
     def device_info(self):
+        if self._device_type and self._idx:
+            return build_subdevice_info(self._entry, self._device_type, self._idx)
         return build_device_info(self._entry)
 
     async def async_set_temperature(self, **kwargs):
@@ -167,6 +185,7 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     num_boil = entry.data.get("num_boil", 1)
     num_hc = entry.data.get("num_hc", 1)
+    sensor_translations = await load_sensor_translations(hass)
     
     # Get firmware version and filter compatible climate templates
     fw_version = get_firmware_version_int(entry)
@@ -192,6 +211,7 @@ async def async_setup_entry(
                     "hot_water",  # climate_type aus CLIMATE_TEMPLATES
                     idx,
                     boil_addresses[idx],
+                    sensor_translations,
                 )
             )
 
@@ -217,6 +237,7 @@ async def async_setup_entry(
                 "heating_circuit",  # climate_type aus CLIMATE_TEMPLATES
                 idx,
                 hc_addresses[idx],
+                sensor_translations,
             )
         )
 

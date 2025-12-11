@@ -1,6 +1,7 @@
 """Tests für die neue Cycling-Sensor-Architektur."""
 
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from types import SimpleNamespace
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
@@ -11,6 +12,7 @@ from custom_components.lambda_heat_pumps.sensor import (
     LambdaYesterdaySensor,
     async_setup_entry,
 )
+from tests.conftest import DummyLoop
 
 
 @pytest.fixture
@@ -19,12 +21,15 @@ def mock_hass():
     hass = Mock()
     hass.config = Mock()
     hass.config.config_dir = "/tmp/test_config"
+    hass.config.language = "en"
+    hass.config.locale = SimpleNamespace(language="en")
     hass.config_entries = Mock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.data = {}
     hass.states = Mock()
     hass.states.async_all = AsyncMock(return_value=[])
     hass.states.get = Mock()
+    hass.loop = DummyLoop()
     return hass
 
 
@@ -272,6 +277,110 @@ def test_lambda_cycling_sensor_4h_reset_handler(mock_entry, mock_coordinator):
     sensor.async_write_ha_state.assert_called_once()
 
 
+def test_lambda_cycling_sensor_monthly_reset_handler(mock_entry, mock_coordinator):
+    """Test LambdaCyclingSensor monthly reset handler."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_monthly",
+        name="Compressor Start Cycling Monthly",
+        entity_id="sensor.test_compressor_start_cycling_monthly",
+        unique_id="test_compressor_start_cycling_monthly",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    # Mock async_write_ha_state
+    sensor.async_write_ha_state = Mock()
+    
+    # Set initial value
+    sensor._cycling_value = 100
+    
+    # Test monthly reset (async method)
+    import asyncio
+    asyncio.run(sensor._handle_monthly_reset("test_entry"))
+    assert sensor._cycling_value == 0
+    sensor.async_write_ha_state.assert_called_once()
+
+
+def test_compressor_start_cycling_sensor_init(mock_entry, mock_coordinator):
+    """Test compressor_start cycling sensor initialization."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_total",
+        name="Compressor Start Cycling Total",
+        entity_id="sensor.test_compressor_start_cycling_total",
+        unique_id="test_compressor_start_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    assert sensor._sensor_id == "compressor_start_cycling_total"
+    assert sensor._name == "Compressor Start Cycling Total"
+    assert sensor.entity_id == "sensor.test_compressor_start_cycling_total"
+    assert sensor._unique_id == "test_compressor_start_cycling_total"
+    assert sensor._unit == "cycles"
+    assert sensor._hp_index == 1
+    assert sensor._cycling_value == 0
+
+
+def test_compressor_start_cycling_sensor_2h_reset(mock_entry, mock_coordinator):
+    """Test compressor_start 2h sensor reset handler."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_2h",
+        name="Compressor Start Cycling 2h",
+        entity_id="sensor.test_compressor_start_cycling_2h",
+        unique_id="test_compressor_start_cycling_2h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    sensor._cycling_value = 15
+    
+    import asyncio
+    asyncio.run(sensor._handle_2h_reset("test_entry"))
+    assert sensor._cycling_value == 0
+    sensor.async_write_ha_state.assert_called_once()
+
+
+def test_compressor_start_cycling_sensor_4h_reset(mock_entry, mock_coordinator):
+    """Test compressor_start 4h sensor reset handler."""
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="compressor_start_cycling_4h",
+        name="Compressor Start Cycling 4h",
+        entity_id="sensor.test_compressor_start_cycling_4h",
+        unique_id="test_compressor_start_cycling_4h",
+        unit="cycles",
+        state_class="total",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    sensor._cycling_value = 25
+    
+    import asyncio
+    asyncio.run(sensor._handle_4h_reset("test_entry"))
+    assert sensor._cycling_value == 0
+    sensor.async_write_ha_state.assert_called_once()
+
+
 # Tests für cycling_entities Registrierung
 @pytest.mark.asyncio
 async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordinator):
@@ -293,34 +402,55 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
         mock_cycling_sensor._sensor_id = "heating_cycling_total"
         mock_cycling_class.return_value = mock_cycling_sensor
         
-        mock_yesterday_sensor = Mock()
-        mock_yesterday_sensor.entity_id = "sensor.test_heating_cycling_yesterday"
-        mock_yesterday_sensor._sensor_id = "heating_cycling_yesterday"
-        mock_yesterday_class.return_value = mock_yesterday_sensor
+        # Create mock sensors with correct entity_id format (including hp_index)
+        # Make yesterday_class return sensors with proper entity_id format
+        def yesterday_sensor_side_effect(*args, **kwargs):
+            sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
+            hp_idx = kwargs.get('hp_index', args[-2] if len(args) >= 8 else 1)
+            mode = sensor_id.replace('_cycling_yesterday', '')
+            mock_yesterday = Mock()
+            mock_yesterday.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_yesterday"
+            mock_yesterday._sensor_id = sensor_id
+            return mock_yesterday
         
-        mock_daily_sensor = Mock()
-        mock_daily_sensor.entity_id = "sensor.test_heating_cycling_daily"
-        mock_daily_sensor._sensor_id = "heating_cycling_daily"
+        mock_yesterday_class.side_effect = yesterday_sensor_side_effect
         
-        mock_2h_sensor = Mock()
-        mock_2h_sensor.entity_id = "sensor.test_heating_cycling_2h"
-        mock_2h_sensor._sensor_id = "heating_cycling_2h"
-        
-        mock_4h_sensor = Mock()
-        mock_4h_sensor.entity_id = "sensor.test_heating_cycling_4h"
-        mock_4h_sensor._sensor_id = "heating_cycling_4h"
-        
-        # Make cycling_class return different sensors based on sensor_id
+        # Make cycling_class return different sensors based on sensor_id with proper entity_id format
         def cycling_sensor_side_effect(*args, **kwargs):
             sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
+            hp_idx = kwargs.get('hp_index', args[-1] if len(args) >= 8 else 1)
+            
             if 'daily' in sensor_id:
-                return mock_daily_sensor
+                mode = sensor_id.replace('_cycling_daily', '')
+                mock_daily = Mock()
+                mock_daily.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_daily"
+                mock_daily._sensor_id = sensor_id
+                return mock_daily
             elif '2h' in sensor_id:
-                return mock_2h_sensor
+                mode = sensor_id.replace('_cycling_2h', '')
+                mock_2h = Mock()
+                mock_2h.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_2h"
+                mock_2h._sensor_id = sensor_id
+                return mock_2h
             elif '4h' in sensor_id:
-                return mock_4h_sensor
+                mode = sensor_id.replace('_cycling_4h', '')
+                mock_4h = Mock()
+                mock_4h.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_4h"
+                mock_4h._sensor_id = sensor_id
+                return mock_4h
+            elif 'monthly' in sensor_id:
+                mode = sensor_id.replace('_cycling_monthly', '')
+                mock_monthly = Mock()
+                mock_monthly.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_monthly"
+                mock_monthly._sensor_id = sensor_id
+                return mock_monthly
             else:
-                return mock_cycling_sensor
+                # Total sensors
+                mode = sensor_id.replace('_cycling_total', '')
+                mock_total = Mock()
+                mock_total.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_total"
+                mock_total._sensor_id = sensor_id
+                return mock_total
         
         mock_cycling_class.side_effect = cycling_sensor_side_effect
         
@@ -344,6 +474,13 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
         assert "sensor.test_hp1_heating_cycling_daily" in cycling_entities
         assert "sensor.test_hp1_heating_cycling_2h" in cycling_entities
         assert "sensor.test_hp1_heating_cycling_4h" in cycling_entities
+        
+        # Verify compressor_start sensors are registered
+        assert "sensor.test_hp1_compressor_start_cycling_total" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_daily" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_2h" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_4h" in cycling_entities
+        assert "sensor.test_hp1_compressor_start_cycling_monthly" in cycling_entities
 
 
 @pytest.mark.asyncio
@@ -359,11 +496,17 @@ async def test_yesterday_sensors_in_cycling_entities(mock_hass, mock_entry, mock
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
          patch("custom_components.lambda_heat_pumps.automations.setup_cycling_automations") as mock_automations:
         
-        # Create mock yesterday sensor
-        mock_yesterday_sensor = Mock()
-        mock_yesterday_sensor.entity_id = "sensor.test_heating_cycling_yesterday"
-        mock_yesterday_sensor._sensor_id = "heating_cycling_yesterday"
-        mock_yesterday_class.return_value = mock_yesterday_sensor
+        # Create mock yesterday sensor with proper entity_id format
+        def yesterday_sensor_side_effect(*args, **kwargs):
+            sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
+            hp_idx = kwargs.get('hp_index', args[-2] if len(args) >= 8 else 1)
+            mode = sensor_id.replace('_cycling_yesterday', '')
+            mock_yesterday = Mock()
+            mock_yesterday.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_yesterday"
+            mock_yesterday._sensor_id = sensor_id
+            return mock_yesterday
+        
+        mock_yesterday_class.side_effect = yesterday_sensor_side_effect
         
         # Mock other sensors
         mock_cycling_sensor = Mock()
@@ -389,27 +532,30 @@ async def test_yesterday_sensors_in_cycling_entities(mock_hass, mock_entry, mock
 
 
 # Tests für _update_yesterday_sensors Funktion
-def test_update_yesterday_sensors_function(mock_hass, mock_entry):
-    """Test the _update_yesterday_sensors function from automations."""
-    from custom_components.lambda_heat_pumps.automations import _update_yesterday_sensors
+@pytest.mark.asyncio
+async def test_update_yesterday_sensors_function(mock_hass, mock_entry):
+    """Test the _update_yesterday_sensors_async function from automations."""
+    from custom_components.lambda_heat_pumps.automations import _update_yesterday_sensors_async
     
-    # Mock cycling entities
+    # Mock cycling entities - use proper entity_id format with hp1
     mock_daily_sensor = Mock()
-    mock_daily_sensor.entity_id = "sensor.test_heating_cycling_daily"
+    mock_daily_sensor.entity_id = "sensor.test_hp1_heating_cycling_daily"
     mock_daily_sensor._sensor_id = "heating_cycling_daily"
     
     mock_yesterday_sensor = Mock()
-    mock_yesterday_sensor.entity_id = "sensor.test_heating_cycling_yesterday"
+    mock_yesterday_sensor.entity_id = "sensor.test_hp1_heating_cycling_yesterday"
     mock_yesterday_sensor._sensor_id = "heating_cycling_yesterday"
-    mock_yesterday_sensor.set_cycling_value = Mock()
+    # set_cycling_value is async, so use AsyncMock
+    from unittest.mock import AsyncMock
+    mock_yesterday_sensor.set_cycling_value = AsyncMock()
     
     # Mock hass.data structure
     mock_hass.data = {
         "lambda_heat_pumps": {
             mock_entry.entry_id: {
                 "cycling_entities": {
-                    "sensor.test_heating_cycling_daily": mock_daily_sensor,
-                    "sensor.test_heating_cycling_yesterday": mock_yesterday_sensor,
+                    "sensor.test_hp1_heating_cycling_daily": mock_daily_sensor,
+                    "sensor.test_hp1_heating_cycling_yesterday": mock_yesterday_sensor,
                 }
             }
         }
@@ -420,8 +566,8 @@ def test_update_yesterday_sensors_function(mock_hass, mock_entry):
     mock_state.state = "42"
     mock_hass.states.get.return_value = mock_state
     
-    # Call the function
-    _update_yesterday_sensors(mock_hass, mock_entry.entry_id)
+    # Call the async function
+    await _update_yesterday_sensors_async(mock_hass, mock_entry.entry_id)
     
     # Verify that set_cycling_value was called on the yesterday sensor
     mock_yesterday_sensor.set_cycling_value.assert_called_once_with(42)
@@ -490,16 +636,28 @@ async def test_yesterday_sensor_problem_detection(mock_hass, mock_entry, mock_co
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
          patch("custom_components.lambda_heat_pumps.automations.setup_cycling_automations") as mock_automations:
         
-        # Create mock sensors
-        mock_yesterday_sensor = Mock()
-        mock_yesterday_sensor.entity_id = "sensor.test_heating_cycling_yesterday"
-        mock_yesterday_sensor._sensor_id = "heating_cycling_yesterday"
-        mock_yesterday_class.return_value = mock_yesterday_sensor
+        # Create mock sensors with proper entity_id format
+        def yesterday_sensor_side_effect(*args, **kwargs):
+            sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
+            hp_idx = kwargs.get('hp_index', args[-2] if len(args) >= 8 else 1)
+            mode = sensor_id.replace('_cycling_yesterday', '')
+            mock_yesterday = Mock()
+            mock_yesterday.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_yesterday"
+            mock_yesterday._sensor_id = sensor_id
+            return mock_yesterday
         
-        mock_cycling_sensor = Mock()
-        mock_cycling_sensor.entity_id = "sensor.test_heating_cycling_total"
-        mock_cycling_sensor._sensor_id = "heating_cycling_total"
-        mock_cycling_class.return_value = mock_cycling_sensor
+        mock_yesterday_class.side_effect = yesterday_sensor_side_effect
+        
+        def cycling_sensor_side_effect(*args, **kwargs):
+            sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
+            hp_idx = kwargs.get('hp_index', args[-1] if len(args) >= 8 else 1)
+            mode = sensor_id.replace('_cycling_total', '')
+            mock_total = Mock()
+            mock_total.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_total"
+            mock_total._sensor_id = sensor_id
+            return mock_total
+        
+        mock_cycling_class.side_effect = cycling_sensor_side_effect
         
         mock_regular_sensor = Mock()
         mock_regular_sensor.entity_id = "sensor.test_hp1_temperature"
@@ -518,3 +676,90 @@ async def test_yesterday_sensor_problem_detection(mock_hass, mock_entry, mock_co
         
         # Verify specific yesterday sensor is there
         assert "sensor.test_hp1_heating_cycling_yesterday" in cycling_entities
+
+
+@pytest.mark.asyncio
+async def test_cycling_offset_application(mock_entry, mock_coordinator):
+    """Test that cycling offsets from lambda_wp_config.yaml are correctly applied to cycling total sensors."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    from homeassistant.helpers.restore_state import RestoreStateData
+    
+    # Create a cycling total sensor
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_hp1_heating_cycling_total",
+        unique_id="test_hp1_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    
+    # Mock load_lambda_config to return cycling offsets from config
+    mock_config = {
+        "cycling_offsets": {
+            "hp1": {
+                "heating_cycling_total": 1500,  # Offset from config
+                "hot_water_cycling_total": 0,
+                "cooling_cycling_total": 0,
+                "defrost_cycling_total": 0,
+            }
+        }
+    }
+    
+    # Create a mock last_state with initial value
+    mock_last_state = Mock()
+    mock_last_state.state = "100"  # Initial value from previous state
+    mock_last_state.attributes = {"applied_offset": 0}  # No offset applied yet
+    
+    with patch("custom_components.lambda_heat_pumps.utils.load_lambda_config", return_value=mock_config):
+        # Call restore_state which triggers _apply_cycling_offset
+        await sensor.restore_state(mock_last_state)
+        
+        # Verify offset was applied: restored value (100) + offset (1500) = 1600
+        assert sensor._cycling_value == 1600
+        assert sensor._applied_offset == 1500
+        sensor.async_write_ha_state.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_cycling_offset_no_config(mock_entry, mock_coordinator):
+    """Test that cycling sensor works correctly when no offsets are configured."""
+    from custom_components.lambda_heat_pumps.sensor import LambdaCyclingSensor
+    
+    sensor = LambdaCyclingSensor(
+        hass=mock_coordinator.hass,
+        entry=mock_entry,
+        sensor_id="heating_cycling_total",
+        name="Heating Cycling Total",
+        entity_id="sensor.test_hp1_heating_cycling_total",
+        unique_id="test_hp1_heating_cycling_total",
+        unit="cycles",
+        state_class="total_increasing",
+        device_class=None,
+        device_type="hp",
+        hp_index=1,
+    )
+    
+    sensor.async_write_ha_state = Mock()
+    
+    # Mock config with no cycling_offsets
+    mock_config = {}
+    
+    # Create a mock last_state with initial value
+    mock_last_state = Mock()
+    mock_last_state.state = "100"
+    mock_last_state.attributes = {"applied_offset": 0}
+    
+    with patch("custom_components.lambda_heat_pumps.utils.load_lambda_config", return_value=mock_config):
+        await sensor.restore_state(mock_last_state)
+        
+        # Value should remain unchanged when no offset configured
+        assert sensor._cycling_value == 100
+        assert sensor._applied_offset == 0

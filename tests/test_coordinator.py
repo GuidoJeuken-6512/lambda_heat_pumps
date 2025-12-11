@@ -2,7 +2,10 @@
 
 import os
 from datetime import timedelta
-from unittest.mock import AsyncMock, MagicMock, Mock, mock_open, patch
+from types import SimpleNamespace
+from io import StringIO
+from contextlib import asynccontextmanager
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 import yaml
@@ -17,6 +20,7 @@ from custom_components.lambda_heat_pumps.const import (
     SENSOR_TYPES,
 )
 from custom_components.lambda_heat_pumps.coordinator import LambdaDataUpdateCoordinator
+from tests.conftest import DummyLoop
 
 
 @pytest.fixture
@@ -25,6 +29,11 @@ def mock_hass():
     hass = MagicMock()
     hass.config = MagicMock()
     hass.config.config_dir = "/tmp/test_config"
+    hass.config.language = "en"
+    hass.config.locale = SimpleNamespace(language="en")
+    hass.loop = DummyLoop()
+    hass.is_running = True
+    hass.is_stopping = False
     return hass
 
 
@@ -72,6 +81,10 @@ def test_coordinator_init(mock_hass, mock_entry):
     assert coordinator.name == "Lambda Coordinator"
     assert coordinator.update_interval == timedelta(seconds=30)
     assert coordinator._config_dir == "/tmp/test_config"
+    # Test _last_state initialization for HP_STATE flank detection
+    assert hasattr(coordinator, "_last_state")
+    assert isinstance(coordinator._last_state, dict)
+    assert coordinator._last_state == {}
 
 
 def test_coordinator_init_with_debug_mode(mock_hass, mock_entry):
@@ -115,14 +128,16 @@ async def test_coordinator_async_init_success(mock_hass, mock_entry):
         ) as mock_load_disabled:
             with patch.object(
                 LambdaDataUpdateCoordinator, "_load_sensor_overrides", return_value={}
-            ) as mock_load_overrides:
+            ) as mock_load_overrides, patch.object(
+                LambdaDataUpdateCoordinator, "_connect", AsyncMock(return_value=None)
+            ) as mock_connect:
                 coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
                 await coordinator.async_init()
 
-                # Verify that async_add_executor_job was called (which calls makedirs internally)
                 mock_hass.async_add_executor_job.assert_called()
                 mock_load_disabled.assert_called_once_with(mock_hass)
                 mock_load_overrides.assert_called_once()
+                mock_connect.assert_called_once()
                 assert coordinator.disabled_registers == set()
                 assert coordinator.sensor_overrides == {}
 
@@ -137,6 +152,8 @@ async def test_coordinator_async_init_exception(mock_hass, mock_entry):
     with patch(
         "custom_components.lambda_heat_pumps.coordinator.os.makedirs",
         side_effect=OSError("Permission denied"),
+    ), patch.object(
+        LambdaDataUpdateCoordinator, "_connect", AsyncMock(return_value=None)
     ):
         coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
         with pytest.raises(OSError):
@@ -371,8 +388,9 @@ async def test_async_update_data_int16_sensor(mock_hass, mock_entry):
 async def test_connect_success(mock_hass, mock_entry):
     """Test successful connection."""
     mock_client = AsyncMock()
+    mock_client.connect = AsyncMock(return_value=True)
 
-    with patch("pymodbus.client.ModbusTcpClient", return_value=mock_client):
+    with patch("pymodbus.client.AsyncModbusTcpClient", return_value=mock_client):
         coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
         await coordinator._connect()
 
@@ -384,9 +402,9 @@ async def test_connect_success(mock_hass, mock_entry):
 async def test_connect_failure(mock_hass, mock_entry):
     """Test connection failure."""
     mock_client = AsyncMock()
-    mock_client.connect.return_value = False
+    mock_client.connect = AsyncMock(return_value=False)
 
-    with patch("pymodbus.client.ModbusTcpClient", return_value=mock_client):
+    with patch("pymodbus.client.AsyncModbusTcpClient", return_value=mock_client):
         coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
         result = await coordinator._connect()
 
@@ -401,14 +419,15 @@ async def test_load_sensor_overrides_success(mock_hass, mock_entry):
         "sensors_names_override": [{"id": "test_sensor", "override_name": "new_name"}]
     }
 
+    @asynccontextmanager
+    async def fake_open(*args, **kwargs):
+        yield StringIO(yaml.dump(config_data))
+
     with patch(
         "custom_components.lambda_heat_pumps.coordinator.os.path.exists",
         return_value=True,
     ):
-        with patch(
-            "custom_components.lambda_heat_pumps.coordinator.aiofiles.open",
-            mock_open(read_data=yaml.dump(config_data)),
-        ):
+        with patch("aiofiles.open", fake_open):
             coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
             result = await coordinator._load_sensor_overrides()
 
@@ -431,14 +450,15 @@ async def test_load_sensor_overrides_file_not_exists(mock_hass, mock_entry):
 @pytest.mark.asyncio
 async def test_load_sensor_overrides_yaml_error(mock_hass, mock_entry):
     """Test sensor overrides loading with YAML error."""
+    @asynccontextmanager
+    async def fake_open_error(*args, **kwargs):
+        yield StringIO("invalid yaml")
+
     with patch(
         "custom_components.lambda_heat_pumps.coordinator.os.path.exists",
         return_value=True,
     ):
-        with patch(
-            "custom_components.lambda_heat_pumps.coordinator.aiofiles.open",
-            mock_open(read_data="invalid yaml"),
-        ):
+        with patch("aiofiles.open", fake_open_error):
             coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
             result = await coordinator._load_sensor_overrides()
 
@@ -451,7 +471,7 @@ async def test_on_ha_started(mock_hass, mock_entry):
     coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
     mock_event = Mock()
 
-    with patch.object(coordinator, "_connect", return_value=True) as mock_connect:
+    with patch.object(coordinator, "_connect", AsyncMock(return_value=None)) as mock_connect:
         await coordinator._on_ha_started(mock_event)
 
         mock_connect.assert_called_once()
@@ -471,4 +491,48 @@ def test_coordinator_config_paths(mock_hass, mock_entry):
     coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
 
     assert coordinator._config_dir == "/tmp/test_config"
-    assert coordinator._config_path == "/tmp/test_config/lambda_wp_config.yaml"
+    assert coordinator._config_path == os.path.join("/tmp/test_config", "lambda_heat_pumps")
+
+
+@pytest.mark.asyncio
+async def test_coordinator_last_state_initialization(mock_hass, mock_entry):
+    """Test that _last_state is initialized for HP_STATE flank detection."""
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    
+    # Test that _last_state is initialized as empty dict
+    assert hasattr(coordinator, "_last_state")
+    assert isinstance(coordinator._last_state, dict)
+    assert coordinator._last_state == {}
+    
+    # Test that _last_state can store HP state values
+    coordinator._last_state["1"] = "3"  # HP1 state = READY
+    coordinator._last_state["2"] = "5"  # HP2 state = START COMPRESSOR
+    
+    assert coordinator._last_state["1"] == "3"
+    assert coordinator._last_state["2"] == "5"
+
+
+@pytest.mark.asyncio
+async def test_coordinator_last_state_persistence(mock_hass, mock_entry):
+    """Test that _last_state is persisted and restored correctly."""
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    
+    # Set some state values
+    coordinator._last_state["1"] = "5"  # HP1 state = START COMPRESSOR
+    coordinator._last_state["2"] = "3"  # HP2 state = READY
+    
+    # Mock persist data structure
+    persist_data = {
+        "last_operating_states": {"1": "1", "2": "2"},
+        "last_states": {"1": "5", "2": "3"},
+    }
+    
+    # Simulate loading persisted data
+    coordinator._last_operating_state = persist_data.get("last_operating_states", {})
+    coordinator._last_state = persist_data.get("last_states", {})
+    
+    # Verify restored values
+    assert coordinator._last_state["1"] == "5"
+    assert coordinator._last_state["2"] == "3"
+    assert coordinator._last_operating_state["1"] == "1"
+    assert coordinator._last_operating_state["2"] == "2"

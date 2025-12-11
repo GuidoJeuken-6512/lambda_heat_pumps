@@ -80,6 +80,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self._last_operating_state = {}
+        self._last_state = {}  # Für HP_STATE Flankenerkennung (z.B. START COMPRESSOR)
         self._heating_cycles = {}
         self._heating_energy = {}
         self._last_energy_update = {}
@@ -167,7 +168,23 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return await self._read_registers_batch(address_list, sensor_mapping)
 
     def _normalize_operating_states(self, states_dict):
-        """Normalisiere last_operating_states - konvertiere alle Schlüssel zu Strings."""
+        """Normalisiere last_operating_states (HP_OPERATING_STATE, Register 1003) - konvertiere alle Schlüssel zu Strings."""
+        if not isinstance(states_dict, dict):
+            return {}
+        
+        normalized = {}
+        for key, value in states_dict.items():
+            # Konvertiere Schlüssel zu String
+            normalized[str(key)] = value
+        
+        return normalized
+    
+    def _normalize_states(self, states_dict):
+        """Normalisiere last_states (HP_STATE, Register 1002) - konvertiere alle Schlüssel zu Strings.
+        
+        Diese Methode ist für HP_STATE Werte (z.B. START COMPRESSOR = 5) gedacht,
+        die sich semantisch von HP_OPERATING_STATE Werten unterscheiden.
+        """
         if not isinstance(states_dict, dict):
             return {}
         
@@ -297,8 +314,12 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             return
         
         # Stelle sicher, dass alle Schlüssel konsistent sind
+        # Verwende separate Normalisierungsmethoden für semantisch unterschiedliche State-Typen
         normalized_operating_states = self._normalize_operating_states(
             getattr(self, "_last_operating_state", {})
+        )
+        normalized_states = self._normalize_states(
+            getattr(self, "_last_state", {})
         )
         
         # Prüfe ob sensor_ids in der aktuellen Datei existieren und verwende sie falls self._sensor_ids leer ist
@@ -323,6 +344,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
             "last_operating_states": normalized_operating_states,
+            "last_states": normalized_states,
             "energy_consumption": self._energy_consumption,
             "last_energy_readings": self._last_energy_reading,
             "energy_offsets": self._energy_offsets,
@@ -396,6 +418,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Lade persistierte State-Informationen
         self._last_operating_state = data.get("last_operating_states", {})
+        self._last_state = data.get("last_states", {})
         
         # Lade persistierte Energy Consumption Daten
         self._energy_consumption = data.get("energy_consumption", {})
@@ -666,14 +689,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         int32_addresses = {addr: info for addr, info in address_list.items() 
                            if info.get("data_type") == "int32"}
         if int32_addresses:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "INT32-REGISTER-DEBUG: address_list enthält %d int32-Register: %s",
                 len(int32_addresses), list(int32_addresses.keys())
             )
         
         # DEBUG: Prüfe spezifisch Register 1020/1022
         if 1020 in address_list or 1022 in address_list:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "INT32-REGISTER-DEBUG: Register 1020/1022 gefunden in address_list: "
                 "1020=%s, 1022=%s, enabled_addresses 1020=%s, 1022=%s",
                 1020 in address_list, 1022 in address_list,
@@ -686,7 +709,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         for address, sensor_info in address_list.items():
             # DEBUG: Spezifisch für 1020/1022
             if address in [1020, 1022]:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "INT32-REGISTER-DEBUG: Prüfe Register %d - "
                     "Im Cache: %s, Wert: %s",
                     address,
@@ -698,7 +721,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if address in self._global_register_cache:
                 # DEBUG: Für 1020/1022 - Zeige Cache-Status
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Register %d ist im Cache (Wert: %s) - wird verwendet",
                         address, self._global_register_cache[address]
                     )
@@ -844,7 +867,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     
                                     # DEBUG: Für 1020/1022
                                     if addr in [1020, 1022]:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             "INT32-REGISTER-DEBUG: Batch-Verarbeitung Register %d: "
                                             "Register[%d]=%d, Register[%d]=%d, order=%s",
                                             addr, i, value, i+1, next_value, register_order
@@ -855,7 +878,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     
                                     # DEBUG: Für 1020/1022
                                     if addr in [1020, 1022]:
-                                        _LOGGER.info(
+                                        _LOGGER.debug(
                                             "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
                                             addr, value
                                         )
@@ -911,7 +934,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             # DEBUG: Für 1020/1022
             if address in [1020, 1022]:
-                _LOGGER.info(
+                _LOGGER.debug(
                     "INT32-REGISTER-DEBUG: _read_single_register aufgerufen für %d, "
                     "sensor_id=%s, count=%d, data_type=%s, register_order=%s",
                     address, sensor_id, count, sensor_info.get("data_type"),
@@ -935,7 +958,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if count == 2:
                 # DEBUG: Für 1020/1022
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Kombiniere Register %d: "
                         "Register[0]=%d, Register[1]=%d, order=%s",
                         address, result.registers[0], result.registers[1], 
@@ -945,7 +968,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 value = to_signed_32bit(value)
                 # DEBUG: Für 1020/1022
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
                         address, value
                     )
@@ -958,7 +981,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 value = value * sensor_info["scale"]
                 # DEBUG: Für 1020/1022
                 if address in [1020, 1022]:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Register %d nach Scale (%s): %s",
                         address, sensor_info["scale"], value
                     )
@@ -968,7 +991,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Cache den Wert im globalen Cache für andere Module
             self._global_register_cache[address] = value
             if address in [1020, 1022]:
-                _LOGGER.info(f"INT32-REGISTER-DEBUG: Cached register {address} = {value}")
+                _LOGGER.debug(f"INT32-REGISTER-DEBUG: Cached register {address} = {value}")
             else:
                 _LOGGER.debug(f"Cached register {address} = {value}")
 
@@ -996,7 +1019,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # DEBUG: Spezifisch für int32-Sensoren
                 if sensor_info.get("data_type") == "int32":
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "INT32-REGISTER-DEBUG: Sensor %s (hp%d_%s), address=%d, "
                         "enabled=%s, disabled=%s",
                         sensor_id, hp_idx, sensor_id, address,
@@ -1006,7 +1029,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 if not self.is_address_enabled_by_entity(address):
                     if address in [1020, 1022]:
-                        _LOGGER.warning(
+                        _LOGGER.debug(
                             "INT32-REGISTER-DEBUG: Register %d ist NICHT enabled - "
                             "Entity-basiertes Polling blockiert!",
                             address
@@ -1340,9 +1363,16 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 "cooling": 3,  # CC
                 "defrost": 5,  # DEFROST
             }
+            # HP_STATE Modi (separat, da auf HP_STATE Register basierend)
+            HP_STATE_MODES = {
+                "compressor_start": 5,  # START COMPRESSOR
+            }
             # Initialisiere _last_operating_state nur wenn nicht bereits aus Persistierung geladen
             if not hasattr(self, "_last_operating_state"):
                 self._last_operating_state = {}
+            # Initialisiere _last_state nur wenn nicht bereits aus Persistierung geladen
+            if not hasattr(self, "_last_state"):
+                self._last_state = {}
 
             # Read general sensors with batch optimization
             await self._read_general_sensors_batch(data)
@@ -1760,6 +1790,113 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Aktualisiere _last_operating_state NACH der Flankenerkennung
                 self._last_operating_state[str(hp_idx)] = op_state_val
+            
+            # Flankenerkennung für HP_STATE (z.B. START COMPRESSOR)
+            for hp_idx in range(1, num_hps + 1):
+                state_val = data.get(f"hp{hp_idx}_state")
+                if state_val is None:
+                    continue
+
+                # Get last state
+                last_state = self._last_state.get(str(hp_idx), "UNBEKANNT")
+                
+                # Initialisierung beim ersten Update: Logge den aktuellen state
+                if last_state == "UNBEKANNT":
+                    _LOGGER.info(
+                        f"Initialisiere _last_state für HP {hp_idx} mit state {state_val}"
+                    )
+                
+                # Info-Meldung bei Änderung
+                if last_state != state_val:
+                    _LOGGER.info(
+                        "Wärmepumpe %d: state geändert von %s auf %s",
+                        hp_idx,
+                        last_state,
+                        state_val,
+                    )
+                
+                # Verwende last_state für Flankenerkennung (bereits bei Zeile 1801 gesetzt)
+                for mode, mode_val in HP_STATE_MODES.items():
+                    cycling_key = f"{mode}_cycles"
+                    if not hasattr(self, cycling_key):
+                        setattr(self, cycling_key, {})
+                    cycles = getattr(self, cycling_key)
+                    
+                    # Flanke: state wechselt von etwas anderem auf mode_val
+                    # ABER: Nur wenn Initialisierung abgeschlossen ist
+                    _LOGGER.debug(f"FLANKENERKENNUNG HP_STATE DEBUG HP{hp_idx}: init_complete={self._initialization_complete}, last_state='{last_state}', mode_val={mode_val}, state_val='{state_val}'")
+                    
+                    if (self._initialization_complete and 
+                        last_state != "UNBEKANNT" and
+                        last_state != mode_val and 
+                        state_val == mode_val):
+                        
+                        # Prüfe, ob die Cycling-Entities bereits registriert sind
+                        cycling_entities_ready = False
+                        try:
+                            if (
+                                "lambda_heat_pumps" in self.hass.data
+                                and self.entry.entry_id
+                                in self.hass.data["lambda_heat_pumps"]
+                                and "cycling_entities"
+                                in self.hass.data["lambda_heat_pumps"][
+                                    self.entry.entry_id
+                                ]
+                            ):
+                                cycling_entities_ready = True
+                        except Exception:
+                            pass
+
+                        if cycling_entities_ready:
+                            # Zentrale Funktion für total-Zähler aufrufen
+                            await increment_cycling_counter(
+                                self.hass,
+                                mode=mode,
+                                hp_index=hp_idx,
+                                name_prefix=self.entry.data.get("name", "eu08l"),
+                                use_legacy_modbus_names=self._use_legacy_names,
+                                cycling_offsets=self._cycling_offsets,
+                            )
+                            # Get current cycling count for logging
+                            old_count = cycles.get(hp_idx, 0)
+                            
+                            # Debug: Check old_count type
+                            if not isinstance(old_count, (int, float)):
+                                _LOGGER.error(f"cycles[{hp_idx}] is not a number: {type(old_count)} = {old_count}")
+                                old_count = 0
+                            
+                            new_count = old_count + 1
+                            cycles[hp_idx] = new_count
+                            
+                            _LOGGER.info(
+                                f"🔄 FLANKENERKENNUNG HP_STATE: HP{hp_idx} {last_state} → {state_val} | Cycling {mode} erhöht: {old_count} → {new_count}"
+                            )
+                            _LOGGER.debug(
+                                f"Flankenwechsel Details HP_STATE: HP{hp_idx} state von '{last_state}' auf '{state_val}' geändert, {mode} Modus aktiviert"
+                            )
+                        else:
+                            _LOGGER.debug(
+                                "Wärmepumpe %d: %s Modus aktiviert (HP_STATE) "
+                                "(Cycling-Entities noch nicht bereit)",
+                                hp_idx,
+                                mode,
+                            )
+                    elif not self._initialization_complete:
+                        # Flankenerkennung während Initialisierung unterdrückt
+                        _LOGGER.debug(
+                            "Wärmepumpe %d: %s Modus erkannt (HP_STATE), aber Flankenerkennung "
+                            "während Initialisierung unterdrückt",
+                            hp_idx,
+                            mode,
+                        )
+                    else:
+                        # Flankenerkennung aus anderen Gründen nicht ausgelöst
+                        _LOGGER.debug(
+                            f"FLANKENERKENNUNG HP_STATE NICHT AUSGELÖST HP{hp_idx}: init_complete={self._initialization_complete}, last_state='{last_state}', mode_val={mode_val}, state_val='{state_val}'"
+                        )
+                
+                # Aktualisiere _last_state NACH der Flankenerkennung
+                self._last_state[str(hp_idx)] = state_val
             
             await self._persist_counters()
             

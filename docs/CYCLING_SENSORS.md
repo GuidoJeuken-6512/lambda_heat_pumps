@@ -47,6 +47,7 @@ Flank detection is performed centrally in the Coordinator for maximum robustness
   - `sensor.eu08l_hp1_hot_water_cycling_total`
   - `sensor.eu08l_hp1_cooling_cycling_total`
   - `sensor.eu08l_hp1_defrost_cycling_total`
+  - `sensor.eu08l_hp1_compressor_start_cycling_total`
 
 #### Yesterday Cycling Sensors (Real Entities)
 - **Purpose**: Store yesterday's daily cycling values
@@ -67,6 +68,7 @@ Flank detection is performed centrally in the Coordinator for maximum robustness
   - `sensor.eu08l_hp1_hot_water_cycling_daily`
   - `sensor.eu08l_hp1_cooling_cycling_daily`
   - `sensor.eu08l_hp1_defrost_cycling_daily`
+  - `sensor.eu08l_hp1_compressor_start_cycling_daily`
 
 #### 2H Cycling Sensors (Real Entities)
 - **Purpose**: Count 2-hour cycling values
@@ -78,6 +80,7 @@ Flank detection is performed centrally in the Coordinator for maximum robustness
   - `sensor.eu08l_hp1_hot_water_cycling_2h`
   - `sensor.eu08l_hp1_cooling_cycling_2h`
   - `sensor.eu08l_hp1_defrost_cycling_2h`
+  - `sensor.eu08l_hp1_compressor_start_cycling_2h`
 
 #### 4H Cycling Sensors (Real Entities)
 - **Purpose**: Count 4-hour cycling values
@@ -89,6 +92,7 @@ Flank detection is performed centrally in the Coordinator for maximum robustness
   - `sensor.eu08l_hp1_hot_water_cycling_4h`
   - `sensor.eu08l_hp1_cooling_cycling_4h`
   - `sensor.eu08l_hp1_defrost_cycling_4h`
+  - `sensor.eu08l_hp1_compressor_start_cycling_4h`
 
 #### Monthly Cycling Sensors (Real Entities)
 - **Purpose**: Count monthly cycling values
@@ -100,6 +104,7 @@ Flank detection is performed centrally in the Coordinator for maximum robustness
   - `sensor.eu08l_hp1_hot_water_cycling_monthly`
   - `sensor.eu08l_hp1_cooling_cycling_monthly`
   - `sensor.eu08l_hp1_defrost_cycling_monthly`
+  - `sensor.eu08l_hp1_compressor_start_cycling_monthly`
 
 #### Yearly Cycling Sensors (Real Entities)
 - **Purpose**: Count yearly cycling values
@@ -155,16 +160,27 @@ The cycling sensors now include **enhanced automation** with proper reset handli
 #### Flank Detection (Edge Detection)
 The cycling sensors use **flank detection** to detect when the heat pump changes operating modes:
 
-**Source Sensor for Flank Detection:**
+**Source Sensors for Flank Detection:**
+
+**For heating, hot_water, cooling, defrost:**
 - **HP1**: `hp1_operating_state` (Register 1003)
 - **HP2**: `hp2_operating_state` (Register 1103) 
 - **HP3**: `hp3_operating_state` (Register 1203)
+
+**For compressor_start:**
+- **HP1**: `hp1_state` (Register 1002)
+- **HP2**: `hp2_state` (Register 1102)
+- **HP3**: `hp3_state` (Register 1202)
 
 **Register Calculation:**
 ```
 HP1 operating_state = 1000 (Base) + 3 (relative_address) = 1003
 HP2 operating_state = 1100 (Base) + 3 (relative_address) = 1103
 HP3 operating_state = 1200 (Base) + 3 (relative_address) = 1203
+
+HP1 state = 1000 (Base) + 2 (relative_address) = 1002
+HP2 state = 1100 (Base) + 2 (relative_address) = 1102
+HP3 state = 1200 (Base) + 2 (relative_address) = 1202
 ```
 
 **Operating State Values (Handled by Cycling Sensors):**
@@ -172,6 +188,9 @@ HP3 operating_state = 1200 (Base) + 3 (relative_address) = 1203
 - `2` = DHW (Hot Water) ✅
 - `3` = CC (Cooling) ✅
 - `5` = DEFROST (Defrost) ✅
+
+**HP_STATE Values (Handled by compressor_start Cycling Sensor):**
+- `5` = START COMPRESSOR ✅
 
 **Other Operating States (Not Handled):**
 - `0` = STBY (Standby)
@@ -234,11 +253,13 @@ cycling_offsets:
     hot_water_cycling_total: 800   # HP1 already had 800 hot water cycles
     cooling_cycling_total: 200     # HP1 already had 200 cooling cycles
     defrost_cycling_total: 50      # HP1 already had 50 defrost cycles
+    compressor_start_cycling_total: 5000  # HP1 already had 5000 compressor starts
   hp2:
     heating_cycling_total: 0       # HP2 starts fresh
     hot_water_cycling_total: 0     # HP2 starts fresh
     cooling_cycling_total: 0       # HP2 starts fresh
     defrost_cycling_total: 0       # HP2 starts fresh
+    compressor_start_cycling_total: 0     # HP2 starts fresh
 ```
 
 #### 4.3. How Offsets Work
@@ -381,8 +402,9 @@ num_hps = entry.data.get("num_hps", 1)  # e.g. 2 HPs
 
 # Automatic creation for each HP
 for hp_idx in range(1, num_hps + 1):  # 1, 2
-    for mode, template_id in cycling_modes:  # heating, hot_water, cooling, defrost
-        # Creates Total-, Yesterday-, Daily-, 2H- and 4H-sensors
+    for mode, template_id in cycling_modes:  # heating, hot_water, cooling, defrost, compressor_start
+        # Creates Total-, Yesterday-, Daily-, 2H-, 4H- and Monthly-sensors
+        # Note: compressor_start has no yesterday sensor
 ```
 
 #### 6.2. Consistent Naming
@@ -400,15 +422,17 @@ names = generate_sensor_names(
 ```
 
 #### 6.3. Example Output (2 HPs)
-**Total Sensors (4 modes × 2 HPs = 8 sensors):**
+**Total Sensors (5 modes × 2 HPs = 10 sensors):**
 - `sensor.eu08l_hp1_heating_cycling_total`
 - `sensor.eu08l_hp1_hot_water_cycling_total`
 - `sensor.eu08l_hp1_cooling_cycling_total`
 - `sensor.eu08l_hp1_defrost_cycling_total`
+- `sensor.eu08l_hp1_compressor_start_cycling_total`
 - `sensor.eu08l_hp2_heating_cycling_total`
 - `sensor.eu08l_hp2_hot_water_cycling_total`
 - `sensor.eu08l_hp2_cooling_cycling_total`
 - `sensor.eu08l_hp2_defrost_cycling_total`
+- `sensor.eu08l_hp2_compressor_start_cycling_total`
 
 **Yesterday Sensors (4 modes × 2 HPs = 8 sensors):**
 - `sensor.eu08l_hp1_heating_cycling_yesterday`
@@ -440,25 +464,23 @@ names = generate_sensor_names(
 - `sensor.eu08l_hp2_cooling_cycling_2h`
 - `sensor.eu08l_hp2_defrost_cycling_2h`
 
-**4H Sensors (4 modes × 2 HPs = 8 sensors):**
+**4H Sensors (5 modes × 2 HPs = 10 sensors):**
 - `sensor.eu08l_hp1_heating_cycling_4h`
 - `sensor.eu08l_hp1_hot_water_cycling_4h`
 - `sensor.eu08l_hp1_cooling_cycling_4h`
 - `sensor.eu08l_hp1_defrost_cycling_4h`
+- `sensor.eu08l_hp1_compressor_start_cycling_4h`
 - `sensor.eu08l_hp2_heating_cycling_4h`
 - `sensor.eu08l_hp2_hot_water_cycling_4h`
 - `sensor.eu08l_hp2_cooling_cycling_4h`
 - `sensor.eu08l_hp2_defrost_cycling_4h`
+- `sensor.eu08l_hp2_compressor_start_cycling_4h`
 
-**Monthly Sensors (4 modes × 2 HPs = 8 sensors):**
-- `sensor.eu08l_hp1_heating_cycling_monthly`
-- `sensor.eu08l_hp1_hot_water_cycling_monthly`
-- `sensor.eu08l_hp1_cooling_cycling_monthly`
-- `sensor.eu08l_hp1_defrost_cycling_monthly`
-- `sensor.eu08l_hp2_heating_cycling_monthly`
-- `sensor.eu08l_hp2_hot_water_cycling_monthly`
-- `sensor.eu08l_hp2_cooling_cycling_monthly`
-- `sensor.eu08l_hp2_defrost_cycling_monthly`
+**Monthly Sensors (1 mode × 2 HPs = 2 sensors):**
+- `sensor.eu08l_hp1_compressor_start_cycling_monthly`
+- `sensor.eu08l_hp2_compressor_start_cycling_monthly`
+
+**Note:** Only compressor_start has monthly sensors. Other modes (heating, hot_water, cooling, defrost) do not have monthly cycling sensors.
 
 **Yearly Sensors (4 modes × 2 HPs = 8 sensors):**
 - `sensor.eu08l_hp1_heating_cycling_yearly`
@@ -470,7 +492,9 @@ names = generate_sensor_names(
 - `sensor.eu08l_hp2_cooling_cycling_yearly`
 - `sensor.eu08l_hp2_defrost_cycling_yearly`
 
-**For 2 HPs, a total of 40 sensors are created (5 types × 4 modes × 2 HPs)**
+**For 2 HPs, a total of 50 sensors are created (5 types × 5 modes × 2 HPs)**
+
+**Note:** compressor_start sensors include total, daily, 2h, 4h, and monthly (no yesterday sensor).
 
 ### 7. Benefits of the Complete Solution
 
@@ -637,16 +661,27 @@ def _detect_cycling_flank(self, hp_index: int, old_state: int, new_state: int) -
 #### Flankenerkennung (Edge Detection)
 Die Cycling-Sensoren verwenden **Flankenerkennung** um zu erkennen, wann die Wärmepumpe den Betriebsmodus wechselt:
 
-**Quell-Sensor für Flankenerkennung:**
+**Quell-Sensoren für Flankenerkennung:**
+
+**Für heating, hot_water, cooling, defrost:**
 - **HP1**: `hp1_operating_state` (Register 1003)
 - **HP2**: `hp2_operating_state` (Register 1103) 
 - **HP3**: `hp3_operating_state` (Register 1203)
+
+**Für compressor_start:**
+- **HP1**: `hp1_state` (Register 1002)
+- **HP2**: `hp2_state` (Register 1102)
+- **HP3**: `hp3_state` (Register 1202)
 
 **Register-Berechnung:**
 ```
 HP1 operating_state = 1000 (Base) + 3 (relative_address) = 1003
 HP2 operating_state = 1100 (Base) + 3 (relative_address) = 1103
 HP3 operating_state = 1200 (Base) + 3 (relative_address) = 1203
+
+HP1 state = 1000 (Base) + 2 (relative_address) = 1002
+HP2 state = 1100 (Base) + 2 (relative_address) = 1102
+HP3 state = 1200 (Base) + 2 (relative_address) = 1202
 ```
 
 **Operating State Werte (von Cycling-Sensoren behandelt):**
@@ -654,6 +689,9 @@ HP3 operating_state = 1200 (Base) + 3 (relative_address) = 1203
 - `2` = DHW (Warmwasser) ✅
 - `3` = CC (Kühlen) ✅
 - `5` = DEFROST (Abtauen) ✅
+
+**HP_STATE Werte (von compressor_start Cycling-Sensor behandelt):**
+- `5` = START COMPRESSOR ✅
 
 **Andere Operating States (nicht behandelt):**
 - `0` = STBY (Standby)
@@ -716,11 +754,13 @@ cycling_offsets:
     hot_water_cycling_total: 800   # HP1 hatte bereits 800 Warmwasserzyklen
     cooling_cycling_total: 200     # HP1 hatte bereits 200 Kühlzyklen
     defrost_cycling_total: 50      # HP1 hatte bereits 50 Abtauzyklen
+    compressor_start_cycling_total: 5000  # HP1 hatte bereits 5000 Kompressor-Starts
   hp2:
     heating_cycling_total: 0       # HP2 startet frisch
     hot_water_cycling_total: 0     # HP2 startet frisch
     cooling_cycling_total: 0       # HP2 startet frisch
     defrost_cycling_total: 0       # HP2 startet frisch
+    compressor_start_cycling_total: 0     # HP2 startet frisch
 ```
 
 #### 4.3. Funktionsweise der Offsets
@@ -932,7 +972,9 @@ names = generate_sensor_names(
 - `sensor.eu08l_hp2_cooling_cycling_4h`
 - `sensor.eu08l_hp2_defrost_cycling_4h`
 
-**Für 2 HPs werden insgesamt 40 Sensoren erstellt (5 Typen × 4 Modi × 2 HPs)**
+**Für 2 HPs werden insgesamt 50 Sensoren erstellt (5 Typen × 5 Modi × 2 HPs)**
+
+**Hinweis:** compressor_start Sensoren umfassen total, daily, 2h, 4h und monthly (kein yesterday Sensor).
 
 ### 7. Vorteile der Gesamtlösung
 

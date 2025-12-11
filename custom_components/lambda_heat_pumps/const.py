@@ -1057,6 +1057,84 @@ HC_SENSOR_TEMPLATES = {
      },
 }
 
+HC_HEATING_CURVE_NUMBER_CONFIG = {
+    "heating_curve_cold_outside_temp": {
+        "name": "Heating Curve Cold Outside Temp",
+        "default": 48.3,
+        "min_value": 15.0,
+        "max_value": 75.0,
+        "step": 0.1,
+        "unit": "°C",
+        "outside_temp_point": -22.0,
+        "icon": "mdi:chart-bell-curve-cumulative",
+    },
+    "heating_curve_mid_outside_temp": {
+        "name": "Heating Curve Mid Outside Temp",
+        "default": 39.0,
+        "min_value": 15.0,
+        "max_value": 75.0,
+        "step": 0.1,
+        "unit": "°C",
+        "outside_temp_point": 0.0,
+        "icon": "mdi:chart-bell-curve-cumulative",
+    },
+    "heating_curve_warm_outside_temp": {
+        "name": "Heating Curve Warm Outside Temp",
+        "default": 32.0,
+        "min_value": 15.0,
+        "max_value": 75.0,
+        "step": 0.1,
+        "unit": "°C",
+        "outside_temp_point": 22.0,
+        "icon": "mdi:chart-bell-curve-cumulative",
+    },
+}
+
+HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
+    "room_thermostat_offset": {
+        "name": "Room Thermostat Offset",
+        "default": 0.0,
+        "min_value": 0.0,
+        "max_value": 5.0,
+        "step": 0.1,
+        "precision": 1,
+        "unit": "°C",
+        "icon": "mdi:thermometer-lines",
+    },
+    "room_thermostat_factor": {
+        "name": "Room Thermostat Factor",
+        "default": 1.0,
+        "min_value": 1.0,
+        "max_value": 5.0,
+        "step": 0.1,
+        "precision": 1,
+        "icon": "mdi:plus-minus",
+    },
+}
+
+HC_HEATING_CURVE_TEMPLATE_PARAMS = {
+    "ambient_sensor": "sensor.ambient_temperature_calculated",
+    "cold_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
+        "outside_temp_point"
+    ],
+    "mid_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_mid_outside_temp"][
+        "outside_temp_point"
+    ],
+    "warm_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_warm_outside_temp"][
+        "outside_temp_point"
+    ],
+    "default_cold": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
+        "default"
+    ],
+    "default_mid": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_mid_outside_temp"][
+        "default"
+    ],
+    "default_warm": HC_HEATING_CURVE_NUMBER_CONFIG[
+        "heating_curve_warm_outside_temp"
+    ]["default"],
+    "supports_room_thermostat": True,
+}
+
 # General Sensors
 SENSOR_TYPES = {
     # General Ambient
@@ -1223,7 +1301,7 @@ DEFAULT_UPDATE_INTERVAL = 30
 
 # Default interval for writing room temperature and PV surplus (in seconds)
 # Changed from 30 to 41 to avoid timing collisions with coordinator reads (30s)
-DEFAULT_WRITE_INTERVAL = 41
+DEFAULT_WRITE_INTERVAL = 9
 
 # Lambda-specific Modbus configuration
 LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout
@@ -1349,6 +1427,24 @@ CALCULATED_SENSOR_TEMPLATES = {
         "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Abtauen (DEFROST) gewechselt wurde.",
     },
+    "compressor_start_cycling_total": {
+        "name": "Compressor Start Cycling Total",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total_increasing",
+        "device_class": None,
+        "mode_value": 5,  # START COMPRESSOR (HP_STATE)
+        "operating_state": "compressor_start",
+        "period": "total",
+        "reset_interval": None,
+        "reset_signal": None,
+        "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
+        "description": "Zählt, wie oft der Kompressor gestartet wurde (HP_STATE = START COMPRESSOR).",
+    },
     # Yesterday Cycling Sensoren (echte Entities - speichern gestern Werte)
     "heating_cycling_yesterday": {
         "name": "Heating Cycling Yesterday",
@@ -1471,6 +1567,100 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "defrost",
         "reset_interval": "daily",
         "description": "Tägliche Cycling-Zähler für Abtauen, werden täglich um Mitternacht auf 0 gesetzt.",
+    },
+    "compressor_start_cycling_daily": {
+        "name": "Compressor Start Cycling Daily",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "operating_state": "compressor_start",
+        "reset_interval": "daily",
+        "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
+        "description": "Tägliche Cycling-Zähler für Kompressor-Starts, werden täglich um Mitternacht auf 0 gesetzt.",
+    },
+    "compressor_start_cycling_monthly": {
+        "name": "Compressor Start Cycling Monthly",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "operating_state": "compressor_start",
+        "reset_interval": "monthly",
+        "reset_signal": "lambda_heat_pumps_reset_monthly",
+        "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
+        "description": "Monatliche Cycling-Zähler für Kompressor-Starts, werden am 1. des Monats auf 0 gesetzt.",
+    },
+    "compressor_start_cycling_2h": {
+        "name": "Compressor Start Cycling 2h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "operating_state": "compressor_start",
+        "reset_interval": "2h",
+        "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
+        "description": "2-Stunden Cycling-Zähler für Kompressor-Starts, werden alle 2 Stunden auf 0 gesetzt.",
+    },
+    "compressor_start_cycling_4h": {
+        "name": "Compressor Start Cycling 4h",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "operating_state": "compressor_start",
+        "reset_interval": "4h",
+        "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
+        "description": "4-Stunden Cycling-Zähler für Kompressor-Starts, werden alle 4 Stunden auf 0 gesetzt.",
+    },
+    "heating_curve_flow_line_temperature_calc": {
+        "name": "Heating Curve Flow Line Temperature Calc",
+        "unit": "°C",
+        "precision": 1,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hc",
+        "writeable": False,
+        "state_class": "measurement",
+        "device_class": "temperature",
+        "format_params": HC_HEATING_CURVE_TEMPLATE_PARAMS,
+        "template": (
+            "{{% set t_out = states('{ambient_sensor}') | float(10) %}}"
+            "{{% set x_cold = {cold_point} %}}"
+            "{{% set x_mid = {mid_point} %}}"
+            "{{% set x_warm = {warm_point} %}}"
+            "{{% set y_cold = states('number.{full_entity_prefix}_heating_curve_cold_outside_temp') | float({default_cold}) %}}"
+            "{{% set y_mid = states('number.{full_entity_prefix}_heating_curve_mid_outside_temp') | float({default_mid}) %}}"
+            "{{% set y_warm = states('number.{full_entity_prefix}_heating_curve_warm_outside_temp') | float({default_warm}) %}}"
+            "{{% macro lin(x, xA, yA, xB, yB) -%}}"
+            "{{{{ yA + (x - xA) * (yB - yA) / (xB - xA) }}}}"
+            "{{%- endmacro %}}"
+            "{{% if t_out >= x_warm %}}"
+            "{{{{ y_warm | round(1) }}}}"
+            "{{% elif t_out > x_mid %}}"
+            "{{{{ lin(t_out, x_mid, y_mid, x_warm, y_warm) | float | round(1) }}}}"
+            "{{% elif t_out > x_cold %}}"
+            "{{{{ lin(t_out, x_cold, y_cold, x_mid, y_mid) | float | round(1) }}}}"
+            "{{% else %}}"
+            "{{{{ y_cold | round(1) }}}}"
+            "{{% endif %}}"
+        ),
     },
     # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
     "heating_cycling_2h": {

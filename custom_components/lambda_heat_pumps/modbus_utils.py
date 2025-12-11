@@ -6,6 +6,9 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
+# Lock für Health-Checks, um Transaction ID Mismatches zu vermeiden
+_health_check_lock = asyncio.Lock()
+
 # Import Lambda-specific constants
 try:
     from .const import (
@@ -445,28 +448,34 @@ async def wait_for_stable_connection(coordinator) -> None:
 
 
 async def _test_connection_health(coordinator) -> bool:
-    """Test if the Modbus connection is healthy with robust API compatibility."""
+    """Test if the Modbus connection is healthy with robust API compatibility.
+    
+    Uses a lock to prevent concurrent health checks that could cause
+    Transaction ID mismatches.
+    """
     if not coordinator.client:
         _LOGGER.info("🔍 CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
         return False
     
-    try:
-        _LOGGER.info("🔍 CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
-        # Try a simple read to test connection health using robust API compatibility
-        # Use register 0 (General Error Number) as a health check
-        result = await asyncio.wait_for(
-            _health_check_read(coordinator.client, coordinator.slave_id),
-            timeout=2  # 2 Sekunden Timeout für schnellen Health Check
-        )
-        if result is not None:
-            _LOGGER.info("✅ CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
-            return True
-        else:
-            _LOGGER.info("❌ CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
+    # Verwende Lock, um parallele Health-Checks zu vermeiden
+    async with _health_check_lock:
+        try:
+            _LOGGER.info("🔍 CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
+            # Try a simple read to test connection health using robust API compatibility
+            # Use register 0 (General Error Number) as a health check
+            result = await asyncio.wait_for(
+                _health_check_read(coordinator.client, coordinator.slave_id),
+                timeout=2  # 2 Sekunden Timeout für schnellen Health Check
+            )
+            if result is not None:
+                _LOGGER.info("✅ CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
+                return True
+            else:
+                _LOGGER.info("❌ CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
+                return False
+        except Exception as e:
+            _LOGGER.info("❌ CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
             return False
-    except Exception as e:
-        _LOGGER.info("❌ CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
-        return False
 
 
 async def _health_check_read(client, slave_id):

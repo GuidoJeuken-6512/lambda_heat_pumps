@@ -1,6 +1,7 @@
 """Test the config flow module."""
 
 from unittest.mock import AsyncMock, Mock, patch
+from types import SimpleNamespace
 
 import pytest
 from homeassistant import config_entries
@@ -21,6 +22,7 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_SLAVE_ID,
     DOMAIN,
 )
+from tests.conftest import DummyLoop
 
 
 @pytest.fixture
@@ -29,6 +31,8 @@ def mock_hass():
     hass = Mock()
     hass.config = Mock()
     hass.config.config_dir = "/tmp/test_config"
+    hass.config.language = "en"
+    hass.config.locale = SimpleNamespace(language="en")
     hass.config_entries = Mock()
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     hass.config_entries.async_entries = AsyncMock(return_value=[])
@@ -42,6 +46,7 @@ def mock_hass():
     hass.entity_registry.async_get_entries = AsyncMock(return_value=[])
     # Setze DOMAIN-Eintrag für Tests, die ihn benötigen
     hass.data[DOMAIN] = {}
+    hass.loop = DummyLoop()
     return hass
 
 
@@ -94,7 +99,9 @@ class TestLambdaConfigFlow:
         """Test config flow initialization."""
         flow = LambdaConfigFlow()
 
-        assert flow.VERSION == 2
+        # VERSION comes from MIGRATION_VERSION (currently 8)
+        from custom_components.lambda_heat_pumps.const_migration import MIGRATION_VERSION
+        assert flow.VERSION == MIGRATION_VERSION
         assert flow._data == {}
 
     @pytest.mark.asyncio
@@ -341,10 +348,8 @@ class TestLambdaOptionsFlow:
         mock_state2.name = "Temperature 2"
         mock_state2.domain = "sensor"
 
-        # Mock async_all als awaitable function
-        async def mock_async_all():
-            return [mock_state1, mock_state2]
-        mock_hass.states.async_all = mock_async_all
+        # Mock async_all - it's used without await in the code, so make it a regular function that returns a list
+        mock_hass.states.async_all = Mock(return_value=[mock_state1, mock_state2])
         mock_hass.states.get = Mock(
             side_effect=lambda eid: (
                 mock_state1 if eid == "sensor.temp1" else mock_state2

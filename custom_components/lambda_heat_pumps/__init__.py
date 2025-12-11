@@ -5,7 +5,6 @@ from datetime import timedelta
 
 import logging
 import asyncio
-import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -24,14 +23,12 @@ from .services import async_setup_services, async_unload_services
 from .utils import generate_base_addresses, ensure_lambda_config
 from .automations import setup_cycling_automations, cleanup_cycling_automations
 from .migration import async_migrate_entry
-
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
 from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
 from .modbus_utils import wait_for_stable_connection
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
-VERSION = "1.4.2"  # Updated version for service optimization and test fixes
 
 
 
@@ -46,6 +43,7 @@ _reload_in_progress = False
 PLATFORMS = [
     Platform.SENSOR,
     Platform.CLIMATE,
+    Platform.NUMBER,
 ]
 
 # Config schema - only config entries are supported

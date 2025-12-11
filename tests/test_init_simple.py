@@ -7,15 +7,13 @@ from custom_components.lambda_heat_pumps import (
     DOMAIN,
     PLATFORMS,
     TRANSLATION_SOURCES,
-    VERSION,
     setup_debug_logging,
 )
 
 
 def test_constants():
     """Test that constants are properly defined."""
-    assert PLATFORMS == [Platform.SENSOR, Platform.CLIMATE]
-    assert VERSION == "1.4.2"
+    assert PLATFORMS == [Platform.SENSOR, Platform.CLIMATE, Platform.NUMBER]
     assert TRANSLATION_SOURCES == {DOMAIN: "translations"}
     assert DOMAIN == "lambda_heat_pumps"
 

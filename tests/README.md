@@ -82,7 +82,7 @@ Diese Dokumentation beschreibt die Test-Suite für die Lambda Heat Pumps Home As
 
 #### `test_init_simple.py` - 3 Tests PASSED
 **Was wird getestet:**
-- **Konstanten-Definition**: DOMAIN, PLATFORMS, VERSION, TRANSLATION_SOURCES
+- **Konstanten-Definition**: DOMAIN, PLATFORMS, TRANSLATION_SOURCES
 - **Debug-Logging-Setup**: Korrekte Konfiguration des Loggings
 - **Import-Funktionalität**: Alle wichtigen Funktionen können importiert werden
 - **Modul-Export**: async_setup, async_setup_entry, async_unload_entry, async_reload_entry

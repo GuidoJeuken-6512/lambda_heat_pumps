@@ -1,7 +1,60 @@
 """Common test fixtures for Lambda Heat Pumps integration tests."""
 
 import pytest
+import threading
+from types import SimpleNamespace
 from unittest.mock import Mock
+
+from homeassistant.helpers import frame
+
+
+class DummyLoop:
+    """Minimal event loop replacement for frame helper."""
+
+    def __init__(self):
+        self._thread_id = None
+
+    def call_soon_threadsafe(self, callback):
+        callback()
+
+
+class FrameHelperContext(SimpleNamespace):
+    """Minimal object to satisfy frame helper expectations."""
+
+    def __init__(self):
+        super().__init__(loop=DummyLoop(), loop_thread_id=threading.get_ident())
+
+
+@pytest.fixture(autouse=True)
+def setup_frame_helper():
+    """Ensure Home Assistant frame helper is always initialized."""
+    frame._hass = SimpleNamespace(hass=FrameHelperContext())
+    yield
+    frame._hass = None
+
+
+@pytest.fixture(autouse=True)
+def patch_async_get_translations(monkeypatch):
+    """Stub translation loading during tests."""
+
+    async def _fake_async_get_translations(hass, language, category, integrations):
+        return {}
+
+    monkeypatch.setattr(
+        "custom_components.lambda_heat_pumps.utils.async_get_translations",
+        _fake_async_get_translations,
+    )
+    # Ensure frame helper usage checks don't explode in unit tests
+    monkeypatch.setattr(
+        frame,
+        "report_usage",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        frame,
+        "report_non_thread_safe_operation",
+        lambda *args, **kwargs: None,
+    )
 
 
 @pytest.fixture
@@ -11,6 +64,8 @@ def mock_hass():
     hass.data = {}  # Make hass.data a dictionary so it's iterable
     hass.config = Mock()
     hass.config.config_dir = "/tmp/test_config"
+    hass.config.language = "en"
+    hass.config.locale = SimpleNamespace(language="en")
     return hass
 
 
