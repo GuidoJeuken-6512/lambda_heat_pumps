@@ -1640,27 +1640,34 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "measurement",
         "device_class": "temperature",
         "format_params": HC_HEATING_CURVE_TEMPLATE_PARAMS,
-        "template": (
-            "{{% set t_out = states('{ambient_sensor}') | float(10) %}}"
-            "{{% set x_cold = {cold_point} %}}"
-            "{{% set x_mid = {mid_point} %}}"
-            "{{% set x_warm = {warm_point} %}}"
-            "{{% set y_cold = states('number.{full_entity_prefix}_heating_curve_cold_outside_temp') | float({default_cold}) %}}"
-            "{{% set y_mid = states('number.{full_entity_prefix}_heating_curve_mid_outside_temp') | float({default_mid}) %}}"
-            "{{% set y_warm = states('number.{full_entity_prefix}_heating_curve_warm_outside_temp') | float({default_warm}) %}}"
-            "{{% macro lin(x, xA, yA, xB, yB) -%}}"
-            "{{{{ yA + (x - xA) * (yB - yA) / (xB - xA) }}}}"
-            "{{%- endmacro %}}"
-            "{{% if t_out >= x_warm %}}"
-            "{{{{ y_warm | round(1) }}}}"
-            "{{% elif t_out > x_mid %}}"
-            "{{{{ lin(t_out, x_mid, y_mid, x_warm, y_warm) | float | round(1) }}}}"
-            "{{% elif t_out > x_cold %}}"
-            "{{{{ lin(t_out, x_cold, y_cold, x_mid, y_mid) | float | round(1) }}}}"
-            "{{% else %}}"
-            "{{{{ y_cold | round(1) }}}}"
-            "{{% endif %}}"
-        ),
+        # HINWEIS: Dieses Template wird NICHT verwendet!
+        # Stattdessen wird die Python-Implementierung LambdaHeatingCurveCalcSensor verwendet
+        # (siehe template_sensor.py, Zeile 202-224).
+        # Die Berechnung erfolgt über die _lerp() Funktion (template_sensor.py, Zeile 564-567),
+        # die eine lineare Interpolation durchführt: y = y_a + (x - x_a) * (y_b - y_a) / (x_b - x_a)
+        # Die _lerp() Funktion hat Schutz vor Division durch Null (wenn x_b == x_a, wird y_a zurückgegeben).
+        # Das Template unten ist veraltet und wird nicht mehr verwendet.
+        # "template": (
+        #     "{{% set t_out = states('{ambient_sensor}') | float(10) %}}"
+        #     "{{% set x_cold = {cold_point} %}}"
+        #     "{{% set x_mid = {mid_point} %}}"
+        #     "{{% set x_warm = {warm_point} %}}"
+        #     "{{% set y_cold = states('number.{full_entity_prefix}_heating_curve_cold_outside_temp') | float({default_cold}) %}}"
+        #     "{{% set y_mid = states('number.{full_entity_prefix}_heating_curve_mid_outside_temp') | float({default_mid}) %}}"
+        #     "{{% set y_warm = states('number.{full_entity_prefix}_heating_curve_warm_outside_temp') | float({default_warm}) %}}"
+        #     "{{% macro lin(x, xA, yA, xB, yB) -%}}"
+        #     "{{{{ yA + (x - xA) * (yB - yA) / (xB - xA) }}}}"
+        #     "{{%- endmacro %}}"
+        #     "{{% if t_out >= x_warm %}}"
+        #     "{{{{ y_warm | round(1) }}}}"
+        #     "{{% elif t_out > x_mid %}}"
+        #     "{{{{ lin(t_out, x_mid, y_mid, x_warm, y_warm) | float | round(1) }}}}"
+        #     "{{% elif t_out > x_cold %}}"
+        #     "{{{{ lin(t_out, x_cold, y_cold, x_mid, y_mid) | float | round(1) }}}}"
+        #     "{{% else %}}"
+        #     "{{{{ y_cold | round(1) }}}}"
+        #     "{{% endif %}}"
+        # ),
     },
     # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
     "heating_cycling_2h": {

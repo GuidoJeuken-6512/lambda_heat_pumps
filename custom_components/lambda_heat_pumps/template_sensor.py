@@ -591,42 +591,65 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             self._defaults["heating_curve_warm_outside_temp"],
         )
 
-        warnings: list[str] = []
-        if y_cold is not None and y_mid is not None and y_cold <= y_mid:
-            warnings.append(f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})")
-        if y_mid is not None and y_warm is not None and y_mid <= y_warm:
-            warnings.append(f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})")
-
-        if warnings:
-            warning_text = "; ".join(warnings)
-            if warning_text != self._last_warning:
-                _LOGGER.warning(
-                    "%s — Werte unplausibel: %s (Entities: cold=%s, mid=%s, warm=%s)",
-                    self.entity_id,
-                    warning_text,
-                    cold_entity,
-                    mid_entity,
-                    warm_entity,
-                )
-                self._last_warning = warning_text
-            self._state = None
-            self.async_write_ha_state()
-            return
-        self._last_warning = None
-
-        x_cold = self._temp_points.get("cold", -22.0)
-        x_mid = self._temp_points.get("mid", 0.0)
-        x_warm = self._temp_points.get("warm", 22.0)
-
-        result: float
-        if ambient >= x_warm:
-            result = y_warm
-        elif ambient > x_mid:
-            result = self._lerp(ambient, x_mid, y_mid, x_warm, y_warm)
-        elif ambient > x_cold:
-            result = self._lerp(ambient, x_cold, y_cold, x_mid, y_mid)
-        else:
+        # Prüfe, ob alle drei Werte gleich sind - dann kann _lerp übersprungen werden
+        if (
+            y_cold is not None
+            and y_mid is not None
+            and y_warm is not None
+            and y_cold == y_mid
+            and y_mid == y_warm
+        ):
+            _LOGGER.warning(
+                "%s — VORSICHT: Alle drei Heizkurven-Werte sind identisch (cold=mid=warm=%s). "
+                "Die Heizkurve ist flach - keine Interpolation erforderlich. "
+                "Wert wird direkt ausgegeben (Entities: cold=%s, mid=%s, warm=%s)",
+                self.entity_id,
+                y_cold,
+                cold_entity,
+                mid_entity,
+                warm_entity,
+            )
+            # Direkt den Wert setzen, _lerp wird übersprungen (spart Rechenzeit)
             result = y_cold
+            # Weiter mit Anpassungen (Room Thermostat, etc.)
+        else:
+            # Normale Berechnung mit _lerp
+            warnings: list[str] = []
+            if y_cold is not None and y_mid is not None and y_cold <= y_mid:
+                warnings.append(f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})")
+            if y_mid is not None and y_warm is not None and y_mid <= y_warm:
+                warnings.append(f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})")
+
+            if warnings:
+                warning_text = "; ".join(warnings)
+                if warning_text != self._last_warning:
+                    _LOGGER.warning(
+                        "%s — Werte unplausibel: %s (Entities: cold=%s, mid=%s, warm=%s)",
+                        self.entity_id,
+                        warning_text,
+                        cold_entity,
+                        mid_entity,
+                        warm_entity,
+                    )
+                    self._last_warning = warning_text
+                self._state = None
+                self.async_write_ha_state()
+                return
+            self._last_warning = None
+
+            x_cold = self._temp_points.get("cold", -22.0)
+            x_mid = self._temp_points.get("mid", 0.0)
+            x_warm = self._temp_points.get("warm", 22.0)
+
+            result: float
+            if ambient >= x_warm:
+                result = y_warm
+            elif ambient > x_mid:
+                result = self._lerp(ambient, x_mid, y_mid, x_warm, y_warm)
+            elif ambient > x_cold:
+                result = self._lerp(ambient, x_cold, y_cold, x_mid, y_mid)
+            else:
+                result = y_cold
 
         adjustment = 0.0
         rt_delta = None
