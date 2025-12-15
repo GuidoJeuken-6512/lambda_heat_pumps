@@ -72,6 +72,10 @@ After initial setup, you can modify additional settings in the integration optio
   - Monthly and yearly energy consumption tracking
   - Configurable source sensors with automatic unit conversion (Wh/kWh/MWh)
   - Smart sensor change detection to prevent incorrect calculations
+- **Heating Curve Configuration**: Number entities for easy adjustment of heating curve support points
+  - Cold point (-22°C), mid point (0°C), and warm point (+22°C) configuration
+  - Flow line offset adjustment for fine-tuning the heating curve
+  - Bidirectional Modbus synchronization (reads from and writes to Modbus registers)
 - **Room Thermostat Control**: External sensor integration for precise temperature control
 - **PV Surplus Control**: Solar power integration for optimal energy usage
 - **Advanced Configuration**: YAML-based configuration with debug logging
@@ -139,6 +143,58 @@ Nach der Ersteinrichtung können Sie zusätzliche Einstellungen in den Integrati
    - Temperaturstufengröße
    - Raumthermostatsteuerung (mit externen Sensoren)
    - PV Überschuss zur Heizkurvenanhebung der Lambda
+
+---
+
+## 🔧 Heizkurven-Konfiguration
+
+Die Integration bietet **Number-Entities** zur einfachen Konfiguration der Heizkurven-Parameter:
+
+### Verfügbare Number-Entities
+
+Für jeden Heizkreis (HC1, HC2, etc.) werden automatisch folgende Number-Entities erstellt:
+
+1. **Heizkurven-Stützpunkte**:
+   - `number.*_hc1_heating_curve_cold_outside_temp` - Kaltpunkt bei -22°C
+   - `number.*_hc1_heating_curve_mid_outside_temp` - Mittelpunkt bei 0°C
+   - `number.*_hc1_heating_curve_warm_outside_temp` - Warmpunkt bei +22°C
+
+2. **Vorlauf-Offset**:
+   - `number.*_hc1_flow_line_offset_temperature` - Vorlauf-Offset-Temperatur (-10°C bis +10°C)
+   - **Bidirektionale Modbus-Synchronisation**: Liest den aktuellen Wert aus dem Modbus-Register und schreibt Änderungen direkt zurück
+
+3. **Raumthermostat-Parameter** (wenn aktiviert):
+   - `number.*_hc1_room_thermostat_offset` - Raumtemperatur-Offset
+   - `number.*_hc1_room_thermostat_factor` - Raumtemperatur-Faktor
+
+### Verwendung
+
+Die Number-Entities erscheinen automatisch in der Device-Konfiguration jedes Heizkreises:
+
+1. **In Home Assistant**: Gehen Sie zu Einstellungen → Geräte & Dienste
+2. **Wählen Sie Ihren Heizkreis**: Klicken Sie auf den entsprechenden Heizkreis (z.B. "HC1")
+3. **Number-Entities finden**: Scrollen Sie zu den Number-Entities
+4. **Wert anpassen**: Klicken Sie auf die gewünschte Entity und passen Sie den Wert an
+
+### Vorlauf-Offset
+
+Der **Vorlauf-Offset** ermöglicht eine feine Anpassung der berechneten Heizkurven-Vorlauftemperatur:
+
+- **Bereich**: -10.0°C bis +10.0°C
+- **Schrittweite**: 0.1°C
+- **Modbus-Register**: Register 50 (relativ zur Base-Adresse des Heizkreises)
+- **Automatische Synchronisation**: Der Wert wird automatisch aus dem Modbus-Register gelesen und bei Änderungen direkt zurückgeschrieben
+
+**Beispiel**: Wenn die berechnete Heizkurven-Temperatur 35.0°C beträgt und Sie einen Offset von +2.0°C setzen, wird die tatsächliche Vorlauftemperatur auf 37.0°C erhöht.
+
+### Heizkurven-Stützpunkte
+
+Die drei Stützpunkte definieren die Heizkurve:
+- **Kaltpunkt** (-22°C): Temperatur bei sehr kalten Außentemperaturen
+- **Mittelpunkt** (0°C): Temperatur bei mittleren Außentemperaturen
+- **Warmpunkt** (+22°C): Temperatur bei warmen Außentemperaturen
+
+Die Integration interpoliert linear zwischen diesen Punkten basierend auf der aktuellen Außentemperatur.
 
 ---
 
@@ -315,6 +371,58 @@ The integration supports controlling the heat pump based on available PV surplus
 - **Register 102**: E-Manager Actual Power (global register)
 - **Value Range**: -32768 to 32767 (int16)
 - **Unit**: Watts
+
+---
+
+## 🔧 Heating Curve Configuration
+
+The integration provides **Number entities** for easy configuration of heating curve parameters:
+
+### Available Number Entities
+
+For each heating circuit (HC1, HC2, etc.), the following Number entities are automatically created:
+
+1. **Heating Curve Support Points**:
+   - `number.*_hc1_heating_curve_cold_outside_temp` - Cold point at -22°C
+   - `number.*_hc1_heating_curve_mid_outside_temp` - Mid point at 0°C
+   - `number.*_hc1_heating_curve_warm_outside_temp` - Warm point at +22°C
+
+2. **Flow Line Offset**:
+   - `number.*_hc1_flow_line_offset_temperature` - Flow line offset temperature (-10°C to +10°C)
+   - **Bidirectional Modbus Synchronization**: Reads current value from Modbus register and writes changes directly back
+
+3. **Room Thermostat Parameters** (when enabled):
+   - `number.*_hc1_room_thermostat_offset` - Room temperature offset
+   - `number.*_hc1_room_thermostat_factor` - Room temperature factor
+
+### Usage
+
+The Number entities automatically appear in the device configuration of each heating circuit:
+
+1. **In Home Assistant**: Go to Settings → Devices & Services
+2. **Select Your Heating Circuit**: Click on the corresponding heating circuit (e.g., "HC1")
+3. **Find Number Entities**: Scroll to the Number entities
+4. **Adjust Value**: Click on the desired entity and adjust the value
+
+### Flow Line Offset
+
+The **Flow Line Offset** allows fine-tuning of the calculated heating curve flow temperature:
+
+- **Range**: -10.0°C to +10.0°C
+- **Step Size**: 0.1°C
+- **Modbus Register**: Register 50 (relative to the heating circuit's base address)
+- **Automatic Synchronization**: The value is automatically read from the Modbus register and written back directly when changed
+
+**Example**: If the calculated heating curve temperature is 35.0°C and you set an offset of +2.0°C, the actual flow temperature will be increased to 37.0°C.
+
+### Heating Curve Support Points
+
+The three support points define the heating curve:
+- **Cold Point** (-22°C): Temperature at very cold outside temperatures
+- **Mid Point** (0°C): Temperature at moderate outside temperatures
+- **Warm Point** (+22°C): Temperature at warm outside temperatures
+
+The integration linearly interpolates between these points based on the current outside temperature.
 
 ---
 

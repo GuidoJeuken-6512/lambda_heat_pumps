@@ -9,6 +9,26 @@
 - **Multilingual Support**: Comprehensive translations in German and English for all entity names
 - **Heating Curve Calculation**: Intelligent heating curve calculation with three support points (cold, mid, warm) and automatic flow temperature calculation
 - **Compressor Start Cycling Sensor**: New cycling sensor for tracking compressor start events with total, daily, 2h, 4h, and monthly variants
+- **Flow Line Offset Number Entity**: Bidirectional Modbus-synchronized Number entity for easy adjustment of flow line offset temperature (-10°C to +10°C)
+
+### [2.0.1] - 2025-01-XX
+
+#### New Features
+- **Flow Line Offset Number Entity**: Added bidirectional Modbus-synchronized Number entity for flow line offset temperature adjustment
+  - Automatically created for each heating circuit (HC1, HC2, etc.)
+  - Range: -10.0°C to +10.0°C with 0.1°C step size
+  - Reads current value from Modbus register and writes changes directly back
+  - Appears in device configuration alongside heating curve support points
+  - Modbus Register: Register 50 (relative to heating circuit base address)
+
+#### Fixed
+- **Heating Curve Validation**: Fixed validation logic to check both conditions independently
+  - Changed `elif` to `if` to ensure both validation checks are performed
+  - Now reports all validation problems when multiple heating curve values are misconfigured
+  - Previously only the first issue was reported when all three temperature points were in wrong order
+
+#### Changed
+- **Git Configuration**: Removed `automations.yaml` from gitignore to prevent it from being tracked in git
 
 ### [2.0.0] - 2025-01-XX
 
@@ -248,6 +268,26 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Mehrsprachige Unterstützung**: Umfassende Übersetzungen in Deutsch und Englisch für alle Entity-Namen
 - **Heizkurven-Berechnung**: Intelligente Heizkurven-Berechnung mit drei Stützpunkten (Kalt, Mittel, Warm) und automatischer Vorlauftemperatur-Berechnung
 - **Kompressor-Start Cycling Sensor**: Neuer Cycling-Sensor zur Verfolgung von Kompressor-Start-Ereignissen mit total, daily, 2h, 4h und monthly Varianten
+- **Vorlauf-Offset Number Entity**: Bidirektionale Modbus-synchronisierte Number-Entity zur einfachen Anpassung der Vorlauf-Offset-Temperatur (-10°C bis +10°C)
+
+### [2.0.1] - 2025-01-XX
+
+#### Neue Funktionen
+- **Vorlauf-Offset Number Entity**: Hinzugefügte bidirektionale Modbus-synchronisierte Number-Entity zur Anpassung der Vorlauf-Offset-Temperatur
+  - Wird automatisch für jeden Heizkreis (HC1, HC2, etc.) erstellt
+  - Bereich: -10.0°C bis +10.0°C mit 0.1°C Schrittweite
+  - Liest aktuellen Wert aus Modbus-Register und schreibt Änderungen direkt zurück
+  - Erscheint in der Geräte-Konfiguration neben den Heizkurven-Stützpunkten
+  - Modbus-Register: Register 50 (relativ zur Base-Adresse des Heizkreises)
+
+#### Behoben
+- **Heizkurven-Validierung**: Validierungslogik korrigiert, um beide Bedingungen unabhängig zu prüfen
+  - `elif` zu `if` geändert, um sicherzustellen, dass beide Validierungsprüfungen durchgeführt werden
+  - Meldet jetzt alle Validierungsprobleme, wenn mehrere Heizkurven-Werte falsch konfiguriert sind
+  - Zuvor wurde nur das erste Problem gemeldet, wenn alle drei Temperaturpunkte in falscher Reihenfolge waren
+
+#### Geändert
+- **Git-Konfiguration**: `automations.yaml` aus gitignore entfernt, um zu verhindern, dass sie in git getrackt wird
 
 ### [2.0.0] - 2025-01-XX
 
