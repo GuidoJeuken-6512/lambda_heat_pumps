@@ -1112,6 +1112,21 @@ HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
     },
 }
 
+HC_FLOW_LINE_OFFSET_NUMBER_CONFIG = {
+    "flow_line_offset_temperature": {
+        "name": "Flow Line Offset Temperature",
+        "default": 0.0,
+        "min_value": -10.0,
+        "max_value": 10.0,
+        "step": 0.1,
+        "precision": 1,
+        "unit": "°C",
+        "icon": "mdi:thermometer-adjust",
+        "relative_address": 50,  # Aus HC_SENSOR_TEMPLATES
+        "scale": 0.1,  # Für Modbus-Konvertierung
+    },
+}
+
 HC_HEATING_CURVE_TEMPLATE_PARAMS = {
     "ambient_sensor": "sensor.ambient_temperature_calculated",
     "cold_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
