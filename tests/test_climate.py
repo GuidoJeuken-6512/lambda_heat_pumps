@@ -123,8 +123,8 @@ async def test_lambda_climate_entity_properties():
     assert entity._attr_name == "Hot Water"
     # unique_id includes name_prefix when use_legacy_modbus_names is True
     assert entity._attr_unique_id == "test_boil1_hot_water"
-    assert entity._attr_min_temp == 40
-    assert entity._attr_max_temp == 60
+    assert entity._attr_min_temp == 25
+    assert entity._attr_max_temp == 65
     assert entity.current_temperature == 60
     assert entity.target_temperature == 65
 

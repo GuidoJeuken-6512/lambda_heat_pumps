@@ -26,6 +26,8 @@
   - Changed `elif` to `if` to ensure both validation checks are performed
   - Now reports all validation problems when multiple heating curve values are misconfigured
   - Previously only the first issue was reported when all three temperature points were in wrong order
+- **Hot Water Temperature Limits**: Adjusted minimum/maximum values for hot water to Lambda standard (25/65°C)
+
 
 #### Changed
 - **Git Configuration**: Removed `automations.yaml` from gitignore to prevent it from being tracked in git
@@ -285,6 +287,8 @@ This release contains significant changes to the Entity Registry and sensor nami
   - `elif` zu `if` geändert, um sicherzustellen, dass beide Validierungsprüfungen durchgeführt werden
   - Meldet jetzt alle Validierungsprobleme, wenn mehrere Heizkurven-Werte falsch konfiguriert sind
   - Zuvor wurde nur das erste Problem gemeldet, wenn alle drei Temperaturpunkte in falscher Reihenfolge waren
+- **Warmwasser-Temperaturgrenzen**: Minimum/Maximum-Werte für Warmwasser auf Lambda-Standard (25/65°C) angepasst
+
 
 #### Geändert
 - **Git-Konfiguration**: `automations.yaml` aus gitignore entfernt, um zu verhindern, dass sie in git getrackt wird

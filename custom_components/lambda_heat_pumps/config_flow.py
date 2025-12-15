@@ -31,8 +31,8 @@ from .const import (
     DEFAULT_NUM_HC,
     DEFAULT_NUM_BUFFER,
     DEFAULT_NUM_SOLAR,
-    DEFAULT_HOT_WATER_MIN_TEMP,
-    DEFAULT_HOT_WATER_MAX_TEMP,
+    HOT_WATER_MIN_TEMP_LIMIT,
+    HOT_WATER_MAX_TEMP_LIMIT,
     DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
     DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
     DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
@@ -342,13 +342,13 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
                     "hot_water_min_temp": user_input.get(
                         "hot_water_min_temp",
                         existing_options.get(
-                            "hot_water_min_temp", DEFAULT_HOT_WATER_MIN_TEMP
+                            "hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT
                         ),
                     ),
                     "hot_water_max_temp": user_input.get(
                         "hot_water_max_temp",
                         existing_options.get(
-                            "hot_water_max_temp", DEFAULT_HOT_WATER_MAX_TEMP
+                            "hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT
                         ),
                     ),
                     "heating_circuit_min_temp": user_input.get(
@@ -731,8 +731,8 @@ class LambdaOptionsFlow(OptionsFlow):
             "room_thermostat_control": DEFAULT_ROOM_THERMOSTAT_CONTROL,
             "pv_surplus": DEFAULT_PV_SURPLUS,
             "pv_surplus_mode": DEFAULT_PV_SURPLUS_MODE,
-            "hot_water_min_temp": DEFAULT_HOT_WATER_MIN_TEMP,
-            "hot_water_max_temp": DEFAULT_HOT_WATER_MAX_TEMP,
+            "hot_water_min_temp": HOT_WATER_MIN_TEMP_LIMIT,
+            "hot_water_max_temp": HOT_WATER_MAX_TEMP_LIMIT,
             "heating_circuit_min_temp": DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
             "heating_circuit_max_temp": DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
             "heating_circuit_temp_step": DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
@@ -766,8 +766,8 @@ class LambdaOptionsFlow(OptionsFlow):
 
         if user_input is not None:
             # Validierung der Temperaturwerte
-            min_temp = user_input.get("hot_water_min_temp", DEFAULT_HOT_WATER_MIN_TEMP)
-            max_temp = user_input.get("hot_water_max_temp", DEFAULT_HOT_WATER_MAX_TEMP)
+            min_temp = user_input.get("hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT)
+            max_temp = user_input.get("hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT)
             if min_temp >= max_temp:
                 errors["hot_water_min_temp"] = "min_temp_higher"
 
@@ -803,12 +803,12 @@ class LambdaOptionsFlow(OptionsFlow):
             vol.Optional(
                 "hot_water_min_temp",
                 default=self._options.get(
-                    "hot_water_min_temp", DEFAULT_HOT_WATER_MIN_TEMP
+                    "hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT
                 ),
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=30,
-                    max=70,
+                    min=HOT_WATER_MIN_TEMP_LIMIT,
+                    max=HOT_WATER_MAX_TEMP_LIMIT,
                     step=1,
                     mode=selector.NumberSelectorMode.BOX,
                 )
@@ -816,12 +816,12 @@ class LambdaOptionsFlow(OptionsFlow):
             vol.Optional(
                 "hot_water_max_temp",
                 default=self._options.get(
-                    "hot_water_max_temp", DEFAULT_HOT_WATER_MAX_TEMP
+                    "hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT
                 ),
             ): selector.NumberSelector(
                 selector.NumberSelectorConfig(
-                    min=30,
-                    max=70,
+                    min=HOT_WATER_MIN_TEMP_LIMIT,
+                    max=HOT_WATER_MAX_TEMP_LIMIT,
                     step=1,
                     mode=selector.NumberSelectorMode.BOX,
                 )

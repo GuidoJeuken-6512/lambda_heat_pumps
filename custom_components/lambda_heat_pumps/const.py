@@ -37,9 +37,9 @@ MAX_NUM_HC = 12  # Heating circuits
 MAX_NUM_BUFFER = 5  # Buffers
 MAX_NUM_SOLAR = 2  # Solar modules
 
-# Default temperature settings
-DEFAULT_HOT_WATER_MIN_TEMP = 40
-DEFAULT_HOT_WATER_MAX_TEMP = 60
+# Config Flow temperature limits (for NumberSelector min/max and default values)
+HOT_WATER_MIN_TEMP_LIMIT = 25
+HOT_WATER_MAX_TEMP_LIMIT = 65
 
 # Configuration Constants
 CONF_SLAVE_ID = "slave_id"
