@@ -260,5 +260,3 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Climate entity for heat pump control
 
 ---
-
-## Deutsche Version {#deutsche-version}
