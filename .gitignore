@@ -28,6 +28,16 @@ tests/playwright/
 !docs/
 !docs/**
 
+# MkDocs documentation source
+!docs_site/
+!docs_site/**
+!mkdocs.yml
+!requirements-docs.txt
+
+# MkDocs build output (should be ignored)
+site/
+.cache/
+
 
 # GitHub Actions Workflows
 !.github/
