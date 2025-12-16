@@ -5,7 +5,9 @@ site_url: https://guidojeuken-6512.github.io/lambda_wp_hacs/
 
 repo_name: GuidoJeuken-6512/lambda_wp_hacs
 repo_url: https://github.com/GuidoJeuken-6512/lambda_wp_hacs
-edit_uri: edit/main/docs_site/
+edit_uri: edit/main/docs/
+
+docs_dir: docs
 
 theme:
   name: material
@@ -24,6 +26,7 @@ theme:
         name: Switch to light mode
   features:
     - navigation.sidebar
+    - navigation.index
     - navigation.tabs
     - navigation.sections
     - navigation.expand
@@ -37,8 +40,9 @@ theme:
 
 plugins:
   - search:
-      lang: en
-      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|'(?!\w)
+      lang: 
+        - en
+        - de
   - mermaid2
 
 markdown_extensions:
