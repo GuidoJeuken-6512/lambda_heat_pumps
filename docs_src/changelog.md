@@ -1,0 +1,3 @@
+# Changelog
+
+Änderungsprotokoll (Deutsch placeholder).

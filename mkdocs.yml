@@ -5,9 +5,9 @@ site_url: https://guidojeuken-6512.github.io/lambda_wp_hacs/
 
 repo_name: GuidoJeuken-6512/lambda_wp_hacs
 repo_url: https://github.com/GuidoJeuken-6512/lambda_wp_hacs
-edit_uri: edit/main/docs/
+edit_uri: edit/main/docs_md/
 
-docs_dir: docs
+docs_dir: docs_src
 
 theme:
   name: material
@@ -45,16 +45,16 @@ plugins:
         - en
         - de
   - i18n:
-      default_language: en
+      default_language: de
       languages:
-        - code: en
-          name: English
-          locale: en
-          default: true
-          build: true
         - code: de
           name: Deutsch
           locale: de
+          default: true
+          build: true
+        - code: en
+          name: English
+          locale: en
           build: true
   - mermaid2
 

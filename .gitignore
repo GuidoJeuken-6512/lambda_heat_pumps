@@ -32,9 +32,11 @@ tests/playwright/
 !docs_old/
 !docs_old/**
 
-# MkDocs documentation source
-!docs_site/
-!docs_site/**
+# MkDocs documentation source (sources we want tracked)
+!docs_src/
+!docs_src/**
+!docs_md/
+!docs_md/**
 !mkdocs.yml
 !requirements-docs.txt
 
