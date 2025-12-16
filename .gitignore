@@ -28,6 +28,10 @@ tests/playwright/
 !docs/
 !docs/**
 
+# Docs old directory and all subdirectories
+!docs_old/
+!docs_old/**
+
 # MkDocs documentation source
 !docs_site/
 !docs_site/**
