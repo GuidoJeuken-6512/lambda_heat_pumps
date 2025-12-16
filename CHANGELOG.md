@@ -2,6 +2,7 @@
 
 **Deutsche Version siehe unten / [German version see below](#deutsche-version)**
 
+<!-- lang:en -->
 ## English Version
 
 #### New Features since last release
@@ -264,6 +265,9 @@ This release contains significant changes to the Entity Registry and sensor nami
 ---
 
 ## Deutsche Version {#deutsche-version}
+<!-- /lang:en -->
+
+<!-- lang:de -->
 
 #### New Features seit dem letzten Release
 - **Geräte-Hierarchie**: Aufteilung in Haupt- und Sub-Geräte für bessere Organisation und klarere Entity-Struktur
@@ -345,6 +349,8 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Service-Scheduler-Optimierung**: Implementierte intelligente Service-Scheduler, die nur aktiviert werden, wenn PV-Surplus oder Raumthermostat-Steuerungsoptionen aktiviert sind, wodurch der Ressourcenverbrauch erheblich reduziert wird, wenn Services nicht benötigt werden
 
 ---
+
+<!-- /lang:de -->
 
 ### [1.4.1] - 2025-10-21
 
