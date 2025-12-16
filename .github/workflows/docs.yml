@@ -40,7 +40,17 @@ jobs:
         run: |
           python -m mkdocs build
 
+      - name: Deploy to `gh-pages` branch (if current branch is gh-pages)
+        if: env.TARGET_BRANCH == 'gh-pages'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          publish_branch: gh-pages
+          cname: false
+
       - name: Publish built site into this branch's `docs/` folder
+        if: env.TARGET_BRANCH != 'gh-pages'
         run: |
           echo "Target branch: ${TARGET_BRANCH}"
           git config user.name "github-actions[bot]"
