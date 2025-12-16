@@ -3,7 +3,7 @@ name: Deploy Documentation
 on:
   push:
     branches:
-      - main
+      - "**"
     paths:
       - 'docs/**'
       - 'mkdocs.yml'
@@ -17,6 +17,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      TARGET_BRANCH: ${{ github.ref_name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,11 +40,20 @@ jobs:
         run: |
           python -m mkdocs build
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
-          publish_branch: gh-pages
-          cname: false
+      - name: Publish built site into this branch's `docs/` folder
+        run: |
+          echo "Target branch: ${TARGET_BRANCH}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout "${TARGET_BRANCH}"
+          rm -rf docs || true
+          mkdir -p docs
+          cp -r site/* docs/ || true
+          git add -A docs
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore(docs): update generated site for ${TARGET_BRANCH}"
+            git push origin "HEAD:${TARGET_BRANCH}"
+          fi
 
