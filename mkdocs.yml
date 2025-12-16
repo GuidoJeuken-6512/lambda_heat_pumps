@@ -11,6 +11,7 @@ docs_dir: docs
 
 theme:
   name: material
+  language: en
   palette:
     - scheme: default
       primary: blue
@@ -40,9 +41,21 @@ theme:
 
 plugins:
   - search:
-      lang: 
+      lang:
         - en
         - de
+  - i18n:
+      default_language: en
+      languages:
+        - code: en
+          name: English
+          locale: en
+          default: true
+          build: true
+        - code: de
+          name: Deutsch
+          locale: de
+          build: true
   - mermaid2
 
 markdown_extensions:
@@ -84,3 +97,4 @@ nav:
 
 copyright: Copyright &copy; 2025 GuidoJeuken-6512
 
+ 
