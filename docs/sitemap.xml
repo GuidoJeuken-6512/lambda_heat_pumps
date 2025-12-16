@@ -22,6 +22,13 @@
         <xhtml:link rel="alternate" hreflang="en" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/en/troubleshooting/"/>
     </url>
     <url>
+        <loc>https://guidojeuken-6512.github.io/lambda_heat_pumps/de/changelog/</loc>
+        <lastmod>2025-12-16</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="de" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/de/changelog/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/en/de/changelog/"/>
+    </url>
+    <url>
         <loc>https://guidojeuken-6512.github.io/lambda_heat_pumps/developer/architecture/</loc>
         <lastmod>2025-12-16</lastmod>
         <changefreq>daily</changefreq>
@@ -216,6 +223,13 @@
         <changefreq>daily</changefreq>
         <xhtml:link rel="alternate" hreflang="en" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/en/troubleshooting/"/>
         <xhtml:link rel="alternate" hreflang="de" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/troubleshooting/"/>
+    </url>
+    <url>
+        <loc>https://guidojeuken-6512.github.io/lambda_heat_pumps/en/de/changelog/</loc>
+        <lastmod>2025-12-16</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/en/de/changelog/"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://guidojeuken-6512.github.io/lambda_heat_pumps/de/changelog/"/>
     </url>
     <url>
         <loc>https://guidojeuken-6512.github.io/lambda_heat_pumps/en/developer/architecture/</loc>
