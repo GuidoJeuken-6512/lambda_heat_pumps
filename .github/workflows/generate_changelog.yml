@@ -32,7 +32,7 @@ jobs:
           import re, os
           src = "CHANGELOG.md"
           out_en = "docs_src/en/changelog.md"
-          out_de = "docs_src/de/changelog.md"
+          out_de = "docs_src/changelog.md"
           text = open(src, encoding="utf-8").read() if os.path.exists(src) else ""
           def extract(text):
               # first try HTML comment markers
@@ -75,7 +75,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs_src/en/changelog.md docs_src/de/changelog.md
+          git add docs_src/en/changelog.md docs_src/changelog.md
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else

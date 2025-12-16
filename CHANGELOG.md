@@ -263,9 +263,9 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Climate entity for heat pump control
 
 ---
-
-## Deutsche Version {#deutsche-version}
 <!-- /lang:en -->
+## Deutsche Version {#deutsche-version}
+
 
 <!-- lang:de -->
 
@@ -350,7 +350,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 ---
 
-<!-- /lang:de -->
+
 
 ### [1.4.1] - 2025-10-21
 
@@ -527,3 +527,5 @@ Diese Version enthält wesentliche Änderungen an der Entity Registry und den Se
 - Modbus-Kommunikation für Wärmepumpen
 - Cycle Counter-Erkennung
 - Climate Entity für Wärmepumpen-Steuerung
+
+<!-- /lang:de -->

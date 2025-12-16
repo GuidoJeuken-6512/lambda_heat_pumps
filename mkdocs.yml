@@ -11,7 +11,7 @@ docs_dir: docs_src
 
 theme:
   name: material
-  language: en
+  language: de
   palette:
     - scheme: default
       primary: blue
@@ -77,21 +77,19 @@ markdown_extensions:
 nav:
   - Home: index.md
   - User Documentation:
-    - Installation: user/installation.md
-    - Configuration: user/configuration.md
-    - Features: user/features.md
-    - Heating Curve: user/heating-curve.md
-    - Cycling Sensors: user/cycling-sensors.md
-    - Energy Consumption: user/energy-consumption.md
+      - Installation: user/installation.md
+      - Configuration: user/configuration.md
+      - Features: user/features.md
+      - Heating Curve: user/heating-curve.md
+      - Cycling Sensors: user/cycling-sensors.md
+      - Energy Consumption: user/energy-consumption.md
   - Developer Documentation:
-    - Architecture: developer/architecture.md
-    - Entity Creation: developer/entity-creation.md
-    - Modbus Registers: developer/modbus-registers.md
-    - Migration System: developer/migration-system.md
-    - Contributing: developer/contributing.md
+      - Architecture: developer/architecture.md
+      - Entity Creation: developer/entity-creation.md
+      - Modbus Registers: developer/modbus-registers.md
+      - Migration System: developer/migration-system.md
+      - Contributing: developer/contributing.md
   - Troubleshooting: troubleshooting.md
   - Changelog: changelog.md
 
-copyright: Copyright &copy; 2025 GuidoJeuken-6512
-
- 
+copyright: Copyright © 2025 GuidoJeuken-6512
