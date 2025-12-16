@@ -29,13 +29,16 @@ theme:
     - navigation.expand
     - search.suggest
     - search.highlight
+    - search.share
     - content.code.annotate
     - content.code.copy
   icon:
     repo: fontawesome/brands/github
 
 plugins:
-  - search
+  - search:
+      lang: en
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|'(?!\w)
   - mermaid2
 
 markdown_extensions:
