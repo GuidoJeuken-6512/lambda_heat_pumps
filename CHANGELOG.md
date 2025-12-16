@@ -4,7 +4,7 @@
 
 <!-- lang:en -->
 ## English Version
-
+ 
 #### New Features since last release
 - **Device Hierarchy**: Separation into main devices and sub-devices for better organization and clearer entity structure
 - **Multilingual Support**: Comprehensive translations in German and English for all entity names
