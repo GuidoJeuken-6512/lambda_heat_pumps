@@ -1,59 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
     <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/</loc>
-         <lastmod>2025-12-16</lastmod>
+        <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/de/</loc>
+        <lastmod>2025-12-16</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="en" href="https://guidojeuken-6512.github.io/lambda_wp_hacs/de/"/>
+        <xhtml:link rel="alternate" hreflang="de" href="https://guidojeuken-6512.github.io/lambda_wp_hacs/de/de/"/>
     </url>
     <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/changelog/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/troubleshooting/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/developer/architecture/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/developer/contributing/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/developer/entity-creation/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/developer/migration-system/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/developer/modbus-registers/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/user/configuration/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/user/cycling-sensors/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/user/energy-consumption/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/user/features/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/user/heating-curve/</loc>
-         <lastmod>2025-12-16</lastmod>
-    </url>
-    <url>
-         <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/user/installation/</loc>
-         <lastmod>2025-12-16</lastmod>
+        <loc>https://guidojeuken-6512.github.io/lambda_wp_hacs/de/de/</loc>
+        <lastmod>2025-12-16</lastmod>
+        <changefreq>daily</changefreq>
+        <xhtml:link rel="alternate" hreflang="de" href="https://guidojeuken-6512.github.io/lambda_wp_hacs/de/de/"/>
+        <xhtml:link rel="alternate" hreflang="en" href="https://guidojeuken-6512.github.io/lambda_wp_hacs/de/"/>
     </url>
 </urlset>
