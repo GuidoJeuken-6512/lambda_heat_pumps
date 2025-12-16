@@ -40,22 +40,19 @@ theme:
     repo: fontawesome/brands/github
 
 plugins:
+  - i18n:
+      languages:
+        - locale: de
+          name: Deutsch
+          default: true
+          build: true
+        - locale: en
+          name: English
+          build: true
   - search:
       lang:
         - en
         - de
-  - i18n:
-      default_language: de
-      languages:
-        - code: de
-          name: Deutsch
-          locale: de
-          default: true
-          build: true
-        - code: en
-          name: English
-          locale: en
-          build: true
   - mermaid2
 
 markdown_extensions:
