@@ -11,10 +11,10 @@
       "registered_devices": true
     }
   ],
-  "documentation": "https://github.com/GuidoJeuken-6512/lambda_wp_hacs",
+  "documentation": "https://github.com/GuidoJeuken-6512/lambda_heat_pumps",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "issue_tracker": "https://github.com/GuidoJeuken-6512/lambda_wp_hacs/issues",
+  "issue_tracker": "https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues",
   "requirements": ["pymodbus>=3.6.0"],
   "version": "2.0.1"
 }

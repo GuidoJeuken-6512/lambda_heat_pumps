@@ -1,11 +1,11 @@
 site_name: Lambda Heat Pumps Integration
 site_description: Home Assistant custom integration for Lambda heat pumps via Modbus/TCP
 site_author: GuidoJeuken-6512
-site_url: https://guidojeuken-6512.github.io/lambda_wp_hacs/
+site_url: https://guidojeuken-6512.github.io/lambda_heat_pumps/
 
-repo_name: GuidoJeuken-6512/lambda_wp_hacs
-repo_url: https://github.com/GuidoJeuken-6512/lambda_wp_hacs
-edit_uri: edit/main/docs_md/
+repo_name: GuidoJeuken-6512/lambda_heat_pumps
+repo_url: https://github.com/GuidoJeuken-6512/lambda_heat_pumps
+edit_uri: edit/main/docs_src/
 
 docs_dir: docs_src
 

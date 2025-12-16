@@ -2,7 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-1.4.3-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/releases)
+[![version](https://img.shields.io/badge/version-1.4.3-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -85,9 +85,9 @@ After initial setup, you can modify additional settings in the integration optio
 - [English Guide](docs/lambda_heat_pumps_en.md)
 - [Troubleshooting](docs/lambda_heat_pumps_troubleshooting.md)
 - 
-
+-
 **Support:**
-- [GitHub Issues](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/issues)
+- [GitHub Issues](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues)
 - [Home Assistant Community](https://community.home-assistant.io/)
 
 ---
@@ -436,7 +436,7 @@ If you do not use HACS, you can install the integration manually:
    ```bash
    cd /config/custom_components
    - Download the integration from:  
-     https://github.com/GuidoJeuken-6512/lambda_wp_hacs
+    https://github.com/GuidoJeuken-6512/lambda_heat_pumps
    - Copy the entire folder `lambda_heat_pumps` into `/config/custom_components/` on your Home Assistant server.
 
 4. **Restart Home Assistant** to activate the integration.
@@ -447,7 +447,7 @@ If you do not use HACS, you can install the integration manually:
 - **Log-Analyse:** Aktiviere Debug-Logging für detaillierte Fehlerausgabe
 - **Häufige Probleme:** Siehe Abschnitt „Troubleshooting“ unten
 - **Support:**
-  - [GitHub Issues](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/issues)
+  - [GitHub Issues](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues)
   - [Home Assistant Community](https://community.home-assistant.io/)
 
 ---
@@ -468,7 +468,7 @@ MIT License. Nutzung auf eigene Gefahr. Siehe [LICENSE](LICENSE).
 ---
 
 ## 📝 Changelog
-Siehe [Releases](https://github.com/GuidoJeuken-6512/lambda_wp_hacs/releases) für Änderungen und Breaking Changes.
+Siehe [Releases](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases) für Änderungen und Breaking Changes.
 
 ---
 
