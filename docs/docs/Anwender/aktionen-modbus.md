@@ -4,15 +4,15 @@ title: "Aktionen (read / write Modbus register)"
 
 # Aktionen (read / write Modbus register)
 
-Die Lambda Heat Pumps Integration bietet Services zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für Automatisierungen, erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
+Die Lambda Heat Pumps Integration bietet Actions zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für Automatisierungen, erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
 
-## Verfügbare Services
+## Verfügbare Actionen
 
 ### read_modbus_register
 
 Liest einen Wert aus einem Modbus-Register.
 
-**Service**: `lambda_heat_pumps.read_modbus_register`
+**Action**: `lambda_heat_pumps.read_modbus_register`
 
 **Parameter:**
 - `register_address` (erforderlich): Die Adresse des zu lesenden Registers (Integer)
@@ -22,9 +22,12 @@ Liest einen Wert aus einem Modbus-Register.
 
 **Beispiel:**
 ```yaml
-service: lambda_heat_pumps.read_modbus_register
-data:
-  register_address: 1003
+actions:
+  - action: lambda_heat_pumps.read_modbus_register
+    metadata: {}
+    data:
+      register_address: 1003
+mode: single
 ```
 
 **Verwendung in Automatisierungen:**
@@ -34,20 +37,23 @@ automation:
     trigger:
       - platform: time
         at: "12:00:00"
-    action:
-      - service: lambda_heat_pumps.read_modbus_register
+    actions:
+      - action: lambda_heat_pumps.read_modbus_register
+        metadata: {}
         data:
           register_address: 1003
-      - service: system_log.write
+      - action: system_log.write
+        metadata: {}
         data:
           message: "Register 1003 Wert: {{ states('sensor.last_modbus_read') }}"
+    mode: single
 ```
 
 ### write_modbus_register
 
 Schreibt einen Wert in ein Modbus-Register.
 
-**Service**: `lambda_heat_pumps.write_modbus_register`
+**Action**: `lambda_heat_pumps.write_modbus_register`
 
 **Parameter:**
 - `register_address` (erforderlich): Die Adresse des zu schreibenden Registers (Integer)
@@ -55,10 +61,13 @@ Schreibt einen Wert in ein Modbus-Register.
 
 **Beispiel:**
 ```yaml
-service: lambda_heat_pumps.write_modbus_register
-data:
-  register_address: 1003
-  value: 50
+actions:
+  - action: lambda_heat_pumps.write_modbus_register
+    metadata: {}
+    data:
+      register_address: 1003
+      value: 50
+mode: single
 ```
 
 **Verwendung in Automatisierungen:**
@@ -68,16 +77,18 @@ automation:
     trigger:
       - platform: state
         entity_id: input_number.target_temp
-    action:
-      - service: lambda_heat_pumps.write_modbus_register
+    actions:
+      - action: lambda_heat_pumps.write_modbus_register
+        metadata: {}
         data:
           register_address: 1003
           value: "{{ states('input_number.target_temp') | int }}"
+    mode: single
 ```
 
 ## Verwendung über Developer Tools
 
-<img src="assets/dev_tools_actions.png" alt="Developer Tools Actions" style="width: 60%;" />
+<img src="../../assets/dev_tools_actions_de.png" alt="DevTools Actions" style="width: 60%; height: auto; border-radius: 8px;">
 
 ### Register lesen
 
@@ -111,28 +122,32 @@ automation:
    - Der Wert wird an die Lambda geschrieben
 
 ## Wichtige Register-Adressen
-
+**Hinweis:** Die Temperaturseneoren haben eine Skalierung von "0,1", für 1°C muss also der Wert "10" an die Aktion übergeben werden 
 ### Wärmepumpe (HP1)
 
-- **Register 1002**: HP1 State
-- **Register 1003**: HP1 Operating State
-- **Register 1004**: HP1 Flow Temperature
-- **Register 1005**: HP1 Return Temperature
+- **Register 1002**: HP1 State (lesbar)
+- **Register 1003**: HP1 Operating State (lesbar)
+- **Register 1004**: HP1 Flow Temperature (lesbar)
+- **Register 1005**: HP1 Return Temperature (lesbar)
 
 ### Heizkreis (HC1)
 
-- **Register 5000**: HC1 Target Room Temperature
-- **Register 5001**: HC1 Room Device Temperature
-- **Register 5004**: HC1 Target Flow Temperature (wird von Raumthermostat geschrieben)
+- **Register 5000**: HC1 Error Number (lesbar)
+- **Register 5001**: HC1 Operating State (lesbar)
+- **Register 5004**: HC1 Room Device Temperature (lesbar / schreibbar)
+- **Register 5007**: HC1 Target Flow Temperature (lesbar, wird von Raumthermostat geschrieben)
+- **Register 5051**: HC1 Target Room Temperature (lesbar / schreibbar)
 
 ### Kessel (Boil1)
 
-- **Register 2000**: Boil1 Target Temperature
-- **Register 2001**: Boil1 Actual Temperature
+- **Register 2000**: Boil1 Error Number (lesbar)
+- **Register 2001**: Boil1 Operating State (lesbar)
+- **Register 2002**: Boil1 Actual High Temperature (lesbar)
+- **Register 2050**: Boil1 Target High Temperature (lesbar / schreibbar)
 
 ### PV-Überschuss
 
-- **Register 102**: E-Manager Actual Power (wird von PV-Surplus geschrieben)
+- **Register 102**: E-Manager Actual Power (lesbar, wird von PV-Surplus geschrieben)
 
 **Hinweis**: Diese Adressen sind Beispiele. Die tatsächlichen Register-Adressen können je nach Firmware-Version und Konfiguration variieren. Konsultieren Sie die Modbus-Dokumentation Ihrer Lambda-Wärmepumpe für genaue Adressen.
 
@@ -148,13 +163,16 @@ automation:
     trigger:
       - platform: time_pattern
         minutes: /5  # Alle 5 Minuten
-    action:
-      - service: lambda_heat_pumps.read_modbus_register
+    actions:
+      - action: lambda_heat_pumps.read_modbus_register
+        metadata: {}
         data:
           register_address: 1003
-      - service: notify.mobile_app
+      - action: notify.mobile_app
+        metadata: {}
         data:
           message: "Register 1003 wurde gelesen"
+    mode: single
 ```
 
 ### Beispiel 2: Temperatur manuell setzen
@@ -165,7 +183,8 @@ Setzen Sie eine Temperatur direkt über Modbus:
 script:
   set_target_temp:
     sequence:
-      - service: lambda_heat_pumps.write_modbus_register
+      - action: lambda_heat_pumps.write_modbus_register
+        metadata: {}
         data:
           register_address: 5004
           value: "{{ target_temp | int }}"
@@ -181,27 +200,30 @@ automation:
     trigger:
       - platform: time_pattern
         hours: /1  # Jede Stunde
-    action:
-      - service: lambda_heat_pumps.read_modbus_register
+    actions:
+      - action: lambda_heat_pumps.read_modbus_register
+        metadata: {}
         data:
           register_address: 1003
-      - service: system_log.write
+      - action: system_log.write
+        metadata: {}
         data:
           message: "Register 1003: {{ states('sensor.last_modbus_read') }}"
+    mode: single
 ```
 
 ## Einschränkungen
 
 ### 16-Bit-Register
 
-Die Services unterstützen derzeit nur **16-Bit-Register** (einzelne Register):
+Die Actions unterstützen derzeit nur **16-Bit-Register** (einzelne Register):
 
 - **Wertebereich**: -32768 bis 65535
 - **32-Bit-Register**: Werden derzeit nicht unterstützt (siehe [Hinweis](#hinweis-32-bit-register))
 
 ### Hinweis: 32-Bit-Register
 
-Die Services `read_modbus_register` und `write_modbus_register` können derzeit **nicht** mit 32-Bit-Registern umgehen. Dies führt zu Fehlern beim Lesen/Schreiben von 32-Bit-Registern.
+Die Actions `read_modbus_register` und `write_modbus_register` können derzeit **nicht** mit 32-Bit-Registern umgehen. Dies führt zu Fehlern beim Lesen/Schreiben von 32-Bit-Registern.
 
 **Betroffene Register:**
 - `compressor_power_consumption_accumulated` (Register 20, INT32)
@@ -212,7 +234,7 @@ Die Services `read_modbus_register` und `write_modbus_register` können derzeit 
 
 ## Fehlerbehebung
 
-### "Service nicht gefunden"
+### "Action nicht gefunden"
 - **Ursache**: Integration nicht korrekt installiert oder nicht konfiguriert
 - **Lösung**: 
   - Überprüfen Sie, ob die Integration korrekt installiert ist
@@ -234,7 +256,7 @@ Die Services `read_modbus_register` und `write_modbus_register` können derzeit 
 - **Ursache**: Versuch, ein 32-Bit-Register zu lesen/schreiben
 - **Lösung**: 
   - Verwenden Sie die entsprechenden Sensoren der Integration
-  - 32-Bit-Register werden derzeit nicht von den Services unterstützt
+  - 32-Bit-Register werden derzeit nicht von den Actions unterstützt
 
 ## Sicherheitshinweise
 

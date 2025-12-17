@@ -139,12 +139,14 @@ automation:
       - condition: numeric_state
         entity_id: sensor.wohnzimmer_temperatur
         below: 20
-    action:
-      - service: number.set_value
+    actions:
+      - action: number.set_value
+        metadata: {}
         target:
           entity_id: number.eu08l_hc1_room_thermostat_offset
         data:
           value: -0.5
+    mode: single
 ```
 
 ## Häufige Probleme

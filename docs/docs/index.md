@@ -6,6 +6,7 @@ title: Home
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
     <img src="assets/Integration_Hauptseite_de.png" alt="Lambda Integration Hauptseite" style="width: 100%; height: auto; border-radius: 8px;">
+
   </div>
   <div style="flex: 1; min-width: 300px;">
     <p>Die <strong>Lambda Heat Pumps Integration</strong> ist eine benutzerdefinierte Komponente für Home Assistant, die eine Verbindung zu Lambda Wärmepumpen über das Modbus TCP-Protokoll herstellt. Die Integration bietet automatische Modulerkennung, umfassende Sensoren für Betriebsüberwachung und Energieverbrauch, sowie intelligente Steuerungsfunktionen wie Heizkurven-Konfiguration, PV-Überschuss-Steuerung und Raumthermostat-Integration.</p>

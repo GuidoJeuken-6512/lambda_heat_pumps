@@ -53,12 +53,14 @@ automation:
     trigger:
       - platform: time
         at: "06:00:00"
-    action:
-      - service: number.set_value
+    actions:
+      - action: number.set_value
+        metadata: {}
         target:
           entity_id: number.eu08l_boil1_target_temperature
         data:
           value: 55
+    mode: single
 ```
 
 ### Über Services
@@ -66,11 +68,14 @@ automation:
 Sie können die Warmwasser-Solltemperatur auch direkt über Services setzen:
 
 ```yaml
-service: number.set_value
-target:
-  entity_id: number.eu08l_boil1_target_temperature
-data:
-  value: 50
+actions:
+  - action: number.set_value
+    metadata: {}
+    target:
+      entity_id: number.eu08l_boil1_target_temperature
+    data:
+      value: 50
+mode: single
 ```
 
 ## Temperaturgrenzen
@@ -111,23 +116,27 @@ automation:
     trigger:
       - platform: time
         at: "06:00:00"
-    action:
-      - service: number.set_value
+    actions:
+      - action: number.set_value
+        metadata: {}
         target:
           entity_id: number.eu08l_boil1_target_temperature
         data:
           value: 55
+    mode: single
 
   - alias: "Warmwasser abends senken"
     trigger:
       - platform: time
         at: "22:00:00"
-    action:
-      - service: number.set_value
+    actions:
+      - action: number.set_value
+        metadata: {}
         target:
           entity_id: number.eu08l_boil1_target_temperature
         data:
           value: 45
+    mode: single
 ```
 
 ### Szenario 2: Temperatur basierend auf Tageszeit
@@ -144,14 +153,15 @@ automation:
           - "12:00:00"
           - "18:00:00"
           - "22:00:00"
-    action:
+    actions:
       - choose:
           - conditions:
               - condition: time
                 after: "06:00:00"
                 before: "12:00:00"
             sequence:
-              - service: number.set_value
+              - action: number.set_value
+                metadata: {}
                 target:
                   entity_id: number.eu08l_boil1_target_temperature
                 data:
@@ -161,7 +171,8 @@ automation:
                 after: "12:00:00"
                 before: "18:00:00"
             sequence:
-              - service: number.set_value
+              - action: number.set_value
+                metadata: {}
                 target:
                   entity_id: number.eu08l_boil1_target_temperature
                 data:
@@ -171,7 +182,8 @@ automation:
                 after: "18:00:00"
                 before: "22:00:00"
             sequence:
-              - service: number.set_value
+              - action: number.set_value
+                metadata: {}
                 target:
                   entity_id: number.eu08l_boil1_target_temperature
                 data:
@@ -181,11 +193,13 @@ automation:
                 after: "22:00:00"
                 before: "06:00:00"
             sequence:
-              - service: number.set_value
+              - action: number.set_value
+                metadata: {}
                 target:
                   entity_id: number.eu08l_boil1_target_temperature
                 data:
                   value: 45
+    mode: single
 ```
 
 ## Häufige Probleme
