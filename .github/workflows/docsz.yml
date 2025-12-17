@@ -6,8 +6,8 @@ on:
       - main
       - Release2.0.1
     paths:
-        - 'docs/**'
-        - '.github/workflows/docsz.yml'
+      - 'docs/**'
+      - '.github/workflows/docsz.yml'
 permissions:
   contents: read
   pages: write
