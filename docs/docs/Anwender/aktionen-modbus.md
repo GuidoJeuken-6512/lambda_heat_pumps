@@ -4,7 +4,7 @@ title: "Aktionen (read / write Modbus register)"
 
 # Aktionen (read / write Modbus register)
 
-Die Lambda Heat Pumps Integration bietet Services zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
+Die Lambda Heat Pumps Integration bietet Services zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für Automatisierungen, erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
 
 ## Verfügbare Services
 
