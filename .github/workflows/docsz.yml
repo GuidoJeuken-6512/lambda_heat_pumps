@@ -17,7 +17,7 @@ jobs:
     environment:
       name: github-pages
 #      url: ${{ steps.deployment.outputs.page_url }}
-      url: https://guido-schmitz.github.io/lambda_heat_pumps/
+      url: https://guidojeuken-6512.github.io/lambda_heat_pumps/
     runs-on: ubuntu-latest
     steps:
       - uses: actions/configure-pages@v5
