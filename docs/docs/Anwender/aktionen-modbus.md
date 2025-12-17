@@ -77,6 +77,8 @@ automation:
 
 ## Verwendung über Developer Tools
 
+<img src="assets/dev_tools_actions.png" alt="Developer Tools Actions" style="width: 60%;" />
+
 ### Register lesen
 
 1. **Öffnen Sie Home Assistant:**
