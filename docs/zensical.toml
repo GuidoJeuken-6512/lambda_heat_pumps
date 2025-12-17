@@ -37,6 +37,9 @@ copyright = """
 Copyright &copy; 2025 The authors
 """
 
+# Das Verzeichnis mit den Markdown-Dateien (relativ zur zensical.toml)
+docs_dir = "docs"
+
 # Zensical supports both implicit navigation and explicitly defined navigation.
 # If you decide not to define a navigation here then Zensical will simply
 # derive the navigation structure from the directory structure of your
