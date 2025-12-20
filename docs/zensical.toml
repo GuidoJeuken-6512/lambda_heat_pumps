@@ -47,10 +47,27 @@ docs_dir = "docs"
 # can be defined using TOML syntax.
 #
 # Read more: https://zensical.org/docs/setup/navigation/
-# nav = [
-#   { "Get started" = "index.md" },
-#   { "Markdown in 5min" = "markdown.md" },
-# ]
+nav = [
+  { "Home" = "" },
+  { "Anwender" = [
+    { "Installation" = "Anwender/installation.md" },
+    { "Initiale Konfiguration" = "Anwender/initiale-konfiguration.md" },
+    { "Optionen zum Config Flow" = "Anwender/optionen-config-flow.md" },
+    { "Raumthermometer" = "Anwender/raumthermometer.md" },
+    { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
+    { "Stromverbrauchsberechnung" = "Anwender/stromverbrauchsberechnung.md" },
+    { "Heizkurve" = "Anwender/heizkurve.md" },
+    { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
+    { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
+    { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
+    { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
+  ] },
+  { "Entwickler" = [
+    { "Installation" = "Entwickler/installation.md" },
+    { "Ablaufdiagramm" = "Entwickler/Ablaufdiagramm.md" },
+    { "Heizkurve" = "Entwickler/heizkurve.md" },
+  ] },
+]
 
 # With the "extra_css" option you can add your own CSS styling to customize
 # your Zensical project according to your needs. You can add any number of
