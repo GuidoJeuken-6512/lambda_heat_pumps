@@ -669,6 +669,9 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             else:
                 result = y_cold
 
+        # Speichere das rohe Interpolationsergebnis (vor Anpassungen)
+        interpolated_result = result
+
         adjustment = 0.0
         rt_delta = None
         offset_value = None
@@ -796,12 +799,13 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             return f"{value:.2f}" if value is not None else "n/a"
 
         _LOGGER.info(
-            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C, eco_reduction=%.2f°C (op_state=%s) -> %.2f°C",
+            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, interpolated=%.2f°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C, eco_reduction=%.2f°C (op_state=%s) -> %.2f°C",
             self.entity_id,
             ambient,
             _fmt(y_cold),
             _fmt(y_mid),
             _fmt(y_warm),
+            interpolated_result,
             flow_line_offset,
             self._room_thermostat_enabled,
             _fmt(rt_delta),

@@ -5,7 +5,7 @@ from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -491,7 +491,8 @@ class LambdaFlowLineOffsetNumber(CoordinatorEntity, RestoreNumber, NumberEntity)
             value,
         )
 
-    async def _handle_coordinator_update(self) -> None:
+    @callback
+    def _handle_coordinator_update(self) -> None:
         """Wird automatisch aufgerufen, wenn Coordinator Daten aktualisiert."""
         # Aktualisiere UI, wenn Modbus-Wert sich geändert hat
         self.async_write_ha_state()
