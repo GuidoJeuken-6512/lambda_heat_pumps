@@ -1,0 +1,3 @@
+# Architektur
+
+Systemarchitektur (Deutsch placeholder).

@@ -37,9 +37,9 @@ MAX_NUM_HC = 12  # Heating circuits
 MAX_NUM_BUFFER = 5  # Buffers
 MAX_NUM_SOLAR = 2  # Solar modules
 
-# Default temperature settings
-DEFAULT_HOT_WATER_MIN_TEMP = 40
-DEFAULT_HOT_WATER_MAX_TEMP = 60
+# Config Flow temperature limits (for NumberSelector min/max and default values)
+HOT_WATER_MIN_TEMP_LIMIT = 25
+HOT_WATER_MAX_TEMP_LIMIT = 65
 
 # Configuration Constants
 CONF_SLAVE_ID = "slave_id"
@@ -1112,6 +1112,34 @@ HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
     },
 }
 
+HC_FLOW_LINE_OFFSET_NUMBER_CONFIG = {
+    "flow_line_offset_temperature": {
+        "name": "Flow Line Offset Temperature",
+        "default": 0.0,
+        "min_value": -10.0,
+        "max_value": 10.0,
+        "step": 0.1,
+        "precision": 1,
+        "unit": "°C",
+        "icon": "mdi:thermometer-adjust",
+        "relative_address": 50,  # Aus HC_SENSOR_TEMPLATES
+        "scale": 0.1,  # Für Modbus-Konvertierung
+    },
+}
+
+HC_ECO_TEMP_REDUCTION_NUMBER_CONFIG = {
+    "eco_temp_reduction": {
+        "name": "Eco Temperature Reduction",
+        "default": -1.0,
+        "min_value": -10.0,
+        "max_value": 0.0,
+        "step": 0.1,
+        "precision": 1,
+        "unit": "°C",
+        "icon": "mdi:thermometer-minus",
+    },
+}
+
 HC_HEATING_CURVE_TEMPLATE_PARAMS = {
     "ambient_sensor": "sensor.ambient_temperature_calculated",
     "cold_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
@@ -1640,27 +1668,34 @@ CALCULATED_SENSOR_TEMPLATES = {
         "state_class": "measurement",
         "device_class": "temperature",
         "format_params": HC_HEATING_CURVE_TEMPLATE_PARAMS,
-        "template": (
-            "{{% set t_out = states('{ambient_sensor}') | float(10) %}}"
-            "{{% set x_cold = {cold_point} %}}"
-            "{{% set x_mid = {mid_point} %}}"
-            "{{% set x_warm = {warm_point} %}}"
-            "{{% set y_cold = states('number.{full_entity_prefix}_heating_curve_cold_outside_temp') | float({default_cold}) %}}"
-            "{{% set y_mid = states('number.{full_entity_prefix}_heating_curve_mid_outside_temp') | float({default_mid}) %}}"
-            "{{% set y_warm = states('number.{full_entity_prefix}_heating_curve_warm_outside_temp') | float({default_warm}) %}}"
-            "{{% macro lin(x, xA, yA, xB, yB) -%}}"
-            "{{{{ yA + (x - xA) * (yB - yA) / (xB - xA) }}}}"
-            "{{%- endmacro %}}"
-            "{{% if t_out >= x_warm %}}"
-            "{{{{ y_warm | round(1) }}}}"
-            "{{% elif t_out > x_mid %}}"
-            "{{{{ lin(t_out, x_mid, y_mid, x_warm, y_warm) | float | round(1) }}}}"
-            "{{% elif t_out > x_cold %}}"
-            "{{{{ lin(t_out, x_cold, y_cold, x_mid, y_mid) | float | round(1) }}}}"
-            "{{% else %}}"
-            "{{{{ y_cold | round(1) }}}}"
-            "{{% endif %}}"
-        ),
+        # HINWEIS: Dieses Template wird NICHT verwendet!
+        # Stattdessen wird die Python-Implementierung LambdaHeatingCurveCalcSensor verwendet
+        # (siehe template_sensor.py, Zeile 202-224).
+        # Die Berechnung erfolgt über die _lerp() Funktion (template_sensor.py, Zeile 564-567),
+        # die eine lineare Interpolation durchführt: y = y_a + (x - x_a) * (y_b - y_a) / (x_b - x_a)
+        # Die _lerp() Funktion hat Schutz vor Division durch Null (wenn x_b == x_a, wird y_a zurückgegeben).
+        # Das Template unten ist veraltet und wird nicht mehr verwendet.
+        # "template": (
+        #     "{{% set t_out = states('{ambient_sensor}') | float(10) %}}"
+        #     "{{% set x_cold = {cold_point} %}}"
+        #     "{{% set x_mid = {mid_point} %}}"
+        #     "{{% set x_warm = {warm_point} %}}"
+        #     "{{% set y_cold = states('number.{full_entity_prefix}_heating_curve_cold_outside_temp') | float({default_cold}) %}}"
+        #     "{{% set y_mid = states('number.{full_entity_prefix}_heating_curve_mid_outside_temp') | float({default_mid}) %}}"
+        #     "{{% set y_warm = states('number.{full_entity_prefix}_heating_curve_warm_outside_temp') | float({default_warm}) %}}"
+        #     "{{% macro lin(x, xA, yA, xB, yB) -%}}"
+        #     "{{{{ yA + (x - xA) * (yB - yA) / (xB - xA) }}}}"
+        #     "{{%- endmacro %}}"
+        #     "{{% if t_out >= x_warm %}}"
+        #     "{{{{ y_warm | round(1) }}}}"
+        #     "{{% elif t_out > x_mid %}}"
+        #     "{{{{ lin(t_out, x_mid, y_mid, x_warm, y_warm) | float | round(1) }}}}"
+        #     "{{% elif t_out > x_cold %}}"
+        #     "{{{{ lin(t_out, x_cold, y_cold, x_mid, y_mid) | float | round(1) }}}}"
+        #     "{{% else %}}"
+        #     "{{{{ y_cold | round(1) }}}}"
+        #     "{{% endif %}}"
+        # ),
     },
     # 2h Cycling Sensoren (echte Entities - werden alle 2 Stunden auf 0 gesetzt)
     "heating_cycling_2h": {

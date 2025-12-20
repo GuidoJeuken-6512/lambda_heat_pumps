@@ -103,10 +103,17 @@ async def async_setup_entry(
             device_prefix = f"{device_type}{idx}"
             # Nur Template-Sensoren mit "template"-Feld erzeugen
             # (ausschließlich Daily-Sensoren)
+            # Ausnahme: heating_curve_flow_line_temperature_calc wird speziell behandelt
             for sensor_id, sensor_info in compatible_templates.items():
+                is_heating_curve_sensor = (
+                    sensor_id == "heating_curve_flow_line_temperature_calc"
+                )
                 if (
                     sensor_info.get("device_type") == device_type
-                    and "template" in sensor_info
+                    and (
+                        "template" in sensor_info
+                        or is_heating_curve_sensor
+                    )
                     and not sensor_id.endswith("_cycling_total")
                     and not sensor_id.endswith("_cycling_yesterday")
                 ):
@@ -139,10 +146,7 @@ async def async_setup_entry(
                         sensor_info["format_params"], dict
                     ):
                         format_kwargs.update(sensor_info["format_params"])
-                    is_heating_curve = (
-                        sensor_id == "heating_curve_flow_line_temperature_calc"
-                    )
-                    if is_heating_curve:
+                    if is_heating_curve_sensor:
                         ambient_suffix = "ambient_temperature_calculated"
                         if use_legacy_modbus_names and name_prefix:
                             ambient_sensor_entity = (
@@ -303,6 +307,7 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._template = None  # Will be set in async_added_to_hass
         self._state = None
         self._last_warning = None
+        self._last_identical_warning = None
         
         # Setze Icon aus sensor_info (zentrale Steuerung)
         self._attr_icon = get_entity_icon(sensor_info)
@@ -483,14 +488,28 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._defaults = defaults
         self._state = None
         self._last_warning = None
+        self._last_identical_warning = None
         self._room_thermostat_enabled = room_thermostat_enabled
         self._last_adjustment = 0.0
         self._last_rt_delta = None
         self._last_flow_offset = 0.0
+        self._last_eco_reduction = 0.0
 
         parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
         self._device_type = (device_type or parsed_type or "").lower()
         self._device_index = parsed_index
+        
+        # Konstruiere Entity-IDs für operating_state und eco_temp_reduction
+        use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
+        name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+        device_prefix = f"{self._device_type}{self._device_index}" if self._device_index else ""
+        
+        if use_legacy_modbus_names and name_prefix:
+            self._operating_state_entity = f"sensor.{name_prefix}_{device_prefix}_operating_state"
+            self._eco_temp_reduction_entity = f"number.{name_prefix}_{device_prefix}_eco_temp_reduction"
+        else:
+            self._operating_state_entity = f"sensor.{device_prefix}_operating_state"
+            self._eco_temp_reduction_entity = f"number.{device_prefix}_eco_temp_reduction"
 
         if state_class == "measurement":
             self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -549,6 +568,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             "room_thermostat_adjustment": self._last_adjustment,
             "room_thermostat_delta": self._last_rt_delta,
             "flow_line_offset": self._last_flow_offset,
+            "eco_temp_reduction": self._last_eco_reduction,
         }
 
     def _get_float_state(self, entity_id: str, default: float | None) -> float | None:
@@ -591,42 +611,72 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             self._defaults["heating_curve_warm_outside_temp"],
         )
 
-        warnings: list[str] = []
-        if y_cold is not None and y_mid is not None and y_cold <= y_mid:
-            warnings.append(f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})")
-        elif y_mid is not None and y_warm is not None and y_mid <= y_warm:
-            warnings.append(f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})")
-
-        if warnings:
-            warning_text = "; ".join(warnings)
-            if warning_text != self._last_warning:
+        # Prüfe, ob alle drei Werte gleich sind - dann kann _lerp übersprungen werden
+        if (
+            y_cold is not None
+            and y_mid is not None
+            and y_warm is not None
+            and y_cold == y_mid
+            and y_mid == y_warm
+        ):
+            identical_warning_text = f"identical_values_{y_cold}"
+            if identical_warning_text != self._last_identical_warning:
                 _LOGGER.warning(
-                    "%s — Werte unplausibel: %s (Entities: cold=%s, mid=%s, warm=%s)",
+                    "%s — VORSICHT: Alle drei Heizkurven-Werte sind identisch (cold=mid=warm=%s). "
+                    "Die Heizkurve ist flach - keine Interpolation erforderlich. "
+                    "Wert wird direkt ausgegeben (Entities: cold=%s, mid=%s, warm=%s)",
                     self.entity_id,
-                    warning_text,
+                    y_cold,
                     cold_entity,
                     mid_entity,
                     warm_entity,
                 )
-                self._last_warning = warning_text
-            self._state = None
-            self.async_write_ha_state()
-            return
-        self._last_warning = None
-
-        x_cold = self._temp_points.get("cold", -22.0)
-        x_mid = self._temp_points.get("mid", 0.0)
-        x_warm = self._temp_points.get("warm", 22.0)
-
-        result: float
-        if ambient >= x_warm:
-            result = y_warm
-        elif ambient > x_mid:
-            result = self._lerp(ambient, x_mid, y_mid, x_warm, y_warm)
-        elif ambient > x_cold:
-            result = self._lerp(ambient, x_cold, y_cold, x_mid, y_mid)
-        else:
+                self._last_identical_warning = identical_warning_text
+            # Direkt den Wert setzen, _lerp wird übersprungen (spart Rechenzeit)
             result = y_cold
+            # Weiter mit Anpassungen (Room Thermostat, etc.)
+        else:
+            # Normale Berechnung mit _lerp
+            warnings: list[str] = []
+            if y_cold is not None and y_mid is not None and y_cold <= y_mid:
+                warnings.append(f"Heizkurve: cold ({y_cold}) <= mid ({y_mid})")
+            if y_mid is not None and y_warm is not None and y_mid <= y_warm:
+                warnings.append(f"Heizkurve: mid ({y_mid}) <= warm ({y_warm})")
+
+            if warnings:
+                warning_text = "; ".join(warnings)
+                if warning_text != self._last_warning:
+                    _LOGGER.warning(
+                        "%s — Werte unplausibel: %s (Entities: cold=%s, mid=%s, warm=%s)",
+                        self.entity_id,
+                        warning_text,
+                        cold_entity,
+                        mid_entity,
+                        warm_entity,
+                    )
+                    self._last_warning = warning_text
+                self._state = None
+                self.async_write_ha_state()
+                return
+            self._last_warning = None
+            self._last_identical_warning = None
+
+            x_cold = self._temp_points.get("cold", -22.0)
+            x_mid = self._temp_points.get("mid", 0.0)
+            x_warm = self._temp_points.get("warm", 22.0)
+
+            result: float
+            if ambient >= x_warm:
+                result = y_warm
+            elif ambient > x_mid:
+                result = self._lerp(ambient, x_mid, y_mid, x_warm, y_warm)
+            elif ambient > x_cold:
+                result = self._lerp(ambient, x_cold, y_cold, x_mid, y_mid)
+            else:
+                result = y_cold
+
+        # Speichere das rohe Interpolationsergebnis (vor Anpassungen)
+        interpolated_result = result
 
         adjustment = 0.0
         rt_delta = None
@@ -709,6 +759,40 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
                         raw_offset,
                     )
 
+        # ECO-Temperatur-Reduktion: Wenn operating_state = ECO (1), dann eco_temp_reduction addieren
+        eco_temp_reduction = 0.0
+        operating_state = None
+        
+        # Versuche operating_state aus Coordinator zu lesen
+        if idx is not None:
+            operating_state_key = f"hc{idx}_operating_state"
+            operating_state = data.get(operating_state_key)
+        
+        # Fallback: Versuche als Entity zu lesen
+        if operating_state is None:
+            state_obj = self.hass.states.get(self._operating_state_entity)
+            if state_obj and state_obj.state not in (None, "unknown", "unavailable"):
+                try:
+                    operating_state = int(float(state_obj.state))
+                except (ValueError, TypeError):
+                    pass
+        
+        # Prüfe ob operating_state = ECO (1)
+        if operating_state == 1:  # ECO
+            # Lese eco_temp_reduction Wert
+            eco_value = self._get_float_state(
+                self._eco_temp_reduction_entity,
+                -1.0  # Default aus HC_ECO_TEMP_REDUCTION_NUMBER_CONFIG
+            )
+            if eco_value is not None:
+                eco_temp_reduction = float(eco_value)
+                result += eco_temp_reduction
+                _LOGGER.debug(
+                    "%s — ECO-Modus aktiv (operating_state=1), eco_temp_reduction=%.1f°C wird addiert",
+                    self.entity_id,
+                    eco_temp_reduction,
+                )
+
         if self._precision is not None:
             result = round(result, int(self._precision))
 
@@ -716,22 +800,26 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._last_adjustment = adjustment
         self._last_rt_delta = rt_delta
         self._last_flow_offset = flow_line_offset
+        self._last_eco_reduction = eco_temp_reduction
         def _fmt(value: float | None) -> str:
             return f"{value:.2f}" if value is not None else "n/a"
 
         _LOGGER.info(
-            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C -> %.2f°C",
+            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, interpolated=%.2f°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C, eco_reduction=%.2f°C (op_state=%s) -> %.2f°C",
             self.entity_id,
             ambient,
             _fmt(y_cold),
             _fmt(y_mid),
             _fmt(y_warm),
+            interpolated_result,
             flow_line_offset,
             self._room_thermostat_enabled,
             _fmt(rt_delta),
             _fmt(offset_value),
             _fmt(factor_value),
             adjustment,
+            eco_temp_reduction,
+            operating_state,
             result,
         )
 

@@ -2,13 +2,36 @@
 
 **Deutsche Version siehe unten / [German version see below](#deutsche-version)**
 
+<!-- lang:en -->
 ## English Version
 
-#### New Features since last release
-- **Device Hierarchy**: Separation into main devices and sub-devices for better organization and clearer entity structure
-- **Multilingual Support**: Comprehensive translations in German and English for all entity names
-- **Heating Curve Calculation**: Intelligent heating curve calculation with three support points (cold, mid, warm) and automatic flow temperature calculation
-- **Compressor Start Cycling Sensor**: New cycling sensor for tracking compressor start events with total, daily, 2h, 4h, and monthly variants
+> **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
+ 
+
+
+### [2.1] - 2025-12-20
+
+#### New Features
+- **Flow Line Offset Number Entity**: Added bidirectional Modbus-synchronized Number entity for flow line offset temperature adjustment
+  - Automatically created for each heating circuit (HC1, HC2, etc.)
+  - Range: -10.0°C to +10.0°C with 0.1°C step size
+  - Reads current value from Modbus register and writes changes directly back
+  - Appears in device configuration alongside heating curve support points
+  - Modbus Register: Register 50 (relative to heating circuit base address)
+
+#### Fixed
+- **Heating Curve Validation**: Fixed validation logic to check both conditions independently
+  - Changed `elif` to `if` to ensure both validation checks are performed
+  - Now reports all validation problems when multiple heating curve values are misconfigured
+  - Previously only the first issue was reported when all three temperature points were in wrong order
+  - Fixed issue when all three heating curve points have identical values (Issue #48)
+
+- **Hot Water Temperature Limits**: Adjusted minimum/maximum values for hot water to Lambda standard (25/65°C) (Issue #50)
+- **Eco Mode in Heating Curve**: Added eco temperature reduction feature for heating circuits (Issue #51)
+  - New Number entity `eco_temp_reduction` per heating circuit with range -10.0 to 0.0°C (default: -1.0°C)
+  - Automatically reduces calculated flow temperature when heating circuit is in ECO mode (operating_state = 1)
+  - Integrated into heating curve calculation alongside flow line offset and room thermostat adjustments 
+
 
 ### [2.0.0] - 2025-01-XX
 
@@ -240,14 +263,37 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Climate entity for heat pump control
 
 ---
-
+<!-- /lang:en -->
 ## Deutsche Version {#deutsche-version}
 
-#### New Features seit dem letzten Release
-- **Geräte-Hierarchie**: Aufteilung in Haupt- und Sub-Geräte für bessere Organisation und klarere Entity-Struktur
-- **Mehrsprachige Unterstützung**: Umfassende Übersetzungen in Deutsch und Englisch für alle Entity-Namen
-- **Heizkurven-Berechnung**: Intelligente Heizkurven-Berechnung mit drei Stützpunkten (Kalt, Mittel, Warm) und automatischer Vorlauftemperatur-Berechnung
-- **Kompressor-Start Cycling Sensor**: Neuer Cycling-Sensor zur Verfolgung von Kompressor-Start-Ereignissen mit total, daily, 2h, 4h und monthly Varianten
+
+<!-- lang:de -->
+
+> **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+
+### [2.0.1] - 2025-01-XX
+
+#### Neue Funktionen
+- **Vorlauf-Offset Number Entity**: Hinzugefügte bidirektionale Modbus-synchronisierte Number-Entity zur Anpassung der Vorlauf-Offset-Temperatur
+  - Wird automatisch für jeden Heizkreis (HC1, HC2, etc.) erstellt
+  - Bereich: -10.0°C bis +10.0°C mit 0.1°C Schrittweite
+  - Liest aktuellen Wert aus Modbus-Register und schreibt Änderungen direkt zurück
+  - Erscheint in der Geräte-Konfiguration neben den Heizkurven-Stützpunkten
+  - Modbus-Register: Register 50 (relativ zur Base-Adresse des Heizkreises)
+
+#### Behoben
+- **Heizkurven-Validierung**: Validierungslogik korrigiert, um beide Bedingungen unabhängig zu prüfen
+  - `elif` zu `if` geändert, um sicherzustellen, dass beide Validierungsprüfungen durchgeführt werden
+  - Meldet jetzt alle Validierungsprobleme, wenn mehrere Heizkurven-Werte falsch konfiguriert sind
+  - Zuvor wurde nur das erste Problem gemeldet, wenn alle drei Temperaturpunkte in falscher Reihenfolge waren
+  - Behoben: Problem wenn alle drei Heizkurven-Punkte identische Werte haben (Issue #48)
+- **Warmwasser-Temperaturgrenzen**: Minimum/Maximum-Werte für Warmwasser auf Lambda-Standard (25/65°C) angepasst (Issue #50)
+- **Eco-Modus in Heizkurve**: Hinzugefügte Eco-Temperaturreduktion für Heizkreise (Issue #51)
+  - Neue Number-Entity `eco_temp_reduction` pro Heizkreis mit Bereich -10,0 bis 0,0°C (Standard: -1,0°C)
+  - Reduziert automatisch die berechnete Vorlauftemperatur, wenn der Heizkreis im ECO-Modus ist (operating_state = 1)
+  - In die Heizkurven-Berechnung integriert, zusammen mit Vorlauf-Offset und Raumthermostat-Anpassungen
+
 
 ### [2.0.0] - 2025-01-XX
 
@@ -301,6 +347,8 @@ This release contains significant changes to the Entity Registry and sensor nami
 - **Service-Scheduler-Optimierung**: Implementierte intelligente Service-Scheduler, die nur aktiviert werden, wenn PV-Surplus oder Raumthermostat-Steuerungsoptionen aktiviert sind, wodurch der Ressourcenverbrauch erheblich reduziert wird, wenn Services nicht benötigt werden
 
 ---
+
+
 
 ### [1.4.1] - 2025-10-21
 
@@ -477,3 +525,5 @@ Diese Version enthält wesentliche Änderungen an der Entity Registry und den Se
 - Modbus-Kommunikation für Wärmepumpen
 - Cycle Counter-Erkennung
 - Climate Entity für Wärmepumpen-Steuerung
+
+<!-- /lang:de -->

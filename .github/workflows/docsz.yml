@@ -1,0 +1,36 @@
+name: Documentation
+on:
+  push:
+    branches:
+      - master
+      - main
+      - Release2.0.1
+    paths:
+      - 'docs/**'
+      - '.github/workflows/docsz.yml'
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+#      url: ${{ steps.deployment.outputs.page_url }}
+      url: https://guidojeuken-6512.github.io/lambda_heat_pumps/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/configure-pages@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: 3.x
+      - run: pip install zensical
+      - name: Build documentation
+        working-directory: docs
+        run: zensical build --clean
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/site
+      - uses: actions/deploy-pages@v4
+        id: deployment

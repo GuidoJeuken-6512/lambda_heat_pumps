@@ -23,11 +23,26 @@ tests/playwright/
 !CHANGELOG.md
 !requirements.txt
 !requirements_test.txt
-!automations.yaml
 
 # Docs directory and all subdirectories
 !docs/
 !docs/**
+
+# Docs old directory and all subdirectories
+!docs_old/
+!docs_old/**
+
+# MkDocs documentation source (sources we want tracked)
+!docs_src/
+!docs_src/**
+!docs_md/
+!docs_md/**
+!mkdocs.yml
+!requirements-docs.txt
+
+# MkDocs build output (should be ignored)
+site/
+.cache/
 
 
 # GitHub Actions Workflows
