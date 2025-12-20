@@ -307,6 +307,7 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._template = None  # Will be set in async_added_to_hass
         self._state = None
         self._last_warning = None
+        self._last_identical_warning = None
         
         # Setze Icon aus sensor_info (zentrale Steuerung)
         self._attr_icon = get_entity_icon(sensor_info)
@@ -487,6 +488,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._defaults = defaults
         self._state = None
         self._last_warning = None
+        self._last_identical_warning = None
         self._room_thermostat_enabled = room_thermostat_enabled
         self._last_adjustment = 0.0
         self._last_rt_delta = None
@@ -617,16 +619,19 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             and y_cold == y_mid
             and y_mid == y_warm
         ):
-            _LOGGER.warning(
-                "%s — VORSICHT: Alle drei Heizkurven-Werte sind identisch (cold=mid=warm=%s). "
-                "Die Heizkurve ist flach - keine Interpolation erforderlich. "
-                "Wert wird direkt ausgegeben (Entities: cold=%s, mid=%s, warm=%s)",
-                self.entity_id,
-                y_cold,
-                cold_entity,
-                mid_entity,
-                warm_entity,
-            )
+            identical_warning_text = f"identical_values_{y_cold}"
+            if identical_warning_text != self._last_identical_warning:
+                _LOGGER.warning(
+                    "%s — VORSICHT: Alle drei Heizkurven-Werte sind identisch (cold=mid=warm=%s). "
+                    "Die Heizkurve ist flach - keine Interpolation erforderlich. "
+                    "Wert wird direkt ausgegeben (Entities: cold=%s, mid=%s, warm=%s)",
+                    self.entity_id,
+                    y_cold,
+                    cold_entity,
+                    mid_entity,
+                    warm_entity,
+                )
+                self._last_identical_warning = identical_warning_text
             # Direkt den Wert setzen, _lerp wird übersprungen (spart Rechenzeit)
             result = y_cold
             # Weiter mit Anpassungen (Room Thermostat, etc.)
@@ -654,6 +659,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
                 self.async_write_ha_state()
                 return
             self._last_warning = None
+            self._last_identical_warning = None
 
             x_cold = self._temp_points.get("cold", -22.0)
             x_mid = self._temp_points.get("mid", 0.0)
