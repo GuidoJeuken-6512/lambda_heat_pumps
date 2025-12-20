@@ -228,7 +228,8 @@
       "heating_curve_warm_outside_temp": { "name": "Warm Point +22°C" },
       "room_thermostat_offset": { "name": "Room Temperature Offset" },
       "room_thermostat_factor": { "name": "Room Temperature Factor" },
-      "flow_line_offset_temperature": { "name": "Flow Line Offset" }
+      "flow_line_offset_temperature": { "name": "Flow Line Offset" },
+      "eco_temp_reduction": { "name": "Eco Temperature Reduction" }
     }
   },
   "device": {

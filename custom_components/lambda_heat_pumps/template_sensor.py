@@ -103,10 +103,17 @@ async def async_setup_entry(
             device_prefix = f"{device_type}{idx}"
             # Nur Template-Sensoren mit "template"-Feld erzeugen
             # (ausschließlich Daily-Sensoren)
+            # Ausnahme: heating_curve_flow_line_temperature_calc wird speziell behandelt
             for sensor_id, sensor_info in compatible_templates.items():
+                is_heating_curve_sensor = (
+                    sensor_id == "heating_curve_flow_line_temperature_calc"
+                )
                 if (
                     sensor_info.get("device_type") == device_type
-                    and "template" in sensor_info
+                    and (
+                        "template" in sensor_info
+                        or is_heating_curve_sensor
+                    )
                     and not sensor_id.endswith("_cycling_total")
                     and not sensor_id.endswith("_cycling_yesterday")
                 ):
@@ -139,10 +146,7 @@ async def async_setup_entry(
                         sensor_info["format_params"], dict
                     ):
                         format_kwargs.update(sensor_info["format_params"])
-                    is_heating_curve = (
-                        sensor_id == "heating_curve_flow_line_temperature_calc"
-                    )
-                    if is_heating_curve:
+                    if is_heating_curve_sensor:
                         ambient_suffix = "ambient_temperature_calculated"
                         if use_legacy_modbus_names and name_prefix:
                             ambient_sensor_entity = (
@@ -487,10 +491,23 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._last_adjustment = 0.0
         self._last_rt_delta = None
         self._last_flow_offset = 0.0
+        self._last_eco_reduction = 0.0
 
         parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
         self._device_type = (device_type or parsed_type or "").lower()
         self._device_index = parsed_index
+        
+        # Konstruiere Entity-IDs für operating_state und eco_temp_reduction
+        use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
+        name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+        device_prefix = f"{self._device_type}{self._device_index}" if self._device_index else ""
+        
+        if use_legacy_modbus_names and name_prefix:
+            self._operating_state_entity = f"sensor.{name_prefix}_{device_prefix}_operating_state"
+            self._eco_temp_reduction_entity = f"number.{name_prefix}_{device_prefix}_eco_temp_reduction"
+        else:
+            self._operating_state_entity = f"sensor.{device_prefix}_operating_state"
+            self._eco_temp_reduction_entity = f"number.{device_prefix}_eco_temp_reduction"
 
         if state_class == "measurement":
             self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -549,6 +566,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             "room_thermostat_adjustment": self._last_adjustment,
             "room_thermostat_delta": self._last_rt_delta,
             "flow_line_offset": self._last_flow_offset,
+            "eco_temp_reduction": self._last_eco_reduction,
         }
 
     def _get_float_state(self, entity_id: str, default: float | None) -> float | None:
@@ -732,6 +750,40 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
                         raw_offset,
                     )
 
+        # ECO-Temperatur-Reduktion: Wenn operating_state = ECO (1), dann eco_temp_reduction addieren
+        eco_temp_reduction = 0.0
+        operating_state = None
+        
+        # Versuche operating_state aus Coordinator zu lesen
+        if idx is not None:
+            operating_state_key = f"hc{idx}_operating_state"
+            operating_state = data.get(operating_state_key)
+        
+        # Fallback: Versuche als Entity zu lesen
+        if operating_state is None:
+            state_obj = self.hass.states.get(self._operating_state_entity)
+            if state_obj and state_obj.state not in (None, "unknown", "unavailable"):
+                try:
+                    operating_state = int(float(state_obj.state))
+                except (ValueError, TypeError):
+                    pass
+        
+        # Prüfe ob operating_state = ECO (1)
+        if operating_state == 1:  # ECO
+            # Lese eco_temp_reduction Wert
+            eco_value = self._get_float_state(
+                self._eco_temp_reduction_entity,
+                -1.0  # Default aus HC_ECO_TEMP_REDUCTION_NUMBER_CONFIG
+            )
+            if eco_value is not None:
+                eco_temp_reduction = float(eco_value)
+                result += eco_temp_reduction
+                _LOGGER.debug(
+                    "%s — ECO-Modus aktiv (operating_state=1), eco_temp_reduction=%.1f°C wird addiert",
+                    self.entity_id,
+                    eco_temp_reduction,
+                )
+
         if self._precision is not None:
             result = round(result, int(self._precision))
 
@@ -739,11 +791,12 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._last_adjustment = adjustment
         self._last_rt_delta = rt_delta
         self._last_flow_offset = flow_line_offset
+        self._last_eco_reduction = eco_temp_reduction
         def _fmt(value: float | None) -> str:
             return f"{value:.2f}" if value is not None else "n/a"
 
         _LOGGER.info(
-            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C -> %.2f°C",
+            "Heizkurven-Wert %s: ambient=%.2f°C, y_cold=%s°C, y_mid=%s°C, y_warm=%s°C, flow_offset=%.2f°C, rt_enabled=%s, delta=%s, offset=%s, factor=%s, adjustment=%.2f°C, eco_reduction=%.2f°C (op_state=%s) -> %.2f°C",
             self.entity_id,
             ambient,
             _fmt(y_cold),
@@ -755,6 +808,8 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             _fmt(offset_value),
             _fmt(factor_value),
             adjustment,
+            eco_temp_reduction,
+            operating_state,
             result,
         )
 

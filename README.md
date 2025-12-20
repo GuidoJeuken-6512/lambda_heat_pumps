@@ -82,6 +82,7 @@ After initial setup, you can modify additional settings in the integration optio
 - **Register Order Configuration**: Configurable register order for 32-bit values from multiple 16-bit registers
 
 **Documentation:**
+- [WebDocu] (https://guidojeuken-6512.github.io/lambda_heat_pumps/)
 - [English Guide](docs/lambda_heat_pumps_en.md)
 - [Troubleshooting](docs/lambda_heat_pumps_troubleshooting.md)
 - 
@@ -458,6 +459,7 @@ MIT License. Nutzung auf eigene Gefahr. Siehe [LICENSE](LICENSE).
 ---
 
 ## 📚 Weitere Dokumentation
+- [Web Dokumentation] (https://guidojeuken-6512.github.io/lambda_heat_pumps/)
 - [Quick Start (DE)](docs/lambda_heat_pumps_quick_start.md)
 - [FAQ (DE)](docs/lambda_heat_pumps_faq.md)
 - [Entwickler-Guide](docs/lambda_heat_pumps_developer_guide.md)

@@ -14,6 +14,7 @@ from .const import (
     HC_HEATING_CURVE_NUMBER_CONFIG,
     HC_ROOM_THERMOSTAT_NUMBER_CONFIG,
     HC_FLOW_LINE_OFFSET_NUMBER_CONFIG,
+    HC_ECO_TEMP_REDUCTION_NUMBER_CONFIG,
 )
 from .utils import (
     build_device_info,
@@ -48,7 +49,7 @@ async def async_setup_entry(
         _LOGGER.error("Coordinator not found for entry %s", entry.entry_id)
         return
 
-    number_entities: list[LambdaHeatingCurveNumber | LambdaFlowLineOffsetNumber] = []
+    number_entities: list[LambdaHeatingCurveNumber | LambdaFlowLineOffsetNumber | LambdaEcoTempReductionNumber] = []
 
     for hc_index in range(1, num_hc + 1):
         device_prefix = f"hc{hc_index}"
@@ -147,12 +148,43 @@ async def async_setup_entry(
                 )
             )
 
+        # Eco Temperature Reduction Number Entities für jeden HC
+        for sensor_id, spec in HC_ECO_TEMP_REDUCTION_NUMBER_CONFIG.items():
+            names = generate_sensor_names(
+                device_prefix,
+                spec["name"],
+                sensor_id,
+                name_prefix,
+                use_legacy_modbus_names,
+                translations=sensor_translations,
+            )
+
+            base_entity_id = names["entity_id"]
+            if base_entity_id.startswith("sensor."):
+                entity_id = base_entity_id.replace("sensor.", "number.", 1)
+            elif "." in base_entity_id:
+                entity_id = f"number.{base_entity_id.split('.', 1)[1]}"
+            else:
+                entity_id = f"number.{base_entity_id}"
+            unique_id = f"{names['unique_id']}_number"
+
+            number_entities.append(
+                LambdaEcoTempReductionNumber(
+                    entry=entry,
+                    hc_index=hc_index,
+                    name=names["name"],
+                    entity_id=entity_id,
+                    unique_id=unique_id,
+                    spec=spec,
+                )
+            )
+
     if not number_entities:
         _LOGGER.debug("No heating curve numbers created for entry %s", entry.entry_id)
         return
 
     _LOGGER.info(
-        "Created %d number entities (heating curve, room thermostat, flow line offset) for %d heating circuits",
+        "Created %d number entities (heating curve, room thermostat, flow line offset, eco temp reduction) for %d heating circuits",
         len(number_entities),
         num_hc,
     )
@@ -483,4 +515,60 @@ class LambdaFlowLineOffsetNumber(CoordinatorEntity, RestoreNumber, NumberEntity)
                 else None
             ),
         }
+
+
+class LambdaEcoTempReductionNumber(RestoreNumber, NumberEntity):
+    """Number entity representing eco temperature reduction for heating circuit."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        hc_index: int,
+        name: str,
+        entity_id: str,
+        unique_id: str,
+        spec: dict[str, Any],
+    ) -> None:
+        self._entry = entry
+        self._hc_index = hc_index
+        self.entity_id = entity_id
+        self._attr_name = name
+        self._attr_unique_id = unique_id
+
+        self._attr_native_unit_of_measurement = spec.get("unit")
+        self._attr_native_min_value = spec.get("min_value")
+        self._attr_native_max_value = spec.get("max_value")
+        self._attr_native_step = spec.get("step")
+        self._attr_mode = NumberMode.BOX
+
+        # Setze Icon aus der Config
+        self._attr_icon = get_entity_icon(spec, default_icon="mdi:thermometer-minus")
+
+        default_value = spec.get("default", -1.0)
+        self._attr_native_value = float(default_value)
+        precision = spec.get("precision")
+        if precision is not None:
+            self._attr_suggested_display_precision = precision
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the previous state when added to Home Assistant."""
+        await super().async_added_to_hass()
+        last_number_data = await self.async_get_last_number_data()
+        if last_number_data and last_number_data.native_value is not None:
+            self._attr_native_value = float(last_number_data.native_value)
+        self.async_write_ha_state()
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Persist the newly set value."""
+        self._attr_native_value = float(value)
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self) -> dict[str, Any]:
+        """Return device information for this number entity."""
+        if self._hc_index:
+            return build_subdevice_info(self._entry, "hc", self._hc_index)
+        return build_device_info(self._entry)
 

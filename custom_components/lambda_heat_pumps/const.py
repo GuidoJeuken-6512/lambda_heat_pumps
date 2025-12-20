@@ -1127,6 +1127,19 @@ HC_FLOW_LINE_OFFSET_NUMBER_CONFIG = {
     },
 }
 
+HC_ECO_TEMP_REDUCTION_NUMBER_CONFIG = {
+    "eco_temp_reduction": {
+        "name": "Eco Temperature Reduction",
+        "default": -1.0,
+        "min_value": -10.0,
+        "max_value": 0.0,
+        "step": 0.1,
+        "precision": 1,
+        "unit": "°C",
+        "icon": "mdi:thermometer-minus",
+    },
+}
+
 HC_HEATING_CURVE_TEMPLATE_PARAMS = {
     "ambient_sensor": "sensor.ambient_temperature_calculated",
     "cold_point": HC_HEATING_CURVE_NUMBER_CONFIG["heating_curve_cold_outside_temp"][
