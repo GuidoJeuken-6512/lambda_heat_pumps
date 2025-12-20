@@ -219,8 +219,8 @@
       "heating_curve_cold_outside_temp": { "name": "Heizkurve-22°C" },
       "heating_curve_mid_outside_temp": { "name": "Heizkurve+-0°C" },
       "heating_curve_warm_outside_temp": { "name": "Heizkurve+22°C" },
-      "room_thermostat_offset": { "name": "Raum Tempertur Offset" },
-      "room_thermostat_factor": { "name": "Raum Tempertur Faktor" },
+      "room_thermostat_offset": { "name": "Raum Temperatur Offset" },
+      "room_thermostat_factor": { "name": "Raum Temperatur Faktor" },
       "flow_line_offset_temperature": { "name": "Vorlauf Offset" },
       "eco_temp_reduction": { "name": "Eco Temperatur Reduktion" }
     }
