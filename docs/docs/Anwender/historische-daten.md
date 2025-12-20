@@ -6,6 +6,8 @@ title: "Historische Daten übernehmen"
 
 Wenn Sie eine Wärmepumpe austauschen oder die Zählerstände zurücksetzen, können Sie historische Daten in die Integration übernehmen. Dies ermöglicht es, die Kontinuität der Daten zu erhalten und historische Trends beizubehalten.
 
+Wenn Sie diese Integration neu installieren und vorher andere Lösungen im Einsatz hatten, die andere Entitäten zur Verfügung gestellt haben, so können Sie die historischen Daten der "alten" Sensoren auf die "neuen" umschreiben. Wie das funktioniert ist hier beschrieben: [Historische Werte neu zuordnen](https://homeassistant.com.de/homeassistant/homeassistant-historische-werte-neu-zuordnen/){:target="_blank" rel="noopener noreferrer"}
+
 ## Übersicht
 
 Die Integration unterstützt Offsets für:

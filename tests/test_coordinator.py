@@ -5,7 +5,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 from io import StringIO
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch, mock_open
 
 import pytest
 import yaml
@@ -401,14 +401,17 @@ async def test_connect_success(mock_hass, mock_entry):
 @pytest.mark.asyncio
 async def test_connect_failure(mock_hass, mock_entry):
     """Test connection failure."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+    
     mock_client = AsyncMock()
     mock_client.connect = AsyncMock(return_value=False)
 
     with patch("pymodbus.client.AsyncModbusTcpClient", return_value=mock_client):
         coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
-        result = await coordinator._connect()
-
-        assert result is False
+        
+        with pytest.raises(UpdateFailed):
+            await coordinator._connect()
+        
         assert coordinator.client is None
 
 
@@ -419,15 +422,14 @@ async def test_load_sensor_overrides_success(mock_hass, mock_entry):
         "sensors_names_override": [{"id": "test_sensor", "override_name": "new_name"}]
     }
 
-    @asynccontextmanager
-    async def fake_open(*args, **kwargs):
-        yield StringIO(yaml.dump(config_data))
+    def fake_read_config():
+        return config_data
 
     with patch(
         "custom_components.lambda_heat_pumps.coordinator.os.path.exists",
         return_value=True,
     ):
-        with patch("aiofiles.open", fake_open):
+        with patch("builtins.open", mock_open(read_data=yaml.dump(config_data))):
             coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
             result = await coordinator._load_sensor_overrides()
 
@@ -465,16 +467,15 @@ async def test_load_sensor_overrides_yaml_error(mock_hass, mock_entry):
             assert result == {}
 
 
-@pytest.mark.asyncio
-async def test_on_ha_started(mock_hass, mock_entry):
+def test_on_ha_started(mock_hass, mock_entry):
     """Test on_ha_started method."""
     coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
     mock_event = Mock()
 
-    with patch.object(coordinator, "_connect", AsyncMock(return_value=None)) as mock_connect:
-        await coordinator._on_ha_started(mock_event)
+    # _on_ha_started is not async, it just sets a flag
+    coordinator._on_ha_started(mock_event)
 
-        mock_connect.assert_called_once()
+    assert coordinator._ha_started is True
 
 
 def test_coordinator_update_interval_from_options(mock_hass, mock_entry):

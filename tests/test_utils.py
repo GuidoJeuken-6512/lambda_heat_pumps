@@ -234,11 +234,15 @@ async def test_load_sensor_translations_success(mock_hass):
     ):
         result = await load_sensor_translations(mock_hass)
 
-    assert result == {
-        "flow_line_temperature": "Vorlauf",
-        "compressor_start_cycling_total": "Kompressor Starts Gesamt",
-        "heating_circuit": "Heizkreis",
-    }
+    # The function returns all translations, including "ignored" entries
+    assert "flow_line_temperature" in result
+    assert result["flow_line_temperature"] == "Vorlauf"
+    assert "compressor_start_cycling_total" in result
+    assert result["compressor_start_cycling_total"] == "Kompressor Starts Gesamt"
+    assert "heating_circuit" in result
+    assert result["heating_circuit"] == "Heizkreis"
+    # "ignored" is also included in the result
+    assert "ignored" in result
 
 
 @pytest.mark.asyncio

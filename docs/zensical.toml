@@ -34,7 +34,7 @@ site_author = "Guido"
 #
 # Read more: https://zensical.org/docs/setup/basics/#copyright
 copyright = """
-Copyright &copy; 2025 The authors
+Copyright &copy; 2025 Guido Jeuken | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps" target="_blank" rel="noopener noreferrer">GitHub</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues" target="_blank" rel="noopener noreferrer">Issues</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
 """
 
 # Das Verzeichnis mit den Markdown-Dateien (relativ zur zensical.toml)

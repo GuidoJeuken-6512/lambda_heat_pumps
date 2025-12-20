@@ -791,10 +791,8 @@ def generate_sensor_names(
         # Für General Sensors nur den sensor_name verwenden
         display_name = resolved_sensor_name
     else:
-        # Sensor name without device prefix
-        display_name = resolved_sensor_name
         # Sensor name with device prefix
-        # display_name = f"{device_prefix.upper()} {resolved_sensor_name}"
+        display_name = f"{device_prefix.upper()} {resolved_sensor_name}"
 
     # Always use lowercase for name_prefix to unify entity_id generation
     name_prefix_lc = name_prefix.lower() if name_prefix else ""
@@ -1303,7 +1301,9 @@ def generate_energy_sensor_names(
         dict: Enthält 'name', 'entity_id' und 'unique_id'
     """
     sensor_id = f"{mode}_energy_{period}"
-    sensor_name = f"{mode.title()} Energy {period.title()}"
+    # Format mode name: "hot_water" -> "Hot_Water", "heating" -> "Heating"
+    mode_display = mode.replace("_", " ").title().replace(" ", "_")
+    sensor_name = f"{mode_display} Energy {period.title()}"
     
     return generate_sensor_names(
         device_prefix, sensor_name, sensor_id, name_prefix, use_legacy_modbus_names
