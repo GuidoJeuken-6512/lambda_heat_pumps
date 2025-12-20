@@ -134,7 +134,7 @@ class TestGenerateEnergySensorNames:
             use_legacy_modbus_names=True,
         )
         
-        assert names["name"] == "HP1 Heating Energy Total"
+        assert names["name"] == "Heating Energy Total"
         assert names["entity_id"] == "sensor.eu08l_hp1_heating_energy_total"
         assert names["unique_id"] == "eu08l_hp1_heating_energy_total"
 
@@ -148,7 +148,7 @@ class TestGenerateEnergySensorNames:
             use_legacy_modbus_names=True,
         )
         
-        assert names["name"] == "HP2 Hot_Water Energy Daily"
+        assert names["name"] == "Hot_Water Energy Daily"
         assert names["entity_id"] == "sensor.eu08l_hp2_hot_water_energy_daily"
         assert names["unique_id"] == "eu08l_hp2_hot_water_energy_daily"
 
@@ -162,7 +162,7 @@ class TestGenerateEnergySensorNames:
             use_legacy_modbus_names=False,
         )
         
-        assert names["name"] == "HP1 Cooling Energy Total"
+        assert names["name"] == "Cooling Energy Total"
         assert names["entity_id"] == "sensor.hp1_cooling_energy_total"
         assert names["unique_id"] == "hp1_cooling_energy_total"
 
