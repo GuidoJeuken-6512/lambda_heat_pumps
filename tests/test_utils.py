@@ -467,11 +467,11 @@ class TestGenerateSensorNames:
         )
         assert general["name"] == "Ambient Temperature"
 
-        # Template Sensor - device_prefix.upper() + sensor_name
+        # Template Sensor - Home Assistant adds device prefix automatically
         template = generate_sensor_names(
             "hp1", "Flow Temperature", "flow_temp", name_prefix, True
         )
-        assert template["name"] == "HP1 Flow Temperature"
+        assert template["name"] == "Flow Temperature"
 
     def test_generate_sensor_names_empty_name_prefix(self):
         """Test behavior with empty name_prefix."""
@@ -626,7 +626,7 @@ class TestGenerateSensorNames:
             translations=translations,
         )
 
-        assert result["name"] == "HP1 Vorlauf"
+        assert result["name"] == "Vorlauf"
         
         # Test compressor_start translation
         result_compressor = generate_sensor_names(
