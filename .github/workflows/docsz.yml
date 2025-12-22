@@ -14,11 +14,11 @@ permissions:
   id-token: write
 jobs:
   deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
 #      url: ${{ steps.deployment.outputs.page_url }}
       url: https://guidojeuken-6512.github.io/lambda_heat_pumps/
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/configure-pages@v5
       - uses: actions/checkout@v5
