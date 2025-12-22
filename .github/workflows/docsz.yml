@@ -4,7 +4,7 @@ on:
     branches:
       - master
       - main
-      - Release2.0.1
+      - Release2.3 
     paths:
       - 'docs/**'
       - '.github/workflows/docsz.yml'
