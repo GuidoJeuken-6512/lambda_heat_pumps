@@ -22,6 +22,6 @@ Die Heizkurve bestimmt die Vorlauftemperatur basierend auf der Außentemperatur 
   </div>
 </div>
 
-Weitere Informationen: [Raumthermostat](raumthermometer.md)
+Weitere Informationen: [Raumthermometer](raumthermometer.md)
 
 

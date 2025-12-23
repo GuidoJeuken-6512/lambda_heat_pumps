@@ -8,7 +8,7 @@ Die Lambda Heat Pumps Integration unterstützt die Konfiguration von Heizkurven 
 
 ## Übersicht
 
-Die Heizkurven-Funktion verwendet drei Stützpunkte, um die Vorlauftemperatur in Abhängigkeit von der Außentemperatur zu berechnen. Die Integration interpoliert linear zwischen diesen Stützpunkten und berücksichtigt zusätzliche Einflussfaktoren wie Flow-Line-Offset, Raumthermostat-Anpassung und ECO-Modus.
+Die Heizkurven-Funktion verwendet drei Stützpunkte, um die Vorlauftemperatur in Abhängigkeit von der Außentemperatur zu berechnen. Die Integration interpoliert linear zwischen diesen Stützpunkten und berücksichtigt zusätzliche Einflussfaktoren wie Flow-Line-Offset, Raumthermomenter-Anpassung und ECO-Modus.
 
 ![Heizkurven-Konfiguration](../assets/Integration_Heizkurve_de.png)
 
@@ -18,7 +18,7 @@ Die Heizkurven-Berechnung erfolgt in mehreren Schritten:
 
 1. **Lineare Interpolation**: Basierend auf der aktuellen Außentemperatur wird zwischen den drei Stützpunkten interpoliert
 2. **Flow-Line-Offset**: Ein manueller Offset kann hinzugefügt werden
-3. **Raumthermostat-Anpassung**: Bei aktiviertem Raumthermostat wird die Vorlauftemperatur basierend auf der Raumtemperatur angepasst
+3. **Raumthermomenter-Anpassung**: Bei aktiviertem Raumthermomenter wird die Vorlauftemperatur basierend auf der Raumtemperatur angepasst
 4. **ECO-Modus**: Im ECO-Modus wird eine Temperaturreduktion angewendet
 
 ## Heizkurven-Stützpunkte
@@ -77,17 +77,16 @@ Ein manueller Offset kann über die Number-Entity `number.*_hc1_flow_line_offset
 - **Standardwert**: 0.0 °C
 - **Verwendung**: Für manuelle Anpassungen der Vorlauftemperatur
 
-Weitere Informationen: [Vorlauf Offset](lambda-wp-config.md#6-modbus-konfiguration)
 
-### 3. Raumthermostat-Anpassung
+### 3. Raumthermomenter-Anpassung
 
-Wenn die Raumthermostat-Steuerung aktiviert ist, wird die Vorlauftemperatur basierend auf der Differenz zwischen Soll- und Ist-Raumtemperatur angepasst:
+Wenn die Raumthermomenter-Steuerung aktiviert ist, wird die Vorlauftemperatur basierend auf der Differenz zwischen Soll- und Ist-Raumtemperatur angepasst:
 
 ```
 Anpassung = (Soll-Temperatur - Ist-Temperatur - Offset) × Faktor
 ```
 
-Weitere Informationen: [Raumthermostat](raumthermostat.md)
+Weitere Informationen: [Raumthermomenter](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/raumthermometer/)
 
 ### 4. ECO-Modus
 
@@ -120,24 +119,6 @@ Die ECO-Temperaturreduktion wird zur berechneten Vorlauftemperatur addiert (nega
    - Passen Sie den Wert an Ihre Anforderungen an
    - Die Änderung wird sofort übernommen
 
-### Empfohlene Einstellungen
-
-Die optimalen Heizkurven-Werte hängen von verschiedenen Faktoren ab:
-
-- **Gebäudeart**: Altbau benötigt höhere Temperaturen als Neubau
-- **Heizsystem**: Fußbodenheizung benötigt niedrigere Temperaturen als Radiatoren
-- **Dämmung**: Gut gedämmte Gebäude benötigen niedrigere Temperaturen
-- **Komfort**: Höhere Werte = wärmer, aber mehr Energieverbrauch
-
-**Beispiel-Konfiguration für ein gut gedämmtes Haus mit Fußbodenheizung:**
-- Kaltpunkt (-22°C): 35.0°C
-- Mittelpunkt (0°C): 28.0°C
-- Warmpunkt (+22°C): 22.0°C
-
-**Beispiel-Konfiguration für ein Altbau mit Radiatoren:**
-- Kaltpunkt (-22°C): 55.0°C
-- Mittelpunkt (0°C): 45.0°C
-- Warmpunkt (+22°C): 35.0°C
 
 ## Berechneter Sensor
 
@@ -148,7 +129,7 @@ Die Integration erstellt automatisch einen Sensor, der die berechnete Vorlauftem
 - **Einheit**: °C
 - **Aktualisierung**: Automatisch bei Änderungen der Außentemperatur oder Heizkurven-Stützpunkte
 
-Dieser Sensor zeigt die final berechnete Vorlauftemperatur nach allen Anpassungen (Heizkurve, Flow-Line-Offset, Raumthermostat, ECO-Modus).
+Dieser Sensor zeigt die final berechnete Vorlauftemperatur nach allen Anpassungen (Heizkurve, Flow-Line-Offset, Raumthermomenter, ECO-Modus).
 
 ## Feineinstellung
 
@@ -188,34 +169,14 @@ Die Log-Meldung zeigt:
 - **y_cold, y_mid, y_warm**: Heizkurven-Stützpunkte
 - **interpolated**: Ergebnis der linearen Interpolation
 - **flow_offset**: Flow-Line-Offset
-- **adjustment**: Raumthermostat-Anpassung
+- **adjustment**: Raumthermomenter-Anpassung
 - **eco_reduction**: ECO-Temperaturreduktion
 - **op_state**: Betriebszustand des Heizkreises
 - **-> result**: Finale berechnete Vorlauftemperatur
 
-## Tipps und Best Practices
-
-### Heizkurve optimieren
-
-1. **Start mit Standardwerten**: Beginnen Sie mit den Standardwerten und passen Sie schrittweise an
-2. **Beobachten Sie den Verbrauch**: Überwachen Sie den Energieverbrauch bei verschiedenen Einstellungen
-3. **Komfort prüfen**: Stellen Sie sicher, dass die Raumtemperatur den gewünschten Wert erreicht
-4. **Saisonal anpassen**: Passen Sie die Heizkurve für Winter und Übergangszeiten an
-
-### Fehlerbehebung
-
-**Problem**: Vorlauftemperatur ist zu niedrig
-- **Lösung**: Erhöhen Sie die Heizkurven-Stützpunkte oder verwenden Sie einen positiven Flow-Line-Offset
-
-**Problem**: Vorlauftemperatur ist zu hoch
-- **Lösung**: Reduzieren Sie die Heizkurven-Stützpunkte oder verwenden Sie einen negativen Flow-Line-Offset
-
-**Problem**: Heizkurve reagiert nicht auf Außentemperatur
-- **Lösung**: Überprüfen Sie, ob der Außentemperatur-Sensor korrekt funktioniert
 
 ## Weitere Informationen
 
-- [Raumthermostat](raumthermostat.md) - Integration externer Raumthermostat-Sensoren
-- [lambda_wp_config.yaml Konfiguration](lambda-wp-config.md) - Erweiterte Konfigurationsoptionen
+- [Raumthermomenter](raumthermostat.md) - Integration externer Raumthermomenter-Sensoren
 - [Technische Berechnungsdetails](../../docs_md/HEATING_CURVE_CALCULATION.md) - Detaillierte Beschreibung der Berechnungslogik
 

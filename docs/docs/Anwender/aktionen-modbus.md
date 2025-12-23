@@ -57,7 +57,7 @@ Schreibt einen Wert in ein Modbus-Register.
 
 **Parameter:**
 - `register_address` (erforderlich): Die Adresse des zu schreibenden Registers (Integer)
-- `value` (erforderlich): Der zu schreibende Wert (Integer, Bereich: -32768 bis 65535)
+- `value` (erforderlich): Der zu schreibende Wert (Integer, Bereich: -32768 bis 32767)
 
 **Beispiel:**
 ```yaml
@@ -114,15 +114,16 @@ automation:
    - Wählen Sie `lambda_heat_pumps.write_modbus_register` aus
 
 3. **Parameter eingeben:**
-   - `register_address`: Geben Sie die Register-Adresse ein (z.B. `1003`)
-   - `value`: Geben Sie den zu schreibenden Wert ein (z.B. `50`)
+   - `register_address`: Geben Sie die Register-Adresse ein (z.B. `2050`)
+   - `value`: Geben Sie den zu schreibenden Wert ein (z.B. `500`)
+   In diesem Beispiel würden sie die SollTemperatur des Boiler1 auf 50°C setzten.
 
 4. **Service aufrufen:**
    - Klicken Sie auf **Service aufrufen**
    - Der Wert wird an die Lambda geschrieben
 
 ## Wichtige Register-Adressen
-**Hinweis:** Die Temperaturseneoren haben eine Skalierung von "0,1", für 1°C muss also der Wert "10" an die Aktion übergeben werden 
+**Hinweis:** Die Temperatursensoren haben eine Skalierung von "0,1", für 1°C muss also der Wert "10" an die Aktion übergeben werden 
 ### Wärmepumpe (HP1)
 
 - **Register 1002**: HP1 State (lesbar)
@@ -147,7 +148,7 @@ automation:
 
 ### PV-Überschuss
 
-- **Register 102**: E-Manager Actual Power (lesbar, wird von PV-Surplus geschrieben)
+- **Register 102**: E-Manager Actual Power (lesbar / schreibbar, wird von PV-Surplus geschrieben)
 
 **Hinweis**: Diese Adressen sind Beispiele. Die tatsächlichen Register-Adressen können je nach Firmware-Version und Konfiguration variieren. Konsultieren Sie die Modbus-Dokumentation Ihrer Lambda-Wärmepumpe für genaue Adressen.
 
@@ -218,7 +219,7 @@ automation:
 
 Die Actions unterstützen derzeit nur **16-Bit-Register** (einzelne Register):
 
-- **Wertebereich**: -32768 bis 65535
+- **Wertebereich**: -32768 bis 32767
 - **32-Bit-Register**: Werden derzeit nicht unterstützt (siehe [Hinweis](#hinweis-32-bit-register))
 
 ### Hinweis: 32-Bit-Register
@@ -232,33 +233,6 @@ Die Actions `read_modbus_register` und `write_modbus_register` können derzeit *
 
 **Workaround**: Verwenden Sie die entsprechenden Sensoren der Integration, die 32-Bit-Register korrekt lesen können.
 
-## Fehlerbehebung
-
-### "Action nicht gefunden"
-- **Ursache**: Integration nicht korrekt installiert oder nicht konfiguriert
-- **Lösung**: 
-  - Überprüfen Sie, ob die Integration korrekt installiert ist
-  - Überprüfen Sie, ob die Integration konfiguriert ist
-  - Starten Sie Home Assistant neu
-
-### "Register-Fehler"
-- **Ursache**: Register-Adresse existiert nicht oder ist nicht zugänglich
-- **Lösung**: 
-  - Überprüfen Sie die Register-Adresse
-  - Überprüfen Sie die Modbus-Verbindung
-  - Überprüfen Sie die Logs auf Fehlermeldungen
-
-### "Wert außerhalb des Bereichs"
-- **Ursache**: Wert liegt außerhalb des erlaubten Bereichs (-32768 bis 65535)
-- **Lösung**: Verwenden Sie einen Wert innerhalb des erlaubten Bereichs
-
-### "32-Bit-Register-Fehler"
-- **Ursache**: Versuch, ein 32-Bit-Register zu lesen/schreiben
-- **Lösung**: 
-  - Verwenden Sie die entsprechenden Sensoren der Integration
-  - 32-Bit-Register werden derzeit nicht von den Actions unterstützt
-
-## Sicherheitshinweise
 
 ⚠️ **WICHTIG**: Das direkte Schreiben von Modbus-Registern kann die Funktion Ihrer Lambda-Wärmepumpe beeinträchtigen. 
 
@@ -266,12 +240,3 @@ Die Actions `read_modbus_register` und `write_modbus_register` können derzeit *
 - **Backup**: Erstellen Sie ein Backup Ihrer Konfiguration vor Änderungen
 - **Dokumentation**: Konsultieren Sie die Modbus-Dokumentation Ihrer Lambda-Wärmepumpe
 - **Testen**: Testen Sie Änderungen in einer sicheren Umgebung
-
-## Nächste Schritte
-
-Nach der Verwendung der Modbus-Aktionen können Sie:
-
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) einrichten
-- [Optionen des config_flow](optionen-config-flow.md) anpassen
-- [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
-

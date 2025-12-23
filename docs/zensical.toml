@@ -66,6 +66,7 @@ nav = [
     { "Installation" = "Entwickler/installation.md" },
     { "Ablaufdiagramm" = "Entwickler/Ablaufdiagramm.md" },
     { "Heizkurve" = "Entwickler/heizkurve.md" },
+    { "modbus_wp_config.yaml" = "Entwickler/modbus-wp-config.md" },
   ] },
 ]
 
