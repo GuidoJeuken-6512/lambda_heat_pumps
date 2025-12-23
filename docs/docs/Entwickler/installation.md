@@ -8,7 +8,7 @@ Diese Anleitung beschreibt, wie Sie die Lambda Heat Pumps Integration manuell oh
 
 !!! tip "Einfachere Installation mit HACS"
     Falls Sie HACS bereits installiert haben, können Sie die Integration einfacher über HACS installieren. 
-    Siehe: [Installation über HACS](../anwender/installation.md#installation-der-lambda-heat-pumps-integration)
+    Siehe: [Installation über HACS](../Anwender/installation.md#installation-der-lambda-heat-pumps-integration)
 
 ## Voraussetzungen
 
