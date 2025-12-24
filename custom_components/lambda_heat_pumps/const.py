@@ -1094,8 +1094,8 @@ HC_ROOM_THERMOSTAT_NUMBER_CONFIG = {
     "room_thermostat_offset": {
         "name": "Room Thermostat Offset",
         "default": 0.0,
-        "min_value": 0.0,
-        "max_value": 5.0,
+        "min_value": -10.0,
+        "max_value": 10.0,
         "step": 0.1,
         "precision": 1,
         "unit": "°C",
