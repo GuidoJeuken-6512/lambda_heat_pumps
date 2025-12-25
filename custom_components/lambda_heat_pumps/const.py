@@ -736,6 +736,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "actual_low_temperature": {
         "relative_address": 3,
