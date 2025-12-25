@@ -713,6 +713,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "total",
     },
     "operating_state": {
         "relative_address": 1,
@@ -736,6 +737,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "actual_low_temperature": {
         "relative_address": 3,
@@ -747,6 +749,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "buffer_temperature_high_setpoint": {
         "relative_address": 4,
@@ -758,6 +761,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": True,
+        "state_class": "measurement",
     },
     "request_type": {
         "relative_address": 5,
@@ -781,6 +785,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "request_return_line_temp_setpoint": {
         "relative_address": 7,
@@ -792,6 +797,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "request_heat_sink_temp_diff_setpoint": {
         "relative_address": 8,
@@ -803,6 +809,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "modbus_request_heating_capacity": {
         "relative_address": 9,
@@ -814,6 +821,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
+        "state_class": "measurement",
     },
     "maximum_buffer_temp": {
         "relative_address": 50,
@@ -825,6 +833,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": True,
+        "state_class": "measurement",
     },
 }
 
@@ -840,6 +849,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": False,
+        "state_class": "total",
     },
     "operating_state": {
         "relative_address": 1,
@@ -863,6 +873,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": False,
+        "state_class": "measurement",
     },
     "storage_temperature": {
         "relative_address": 3,
@@ -874,6 +885,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": False,
+        "state_class": "measurement",
     },
     "power_current": {
         "relative_address": 4,
@@ -885,6 +897,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": False,
+        "state_class": "measurement",
     },
     "energy_total": {
         "relative_address": 5,
@@ -896,6 +909,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": False,
+        "state_class": "total_increasing",
     },
     "maximum_buffer_temperature": {
         "relative_address": 50,
@@ -907,6 +921,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": True,
+        "state_class": "measurement",
     },
     "buffer_changeover_temperature": {
         "relative_address": 51,
@@ -918,6 +933,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": True,
+        "state_class": "measurement",
     },
 }
 
