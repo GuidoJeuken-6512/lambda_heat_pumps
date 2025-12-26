@@ -385,8 +385,17 @@ class LambdaFlowLineOffsetNumber(CoordinatorEntity, RestoreNumber, NumberEntity)
 
         # 3. Konvertiere zu Modbus-Format
         raw_value = int(round(value / self._scale))  # z.B. 2.5°C -> 25
+        
+        # Konvertiere signed int16 zu unsigned für Modbus (Two's Complement)
+        # Das Register ist als int16 definiert (const.py Zeile 1016), daher müssen
+        # negative Werte als Two's Complement kodiert werden
+        # Modbus-Register sind physisch unsigned (0-65535), aber das Gerät interpretiert
+        # sie als signed int16 (-32768 bis 32767)
+        if raw_value < 0:
+            raw_value = raw_value + 65536  # Two's Complement für 16-Bit signed
+        
         _LOGGER.debug(
-            "🔄 FLOW_LINE_OFFSET: Converted %.1f°C to raw value %d (scale=%.1f)",
+            "🔄 FLOW_LINE_OFFSET: Converted %.1f°C to raw value %d (scale=%.1f, signed->unsigned)",
             value,
             raw_value,
             self._scale,
