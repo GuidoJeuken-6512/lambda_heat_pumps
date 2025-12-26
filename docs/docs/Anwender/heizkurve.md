@@ -24,4 +24,6 @@ Die Heizkurve bestimmt die Vorlauftemperatur basierend auf der Außentemperatur 
 
 Weitere Informationen: [Raumthermometer](raumthermometer.md)
 
+Anleitungen zur Lambda Wärmepumpe <a href="https://lambda-wp.at/tutorials/" target="_blank" rel="noopener noreferrer">Lambda Anleitungen</a>
+
 

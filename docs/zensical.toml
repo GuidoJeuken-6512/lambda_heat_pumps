@@ -34,7 +34,7 @@ site_author = "Guido"
 #
 # Read more: https://zensical.org/docs/setup/basics/#copyright
 copyright = """
-Copyright &copy; 2025 Guido Jeuken | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps" target="_blank" rel="noopener noreferrer">GitHub</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues" target="_blank" rel="noopener noreferrer">Issues</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+Copyright &copy; 2025 Guido Jeuken | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps" target="_blank" rel="noopener noreferrer">GitHub</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues" target="_blank" rel="noopener noreferrer">Issues</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a> | <a href="https://lambda-wp.at/tutorials/" target="_blank" rel="noopener noreferrer">Lambda Anleitungen</a>
 """
 
 # Das Verzeichnis mit den Markdown-Dateien (relativ zur zensical.toml)
@@ -50,9 +50,10 @@ docs_dir = "docs"
 nav = [
   { "Home" = "" },
   { "Anwender" = [
+    { "Features" = "Anwender/features.md" },
     { "Installation" = "Anwender/installation.md" },
     { "Initiale Konfiguration" = "Anwender/initiale-konfiguration.md" },
-    { "Optionen zum Config Flow" = "Anwender/optionen-config-flow.md" },
+    { "Optionen des Config Flow" = "Anwender/optionen-config-flow.md" },
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
     { "Stromverbrauchsberechnung" = "Anwender/stromverbrauchsberechnung.md" },
@@ -63,6 +64,7 @@ nav = [
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
   ] },
   { "Entwickler" = [
+    { "Features (Technische Übersicht)" = "Entwickler/features.md" },
     { "Installation" = "Entwickler/installation.md" },
     { "Ablaufdiagramm" = "Entwickler/Ablaufdiagramm.md" },
     { "Heizkurve" = "Entwickler/heizkurve.md" },

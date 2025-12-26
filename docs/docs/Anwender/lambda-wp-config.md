@@ -21,7 +21,7 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 ### Über Home Assistant
 
 1. **Datei-Editor verwenden:**
-   - Installieren Sie das "File editor" Add-on in Home Assistant
+   - Installieren Sie das "File editor" oder "Studio Code Server" Add-on in Home Assistant
    - Öffnen Sie die Datei `/config/lambda_wp_config.yaml`
    - Bearbeiten Sie die Datei
    - Speichern Sie die Änderungen
@@ -57,7 +57,7 @@ disabled_registers:
 **Wann verwenden?**
 - Register verursacht Fehler im Log
 - Register wird von Ihrer Firmware-Version nicht unterstützt
-- Register wird nicht benötigt und reduziert Modbus-Traffic
+- Register wird nicht benötigt und reduziert Modbus-Traffic z.B. nicht vorhandene Zirkulationspumpe
 
 **Beispiel:**
 ```yaml
@@ -68,6 +68,8 @@ disabled_registers:
 ### 2. Sensor-Name-Überschreibungen
 
 Überschreibt Standard-Sensornamen für bessere Lesbarkeit oder Lokalisierung.
+**Bitte sehr vorsichtig mit dieser Option sein und auf jeden Fall vorher ein Backup von Home Assistant  machen** 
+Um hsitorische Daten anderer Sensoren zu übernehmen ist dieser Schritt besser geeignet:  [Historische Daten übernehmen](historische-daten.md)
 
 ```yaml
 sensors_names_override:
@@ -78,9 +80,7 @@ sensors_names_override:
 ```
 
 **Wann verwenden?**
-- Sensornamen anpassen für bessere Lesbarkeit
-- Lokalisierung der Sensornamen
-- Anpassung an persönliche Präferenzen
+- bei Migration von einer anderen Lösung zu dieser Integration um historische Daten der alten Sensoren zu erhalten
 
 **Beispiel:**
 ```yaml
@@ -133,6 +133,7 @@ Weitere Informationen: [Historische Daten übernehmen](historische-daten.md)
 ### 4. Energieverbrauchs-Sensoren
 
 Definiert welche Sensoren Basis-Energieverbrauchsdaten liefern. Standardmäßig verwendet die Integration die Lambda-eigenen Sensoren, aber Sie können externe Energiezähler (z.B. Shelly3EM) verwenden.
+Die Option sollte nur verwendet werden, wenn ein anderer Sensor genutzt wird. Der Lambda eigene Sensor wird automatisch verwendet.
 
 ```yaml
 energy_consumption_sensors:
@@ -332,70 +333,15 @@ modbus:
 - Überprüfen Sie Anführungszeichen für Strings
 
 **Beispiel-Fehler:**
-```yaml
-# FALSCH (Tab statt Leerzeichen)
-cycling_offsets:
-	hp1:  # Tab-Einrückung
-		heating_cycling_total: 0
-
-# RICHTIG (Leerzeichen)
-cycling_offsets:
-  hp1:  # Leerzeichen-Einrückung
-    heating_cycling_total: 0
-```
 
 ### "Sensor nicht gefunden"
 
 **Ursache**: Der konfigurierte Sensor existiert nicht oder ist nicht verfügbar
 
 **Lösung**:
-- Überprüfen Sie, ob der Sensor in Home Assistant existiert
+- Überprüfen Sie, ob der Sensor in Home Assistant existiert (Dev-Tools)
 - Überprüfen Sie die Entity-ID (Groß-/Kleinschreibung beachten)
 - Überprüfen Sie die Logs auf Fehlermeldungen
-
-**Beispiel:**
-```yaml
-# FALSCH (falsche Entity-ID)
-energy_consumption_sensors:
-  hp1:
-    sensor_entity_id: "sensor.HP1_ENERGY"  # Existiert nicht
-
-# RICHTIG (korrekte Entity-ID)
-energy_consumption_sensors:
-  hp1:
-    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
-```
-
-### "Offsets nicht angewendet"
-
-**Ursache**: Home Assistant wurde nicht neu gestartet oder YAML-Syntax-Fehler
-
-**Lösung**:
-- Starten Sie Home Assistant vollständig neu
-- Überprüfen Sie die YAML-Syntax
-- Überprüfen Sie die Logs auf Fehlermeldungen
-
-### "Falsche Energie-Werte"
-
-**Ursache**: Falsche Einheiten oder Register-Reihenfolge
-
-**Lösung**:
-- Überprüfen Sie die Einheiten (kWh für Energie-Offsets)
-- Überprüfen Sie die `int32_register_order` Einstellung
-- Überprüfen Sie die Logs auf Konvertierungsfehler
-
-**Beispiel:**
-```yaml
-# FALSCH (Wh statt kWh)
-energy_consumption_offsets:
-  hp1:
-    heating_energy_total: 5000  # Sollte kWh sein, nicht Wh
-
-# RICHTIG (kWh)
-energy_consumption_offsets:
-  hp1:
-    heating_energy_total: 5.0  # 5000 Wh = 5.0 kWh
-```
 
 ## Validierung
 
