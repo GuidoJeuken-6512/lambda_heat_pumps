@@ -56,7 +56,7 @@ nav = [
     { "Optionen des Config Flow" = "Anwender/optionen-config-flow.md" },
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
-    { "Stromverbrauchsberechnung" = "Anwender/stromverbrauchsberechnung.md" },
+    { "Energieverbrauchsberechnung" = "Anwender/Energieverbrauchsberechnung.md" },
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
@@ -69,6 +69,7 @@ nav = [
     { "Ablaufdiagramm" = "Entwickler/Ablaufdiagramm.md" },
     { "Heizkurve" = "Entwickler/heizkurve.md" },
     { "modbus_wp_config.yaml" = "Entwickler/modbus-wp-config.md" },
+    { "Energieverbrauchsberechnung" = "Entwickler/energieverbrauchssensoren.md" },
   ] },
 ]
 

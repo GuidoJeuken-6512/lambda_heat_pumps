@@ -94,8 +94,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung
         self._energy_unit_cache = {}  # {hp_index: unit_string} - Memory-only cache for performance
         self._energy_first_value_seen = {}  # {hp_index: bool} - In-Memory Flag für Zero-Value Protection
+        self._last_thermal_energy_reading = {}  # {hp_index: last_kwh_value} for thermal
+        self._thermal_energy_first_value_seen = {}  # {hp_index: bool} for thermal
         self._sensor_detection_executed = False  # Flag to prevent multiple sensor detection runs
-        
         self._use_legacy_names = entry.data.get("use_legacy_modbus_names", True)
         self._persist_file = os.path.join(
             self._config_path, "cycle_energy_persist.json"
@@ -137,6 +138,26 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._global_register_requests = {}  # Sammle alle Register-Requests vor dem Lesen
 
         # self._load_offsets_and_persisted() ENTFERNT!
+
+    async def _increment_thermal_energy_consumption(self, hp_idx, mode, energy_delta):
+        """Increment thermal energy consumption for a specific mode and heat pump."""
+        try:
+            from .utils import increment_energy_consumption_counter
+            hp_key = f"hp{hp_idx}"
+            energy_offsets = self._energy_offsets.get(hp_key, {})
+            name_prefix = self.entry.data.get("name", "eu08l")
+            await increment_energy_consumption_counter(
+                hass=self.hass,
+                mode=mode,
+                hp_index=hp_idx,
+                energy_delta=energy_delta,
+                name_prefix=name_prefix,
+                use_legacy_modbus_names=True,
+                energy_offsets=energy_offsets,
+                sensor_type="thermal",
+            )
+        except Exception as ex:
+            _LOGGER.error(f"Error incrementing thermal energy consumption for HP{hp_idx} {mode}: %s", ex)
 
     def _add_register_request(self, address, sensor_info, sensor_id):
         """Füge einen Register-Request zur globalen Sammlung hinzu."""
@@ -298,6 +319,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def _persist_counters(self):
         """Persist counter data and state information to file using optimized I/O with debouncing."""
+        # Also persist thermal energy readings
+        # (Extend this logic if you want to persist more types in the future)
         import time
         
         # Prüfe Dirty-Flag - nur schreiben wenn sich etwas geändert hat
@@ -1989,198 +2012,115 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error("DEBUG-ERROR: Traceback in _track_energy_consumption: %s", traceback.format_exc())
 
     async def _track_hp_energy_consumption(self, hp_idx, current_state, data):
-        """Track energy consumption for a specific heat pump."""
+        """Track energy consumption for a specific heat pump (both electrical and thermal)."""
         _LOGGER.debug(f"DEBUG-010: Entering _track_hp_energy_consumption for HP{hp_idx}")
         try:
-            # Get sensor configuration for this heat pump (optional)
-            hp_key = f"hp{hp_idx}"
-            _LOGGER.debug(f"DEBUG-011: HP key: {hp_key}")
-            sensor_config = self._energy_sensor_configs.get(hp_key, {})
-            _LOGGER.debug(f"DEBUG-012: Sensor config: {sensor_config}")
-            sensor_entity_id = sensor_config.get("sensor_entity_id")
-            _LOGGER.debug(f"DEBUG-013: Sensor entity ID: {sensor_entity_id}")
-            
-            # If no custom sensor configured, use the default power consumption sensor
-            if not sensor_entity_id:
-                name_prefix = self.entry.data.get("name", "eu08l")
-                sensor_entity_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
-                _LOGGER.info(f"INTERNAL-SENSOR: HP{hp_idx} - Verwende internen Modbus-Sensor '{sensor_entity_id}' zur Verbrauchsberechnung")
-                _LOGGER.debug(f"Using default energy sensor for HP {hp_idx}: {sensor_entity_id}")
-            else:
-                _LOGGER.debug(f"Using custom energy sensor for HP {hp_idx}: {sensor_entity_id}")
-
-            # Get current energy reading from the configured sensor
-            current_energy_state = self.hass.states.get(sensor_entity_id)
-            _LOGGER.debug(f"DEBUG-017: Energy sensor state: {current_energy_state.state if current_energy_state else 'None'}")
-            if not current_energy_state or current_energy_state.state in ["unknown", "unavailable"]:
-                # Template sensors might not be ready yet - this is normal during startup
-                if current_energy_state and current_energy_state.state == "unknown":
-                    _LOGGER.debug(f"Energy sensor {sensor_entity_id} not ready yet (state: unknown) - will retry on next update")
-                else:
-                    _LOGGER.warning(f"Energy sensor {sensor_entity_id} not available (state: {current_energy_state.state if current_energy_state else 'None'})")
-                return
-
-            try:
-                current_energy = float(current_energy_state.state)
-                _LOGGER.debug(f"DEBUG-018: Current energy value: {current_energy:.6f}")
-            except (ValueError, TypeError):
-                _LOGGER.warning(f"DEBUG-ERROR: Could not convert energy state to float: {current_energy_state.state}")
-                return
-
-            # Get unit from sensor attributes
-            unit = current_energy_state.attributes.get("unit_of_measurement", "")
-            
-            # Cache unit in memory (auto-detection on first run or change)
-            cache_key = f"hp{hp_idx}"
-            if cache_key not in self._energy_unit_cache:
-                # First time - validate and cache the unit
-                if not self._is_energy_unit(unit):
-                    _LOGGER.warning(f"Invalid energy unit '{unit}' detected for HP{hp_idx} - energy tracking disabled")
-                    self._energy_unit_cache[cache_key] = None  # Mark as invalid
-                    return  # ABBRUCH - keine Werteänderung
-                else:
-                    self._energy_unit_cache[cache_key] = unit
-                    _LOGGER.info(f"Energy unit detected and cached for HP{hp_idx}: {unit or 'kWh (default)'}")
-            elif self._energy_unit_cache[cache_key] != unit:
-                # Unit changed - validate and update cache
-                if not self._is_energy_unit(unit):
-                    _LOGGER.warning(f"Energy unit changed to invalid '{unit}' for HP{hp_idx} - energy tracking disabled")
-                    self._energy_unit_cache[cache_key] = None  # Mark as invalid
-                    return  # ABBRUCH - keine Werteänderung
-                else:
-                    old_unit = self._energy_unit_cache[cache_key]
-                    self._energy_unit_cache[cache_key] = unit
-                    _LOGGER.warning(f"Energy unit changed for HP{hp_idx}: {old_unit or 'kWh (default)'} -> {unit or 'kWh (default)'}")
-            
-            # Check if unit is valid (not None)
-            if self._energy_unit_cache[cache_key] is None:
-                _LOGGER.debug(f"Energy tracking disabled for HP{hp_idx} due to invalid unit")
-                return  # ABBRUCH - keine Werteänderung
-            
-            # Use cached unit for fast conversion
-            cached_unit = self._energy_unit_cache[cache_key]
-            original_energy = current_energy
-            current_energy_kwh = self._convert_energy_to_kwh_cached(current_energy, cached_unit)
-            
-            # Log conversion details
-            if cached_unit and cached_unit.lower() not in ["kwh", "kilowattstunden"]:
-                _LOGGER.debug(f"DEBUG-021: Energy unit conversion for HP{hp_idx}: {original_energy} {cached_unit} -> {current_energy_kwh} kWh")
-            else:
-                _LOGGER.debug(f"DEBUG-021: Energy value for HP{hp_idx}: {current_energy_kwh} kWh (unit: {cached_unit or 'none'})")
-
-            # Get last energy reading for this heat pump
-            last_energy = self._last_energy_reading.get(f"hp{hp_idx}", None)
-            first_value_seen = self._energy_first_value_seen.get(f"hp{hp_idx}", False)
-
-            # SCHRITT 1: Prüfe ob current_energy_kwh == 0.0
-            if current_energy_kwh == 0.0:
-                _LOGGER.info(
-                    f"ENERGY-DELTA: HP{hp_idx} - ❌ 0-WERT ERKANNT: {current_energy_kwh} kWh"
-                )
-                _LOGGER.info(
-                    f"ENERGY-DELTA: HP{hp_idx} - ❌ Reset Zero-Value Protection (Flag war: {first_value_seen})"
-                )
-                # Reset bei 0-Wert
-                self._energy_first_value_seen[f"hp{hp_idx}"] = False
-                # WICHTIG: last_energy NICHT updaten!
-                return
-
-            # SCHRITT 2: Erster valider Wert > 0
-            if not first_value_seen or last_energy is None:
-                _LOGGER.info(
-                    f"ENERGY-DELTA: HP{hp_idx} - 🔄 ERSTER WERT > 0: {current_energy_kwh:.2f} kWh"
-                )
-                _LOGGER.info(
-                    f"ENERGY-DELTA: HP{hp_idx} - 🔄 Speichere als Referenz, KEIN Delta berechnet"
-                )
-                _LOGGER.info(
-                    f"ENERGY-DELTA: HP{hp_idx} - 🔄 Warte auf zweiten Wert für Delta-Berechnung"
-                )
-                self._last_energy_reading[f"hp{hp_idx}"] = current_energy_kwh
-                self._energy_first_value_seen[f"hp{hp_idx}"] = True
-                await self._persist_counters()
-                return  # KEIN Delta beim ersten Wert!
-
-            # SCHRITT 3: Zweiter valider Wert > 0 - ABER prüfe auf Rückwärts-Sprung
-            from .utils import calculate_energy_delta
-
-            _LOGGER.info(
-                f"ENERGY-DELTA: HP{hp_idx} - 📊 DELTA-BERECHNUNG: {current_energy_kwh:.2f} kWh vs {last_energy:.2f} kWh"
+            # --- ELECTRICAL ENERGY (existing logic) ---
+            await self._track_hp_energy_type_consumption(
+                hp_idx, current_state, data,
+                sensor_type="electrical",
+                default_sensor_id_template="sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated",
+                unit_check_fn=self._is_energy_unit,
+                convert_to_kwh_fn=self._convert_energy_to_kwh_cached,
+                last_reading_dict=self._last_energy_reading,
+                first_value_seen_dict=self._energy_first_value_seen,
+                increment_fn=self._increment_energy_consumption
             )
 
-            # Prüfe ob aktueller Wert kleiner als letzter Wert (verdächtig!)
-            if current_energy_kwh < last_energy:
-                _LOGGER.warning(
-                    f"ENERGY-DELTA: HP{hp_idx} - ⚠️ RÜCKWÄRTS-SPRUNG ERKANNT!"
-                )
-                _LOGGER.warning(
-                    f"ENERGY-DELTA: HP{hp_idx} - ⚠️ Aktuell ({current_energy_kwh:.2f} kWh) < Letzt ({last_energy:.2f} kWh)"
-                )
-                _LOGGER.warning(
-                    f"ENERGY-DELTA: HP{hp_idx} - ⚠️ Möglicher Sensor-Reset/Überlauf - Reset Zero-Value Protection"
-                )
-                # Reset: Warte wieder auf 2 Werte
-                self._energy_first_value_seen[f"hp{hp_idx}"] = False
-                self._last_energy_reading[f"hp{hp_idx}"] = None
-                await self._persist_counters()
-                return
-
-            # Normale Delta-Berechnung
-            _LOGGER.info(
-                f"ENERGY-DELTA: HP{hp_idx} - ✅ WERTE OK: {current_energy_kwh:.2f} >= {last_energy:.2f} kWh"
+            # --- THERMAL ENERGY (new logic) ---
+            await self._track_hp_energy_type_consumption(
+                hp_idx, current_state, data,
+                sensor_type="thermal",
+                default_sensor_id_template="sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated",
+                unit_check_fn=self._is_energy_unit,  # Assume same unit check for now
+                convert_to_kwh_fn=self._convert_energy_to_kwh_cached,  # Assume same conversion for now
+                last_reading_dict=getattr(self, '_last_thermal_energy_reading', {}),
+                first_value_seen_dict=getattr(self, '_thermal_energy_first_value_seen', {}),
+                increment_fn=getattr(self, '_increment_thermal_energy_consumption', None)
             )
-            _LOGGER.info(
-                f"ENERGY-DELTA: HP{hp_idx} - ✅ Starte normale Delta-Berechnung..."
-            )
-            
-            energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)
-            _LOGGER.info(f"ENERGY-DELTA: HP{hp_idx} - ✅ DELTA BERECHNET: {energy_delta:.6f} kWh")
-
-            # Only proceed if delta is valid (>= 0)
-            if energy_delta < 0:
-                _LOGGER.warning(f"ENERGY-DELTA: HP{hp_idx} - ❌ Delta negativ, überspringe")
-                return
-
-            # Update last energy reading
-            self._last_energy_reading[f"hp{hp_idx}"] = current_energy_kwh
-            _LOGGER.info(f"ENERGY-DELTA: HP{hp_idx} - ✅ Delta-Berechnung abgeschlossen, last_energy aktualisiert")
-
-            # Get last operating state for this heat pump
-            last_state = self._last_operating_state.get(str(hp_idx), 0)
-            
-            # Map operating state to mode - alle nicht-definierten Modi gehen auf STBY
-            mode_mapping = {
-                0: "stby",         # STBY
-                1: "heating",      # CH
-                2: "hot_water",    # DHW
-                3: "cooling",      # CC
-                4: "stby",         # CIRCULATE -> geht auf STBY Counter
-                5: "defrost",      # DEFROST
-            }
-            
-            # Bestimme den Modus - alle nicht-definierten Modi werden auf STBY umgeleitet
-            if current_state in mode_mapping:
-                mode = mode_mapping[current_state]
-            else:
-                # Unbekannter Betriebsmodus -> auf STBY umleiten
-                mode = "stby"
-            
-            # Determine which mode to increment based on state change
-            if current_state != last_state:
-                # State changed, increment the new mode
-                _LOGGER.info(f"Verbrauchssensor {mode} aktiv: HP{hp_idx} (Betriebsmodus: {current_state})")
-                await self._increment_energy_consumption(hp_idx, mode, energy_delta)
-            else:
-                # Same state, increment the current mode
-                # For STBY mode, always update even with delta=0 to keep sensors alive
-                if mode == "stby" or energy_delta > 0:
-                    await self._increment_energy_consumption(hp_idx, mode, energy_delta)
-
-            # Update last operating state
-            self._last_operating_state[str(hp_idx)] = current_state
-
         except Exception as ex:
             _LOGGER.error(f"Error tracking energy consumption for HP{hp_idx}: %s", ex)
+
+    async def _track_hp_energy_type_consumption(
+        self, hp_idx, current_state, data, sensor_type, default_sensor_id_template,
+        unit_check_fn, convert_to_kwh_fn, last_reading_dict, first_value_seen_dict, increment_fn
+    ):
+        """Generic tracking for electrical or thermal energy sensors."""
+        # Get sensor configuration for this heat pump (optional)
+        hp_key = f"hp{hp_idx}"
+        sensor_config = self._energy_sensor_configs.get(hp_key, {})
+        sensor_entity_id = sensor_config.get(f"{sensor_type}_sensor_entity_id")
+        if not sensor_entity_id:
+            name_prefix = self.entry.data.get("name", "eu08l")
+            sensor_entity_id = default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
+            _LOGGER.info(f"INTERNAL-SENSOR: HP{hp_idx} - Verwende internen Modbus-Sensor '{sensor_entity_id}' zur {sensor_type}-Verbrauchsberechnung")
+        # Get current energy reading from the configured sensor
+        current_energy_state = self.hass.states.get(sensor_entity_id)
+        if not current_energy_state or current_energy_state.state in ["unknown", "unavailable"]:
+            return
+        try:
+            current_energy = float(current_energy_state.state)
+        except (ValueError, TypeError):
+            return
+        unit = current_energy_state.attributes.get("unit_of_measurement", "")
+        cache_key = f"{sensor_type}_hp{hp_idx}"
+        if not hasattr(self, '_energy_unit_cache_all'):
+            self._energy_unit_cache_all = {}
+        if cache_key not in self._energy_unit_cache_all:
+            if not unit_check_fn(unit):
+                self._energy_unit_cache_all[cache_key] = None
+                return
+            else:
+                self._energy_unit_cache_all[cache_key] = unit
+        elif self._energy_unit_cache_all[cache_key] != unit:
+            if not unit_check_fn(unit):
+                self._energy_unit_cache_all[cache_key] = None
+                return
+            else:
+                self._energy_unit_cache_all[cache_key] = unit
+        if self._energy_unit_cache_all[cache_key] is None:
+            return
+        cached_unit = self._energy_unit_cache_all[cache_key]
+        original_energy = current_energy
+        current_energy_kwh = convert_to_kwh_fn(current_energy, cached_unit)
+        # Get last energy reading for this heat pump
+        last_energy = last_reading_dict.get(f"hp{hp_idx}", None)
+        first_value_seen = first_value_seen_dict.get(f"hp{hp_idx}", False)
+        if current_energy_kwh == 0.0:
+            first_value_seen_dict[f"hp{hp_idx}"] = False
+            return
+        if not first_value_seen or last_energy is None:
+            last_reading_dict[f"hp{hp_idx}"] = current_energy_kwh
+            first_value_seen_dict[f"hp{hp_idx}"] = True
+            await self._persist_counters()
+            return
+        from .utils import calculate_energy_delta
+        if current_energy_kwh < last_energy:
+            first_value_seen_dict[f"hp{hp_idx}"] = False
+            last_reading_dict[f"hp{hp_idx}"] = None
+            await self._persist_counters()
+            return
+        energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)
+        if energy_delta < 0:
+            return
+        last_reading_dict[f"hp{hp_idx}"] = current_energy_kwh
+        # Get last operating state for this heat pump
+        last_state = self._last_operating_state.get(str(hp_idx), 0)
+        mode_mapping = {
+            0: "stby", 1: "heating", 2: "hot_water", 3: "cooling", 4: "stby", 5: "defrost",
+        }
+        if current_state in mode_mapping:
+            mode = mode_mapping[current_state]
+        else:
+            mode = "stby"
+        if current_state != last_state:
+            if increment_fn:
+                await increment_fn(hp_idx, mode, energy_delta)
+        else:
+            if mode == "stby" or energy_delta > 0:
+                if increment_fn:
+                    await increment_fn(hp_idx, mode, energy_delta)
+        self._last_operating_state[str(hp_idx)] = current_state
 
     async def _increment_energy_consumption(self, hp_idx, mode, energy_delta):
         """Increment energy consumption for a specific mode and heat pump."""
@@ -2222,23 +2162,38 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         """Shutdown the coordinator."""
         _LOGGER.debug("Shutting down Lambda coordinator")
         try:
-            # Clean up entity registry listener
-            if hasattr(self, "_registry_listener") and self._registry_listener:
-                self._registry_listener()
-                self._registry_listener = None
-
-            # Close Modbus connection
-            if (
-                self.client is not None
-                and hasattr(self.client, "close")
-                and callable(getattr(self.client, "close", None))
-            ):
+            # Stop periodic updates by unsubscribing from refresh callback
+            # This prevents new refresh tasks from being created
+            if hasattr(self, "_unsub_refresh") and self._unsub_refresh:
                 try:
-                    self.client.close()
+                    self._unsub_refresh()
+                    self._unsub_refresh = None
+                    _LOGGER.debug("Stopped periodic refresh updates")
+                except Exception as unsub_ex:
+                    _LOGGER.debug("Error unsubscribing from refresh: %s", unsub_ex)
+            
+            # Close Modbus connection immediately to cancel any pending operations
+            # This should cause any running Modbus operations to fail gracefully
+            if self.client is not None:
+                try:
+                    # Try to close gracefully first
+                    if hasattr(self.client, "close") and callable(getattr(self.client, "close", None)):
+                        self.client.close()
+                        _LOGGER.debug("Closed Modbus client connection")
                 except Exception as close_ex:
                     _LOGGER.debug("Error closing client connection: %s", close_ex)
                 finally:
                     self.client = None
+            
+            # Clean up entity registry listener
+            if hasattr(self, "_registry_listener") and self._registry_listener:
+                try:
+                    self._registry_listener()
+                    self._registry_listener = None
+                    _LOGGER.debug("Cleaned up entity registry listener")
+                except Exception as listener_ex:
+                    _LOGGER.debug("Error cleaning up registry listener: %s", listener_ex)
+                    
         except Exception as ex:
             _LOGGER.error("Error during coordinator shutdown: %s", ex)
 

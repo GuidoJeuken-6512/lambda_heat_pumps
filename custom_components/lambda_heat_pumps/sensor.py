@@ -627,6 +627,48 @@ async def async_setup_entry(
                 sensors.append(sensor)
                 _LOGGER.debug(f"Created energy consumption sensor: {names['entity_id']}")
 
+    # Thermal energy sensors (per HP, per mode, per period)
+    for hp_idx in range(1, num_hps + 1):
+        for mode in ENERGY_CONSUMPTION_MODES:
+            for period in ENERGY_CONSUMPTION_PERIODS:
+                sensor_id = f"{mode}_thermal_energy_{period}"
+                sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
+                if not sensor_template:
+                    # Thermal energy sensors sind optional, kein Warning
+                    continue
+                
+                # Prüfe ob es ein thermal_calculated Sensor ist
+                if sensor_template.get("data_type") != "thermal_calculated":
+                    continue
+                
+                device_prefix = f"hp{hp_idx}"
+                names = generate_sensor_names(
+                    device_prefix,
+                    sensor_template["name"],
+                    sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                    translations=sensor_translations,
+                )
+                
+                sensor = LambdaEnergyConsumptionSensor(
+                    hass,
+                    entry,
+                    sensor_id,
+                    names["name"],
+                    names["entity_id"],
+                    names["unique_id"],
+                    sensor_template["unit"],
+                    sensor_template["state_class"],
+                    sensor_template.get("device_class"),
+                    sensor_template["device_type"],
+                    hp_idx,
+                    mode,
+                    period,
+                )
+                sensors.append(sensor)
+                _LOGGER.debug(f"Created thermal energy consumption sensor: {names['entity_id']}")
+
     _LOGGER.info(
         "Alle Sensoren (inkl. Cycling und Energy Consumption) erzeugt: %d",
         len(sensors),

@@ -1319,6 +1319,7 @@ async def increment_energy_consumption_counter(
     name_prefix: str,
     use_legacy_modbus_names: bool = True,
     energy_offsets: dict = None,
+    sensor_type: str = "electrical",
 ):
     """
     Increment energy consumption counters for a given mode and heat pump.
@@ -1334,6 +1335,7 @@ async def increment_energy_consumption_counter(
         name_prefix: Name prefix (e.g. "eu08l")
         use_legacy_modbus_names: Use legacy entity naming
         energy_offsets: Optional dict with energy offsets from config
+        sensor_type: "electrical" (default) or "thermal"
     """
     if mode not in ENERGY_CONSUMPTION_MODES:
         _LOGGER.error("Invalid energy consumption mode: %s", mode)
@@ -1353,10 +1355,19 @@ async def increment_energy_consumption_counter(
     sensor_periods = ["total", "daily", "monthly", "yearly", "2h", "4h"]
     changes_summary = []
     
+    # Format mode name: "hot_water" -> "Hot_Water", "heating" -> "Heating"
+    mode_display = mode.replace("_", " ").title().replace(" ", "_")
+    
     for period in sensor_periods:
-        # Generiere Entity-ID für diesen Sensor
-        names = generate_energy_sensor_names(
-            device_prefix, mode, period, name_prefix, use_legacy_modbus_names
+        # Bestimme sensor_id und sensor_name basierend auf sensor_type
+        if sensor_type == "thermal":
+            sensor_id = f"{mode}_thermal_energy_{period}"
+            sensor_name = f"{mode_display} Thermal Energy {period.title()}"
+        else:
+            sensor_id = f"{mode}_energy_{period}"
+            sensor_name = f"{mode_display} Energy {period.title()}"
+        names = generate_sensor_names(
+            device_prefix, sensor_name, sensor_id, name_prefix, use_legacy_modbus_names
         )
         entity_id = names["entity_id"]
 
@@ -1414,7 +1425,10 @@ async def increment_energy_consumption_counter(
             if device_key in energy_offsets:
                 device_offsets = energy_offsets[device_key]
                 if isinstance(device_offsets, dict):
-                    sensor_id = f"{mode}_energy_total"
+                    if sensor_type == "thermal":
+                        sensor_id = f"{mode}_thermal_energy_total"
+                    else:
+                        sensor_id = f"{mode}_energy_total"
                     offset = float(device_offsets.get(sensor_id, 0.0))
                     # Prüfe ob Offset bereits angewendet wurde
                     if hasattr(energy_entity, "_applied_offset"):
@@ -1449,8 +1463,9 @@ async def increment_energy_consumption_counter(
 
     # Zentrale Logging-Meldung nur bei tatsächlichen Änderungen
     if changes_summary:
+        energy_type = "thermal" if sensor_type == "thermal" else "electrical"
         _LOGGER.info(
-            f"Energy counters updated for {mode} HP{hp_index}: {', '.join(changes_summary)} (delta {energy_delta:.2f} kWh)"
+            f"{energy_type.capitalize()} energy counters updated for {mode} HP{hp_index}: {', '.join(changes_summary)} (delta {energy_delta:.2f} kWh)"
         )
 
 
