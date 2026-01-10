@@ -53,12 +53,10 @@ Sie können externe Energiezähler (z.B. Shelly3EM) als Datenquelle für den Str
 ```yaml
 energy_consumption_sensors:
   hp1:
-    electrical_sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"
+    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"
 ```
 
-**Hinweis:** 
-- Für thermische Energie werden immer die internen Modbus-Sensoren verwendet
-- Nur elektrische Sensoren können extern konfiguriert werden
+**Hinweis:** Für thermische Energie werden immer die internen Sensoren verwendet.
 
 ### Energieverbrauchs-Offsets
 
@@ -71,11 +69,6 @@ energy_consumption_offsets:
     hot_water_energy_total: 0.0
     cooling_energy_total: 0.0
     defrost_energy_total: 0.0
-    # Optional: Auch für thermische Energie
-    heating_thermal_energy_total: 0.0
-    hot_water_thermal_energy_total: 0.0
-    cooling_thermal_energy_total: 0.0
-    defrost_thermal_energy_total: 0.0
 ```
 
 **⚠️ Alle Werte in kWh!**
@@ -103,7 +96,7 @@ Die Integration nutzt Flankenerkennung, um Energie- und Wärme-Deltas exakt dem 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    electrical_sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
 energy_consumption_offsets:
   hp1:
     heating_energy_total: 0

@@ -15,6 +15,8 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.template import TemplateError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.helpers.event import async_track_state_change_event
+import re
 
 from .const import (
     DOMAIN,
@@ -308,6 +310,8 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         self._state = None
         self._last_warning = None
         self._last_identical_warning = None
+        self._track_entities = []  # Liste der Entity-IDs, die wir tracken müssen
+        self._unsub_state_changes = None  # Unsubscribe-Funktion für State-Changes
         
         # Setze Icon aus sensor_info (zentrale Steuerung)
         self._attr_icon = get_entity_icon(sensor_info)
@@ -434,6 +438,20 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
 
         self.async_write_ha_state()
 
+    def _extract_entity_ids_from_template(self, template_str: str) -> list[str]:
+        """Extract entity IDs from template string (e.g., states('sensor.xyz'))."""
+        # Pattern: states('sensor.xyz') oder states("sensor.xyz")
+        # Muss auch mit doppelten geschweiften Klammern funktionieren ({{% ... %}})
+        # Nach Formatierung wird {{% zu {% und %}} zu %}, also suchen wir nach dem formatierten Format
+        pattern = r"states\(['\"]([^'\"]+)['\"]\)"
+        matches = re.findall(pattern, template_str)
+        
+        # Entferne Duplikate und filtere leere Strings
+        unique_matches = list(set(matches))
+        unique_matches = [m for m in unique_matches if m]
+        
+        return unique_matches
+
     async def async_added_to_hass(self) -> None:
         """When entity is added to hass."""
         await super().async_added_to_hass()
@@ -441,7 +459,62 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         # Initialize the template now that we have access to hass
         self._template = Template(self._template_str, self.hass)
 
+        # Extract entity IDs from template for state tracking
+        # template_str ist bereits formatiert (mit {full_entity_prefix} ersetzt)
+        # und enthält z.B. states('sensor.eu08l_hp1_heating_thermal_energy_daily')
+        self._track_entities = self._extract_entity_ids_from_template(self._template_str)
+        
+        # Wenn Entity-IDs gefunden wurden, registriere State-Change-Tracker
+        if self._track_entities:
+            _LOGGER.debug(
+                "Template sensor %s will track state changes for: %s",
+                self._sensor_id,
+                self._track_entities,
+            )
+            
+            # Registriere State-Change-Tracker für alle Quell-Entitäten
+            @callback
+            def _state_change_callback(event):
+                """Callback when tracked entity state changes."""
+                new_state = event.data.get("new_state")
+                old_state = event.data.get("old_state")
+                entity_id = event.data.get("entity_id")
+                
+                if new_state is None:
+                    return
+                
+                # Nur aktualisieren, wenn sich der State wirklich geändert hat
+                if old_state is None or old_state.state != new_state.state:
+                    _LOGGER.debug(
+                        "Tracked entity %s changed from %s to %s, updating template sensor %s",
+                        entity_id,
+                        old_state.state if old_state else None,
+                        new_state.state,
+                        self._sensor_id,
+                    )
+                    self._handle_coordinator_update()
+            
+            # Tracke State-Änderungen für alle Quell-Entitäten
+            self._unsub_state_changes = async_track_state_change_event(
+                self.hass,
+                self._track_entities,
+                _state_change_callback,
+            )
+        else:
+            _LOGGER.debug(
+                "Template sensor %s: No entities found to track in template: %s",
+                self._sensor_id,
+                self._template_str[:200] if self._template_str else "None",
+            )
+
         self._handle_coordinator_update()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when entity is removed."""
+        if self._unsub_state_changes:
+            self._unsub_state_changes()
+            self._unsub_state_changes = None
+        await super().async_will_remove_from_hass()
 
 
 class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
@@ -494,6 +567,8 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._last_rt_delta = None
         self._last_flow_offset = 0.0
         self._last_eco_reduction = 0.0
+        self._track_entities = []  # Liste der Entity-IDs, die wir tracken müssen
+        self._unsub_state_changes = None  # Unsubscribe-Funktion für State-Changes
 
         parsed_type, parsed_index = extract_device_info_from_sensor_id(sensor_id)
         self._device_type = (device_type or parsed_type or "").lower()
@@ -827,4 +902,57 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        
+        # Sammle alle Entity-IDs, die getrackt werden müssen
+        track_entities = [self._ambient_sensor]
+        track_entities.extend(self._number_entities.values())
+        track_entities.append(self._operating_state_entity)
+        track_entities.append(self._eco_temp_reduction_entity)
+        
+        # Entferne Duplikate und None-Werte
+        self._track_entities = list(set([e for e in track_entities if e]))
+        
+        if self._track_entities:
+            _LOGGER.debug(
+                "Heating curve sensor %s will track state changes for: %s",
+                self._sensor_id,
+                self._track_entities,
+            )
+            
+            # Registriere State-Change-Tracker für alle Quell-Entitäten
+            @callback
+            def _state_change_callback(event):
+                """Callback when tracked entity state changes."""
+                new_state = event.data.get("new_state")
+                old_state = event.data.get("old_state")
+                entity_id = event.data.get("entity_id")
+                
+                if new_state is None:
+                    return
+                
+                # Nur aktualisieren, wenn sich der State wirklich geändert hat
+                if old_state is None or old_state.state != new_state.state:
+                    _LOGGER.debug(
+                        "Tracked entity %s changed from %s to %s, updating heating curve sensor %s",
+                        entity_id,
+                        old_state.state if old_state else None,
+                        new_state.state,
+                        self._sensor_id,
+                    )
+                    self._handle_coordinator_update()
+            
+            # Tracke State-Änderungen für alle Quell-Entitäten
+            self._unsub_state_changes = async_track_state_change_event(
+                self.hass,
+                self._track_entities,
+                _state_change_callback,
+            )
+        
         self._handle_coordinator_update()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when entity is removed."""
+        if self._unsub_state_changes:
+            self._unsub_state_changes()
+            self._unsub_state_changes = None
+        await super().async_will_remove_from_hass()

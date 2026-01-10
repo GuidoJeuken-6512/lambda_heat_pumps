@@ -1381,7 +1381,7 @@ INDIVIDUAL_READ_REGISTERS = [
 
 # Calculated Sensor Templates
 CALCULATED_SENSOR_TEMPLATES = {
-    # Beispiel für einen berechneten Sensor: COP
+    # Beispiel für einen berechneten Sensor: COP (alt, basierend auf Accumulated Registern)
     "cop_calc": {
         "name": "COP Calculated",
         "unit": None,
@@ -1398,6 +1398,8 @@ CALCULATED_SENSOR_TEMPLATES = {
             "{{{{ (thermal / power) | round(2) if power > 0 else 0 }}}}"
         ),
     },
+    # COP Sensoren werden jetzt als echte Python-Sensoren (LambdaCOPSensor) erstellt
+    # und nicht mehr als Template-Sensoren. Siehe sensor.py für die Implementierung.
     # Statuswechsel-Sensoren (Flankenerkennung) - TOTAL
     # Diese Sensoren werden dynamisch für jede HP (und ggf. andere Geräte) erzeugt
     # und zählen, wie oft in einen bestimmten Modus gewechselt wurde (z.B. CH, DHW, CC, DEFROST)
