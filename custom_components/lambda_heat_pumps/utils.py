@@ -2179,14 +2179,20 @@ async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> No
         except Exception as service_ex:
             _LOGGER.error("❌ CLEANUP: Error during services cleanup: %s", service_ex)
         
-        # 3. Cleanup Automations
+        # 3. Cleanup Reset Manager
         try:
-            from .automations import cleanup_cycling_automations
-            _LOGGER.info("🧹 CLEANUP: Cleaning up automations...")
-            cleanup_cycling_automations(hass, entry_id)
-            _LOGGER.info("✅ CLEANUP: Automations cleaned up")
+            if (
+                "lambda_heat_pumps" in hass.data
+                and entry_id in hass.data["lambda_heat_pumps"]
+                and "reset_manager" in hass.data["lambda_heat_pumps"][entry_id]
+            ):
+                _LOGGER.info("🧹 CLEANUP: Cleaning up reset manager...")
+                reset_manager = hass.data["lambda_heat_pumps"][entry_id]["reset_manager"]
+                reset_manager.cleanup()
+                del hass.data["lambda_heat_pumps"][entry_id]["reset_manager"]
+                _LOGGER.info("✅ CLEANUP: Reset manager cleaned up")
         except Exception as auto_ex:
-            _LOGGER.error("❌ CLEANUP: Error during automations cleanup: %s", auto_ex)
+            _LOGGER.error("❌ CLEANUP: Error during reset manager cleanup: %s", auto_ex)
         
         # 4. Remove entry from hass.data
         if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:

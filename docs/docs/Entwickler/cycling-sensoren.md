@@ -64,15 +64,22 @@ Jede Betriebsart wird nach Zeitraum aufgeteilt:
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    automations.py                            │
+│                    reset_manager.py                          │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  setup_cycling_automations()                          │  │
-│  │    - Daily Reset (Mitternacht)                        │  │
-│  │    - 2h Reset (alle 2 Stunden)                        │  │
-│  │    - 4h Reset (alle 4 Stunden)                        │  │
-│  │    - Monthly Reset (1. des Monats)                    │  │
-│  │    - Yearly Reset (1. Januar)                         │  │
-│  │    - Yesterday-Sensor Update (vor Daily Reset)        │  │
+│  │  ResetManager                                         │  │
+│  │    - setup_reset_automations()                        │  │
+│  │      - Daily Reset (Mitternacht)                      │  │
+│  │      - 2h Reset (alle 2 Stunden)                      │  │
+│  │      - 4h Reset (alle 4 Stunden)                      │  │
+│  │      - Monthly Reset (1. des Monats)                  │  │
+│  │      - Yearly Reset (1. Januar)                       │  │
+│  │      - Yesterday-Sensor Update (vor Daily Reset)      │  │
+│  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  automations.py                                       │  │
+│  │  _update_yesterday_sensors_async()                   │  │
+│  │    - Aktualisiert Yesterday-Sensoren                 │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -97,8 +104,8 @@ Jede Betriebsart wird nach Zeitraum aufgeteilt:
    - `LambdaCyclingSensor.set_cycling_value()` setzt internen Wert
    - `native_value` gibt den aktuellen Wert zurück
 
-5. **Automations** resetten Perioden:
-   - Daily: Um Mitternacht auf 0
+5. **ResetManager** resetten Perioden:
+   - Daily: Um Mitternacht auf 0 (via `ResetManager.setup_reset_automations()`)
    - 2h: Alle 2 Stunden auf 0
    - 4h: Alle 4 Stunden auf 0
    - Monthly: Am 1. des Monats auf 0
@@ -317,20 +324,54 @@ from .automations import (
     SIGNAL_RESET_YEARLY
 )
 
+# Wrapper-Funktion für asynchrone Handler (einheitlich für alle Perioden)
 @callback
-def _wrap_daily_reset(entry_id: str):
-    self.hass.async_create_task(self._handle_daily_reset(entry_id))
+def _wrap_reset(entry_id: str):
+    self.hass.async_create_task(self._handle_reset(entry_id))
 
+# Registriere für alle Perioden
 self._unsub_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_DAILY, _wrap_daily_reset
+    self.hass, SIGNAL_RESET_DAILY, _wrap_reset
+)
+self._unsub_2h_dispatcher = async_dispatcher_connect(
+    self.hass, SIGNAL_RESET_2H, _wrap_reset
+)
+self._unsub_4h_dispatcher = async_dispatcher_connect(
+    self.hass, SIGNAL_RESET_4H, _wrap_reset
+)
+self._unsub_monthly_dispatcher = async_dispatcher_connect(
+    self.hass, SIGNAL_RESET_MONTHLY, _wrap_reset
+)
+self._unsub_yearly_dispatcher = async_dispatcher_connect(
+    self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
 )
 
-async def _handle_daily_reset(self, entry_id: str):
-    """Handle daily reset signal."""
-    if entry_id == self._entry.entry_id and self._sensor_id.endswith("_daily"):
+async def _handle_reset(self, entry_id: str):
+    """Handle reset signal for all periods (einheitlich, wie Energy)."""
+    if entry_id != self._entry.entry_id:
+        return
+    
+    # Prüfe Periode basierend auf sensor_id und reset_interval
+    if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
         self._cycling_value = 0
         self.async_write_ha_state()
         _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
+    elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
+        self._cycling_value = 0
+        self.async_write_ha_state()
+        _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
+    elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
+        self._cycling_value = 0
+        self.async_write_ha_state()
+        _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
+    elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
+        self._cycling_value = 0
+        self.async_write_ha_state()
+        _LOGGER.info(f"Monthly sensor {self.entity_id} reset to 0")
+    elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
+        self._cycling_value = 0
+        self.async_write_ha_state()
+        _LOGGER.info(f"Yearly sensor {self.entity_id} reset to 0")
 ```
 
 **Reset-Intervall**:
@@ -563,10 +604,11 @@ if op_state_val == NEW_MODE_VALUE:
 ### Neue Perioden hinzufügen
 
 1. Sensor-Template in `const.py` hinzufügen
-2. Reset-Signal in `automations.py` hinzufügen
-3. Reset-Handler in `LambdaCyclingSensor` hinzufügen
+2. Reset-Signal in `automations.py` hinzufügen (falls nicht vorhanden)
+3. Reset-Handler in `LambdaCyclingSensor._handle_reset()` erweitern (einheitliche Methode)
 4. Sensor-Erstellung in `sensor.py` erweitern
-5. Increment-Logik in `utils.py` erweitern (falls nötig)
+5. Reset-Automatisierung in `reset_manager.py` hinzufügen
+6. Increment-Logik in `utils.py` erweitern (falls nötig)
 
 ## Debugging
 

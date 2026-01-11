@@ -31,22 +31,21 @@ Die Integration verwendet eine spezielle Reset-Logik für periodische Sensoren (
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    automations.py                            │
+│                    reset_manager.py                          │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  setup_cycling_automations()                         │  │
-│  │    ├─ reset_daily_sensors() (Mitternacht)           │  │
-│  │    ├─ reset_monthly_sensors() (1. des Monats)       │  │
-│  │    └─ reset_yearly_sensors() (1. Januar)            │  │
+│  │  ResetManager                                         │  │
+│  │    - setup_reset_automations()                        │  │
+│  │      ├─ reset_daily() (Mitternacht)                   │  │
+│  │      ├─ reset_monthly() (1. des Monats)               │  │
+│  │      └─ reset_yearly() (1. Januar)                    │  │
+│  │    - _send_reset_signal_async()                       │  │
+│  │      - Sendet Reset-Signale via async_dispatcher_send │  │
 │  └──────────────────────────────────────────────────────┘  │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐  │
+│  │  automations.py                                       │  │
 │  │  _update_yesterday_sensors_async()                   │  │
 │  │    - Aktualisiert Yesterday-Sensoren (Cycling)       │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  _send_reset_signal_async()                          │  │
-│  │    - Sendet Reset-Signale via async_dispatcher_send  │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -89,18 +88,22 @@ Die Integration verwendet eine spezielle Reset-Logik für periodische Sensoren (
 5. `_yesterday_value` wird auf aktuellen Total-Wert gesetzt
 6. `_energy_value` bleibt unverändert (wird weiterhin aktualisiert)
 
-**Code** (`automations.py`):
+**Code** (`reset_manager.py`):
 ```python
 @callback
-def reset_daily_sensors(now: datetime) -> None:
+def reset_daily(now: datetime) -> None:
     """Reset daily sensors at midnight and update yesterday sensors."""
-    _LOGGER.info("Resetting daily cycling sensors at midnight")
+    _LOGGER.info("Resetting daily sensors at midnight")
     
     # 1. Erst Yesterday-Sensoren auf aktuelle Daily-Werte setzen (asynchron)
-    hass.async_create_task(_update_yesterday_sensors_async(hass, entry_id))
+    self.hass.async_create_task(
+        _update_yesterday_sensors_async(self.hass, self._entry_id)
+    )
     
     # 2. Dann Daily-Sensoren auf 0 zurücksetzen (asynchron)
-    hass.async_create_task(_send_reset_signal_async(hass, SIGNAL_RESET_DAILY, entry_id))
+    self.hass.async_create_task(
+        self._send_reset_signal_async(SIGNAL_RESET_DAILY)
+    )
 ```
 
 ### Monthly Reset (Monatlich)
@@ -114,15 +117,15 @@ def reset_daily_sensors(now: datetime) -> None:
 4. `_previous_monthly_value` wird auf aktuellen Total-Wert gesetzt
 5. `_energy_value` bleibt unverändert
 
-**Code** (`automations.py`):
+**Code** (`reset_manager.py`):
 ```python
 @callback
-def reset_monthly_sensors(now: datetime) -> None:
+def reset_monthly(now: datetime) -> None:
     """Reset monthly sensors on the 1st of each month."""
     if now.day == 1:
         _LOGGER.info("Resetting monthly sensors (cycling, energy) on 1st of month")
-        hass.async_create_task(
-            _send_reset_signal_async(hass, SIGNAL_RESET_MONTHLY, entry_id)
+        self.hass.async_create_task(
+            self._send_reset_signal_async(SIGNAL_RESET_MONTHLY)
         )
 ```
 
@@ -139,15 +142,15 @@ def reset_monthly_sensors(now: datetime) -> None:
 4. `_previous_yearly_value` wird auf aktuellen Total-Wert gesetzt
 5. `_energy_value` bleibt unverändert
 
-**Code** (`automations.py`):
+**Code** (`reset_manager.py`):
 ```python
 @callback
-def reset_yearly_sensors(now: datetime) -> None:
+def reset_yearly(now: datetime) -> None:
     """Reset yearly sensors on January 1st."""
     if now.month == 1 and now.day == 1:
-        _LOGGER.info("Resetting yearly energy sensors on January 1st")
-        hass.async_create_task(
-            _send_reset_signal_async(hass, SIGNAL_RESET_YEARLY, entry_id)
+        _LOGGER.info("Resetting yearly sensors on January 1st")
+        self.hass.async_create_task(
+            self._send_reset_signal_async(SIGNAL_RESET_YEARLY)
         )
 ```
 
@@ -576,7 +579,7 @@ async def _initialize_monthly_yearly_value(self):
 - **Reset-Handler**: `custom_components/lambda_heat_pumps/sensor.py` → `LambdaEnergyConsumptionSensor._handle_reset()`
 - **Berechnung**: `custom_components/lambda_heat_pumps/sensor.py` → `LambdaEnergyConsumptionSensor.native_value`
 - **Initialisierung**: `custom_components/lambda_heat_pumps/sensor.py` → `LambdaEnergyConsumptionSensor._initialize_daily_yesterday_value()`
-- **Automatisierung**: `custom_components/lambda_heat_pumps/automations.py` → `setup_cycling_automations()`
+- **Reset-Manager**: `custom_components/lambda_heat_pumps/reset_manager.py` → `ResetManager.setup_reset_automations()`
 - **Kritische Behebung**: `custom_components/lambda_heat_pumps/utils.py` → `increment_energy_consumption_counter()`
 
 ## Verwandte Dokumentation

@@ -205,16 +205,16 @@ def test_lambda_cycling_sensor_reset_handlers(mock_entry, mock_coordinator):
     # Set initial value
     daily_sensor._cycling_value = 50
     
-    # Test daily reset (async method)
+    # Test daily reset (async method) - jetzt _handle_reset für alle Perioden
     import asyncio
-    asyncio.run(daily_sensor._handle_daily_reset("test_entry"))
+    asyncio.run(daily_sensor._handle_reset("test_entry"))
     assert daily_sensor._cycling_value == 0
     daily_sensor.async_write_ha_state.assert_called_once()
     
     # Test with wrong entry_id
     daily_sensor._cycling_value = 50
     daily_sensor.async_write_ha_state.reset_mock()
-    asyncio.run(daily_sensor._handle_daily_reset("wrong_entry"))
+    asyncio.run(daily_sensor._handle_reset("wrong_entry"))
     assert daily_sensor._cycling_value == 50  # Should not reset
     daily_sensor.async_write_ha_state.assert_not_called()
 
@@ -241,9 +241,9 @@ def test_lambda_cycling_sensor_2h_reset_handler(mock_entry, mock_coordinator):
     # Set initial value
     sensor._cycling_value = 30
     
-    # Test 2h reset (async method)
+    # Test 2h reset (async method) - jetzt _handle_reset für alle Perioden
     import asyncio
-    asyncio.run(sensor._handle_2h_reset("test_entry"))
+    asyncio.run(sensor._handle_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 
@@ -270,9 +270,9 @@ def test_lambda_cycling_sensor_4h_reset_handler(mock_entry, mock_coordinator):
     # Set initial value
     sensor._cycling_value = 75
     
-    # Test 4h reset (async method)
+    # Test 4h reset (async method) - jetzt _handle_reset für alle Perioden
     import asyncio
-    asyncio.run(sensor._handle_4h_reset("test_entry"))
+    asyncio.run(sensor._handle_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 
@@ -299,9 +299,9 @@ def test_lambda_cycling_sensor_monthly_reset_handler(mock_entry, mock_coordinato
     # Set initial value
     sensor._cycling_value = 100
     
-    # Test monthly reset (async method)
+    # Test monthly reset (async method) - jetzt _handle_reset für alle Perioden
     import asyncio
-    asyncio.run(sensor._handle_monthly_reset("test_entry"))
+    asyncio.run(sensor._handle_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 
@@ -351,7 +351,7 @@ def test_compressor_start_cycling_sensor_2h_reset(mock_entry, mock_coordinator):
     sensor._cycling_value = 15
     
     import asyncio
-    asyncio.run(sensor._handle_2h_reset("test_entry"))
+    asyncio.run(sensor._handle_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 
@@ -376,7 +376,7 @@ def test_compressor_start_cycling_sensor_4h_reset(mock_entry, mock_coordinator):
     sensor._cycling_value = 25
     
     import asyncio
-    asyncio.run(sensor._handle_4h_reset("test_entry"))
+    asyncio.run(sensor._handle_reset("test_entry"))
     assert sensor._cycling_value == 0
     sensor.async_write_ha_state.assert_called_once()
 
@@ -394,7 +394,7 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
     with patch("custom_components.lambda_heat_pumps.sensor.LambdaCyclingSensor") as mock_cycling_class, \
          patch("custom_components.lambda_heat_pumps.sensor.LambdaYesterdaySensor") as mock_yesterday_class, \
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
-         patch("custom_components.lambda_heat_pumps.automations.setup_cycling_automations") as mock_automations:
+         patch("custom_components.lambda_heat_pumps.reset_manager.ResetManager") as mock_reset_manager_class:
         
         # Create mock sensor instances
         mock_cycling_sensor = Mock()
@@ -494,7 +494,7 @@ async def test_yesterday_sensors_in_cycling_entities(mock_hass, mock_entry, mock
     with patch("custom_components.lambda_heat_pumps.sensor.LambdaCyclingSensor") as mock_cycling_class, \
          patch("custom_components.lambda_heat_pumps.sensor.LambdaYesterdaySensor") as mock_yesterday_class, \
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
-         patch("custom_components.lambda_heat_pumps.automations.setup_cycling_automations") as mock_automations:
+         patch("custom_components.lambda_heat_pumps.reset_manager.ResetManager") as mock_reset_manager_class:
         
         # Create mock yesterday sensor with proper entity_id format
         def yesterday_sensor_side_effect(*args, **kwargs):
@@ -634,7 +634,7 @@ async def test_yesterday_sensor_problem_detection(mock_hass, mock_entry, mock_co
     with patch("custom_components.lambda_heat_pumps.sensor.LambdaCyclingSensor") as mock_cycling_class, \
          patch("custom_components.lambda_heat_pumps.sensor.LambdaYesterdaySensor") as mock_yesterday_class, \
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
-         patch("custom_components.lambda_heat_pumps.automations.setup_cycling_automations") as mock_automations:
+         patch("custom_components.lambda_heat_pumps.reset_manager.ResetManager") as mock_reset_manager_class:
         
         # Create mock sensors with proper entity_id format
         def yesterday_sensor_side_effect(*args, **kwargs):
