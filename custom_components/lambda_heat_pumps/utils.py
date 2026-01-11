@@ -1396,16 +1396,7 @@ async def increment_energy_consumption_counter(
         if coordinator and entity_id in coordinator._energy_warnings:
             del coordinator._energy_warnings[entity_id]
 
-        # Hole aktuellen Wert des Sensors
-        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
-            current_value = 0.0
-        else:
-            try:
-                current_value = float(state_obj.state)
-            except Exception:
-                current_value = 0.0
-
-        # Finde die Entity-Instanz
+        # Finde die Entity-Instanz ZUERST (vor der current_value Berechnung)
         energy_entity = None
         try:
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
@@ -1415,6 +1406,30 @@ async def increment_energy_consumption_counter(
                         break
         except Exception as e:
             _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
+
+        # Hole aktuellen Wert des Sensors
+        # WICHTIG: Für Daily/Monthly/Yearly-Sensoren muss _energy_value direkt gelesen werden,
+        # nicht der berechnete native_value (State), da native_value = _energy_value - _yesterday_value
+        # Nach Mitternacht-Reset wäre native_value = 0, aber _energy_value bleibt bei 100 kWh!
+        if energy_entity is not None and hasattr(energy_entity, "_energy_value"):
+            # Verwende _energy_value direkt (korrekt für alle Perioden)
+            current_value = energy_entity._energy_value
+            _LOGGER.debug(
+                f"Reading _energy_value directly from entity {entity_id}: {current_value:.6f} kWh (period: {period})"
+            )
+        else:
+            # Fallback: Verwende State (nur wenn Entity nicht gefunden wurde)
+            # Für Total-Sensoren ist das OK, da native_value = _energy_value
+            if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
+                current_value = 0.0
+            else:
+                try:
+                    current_value = float(state_obj.state)
+                    _LOGGER.debug(
+                        f"Reading value from state for {entity_id}: {current_value:.6f} kWh (fallback, entity not found)"
+                    )
+                except Exception:
+                    current_value = 0.0
 
         # Berechne neuen Wert: Einfache Delta-Addition
         new_value = current_value + energy_delta

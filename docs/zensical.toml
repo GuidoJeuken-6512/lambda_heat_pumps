@@ -71,7 +71,10 @@ nav = [
     { "Heizkurve" = "Entwickler/heizkurve.md" },
     { "modbus_wp_config.yaml" = "Entwickler/modbus-wp-config.md" },
     { "Energieverbrauchsberechnung" = "Entwickler/energieverbrauchssensoren.md" },
+    { "Cycling-Sensoren" = "Entwickler/cycling-sensoren.md" },
+    { "Reset-Logik und Yesterday-Sensoren" = "Entwickler/reset-logik-yesterday-sensoren.md" },
     { "COP-Sensoren" = "Entwickler/cop-sensoren.md" },
+    { "Modbus-Serialisierung" = "Entwickler/modbus-serialisierung.md" },
   ] },
 ]
 
