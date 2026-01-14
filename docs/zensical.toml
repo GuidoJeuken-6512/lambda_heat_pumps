@@ -57,7 +57,8 @@ nav = [
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
     { "PV Überschuss Steuerung" = "Anwender/pv_ueberschuss_steuerung.md" },
-    { "Stromverbrauchsberechnung" = "Anwender/stromverbrauchsberechnung.md" },
+    { "Energieverbrauchsberechnung" = "Anwender/Energieverbrauchsberechnung.md" },
+    { "COP-Sensoren (Leistungszahl)" = "Anwender/cop-sensoren.md" },
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
@@ -70,6 +71,13 @@ nav = [
     { "Ablaufdiagramm" = "Entwickler/Ablaufdiagramm.md" },
     { "Heizkurve" = "Entwickler/heizkurve.md" },
     { "modbus_wp_config.yaml" = "Entwickler/modbus-wp-config.md" },
+    { "Energieverbrauchsberechnung" = "Entwickler/energieverbrauchssensoren.md" },
+    { "Cycling-Sensoren" = "Entwickler/cycling-sensoren.md" },
+    { "Reset-Logik und Yesterday-Sensoren" = "Entwickler/reset-logik-yesterday-sensoren.md" },
+    { "Reset-Manager" = "Entwickler/reset-manager.md" },
+    { "Sensoren-Übersicht" = "Entwickler/sensoren-uebersicht.md" },
+    { "COP-Sensoren" = "Entwickler/cop-sensoren.md" },
+    { "Modbus-Serialisierung" = "Entwickler/modbus-serialisierung.md" },
   ] },
 ]
 

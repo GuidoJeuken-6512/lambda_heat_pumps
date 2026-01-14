@@ -16,8 +16,62 @@ from custom_components.lambda_heat_pumps.const import (
 from tests.conftest import DummyLoop
 
 
+
 class TestLambdaEnergyConsumptionSensor:
-    """Test LambdaEnergyConsumptionSensor class."""
+    def test_thermal_sensor_creation_for_all_modes_and_periods(self, mock_hass, mock_entry):
+        """Test creation and properties of all thermal energy sensors (all modes/periods)."""
+        sensors = []
+        # Only test templates with data_type == 'thermal_calculated'
+        for sensor_id, template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.items():
+            if template.get("data_type") == "thermal_calculated":
+                # Parse mode and period from sensor_id
+                # Thermal sensors have pattern: {mode}_thermal_energy_{period}
+                if "_thermal_energy_" in sensor_id:
+                    parts = sensor_id.split("_thermal_energy_")
+                    if len(parts) != 2:
+                        continue
+                    mode, period = parts[0], parts[1]
+                else:
+                    # Fallback: try regular pattern (should not happen for thermal)
+                    parts = sensor_id.split("_energy_")
+                    if len(parts) != 2:
+                        continue
+                    mode, period = parts[0], parts[1]
+                
+                sensor = LambdaEnergyConsumptionSensor(
+                    hass=mock_hass,
+                    entry=mock_entry,
+                    sensor_id=sensor_id,
+                    name=template["name"],
+                    entity_id=f"sensor.eu08l_hp1_{sensor_id}",
+                    unique_id=f"eu08l_hp1_{sensor_id}",
+                    unit=template["unit"],
+                    state_class=template["state_class"],
+                    device_class=template.get("device_class"),
+                    device_type=template["device_type"],
+                    hp_index=1,
+                    mode=mode,
+                    period=period,
+                )
+                sensors.append(sensor)
+                # Verify sensor properties
+                assert sensor._mode == mode
+                assert sensor._period == period
+                assert sensor._unit == "kWh"
+                # For thermal, device_class should be ENERGY
+                assert sensor._device_class == SensorDeviceClass.ENERGY
+                assert sensor.entity_id == f"sensor.eu08l_hp1_{sensor_id}"
+                assert sensor._sensor_id == sensor_id
+                
+                # Verify state_class based on period
+                if period == "total":
+                    assert sensor._attr_state_class == SensorStateClass.TOTAL_INCREASING
+                else:
+                    assert sensor._attr_state_class == SensorStateClass.TOTAL
+                    
+        # There should be as many sensors as there are thermal_calculated templates
+        expected_count = len([t for t in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values() if t.get("data_type") == "thermal_calculated"])
+        assert len(sensors) == expected_count, f"Expected {expected_count} thermal sensors, but created {len(sensors)}"
 
     @pytest.fixture
     def mock_hass(self):
@@ -175,25 +229,42 @@ class TestLambdaEnergyConsumptionSensor:
         assert "applied_offset" in attrs  # Daily sensors also have offsets now
 
     @pytest.mark.asyncio
-    async def test_async_added_to_hass(self, energy_sensor):
+    async def test_async_added_to_hass(self, mock_hass, mock_entry):
         """Test async_added_to_hass method."""
         from unittest.mock import patch, MagicMock
+        # Create a daily sensor (total sensors don't register dispatcher)
+        daily_sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        
         # Mock last state
         last_state = Mock()
         last_state.state = "50.0"
-        energy_sensor.async_get_last_state = AsyncMock(return_value=last_state)
+        daily_sensor.async_get_last_state = AsyncMock(return_value=last_state)
         
         # Patch async_write_ha_state to avoid integration issues
-        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
+        with patch.object(daily_sensor, 'async_write_ha_state', new_callable=MagicMock):
             # Mock dispatcher connect
             with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect') as mock_connect:
-                await energy_sensor.async_added_to_hass()
+                await daily_sensor.async_added_to_hass()
             
-            # Verify dispatcher was connected
+            # Verify dispatcher was connected (daily sensors register for reset signals)
             mock_connect.assert_called_once()
             
             # Verify restore_state was called
-            assert energy_sensor._energy_value == 50.0
+            assert daily_sensor._energy_value == 50.0
 
     @pytest.mark.asyncio
     async def test_async_added_to_hass_no_last_state(self, energy_sensor):
@@ -261,13 +332,18 @@ class TestLambdaEnergyConsumptionSensor:
 
     def test_device_info(self, energy_sensor, mock_entry):
         """Test device info property."""
-        with patch('custom_components.lambda_heat_pumps.sensor.build_device_info') as mock_build:
-            mock_build.return_value = {"test": "device_info"}
-            
-            result = energy_sensor.device_info
-            
-            assert result == {"test": "device_info"}
-            mock_build.assert_called_once_with(mock_entry)
+        # device_info calls build_subdevice_info (since hp_index is set)
+        # or build_device_info (if no hp_index)
+        result = energy_sensor.device_info
+        
+        # Verify it's a dict with expected keys
+        assert isinstance(result, dict)
+        assert "identifiers" in result
+        assert "name" in result
+        # Verify it's a subdevice (has hp_index)
+        assert energy_sensor._hp_index == 1
+        # The result should contain device identifiers
+        assert len(result["identifiers"]) > 0
 
     def test_sensor_creation_for_all_modes_and_periods(self, mock_hass, mock_entry):
         """Test sensor creation for all modes and periods."""

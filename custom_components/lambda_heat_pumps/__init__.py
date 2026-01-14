@@ -21,7 +21,7 @@ from .const import (
 from .coordinator import LambdaDataUpdateCoordinator
 from .services import async_setup_services, async_unload_services
 from .utils import generate_base_addresses, ensure_lambda_config
-from .automations import setup_cycling_automations, cleanup_cycling_automations
+from .reset_manager import ResetManager
 from .migration import async_migrate_entry
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
 from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
@@ -277,8 +277,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not hass.services.has_service(DOMAIN, "read_modbus_register"):
             await async_setup_services(hass)
 
-        # Set up cycling automations
-        setup_cycling_automations(hass, entry.entry_id)
+        # Set up reset automations using ResetManager
+        reset_manager = ResetManager(hass, entry.entry_id)
+        reset_manager.setup_reset_automations()
+
+        # Store reset_manager for cleanup
+        if "lambda_heat_pumps" not in hass.data:
+            hass.data["lambda_heat_pumps"] = {}
+        if entry.entry_id not in hass.data["lambda_heat_pumps"]:
+            hass.data["lambda_heat_pumps"][entry.entry_id] = {}
+        hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"] = reset_manager
 
         # Add update listener
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
@@ -308,8 +316,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = True
 
     try:
-        # Clean up cycling automations first
-        cleanup_cycling_automations(hass, entry.entry_id)
+        # Clean up reset automations using ResetManager
+        if (
+            "lambda_heat_pumps" in hass.data
+            and entry.entry_id in hass.data["lambda_heat_pumps"]
+            and "reset_manager" in hass.data["lambda_heat_pumps"][entry.entry_id]
+        ):
+            reset_manager = hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"]
+            reset_manager.cleanup()
+            del hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"]
 
         # Try to unload platforms - handle gracefully if they weren't loaded
         try:
