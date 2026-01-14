@@ -4,18 +4,32 @@ title: "Optionen des config_flow"
 
 # Optionen des config_flow
 
-Nach der Initialkonfiguration können Sie erweiterte Einstellungen in den Integration-Optionen anpassen. Diese Optionen ermöglichen es, das Verhalten der Integration zu optimieren und erweiterte Funktionen zu aktivieren.
+<div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
+  <div style="flex: 0 0 50%; min-width: 300px;">
+    <img src="../../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">
+  </div>
+  <div style="flex: 1; min-width: 300px;">
+    <p>Nach der Initialkonfiguration können Sie erweiterte Einstellungen in den Integration-Optionen anpassen. Diese Optionen ermöglichen es, das Verhalten der Integration zu optimieren und erweiterte Funktionen zu aktivieren.</p>
 
-## Zugriff auf die Optionen
+    <h2>Zugriff auf die Optionen</h2>
 
-1. **Öffnen Sie Home Assistant:**
-   - Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
-   - Suchen Sie nach Ihrer Lambda-Integration
-   - Klicken Sie auf die Integration
-
-2. **Optionen öffnen:**
-   - Klicken Sie auf **Konfigurieren** (oder das Zahnrad-Symbol)
-   - Die Options-Seite wird geöffnet
+    <ol>
+      <li><strong>Öffnen Sie Home Assistant:</strong>
+        <ul>
+          <li>Gehen Sie zu <strong>Einstellungen</strong> → <strong>Geräte & Dienste</strong></li>
+          <li>Suchen Sie nach Ihrer Lambda-Integration</li>
+          <li>Klicken Sie auf die Integration</li>
+        </ul>
+      </li>
+      <li><strong>Optionen öffnen:</strong>
+        <ul>
+          <li>Klicken Sie auf <strong>Konfigurieren</strong> (oder das Zahnrad-Symbol)</li>
+          <li>Die Options-Seite wird geöffnet</li>
+        </ul>
+      </li>
+    </ol>
+  </div>
+</div>
 
 ## Verfügbare Optionen
 
