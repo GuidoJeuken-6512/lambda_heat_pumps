@@ -113,7 +113,6 @@ Nach der Initialkonfiguration können Sie erweiterte Einstellungen in den Integr
 4. Klicken Sie auf **Absenden**
 
 **PV-Überschuss-Modi:**
-- **Standard**: Automatischer Modus
 - **Optionen**: Verschiedene Modi je nach Konfiguration
 
 
