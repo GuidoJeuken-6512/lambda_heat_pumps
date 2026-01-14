@@ -56,6 +56,7 @@ nav = [
     { "Optionen des Config Flow" = "Anwender/optionen-config-flow.md" },
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
+    { "PV Überschuss Steuerung" = "Anwender/pv_ueberschuss_steuerung.md" },
     { "Stromverbrauchsberechnung" = "Anwender/stromverbrauchsberechnung.md" },
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
