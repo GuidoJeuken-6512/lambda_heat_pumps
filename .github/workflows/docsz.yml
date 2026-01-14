@@ -1,10 +1,6 @@
 name: Documentation
 on:
   push:
-    branches:
-      - master
-      - main
-      - Release2.3 
     paths:
       - 'docs/**'
       - '.github/workflows/docsz.yml'
