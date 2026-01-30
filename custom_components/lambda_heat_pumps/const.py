@@ -59,7 +59,8 @@ LOG_LEVELS = {"error": "ERROR", "warning": "WARNING", "info": "INFO", "debug": "
 
 # Firmware Versions
 FIRMWARE_VERSION = {
-    "V0.0.9-3K": 7,  # Latest firmware
+    "V1.1.0-3K": 8,  # Latest firmware
+    "V0.0.9-3K": 7,
     "V0.0.8-3K": 6,  # Previous firmware - most common in the field
     "V0.0.7-3K": 5,
     "V0.0.6-3K": 4,
@@ -137,6 +138,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "return_line_temperature": {
         "relative_address": 5,
@@ -149,6 +151,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "volume_flow_heat_sink": {
         "relative_address": 6,
@@ -173,6 +176,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "energy_source_outlet_temperature": {
         "relative_address": 8,
@@ -185,6 +189,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "volume_flow_energy_source": {
         "relative_address": 9,
@@ -220,7 +225,8 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
+        "device_class": "power",
     },
     "inverter_power_consumption": {
         "relative_address": 12,
@@ -233,6 +239,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "power",
     },
     "cop": {
         "relative_address": 13,
@@ -269,6 +276,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "requested_return_line_temperature": {
         "relative_address": 17,
@@ -281,6 +289,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "requested_flow_to_return_line_temperature_difference": {
         "relative_address": 18,
@@ -293,6 +302,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "relais_state_2nd_heating_stage": {
         "relative_address": 19,
@@ -317,6 +327,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "total_increasing",
+        "device_class": "energy",
     },
     "compressor_thermal_energy_output_accumulated": {
         "relative_address": 22,
@@ -329,6 +340,7 @@ HP_SENSOR_TEMPLATES = {
         "device_type": "Hp",
         "writeable": False,
         "state_class": "total_increasing",
+        "device_class": "energy",
     },
     # Undocumented registers discovered on hardware - Always enabled
     "config_parameter_24": {
@@ -637,6 +649,7 @@ BOIL_SENSOR_TEMPLATES = {
         "device_type": "boil",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "actual_low_temperature": {
         "relative_address": 3,
@@ -649,6 +662,7 @@ BOIL_SENSOR_TEMPLATES = {
         "device_type": "boil",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "target_high_temperature": {
         "relative_address": 50,
@@ -661,6 +675,7 @@ BOIL_SENSOR_TEMPLATES = {
         "device_type": "boil",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "actual_circulation_temperature": {
         "relative_address": 4,
@@ -673,6 +688,7 @@ BOIL_SENSOR_TEMPLATES = {
         "device_type": "boil",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "actual_circulation_pump_state": {
         "relative_address": 5,
@@ -697,6 +713,7 @@ BOIL_SENSOR_TEMPLATES = {
         "device_type": "boil",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     
 }
@@ -738,6 +755,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "actual_low_temperature": {
         "relative_address": 3,
@@ -750,6 +768,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "buffer_temperature_high_setpoint": {
         "relative_address": 4,
@@ -762,6 +781,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "request_type": {
         "relative_address": 5,
@@ -786,6 +806,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "request_return_line_temp_setpoint": {
         "relative_address": 7,
@@ -798,6 +819,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "request_heat_sink_temp_diff_setpoint": {
         "relative_address": 8,
@@ -822,6 +844,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "power",
     },
     "maximum_buffer_temp": {
         "relative_address": 50,
@@ -834,6 +857,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
 }
 
@@ -874,6 +898,7 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "storage_temperature": {
         "relative_address": 3,
@@ -886,6 +911,7 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "power_current": {
         "relative_address": 4,
@@ -898,6 +924,7 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "power",
     },
     "energy_total": {
         "relative_address": 5,
@@ -910,6 +937,7 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": False,
         "state_class": "total_increasing",
+        "device_class": "energy",
     },
     "maximum_buffer_temperature": {
         "relative_address": 50,
@@ -922,6 +950,7 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "buffer_changeover_temperature": {
         "relative_address": 51,
@@ -934,6 +963,7 @@ SOL_SENSOR_TEMPLATES = {
         "device_type": "sol",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
 }
 
@@ -974,6 +1004,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "return_line_temperature": {
         "relative_address": 3,
@@ -986,6 +1017,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "room_device_temperature": {
         "relative_address": 4,
@@ -998,6 +1030,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "set_flow_line_temperature": {
         "relative_address": 5,
@@ -1010,6 +1043,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "operating_mode": {
         "relative_address": 6,
@@ -1034,6 +1068,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "target_room_temperature": {
         "relative_address": 51,
@@ -1046,6 +1081,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "set_cooling_mode_room_temperature": {
         "relative_address": 52,
@@ -1058,6 +1094,7 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": True,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
      "target_temp_flow_line": {
          "relative_address": 7,
@@ -1070,6 +1107,7 @@ HC_SENSOR_TEMPLATES = {
          "device_type": "hc",
          "writeable": False,
          "state_class": "measurement",
+         "device_class": "temperature",
      },
 }
 
@@ -1219,6 +1257,7 @@ SENSOR_TYPES = {
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "ambient_temperature_1h": {
         "address": 3,
@@ -1231,6 +1270,7 @@ SENSOR_TYPES = {
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "ambient_temperature_calculated": {
         "address": 4,
@@ -1243,6 +1283,7 @@ SENSOR_TYPES = {
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "temperature",
     },
     "emgr_error_number": {
         "address": 100,
@@ -1279,6 +1320,7 @@ SENSOR_TYPES = {
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "power",
     },
     "emgr_actual_power_consumption": {
         "address": 103,
@@ -1291,6 +1333,7 @@ SENSOR_TYPES = {
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "power",
     },
     "emgr_power_consumption_setpoint": {
         "address": 104,
@@ -1303,6 +1346,7 @@ SENSOR_TYPES = {
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
+        "device_class": "power",
     },
 
 }

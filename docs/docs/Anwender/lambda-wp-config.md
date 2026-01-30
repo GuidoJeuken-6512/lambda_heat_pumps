@@ -40,7 +40,6 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 - **Bindestriche**: Für Listen verwenden Sie Bindestriche (`-`)
 - **Anführungszeichen**: Verwenden Sie Anführungszeichen für Strings mit Sonderzeichen
 
-**Tipp**: Verwenden Sie einen YAML-Validator, um Syntaxfehler zu vermeiden.
 
 ## Konfigurationsoptionen
 
@@ -63,6 +62,7 @@ disabled_registers:
 ```yaml
 disabled_registers:
   - 2004  # Kessel-Zirkulationstemperatur (nicht verfügbar)
+  - 2005
 ```
 
 ### 2. Sensor-Name-Überschreibungen
@@ -82,6 +82,7 @@ sensors_names_override:
 **Wann verwenden?**
 - bei Migration von einer anderen Lösung zu dieser Integration um historische Daten der alten Sensoren zu erhalten
 
+
 **Beispiel:**
 ```yaml
 sensors_names_override:
@@ -94,6 +95,9 @@ sensors_names_override:
 ```
 
 ### 3. Cycling-Zähler-Offsets
+> ⚠️ **Warnung:**  
+> Die Funktion *Offsets* ist zur Zeit fehlerhaft und sollte **nicht verwendet werden**!  
+> Bitte auf ein zukünftiges Update warten, bevor diese Option genutzt wird!
 
 Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
@@ -162,6 +166,9 @@ Weitere Informationen: [Stromverbrauchsberechnung](stromverbrauchsberechnung.md)
 ### 5. Energieverbrauchs-Offsets
 
 Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
+> ⚠️ **Warnung:**  
+> Die Funktion *Offsets* ist zur Zeit fehlerhaft und sollte **nicht verwendet werden**!  
+> Bitte auf ein zukünftiges Update warten, bevor diese Option genutzt wird!
 
 **⚠️ WICHTIG: Alle Werte müssen in kWh angegeben werden!**
 
@@ -327,21 +334,11 @@ modbus:
 **Ursache**: Syntaxfehler in der YAML-Datei
 
 **Lösung**:
-- Verwenden Sie einen YAML-Validator zur Syntaxprüfung
+- Verwenden Sie einen YAML-Validator zur Syntaxprüfung (chatgpt und co können das ganz gut)
 - Überprüfen Sie Einrückungen (nur Leerzeichen, keine Tabs)
 - Überprüfen Sie Doppelpunkte nach Schlüsseln
 - Überprüfen Sie Anführungszeichen für Strings
 
-**Beispiel-Fehler:**
-
-### "Sensor nicht gefunden"
-
-**Ursache**: Der konfigurierte Sensor existiert nicht oder ist nicht verfügbar
-
-**Lösung**:
-- Überprüfen Sie, ob der Sensor in Home Assistant existiert (Dev-Tools)
-- Überprüfen Sie die Entity-ID (Groß-/Kleinschreibung beachten)
-- Überprüfen Sie die Logs auf Fehlermeldungen
 
 ## Validierung
 
@@ -353,6 +350,8 @@ Die Integration validiert die Konfiguration automatisch beim Start:
 - **Log-Meldungen**: Alle Probleme werden in den Logs protokolliert
 
 **Tipp**: Überprüfen Sie die Home Assistant Logs nach jedem Neustart, um Konfigurationsfehler frühzeitig zu erkennen.
+
+**Tipp**: Sollten Sie zu viele Fehler haben nach der Änderung an der Datei, Sie können die Datei ganz löschen, sie wird beim Neustart der Integration neu angelegt. Damit sind alle Ihre Konfigurationen auf den Default zurück gesetzt.
 
 ## Nächste Schritte
 

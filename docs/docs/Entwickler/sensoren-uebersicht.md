@@ -24,14 +24,14 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 |-----------|-----------|----------|-------|-------------|--------------|------|
 | `eu08l_ambient_error_number` | `ambient_error_number` | 0 | 1 | total | - | Ambient Error Number |
 | `eu08l_ambient_operating_state` | `ambient_operating_state` | 1 | 1 | - | - | Ambient Operating State |
-| `eu08l_ambient_temperature` | `ambient_temperature` | 2 | 0.1 | measurement | - | Ambient Temperature |
-| `eu08l_ambient_temperature_1h` | `ambient_temperature_1h` | 3 | 0.1 | measurement | - | Ambient Temperature 1h |
-| `eu08l_ambient_temperature_calculated` | `ambient_temperature_calculated` | 4 | 0.1 | measurement | - | Ambient Temperature Calculated |
+| `eu08l_ambient_temperature` | `ambient_temperature` | 2 | 0.1 | measurement | temperature | Ambient Temperature |
+| `eu08l_ambient_temperature_1h` | `ambient_temperature_1h` | 3 | 0.1 | measurement | temperature | Ambient Temperature 1h |
+| `eu08l_ambient_temperature_calculated` | `ambient_temperature_calculated` | 4 | 0.1 | measurement | temperature | Ambient Temperature Calculated |
 | `eu08l_emgr_error_number` | `emgr_error_number` | 100 | 1 | total | - | E-Manager Error Number |
 | `eu08l_emgr_operating_state` | `emgr_operating_state` | 101 | 1 | - | - | E-Manager Operating State |
-| `eu08l_emgr_actual_power` | `emgr_actual_power` | 102 | 1 | measurement | - | E-Manager Actual Power |
-| `eu08l_emgr_actual_power_consumption` | `emgr_actual_power_consumption` | 103 | 1 | measurement | - | E-Manager Power Consumption |
-| `eu08l_emgr_power_consumption_setpoint` | `emgr_power_consumption_setpoint` | 104 | 1 | measurement | - | E-Manager Power Consumption Setpoint |
+| `eu08l_emgr_actual_power` | `emgr_actual_power` | 102 | 1 | measurement | power | E-Manager Actual Power |
+| `eu08l_emgr_actual_power_consumption` | `emgr_actual_power_consumption` | 103 | 1 | measurement | power | E-Manager Power Consumption |
+| `eu08l_emgr_power_consumption_setpoint` | `emgr_power_consumption_setpoint` | 104 | 1 | measurement | power | E-Manager Power Consumption Setpoint |
 
 
 ## Heat Pump (Wärmepumpe)
@@ -44,23 +44,23 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 | `eu08l_hp1_error_number` | `error_number` | 1 | 1 | total | - | Error Number |
 | `eu08l_hp1_state` | `state` | 2 | 1 | - | - | State |
 | `eu08l_hp1_operating_state` | `operating_state` | 3 | 1 | - | - | Operating State |
-| `eu08l_hp1_flow_line_temperature` | `flow_line_temperature` | 4 | 0.01 | measurement | - | Flow Line Temperature |
-| `eu08l_hp1_return_line_temperature` | `return_line_temperature` | 5 | 0.01 | measurement | - | Return Line Temperature |
+| `eu08l_hp1_flow_line_temperature` | `flow_line_temperature` | 4 | 0.01 | measurement | temperature | Flow Line Temperature |
+| `eu08l_hp1_return_line_temperature` | `return_line_temperature` | 5 | 0.01 | measurement | temperature | Return Line Temperature |
 | `eu08l_hp1_volume_flow_heat_sink` | `volume_flow_heat_sink` | 6 | 1 | total | - | Volume Flow Heat Sink |
-| `eu08l_hp1_energy_source_inlet_temperature` | `energy_source_inlet_temperature` | 7 | 0.01 | measurement | - | Energy Source Inlet Temperature |
-| `eu08l_hp1_energy_source_outlet_temperature` | `energy_source_outlet_temperature` | 8 | 0.01 | measurement | - | Energy Source Outlet Temperature |
+| `eu08l_hp1_energy_source_inlet_temperature` | `energy_source_inlet_temperature` | 7 | 0.01 | measurement | temperature | Energy Source Inlet Temperature |
+| `eu08l_hp1_energy_source_outlet_temperature` | `energy_source_outlet_temperature` | 8 | 0.01 | measurement | temperature | Energy Source Outlet Temperature |
 | `eu08l_hp1_volume_flow_energy_source` | `volume_flow_energy_source` | 9 | 0.01 | total | - | Volume Flow Energy Source |
 | `eu08l_hp1_compressor_unit_rating` | `compressor_unit_rating` | 10 | 0.01 | total | - | Compressor Unit Rating |
-| `eu08l_hp1_actual_heating_capacity` | `actual_heating_capacity` | 11 | 0.1 | total | - | Actual Heating Capacity |
-| `eu08l_hp1_inverter_power_consumption` | `inverter_power_consumption` | 12 | 1 | measurement | - | Inverter Power Consumption |
+| `eu08l_hp1_actual_heating_capacity` | `actual_heating_capacity` | 11 | 0.1 | measurement | power | Actual Heating Capacity |
+| `eu08l_hp1_inverter_power_consumption` | `inverter_power_consumption` | 12 | 1 | measurement | power | Inverter Power Consumption |
 | `eu08l_hp1_cop` | `cop` | 13 | 0.01 | total | - | COP |
 | `eu08l_hp1_request_type` | `request_type` | 15 | 1 | total | - | Request-Type |
-| `eu08l_hp1_requested_flow_line_temperature` | `requested_flow_line_temperature` | 16 | 0.1 | measurement | - | Requested Flow Line Temperature |
-| `eu08l_hp1_requested_return_line_temperature` | `requested_return_line_temperature` | 17 | 0.1 | measurement | - | Requested Return Line Temperature |
-| `eu08l_hp1_requested_flow_to_return_line_temperature_difference` | `requested_flow_to_return_line_temperature_difference` | 18 | 0.1 | measurement | - | Requested Flow to Return Line Temperature Difference |
+| `eu08l_hp1_requested_flow_line_temperature` | `requested_flow_line_temperature` | 16 | 0.1 | measurement | temperature | Requested Flow Line Temperature |
+| `eu08l_hp1_requested_return_line_temperature` | `requested_return_line_temperature` | 17 | 0.1 | measurement | temperature | Requested Return Line Temperature |
+| `eu08l_hp1_requested_flow_to_return_line_temperature_difference` | `requested_flow_to_return_line_temperature_difference` | 18 | 0.1 | measurement | temperature | Requested Flow to Return Line Temperature Difference |
 | `eu08l_hp1_relais_state_2nd_heating_stage` | `relais_state_2nd_heating_stage` | 19 | 1 | - | - | Relais State 2nd Heating Stage |
-| `eu08l_hp1_compressor_power_consumption_accumulated` | `compressor_power_consumption_accumulated` | 20 | 1 | total_increasing | - | Compressor Power Consumption Accumulated |
-| `eu08l_hp1_compressor_thermal_energy_output_accumulated` | `compressor_thermal_energy_output_accumulated` | 22 | 1 | total_increasing | - | Compressor Thermal Energy Output Accumulated |
+| `eu08l_hp1_compressor_power_consumption_accumulated` | `compressor_power_consumption_accumulated` | 20 | 1 | total_increasing | energy | Compressor Power Consumption Accumulated |
+| `eu08l_hp1_compressor_thermal_energy_output_accumulated` | `compressor_thermal_energy_output_accumulated` | 22 | 1 | total_increasing | energy | Compressor Thermal Energy Output Accumulated |
 | `eu08l_hp1_config_parameter_24` | `config_parameter_24` | 24 | 1 | measurement | - | Unknown Parameter (R1024) |
 | `eu08l_hp1_vda_rating` | `vda_rating` | 25 | 0.01 | measurement | - | VdA Rating |
 | `eu08l_hp1_hot_gas_temperature` | `hot_gas_temperature` | 26 | 0.01 | measurement | temperature | Hot Gas Temperature |
@@ -159,12 +159,12 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 |-----------|-----------|----------|-------|-------------|--------------|------|
 | `eu08l_boil1_error_number` | `error_number` | 0 | 1 | total | - | Error Number |
 | `eu08l_boil1_operating_state` | `operating_state` | 1 | 1 | - | - | Operating State |
-| `eu08l_boil1_actual_high_temperature` | `actual_high_temperature` | 2 | 0.1 | measurement | - | Actual High Temperature |
-| `eu08l_boil1_actual_low_temperature` | `actual_low_temperature` | 3 | 0.1 | measurement | - | Actual Low Temperature |
-| `eu08l_boil1_actual_circulation_temperature` | `actual_circulation_temperature` | 4 | 0.1 | measurement | - | Actual Circulation Temperature |
+| `eu08l_boil1_actual_high_temperature` | `actual_high_temperature` | 2 | 0.1 | measurement | temperature | Actual High Temperature |
+| `eu08l_boil1_actual_low_temperature` | `actual_low_temperature` | 3 | 0.1 | measurement | temperature | Actual Low Temperature |
+| `eu08l_boil1_actual_circulation_temperature` | `actual_circulation_temperature` | 4 | 0.1 | measurement | temperature | Actual Circulation Temperature |
 | `eu08l_boil1_actual_circulation_pump_state` | `actual_circulation_pump_state` | 5 | 1 | - | - | Circulation Pump State |
-| `eu08l_boil1_maximum_boiler_temperature` | `maximum_boiler_temperature` | 50 | 0.1 | measurement | - | Maximum Temperature |
-| `eu08l_boil1_target_high_temperature` | `target_high_temperature` | 50 | 0.1 | measurement | - | Target High Temperature |
+| `eu08l_boil1_maximum_boiler_temperature` | `maximum_boiler_temperature` | 50 | 0.1 | measurement | temperature | Maximum Temperature |
+| `eu08l_boil1_target_high_temperature` | `target_high_temperature` | 50 | 0.1 | measurement | temperature | Target High Temperature |
 
 
 ## Buffer (Pufferspeicher)
@@ -175,15 +175,15 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 |-----------|-----------|----------|-------|-------------|--------------|------|
 | `eu08l_buff1_error_number` | `error_number` | 0 | 1 | total | - | Error Number |
 | `eu08l_buff1_operating_state` | `operating_state` | 1 | 1 | - | - | Operating State |
-| `eu08l_buff1_actual_high_temperature` | `actual_high_temperature` | 2 | 0.1 | measurement | - | Actual High Temperature |
-| `eu08l_buff1_actual_low_temperature` | `actual_low_temperature` | 3 | 0.1 | measurement | - | Actual Low Temperature |
-| `eu08l_buff1_buffer_temperature_high_setpoint` | `buffer_temperature_high_setpoint` | 4 | 0.1 | measurement | - | Buffer High Temperature Setpoint |
+| `eu08l_buff1_actual_high_temperature` | `actual_high_temperature` | 2 | 0.1 | measurement | temperature | Actual High Temperature |
+| `eu08l_buff1_actual_low_temperature` | `actual_low_temperature` | 3 | 0.1 | measurement | temperature | Actual Low Temperature |
+| `eu08l_buff1_buffer_temperature_high_setpoint` | `buffer_temperature_high_setpoint` | 4 | 0.1 | measurement | temperature | Buffer High Temperature Setpoint |
 | `eu08l_buff1_request_type` | `request_type` | 5 | 1 | - | - | Request Type |
-| `eu08l_buff1_request_flow_line_temp_setpoint` | `request_flow_line_temp_setpoint` | 6 | 0.1 | measurement | - | Flow Line Temperature Setpoint |
-| `eu08l_buff1_request_return_line_temp_setpoint` | `request_return_line_temp_setpoint` | 7 | 0.1 | measurement | - | Return Line Temperature Setpoint |
+| `eu08l_buff1_request_flow_line_temp_setpoint` | `request_flow_line_temp_setpoint` | 6 | 0.1 | measurement | temperature | Flow Line Temperature Setpoint |
+| `eu08l_buff1_request_return_line_temp_setpoint` | `request_return_line_temp_setpoint` | 7 | 0.1 | measurement | temperature | Return Line Temperature Setpoint |
 | `eu08l_buff1_request_heat_sink_temp_diff_setpoint` | `request_heat_sink_temp_diff_setpoint` | 8 | 0.1 | measurement | - | Heat Sink Temperature Difference Setpoint |
-| `eu08l_buff1_modbus_request_heating_capacity` | `modbus_request_heating_capacity` | 9 | 0.1 | measurement | - | Requested Heating Capacity |
-| `eu08l_buff1_maximum_buffer_temp` | `maximum_buffer_temp` | 50 | 0.1 | measurement | - | Maximum Temperature |
+| `eu08l_buff1_modbus_request_heating_capacity` | `modbus_request_heating_capacity` | 9 | 0.1 | measurement | power | Requested Heating Capacity |
+| `eu08l_buff1_maximum_buffer_temp` | `maximum_buffer_temp` | 50 | 0.1 | measurement | temperature | Maximum Temperature |
 
 
 ## Solar (Solarmodul)
@@ -194,12 +194,12 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 |-----------|-----------|----------|-------|-------------|--------------|------|
 | `eu08l_sol1_error_number` | `error_number` | 0 | 1 | total | - | Error Number |
 | `eu08l_sol1_operating_state` | `operating_state` | 1 | 1 | - | - | Operating State |
-| `eu08l_sol1_collector_temperature` | `collector_temperature` | 2 | 0.1 | measurement | - | Collector Temperature |
-| `eu08l_sol1_storage_temperature` | `storage_temperature` | 3 | 0.1 | measurement | - | Storage Temperature |
-| `eu08l_sol1_power_current` | `power_current` | 4 | 0.1 | measurement | - | Power Current |
-| `eu08l_sol1_energy_total` | `energy_total` | 5 | 1 | total_increasing | - | Energy Total |
-| `eu08l_sol1_maximum_buffer_temperature` | `maximum_buffer_temperature` | 50 | 0.1 | measurement | - | Maximum Buffer Temperature |
-| `eu08l_sol1_buffer_changeover_temperature` | `buffer_changeover_temperature` | 51 | 0.1 | measurement | - | Buffer Changeover Temperature |
+| `eu08l_sol1_collector_temperature` | `collector_temperature` | 2 | 0.1 | measurement | temperature | Collector Temperature |
+| `eu08l_sol1_storage_temperature` | `storage_temperature` | 3 | 0.1 | measurement | temperature | Storage Temperature |
+| `eu08l_sol1_power_current` | `power_current` | 4 | 0.1 | measurement | power | Power Current |
+| `eu08l_sol1_energy_total` | `energy_total` | 5 | 1 | total_increasing | energy | Energy Total |
+| `eu08l_sol1_maximum_buffer_temperature` | `maximum_buffer_temperature` | 50 | 0.1 | measurement | temperature | Maximum Buffer Temperature |
+| `eu08l_sol1_buffer_changeover_temperature` | `buffer_changeover_temperature` | 51 | 0.1 | measurement | temperature | Buffer Changeover Temperature |
 
 
 ## Heating Circuit (Heizkreis)
@@ -210,15 +210,15 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 |-----------|-----------|----------|-------|-------------|--------------|------|
 | `eu08l_hc1_error_number` | `error_number` | 0 | 1 | total | - | Error Number |
 | `eu08l_hc1_operating_state` | `operating_state` | 1 | 1 | - | - | Operating State |
-| `eu08l_hc1_flow_line_temperature` | `flow_line_temperature` | 2 | 0.1 | measurement | - | Flow Line Temperature |
-| `eu08l_hc1_return_line_temperature` | `return_line_temperature` | 3 | 0.1 | measurement | - | Return Line Temperature |
-| `eu08l_hc1_room_device_temperature` | `room_device_temperature` | 4 | 0.1 | measurement | - | Room Device Temperature |
-| `eu08l_hc1_set_flow_line_temperature` | `set_flow_line_temperature` | 5 | 0.1 | measurement | - | Set Flow Line Temperature |
+| `eu08l_hc1_flow_line_temperature` | `flow_line_temperature` | 2 | 0.1 | measurement | temperature | Flow Line Temperature |
+| `eu08l_hc1_return_line_temperature` | `return_line_temperature` | 3 | 0.1 | measurement | temperature | Return Line Temperature |
+| `eu08l_hc1_room_device_temperature` | `room_device_temperature` | 4 | 0.1 | measurement | temperature | Room Device Temperature |
+| `eu08l_hc1_set_flow_line_temperature` | `set_flow_line_temperature` | 5 | 0.1 | measurement | temperature | Set Flow Line Temperature |
 | `eu08l_hc1_operating_mode` | `operating_mode` | 6 | 1 | - | - | Operating Mode |
-| `eu08l_hc1_target_temp_flow_line` | `target_temp_flow_line` | 7 | 0.1 | measurement | - | Target Flow Line Temperature |
-| `eu08l_hc1_set_flow_line_offset_temperature` | `set_flow_line_offset_temperature` | 50 | 0.1 | measurement | - | Set Flow Line Offset Temperature |
-| `eu08l_hc1_target_room_temperature` | `target_room_temperature` | 51 | 0.1 | measurement | - | Target Room Temperature |
-| `eu08l_hc1_set_cooling_mode_room_temperature` | `set_cooling_mode_room_temperature` | 52 | 0.1 | measurement | - | Set Cooling Mode Room Temperature |
+| `eu08l_hc1_target_temp_flow_line` | `target_temp_flow_line` | 7 | 0.1 | measurement | temperature | Target Flow Line Temperature |
+| `eu08l_hc1_set_flow_line_offset_temperature` | `set_flow_line_offset_temperature` | 50 | 0.1 | measurement | temperature | Set Flow Line Offset Temperature |
+| `eu08l_hc1_target_room_temperature` | `target_room_temperature` | 51 | 0.1 | measurement | temperature | Target Room Temperature |
+| `eu08l_hc1_set_cooling_mode_room_temperature` | `set_cooling_mode_room_temperature` | 52 | 0.1 | measurement | temperature | Set Cooling Mode Room Temperature |
 
 ### Berechnet (1 Sensoren)
 
