@@ -70,8 +70,11 @@ Beide Typen werden nach Betriebsart (heating, hot_water, cooling, defrost) und Z
    - Unterstützt sowohl elektrische als auch thermische Sensoren
 
 4. **Entities** speichern Werte:
-   - `LambdaEnergyConsumptionSensor` speichert Total-Wert
-   - Berechnet daily/monthly/yearly aus Total-Wert
+   - `LambdaEnergyConsumptionSensor` speichert Total-Wert in `_energy_value`
+   - Berechnet daily/monthly/yearly aus Total-Wert: `native_value = _energy_value - _yesterday_value` (bzw. previous_monthly/yearly)
+   - **Persistierung:** Gespeichert wird der **State** (= Anzeige-Wert). Bei Daily/Monthly/Yearly muss beim Restore der kumulative Total aus diesem Wert rekonstruiert oder aus dem Attribut `energy_value` gelesen werden (siehe Abschnitt „Negative Daily/Monthly/Yearly-Werte“).
+
+**Einheitliches Delta-Verfahren:** Elektrische und thermische Sensoren nutzen dasselbe Berechnungsmodell (Delta zum Vortag bzw. Vormonat/Vorjahr): Daily = Total - Yesterday, Monthly = Total - Previous Monthly, Yearly = Total - Previous Yearly. Dieselbe Logik in `LambdaEnergyConsumptionSensor` und `increment_energy_consumption_counter` gilt für beide.
 
 ## Implementierung
 
@@ -298,6 +301,14 @@ def _convert_energy_to_kwh_cached(self, value, unit):
 - **Total-Werte**: Werden in `LambdaEnergyConsumptionSensor` gespeichert (RestoreEntity)
 - **Last Readings**: Werden im Coordinator gespeichert (`_last_energy_reading`, `_last_thermal_energy_reading`)
 - **JSON-Persistierung**: Coordinator speichert Werte in `cycle_energy_persist.json`
+- **Energy-Sensor-States**: Zusätzlich zu HA-Restore werden die Energy-Sensor-States (Total, Daily, Monthly, Yearly für elektrisch und thermisch) in `cycle_energy_persist.json` unter dem Schlüssel `energy_sensor_states` gespeichert; beim Neustart hat diese Quelle Vorrang, damit Anzeigewerte nicht fallen (z. B. 0,44 → 0,4).
+
+### Neustart-Werterhalt
+
+1. **`set_energy_value()` verringert nie**: Der gespeicherte Wert wird nicht verringert (vermeidet Überschreiben durch veraltete Coordinator-/Total-Werte nach Neustart).
+2. **Kein Fallback-`async_set`**: Kann der Coordinator die Entity-Referenz nicht auflösen, wird kein `async_set` mit möglicherweise veraltetem State ausgeführt.
+3. **`native_value` auf 2 Dezimalstellen gerundet**: Vermeidet Float-Artefakte im persistierten State (z. B. 0,39999… statt 0,44).
+4. **State aus `cycle_energy_persist` bevorzugt**: Nach `restore_state(last_state)` wird, falls der Coordinator einen State aus `cycle_energy_persist` für diese Entity hat, dieser angewendet (`_apply_persisted_energy_state`).
 
 ## Konfiguration
 
@@ -350,6 +361,25 @@ if current_energy_kwh < last_energy:
     last_reading_dict[f"hp{hp_idx}"] = None
     return
 ```
+
+### Negative Daily/Monthly/Yearly-Werte (Restore-Bug)
+
+**Symptom:** `current_daily_value` (bzw. monthly/yearly) wird nach Neustart negativ angezeigt (z. B. -1305.88 kWh).
+
+**Ursache:** Beim Persistieren speichert Home Assistant den **State** der Entity. Bei Daily-Sensoren ist der State der **Anzeige-Wert** (`native_value` = `_energy_value - _yesterday_value`), nicht der kumulative Total `_energy_value`. Beim Restore wurde früher `_energy_value = float(last_state.state)` gesetzt – also der Tageswert statt des Totals. Zusammen mit dem korrekt aus Attributen wiederhergestellten `_yesterday_value` ergibt sich dann: `current_daily_value = _energy_value - _yesterday_value` = (kleiner Tageswert) - (großer Vortag) = negativ.
+
+**Lösung in der Implementierung:**
+
+- Beim **Restore** von Daily/Monthly/Yearly-Sensoren wird `_energy_value` nicht mehr aus `last_state.state` übernommen, sondern rekonstruiert:
+  - **Daily:** `_energy_value = _yesterday_value + angezeigter State` (bzw. aus Attribut `energy_value`, falls persistiert).
+  - **Monthly/Yearly:** analog mit `_previous_monthly_value` / `_previous_yearly_value`.
+- Der kumulative Total wird in den Attributen als `energy_value` mitpersistiert; beim nächsten Restore wird er direkt aus diesem Attribut gelesen, falls vorhanden.
+
+Die Anzeige bleibt durch `native_value = max(0.0, _energy_value - _yesterday_value)` nach unten auf 0 begrenzt; durch die korrigierte Restore-Logik stimmen die internen Werte wieder und negative Werte treten nicht mehr auf.
+
+### Migration Electrical (erstes Release)
+
+Beim ersten Start nach einem Update werden bestehende **elektrische** Daily-/Monthly-/Yearly-Sensoren beim Umstieg auf das Delta-Verfahren einmalig migriert: Fehlt in den persistierten Daten das Attribut **`energy_value`**, werden die Werte aus dem zugehörigen Total-Sensor abgeleitet (`restore_state()` nutzt `last_state.state` als Anzeigewert und setzt, falls der Total-Sensor verfügbar ist, `_energy_value` und `_yesterday_value` bzw. `_previous_monthly_value` / `_previous_yearly_value` entsprechend). Der angezeigte Tages-/Monats-/Jahreswert bleibt erhalten, keine negativen Werte. Danach greift die normale Restore-Logik (mit persistiertem `energy_value`). Thermische Sensoren benötigen diese Migration nicht (sie wurden mit dem Delta-Verfahren eingeführt).
 
 ## Erweiterungen
 

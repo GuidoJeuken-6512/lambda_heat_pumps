@@ -37,6 +37,9 @@ python -m pytest tests/test_monthly_yearly_*.py -v
 # Spezifische Tests
 python -m pytest tests/test_monthly_yearly_energy_sensors.py -v
 python -m pytest tests/test_energy_periods_fix.py -v
+
+# Neustart-Werterhalt und Migration (Delta-Verfahren)
+python -m pytest tests/test_energy_restart_and_migration.py -v
 ```
 
 ### 3. Konfiguration

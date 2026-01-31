@@ -92,6 +92,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._energy_consumption = {}   # {hp_index: {mode: {period: value}}}
         self._energy_sensor_configs = {}  # Sensor-Konfigurationen aus Config (optional)
         self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung
+        self._energy_sensor_states = {}  # {entity_id: {state, energy_value, yesterday_value, ...}} aus cycle_energy_persist
         self._energy_unit_cache = {}  # {hp_index: unit_string} - Memory-only cache for performance
         self._energy_first_value_seen = {}  # {hp_index: bool} - In-Memory Flag für Zero-Value Protection
         self._last_thermal_energy_reading = {}  # {hp_index: last_kwh_value} for thermal
@@ -246,7 +247,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     # Stelle sicher, dass alle wichtigen Felder existieren
                     required_fields = [
                         "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "energy_offsets"
+                        "energy_consumption", "last_energy_readings", "energy_offsets",
+                        "energy_sensor_states",
                     ]
                     for field in required_fields:
                         if field not in data:
@@ -290,7 +292,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     # Stelle sicher, dass alle wichtigen Felder existieren
                     required_fields = [
                         "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "energy_offsets", "sensor_ids"
+                        "energy_consumption", "last_energy_readings", "energy_offsets", "sensor_ids",
+                        "energy_sensor_states",
                     ]
                     for field in required_fields:
                         if field not in data:
@@ -363,6 +366,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             
             sensor_ids_to_save = await self.hass.async_add_executor_job(_read_existing_sensor_ids)
         
+        # Energy-Sensor-States aus Entities sammeln (electrical + thermal, alle Perioden)
+        energy_sensor_states_to_save = self._collect_energy_sensor_states()
+
         data = {
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
@@ -372,6 +378,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "last_energy_readings": self._last_energy_reading,
             "energy_offsets": self._energy_offsets,
             "sensor_ids": sensor_ids_to_save,
+            "energy_sensor_states": energy_sensor_states_to_save,
         }
 
         def _write_data():
@@ -394,6 +401,37 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         if not self._initialization_complete:
             self._initialization_complete = True
             _LOGGER.info("Coordinator-Initialisierung abgeschlossen - Flankenerkennung aktiviert")
+
+    def _collect_energy_sensor_states(self):
+        """Sammle State + Attribute aller Energy-Consumption-Entities für Persist (electrical + thermal)."""
+        out = {}
+        try:
+            comp = self.hass.data.get("lambda_heat_pumps", {}).get(self.entry.entry_id, {})
+            entities = comp.get("energy_entities", {})
+            for entity_id, ent in entities.items():
+                if not hasattr(ent, "_energy_value"):
+                    continue
+                state_val = ent.native_value
+                if state_val is None:
+                    continue
+                attrs = {
+                    "energy_value": round(getattr(ent, "_energy_value", 0), 2),
+                    "yesterday_value": round(getattr(ent, "_yesterday_value", 0), 2),
+                    "previous_monthly_value": round(getattr(ent, "_previous_monthly_value", 0), 2),
+                    "previous_yearly_value": round(getattr(ent, "_previous_yearly_value", 0), 2),
+                }
+                out[entity_id] = {"state": round(float(state_val), 2), "attributes": attrs}
+        except Exception as e:
+            _LOGGER.debug("Collect energy_sensor_states: %s", e)
+        return out
+
+    def get_energy_sensor_persisted_state(self, entity_id):
+        """Liefert den aus cycle_energy_persist geladenen State für eine Entity (oder None)."""
+        return self._energy_sensor_states.get(entity_id)
+
+    def set_energy_persist_dirty(self):
+        """Markiert Persist als geändert, damit Energy-States beim nächsten Schreibzyklus mit gespeichert werden."""
+        self._persist_dirty = True
 
     async def _load_offsets_and_persisted(self):
         # Lade Offsets aus lambda_wp_config.yaml über das zentrale Config-System
@@ -445,9 +483,37 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Lade persistierte Energy Consumption Daten
         self._energy_consumption = data.get("energy_consumption", {})
-        self._last_energy_reading = data.get("last_energy_readings", {})
         self._sensor_ids = data.get("sensor_ids", {})
+        self._energy_sensor_states = data.get("energy_sensor_states", {})
         # Energy Offsets werden bereits aus der Config geladen
+
+        # last_energy_reading: Bei Sensor-Wechsel sofort auf None setzen (bevor es verwendet wird),
+        # damit kein falsches Delta (alter last + neuer Sensor) addiert wird – verhindert Sprung/Spike.
+        loaded_last = data.get("last_energy_readings", {})
+        corrected_last = dict(loaded_last)
+        from .utils import detect_sensor_change, get_stored_sensor_id
+        all_hp_keys = set(self._energy_sensor_configs.keys()) | set(self._sensor_ids.keys())
+        persist_data = {"sensor_ids": self._sensor_ids}
+        for hp_key in all_hp_keys:
+            try:
+                hp_idx = int(hp_key.replace("hp", ""))
+            except (ValueError, AttributeError):
+                continue
+            current_sensor_id = None
+            if hp_key in self._energy_sensor_configs:
+                current_sensor_id = self._energy_sensor_configs[hp_key].get("sensor_entity_id")
+            if not current_sensor_id:
+                name_prefix = self.entry.data.get("name", "eu08l")
+                current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+            stored_sensor_id = get_stored_sensor_id(persist_data, hp_idx)
+            if detect_sensor_change(stored_sensor_id, current_sensor_id):
+                corrected_last[hp_key] = None
+                self._energy_first_value_seen[hp_key] = False
+                _LOGGER.info(
+                    "SENSOR-CHANGE-DETECTION: %s last_energy_reading sofort auf None gesetzt (Sensor-Wechsel, verhindert Delta-Sprung)",
+                    hp_key,
+                )
+        self._last_energy_reading = corrected_last
         
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Geladene sensor_ids: {self._sensor_ids}")
         

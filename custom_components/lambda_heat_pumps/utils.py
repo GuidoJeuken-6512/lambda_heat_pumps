@@ -1460,15 +1460,12 @@ async def increment_energy_consumption_counter(
                     f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
                 )
         else:
-            # Fallback: State setzen
-            _LOGGER.debug(f"Using fallback state update for {entity_id}")
-            hass.states.async_set(
-                entity_id, new_value, state_obj.attributes if state_obj else {}
+            # Ohne Entity-Referenz kein async_set: state_obj liefert oft alten Wert nach Neustart
+            # (z. B. Total 220,25 statt 220,84) und würde Restore-Wert überschreiben.
+            _LOGGER.debug(
+                f"Skip update for {entity_id} (period={period}, entity not found, "
+                f"restored value will be used until next run)"
             )
-            if abs(new_value - current_value) > 0.001:
-                changes_summary.append(
-                    f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
-                )
 
         # Optional: Entity zum Update zwingen
         try:
