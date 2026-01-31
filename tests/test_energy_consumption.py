@@ -10,6 +10,7 @@ from custom_components.lambda_heat_pumps.utils import (
     convert_energy_to_kwh,
     calculate_energy_delta,
     generate_energy_sensor_names,
+    generate_sensor_names,
     increment_energy_consumption_counter,
     get_energy_consumption_sensor_template,
     validate_energy_consumption_config,
@@ -332,10 +333,22 @@ class TestIncrementEnergyConsumptionCounter:
 
     @pytest.mark.asyncio
     async def test_increment_with_valid_entity(self, mock_hass, mock_entity_registry, mock_state):
-        """Test increment with valid entity."""
-        # Setup mocks
+        """Test increment with valid entity (Entity in hass.data → set_energy_value wird aufgerufen)."""
         mock_hass.states.get.return_value = mock_state
-        
+
+        # Energy-Entities registrieren, damit Coordinator sie findet (kein Fallback async_set)
+        energy_entities = {}
+        for period in ["total", "daily", "monthly", "yearly", "2h", "4h"]:
+            names = generate_sensor_names(
+                "hp1", f"Heating Energy {period.title()}", f"heating_energy_{period}",
+                "eu08l", True,
+            )
+            mock_ent = Mock()
+            mock_ent._energy_value = 100.5
+            mock_ent.set_energy_value = Mock()
+            energy_entities[names["entity_id"]] = mock_ent
+        mock_hass.data["lambda_heat_pumps"] = {"test_entry_id": {"energy_entities": energy_entities}}
+
         with patch('custom_components.lambda_heat_pumps.utils.async_get_entity_registry', return_value=mock_entity_registry):
             with patch('custom_components.lambda_heat_pumps.utils.async_update_entity'):
                 await increment_energy_consumption_counter(
@@ -347,9 +360,9 @@ class TestIncrementEnergyConsumptionCounter:
                     use_legacy_modbus_names=True,
                     energy_offsets=None,
                 )
-        
-        # Verify state was updated
-        mock_hass.states.async_set.assert_called()
+
+        # Entity wurde per set_energy_value aktualisiert (kein async_set-Fallback)
+        assert any(ent.set_energy_value.called for ent in energy_entities.values())
 
     @pytest.mark.asyncio
     async def test_increment_with_nonexistent_entity(self, mock_hass, mock_entity_registry):
@@ -421,16 +434,28 @@ class TestIncrementEnergyConsumptionCounter:
 
     @pytest.mark.asyncio
     async def test_increment_with_offsets(self, mock_hass, mock_entity_registry, mock_state):
-        """Test increment with energy offsets."""
-        # Setup mocks
+        """Test increment with energy offsets (Entity in hass.data → set_energy_value)."""
         mock_hass.states.get.return_value = mock_state
-        
+
+        energy_entities = {}
+        for period in ["total", "daily", "monthly", "yearly", "2h", "4h"]:
+            names = generate_sensor_names(
+                "hp1", f"Heating Energy {period.title()}", f"heating_energy_{period}",
+                "eu08l", True,
+            )
+            mock_ent = Mock()
+            mock_ent._energy_value = 100.5
+            mock_ent._applied_offset = 0.0
+            mock_ent.set_energy_value = Mock()
+            energy_entities[names["entity_id"]] = mock_ent
+        mock_hass.data["lambda_heat_pumps"] = {"test_entry_id": {"energy_entities": energy_entities}}
+
         energy_offsets = {
             "hp1": {
                 "heating_energy_total": 100.0,
             }
         }
-        
+
         with patch('custom_components.lambda_heat_pumps.utils.async_get_entity_registry', return_value=mock_entity_registry):
             with patch('custom_components.lambda_heat_pumps.utils.async_update_entity'):
                 await increment_energy_consumption_counter(
@@ -442,9 +467,9 @@ class TestIncrementEnergyConsumptionCounter:
                     use_legacy_modbus_names=True,
                     energy_offsets=energy_offsets,
                 )
-        
-        # Verify state was updated with offset
-        mock_hass.states.async_set.assert_called()
+
+        # Entity wurde per set_energy_value aktualisiert (Offset nur für Total)
+        assert any(ent.set_energy_value.called for ent in energy_entities.values())
 
 
 class TestEnergyConsumptionConstants:

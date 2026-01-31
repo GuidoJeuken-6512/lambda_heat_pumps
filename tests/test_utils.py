@@ -638,7 +638,8 @@ class TestGenerateSensorNames:
             translations=translations,
         )
         
-        assert result_compressor["name"] == "HP1 Kompressor Starts Gesamt"
+        # Mit has_entity_name wird der Gerätename nicht in name gepackt (Name = "Kompressor Starts Gesamt")
+        assert result_compressor["name"] == "Kompressor Starts Gesamt"
 
     def test_generate_sensor_names_missing_translation_warning(self, caplog):
         """Ensure missing translations trigger a one-time warning."""

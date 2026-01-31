@@ -249,21 +249,25 @@ class TestLambdaEnergyConsumptionSensor:
             period="daily",
         )
         
-        # Mock last state
+        # Mock last state (attributes als echtes Dict, sonst float(attrs.get(...)) → Mock)
         last_state = Mock()
         last_state.state = "50.0"
+        last_state.attributes = {"applied_offset": 0.0}
         daily_sensor.async_get_last_state = AsyncMock(return_value=last_state)
-        
+        # Total-Sensor nicht verfügbar → Restore rekonstruiert _energy_value = yesterday + 50 = 50
+        daily_sensor.hass.states.get = Mock(return_value=None)
+
         # Patch async_write_ha_state to avoid integration issues
         with patch.object(daily_sensor, 'async_write_ha_state', new_callable=MagicMock):
-            # Mock dispatcher connect
+            # Mock dispatcher connect + Coordinator (kein Persist-State)
             with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect') as mock_connect:
-                await daily_sensor.async_added_to_hass()
+                with patch.object(daily_sensor, '_get_energy_sensor_persisted_state_from_coordinator', return_value=None):
+                    await daily_sensor.async_added_to_hass()
             
             # Verify dispatcher was connected (daily sensors register for reset signals)
             mock_connect.assert_called_once()
             
-            # Verify restore_state was called
+            # Verify restore_state: ohne Total → _energy_value = yesterday + displayed = 0 + 50
             assert daily_sensor._energy_value == 50.0
 
     @pytest.mark.asyncio
@@ -286,6 +290,7 @@ class TestLambdaEnergyConsumptionSensor:
         from unittest.mock import patch, MagicMock
         last_state = Mock()
         last_state.state = "invalid"
+        last_state.attributes = {"applied_offset": 0.0}
         energy_sensor.async_get_last_state = AsyncMock(return_value=last_state)
         
         # Patch async_write_ha_state to avoid integration issues

@@ -242,13 +242,15 @@ async def test_async_update_data_success(mock_hass, mock_entry):
 
 @pytest.mark.asyncio
 async def test_async_update_data_no_client(mock_hass, mock_entry):
-    """Test data update when no client is available."""
+    """Test data update when no client is available (Coordinator liefert weiterhin Data-Dict)."""
     coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
     coordinator.client = None
 
     result = await coordinator._async_update_data()
 
-    assert result is None
+    # Coordinator gibt bei fehlendem Client ein Data-Dict zurück (kein None)
+    assert result is not None
+    assert isinstance(result, dict)
 
 
 @pytest.mark.asyncio
@@ -331,7 +333,7 @@ async def test_dynamic_cycling_warnings(mock_hass, mock_entry):
 
 @pytest.mark.asyncio
 async def test_async_update_data_read_error(mock_hass, mock_entry):
-    """Test data update with read error."""
+    """Test data update with read error (Coordinator liefert weiterhin Data-Dict)."""
     mock_client = AsyncMock()
     mock_result = Mock()
     mock_result.isError.return_value = True
@@ -343,7 +345,9 @@ async def test_async_update_data_read_error(mock_hass, mock_entry):
 
     result = await coordinator._async_update_data()
 
-    assert result is None
+    # Coordinator gibt bei Read-Fehler ein Data-Dict zurück (kein None)
+    assert result is not None
+    assert isinstance(result, dict)
 
 
 @pytest.mark.asyncio
@@ -422,8 +426,11 @@ async def test_load_sensor_overrides_success(mock_hass, mock_entry):
         "sensors_names_override": [{"id": "test_sensor", "override_name": "new_name"}]
     }
 
-    def fake_read_config():
-        return config_data
+    async def run_sync(fn):
+        """Führt synchrone Funktion aus (Ersatz für async_add_executor_job)."""
+        return fn()
+
+    mock_hass.async_add_executor_job = run_sync
 
     with patch(
         "custom_components.lambda_heat_pumps.coordinator.os.path.exists",
