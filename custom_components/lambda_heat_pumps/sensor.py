@@ -351,6 +351,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_yesterday"),
         ("cooling", "cooling_cycling_yesterday"),
         ("defrost", "defrost_cycling_yesterday"),
+        ("compressor_start", "compressor_start_cycling_yesterday"),
     ]
     yesterday_sensor_count = 0
     yesterday_sensor_ids = []

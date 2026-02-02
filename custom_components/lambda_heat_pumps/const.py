@@ -1600,6 +1600,23 @@ CALCULATED_SENSOR_TEMPLATES = {
         "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
+    "compressor_start_cycling_yesterday": {
+        "name": "Compressor Start Cycling Yesterday",
+        "unit": "cycles",
+        "precision": 0,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": None,
+        "operating_state": "compressor_start",
+        "period": "yesterday",
+        "reset_interval": None,
+        "reset_signal": None,
+        "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
+        "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
+    },
 
     # Daily Cycling Sensoren (echte Entities - werden täglich um Mitternacht auf 0 gesetzt)
     "heating_cycling_daily": {
