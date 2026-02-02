@@ -702,19 +702,19 @@ BOIL_SENSOR_TEMPLATES = {
         "writeable": False,
         "txt_mapping": True,
     },
-    "maximum_boiler_temperature": {
-        "relative_address": 50,
-        "name": "Maximum Temperature",
-        "unit": "°C",
-        "scale": 0.1,
-        "precision": 1,
-        "data_type": "int16",
-        "firmware_version": 1,
-        "device_type": "boil",
-        "writeable": True,
-        "state_class": "measurement",
-        "device_class": "temperature",
-    },
+    # "maximum_boiler_temperature": {
+    #     "relative_address": 50,
+    #     "name": "Maximum Temperature",
+    #     "unit": "°C",
+    #     "scale": 0.1,
+    #     "precision": 1,
+    #     "data_type": "int16",
+    #     "firmware_version": 1,
+    #     "device_type": "boil",
+    #     "writeable": True,
+    #     "state_class": "measurement",
+    #     "device_class": "temperature",
+    # },
     
 }
 
