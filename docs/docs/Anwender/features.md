@@ -8,7 +8,7 @@ Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und
 
 ## 🔌 Modbus/TCP Kommunikation
 
-- **Vollständige Modbus/TCP-Unterstützung**: Komplette Kommunikation mit Lambda-Wärmepumpen über das Modbus TCP-Protokoll
+- **Vollständige Modbus/TCP-Unterstützung**: Komplette Kommunikation mit Lambda-Wärmepumpen über das Modbus TCP-Protokoll. Alle Sensoren, die die Lambda über die Modbus Schnittstelle zur Verfügung stellt, sind in der Integration vorhanden.
 - **Asynchrone Modbus-Operationen**: Nicht-blockierende Modbus-Kommunikation für optimale Performance
 - **Automatische Verbindungsverwaltung**: Intelligente Verbindungsverwaltung mit automatischer Wiederverbindung bei Verbindungsabbrüchen
 - **Register-Reihenfolge-Konfiguration**: Konfigurierbare Register-Reihenfolge für 32-Bit-Werte aus mehreren 16-Bit-Registern
@@ -42,7 +42,10 @@ Umfassende Zähler für alle Betriebsmodi:
 
 ### Funktionen
 - **Automatischer Reset**: Tägliche Sensoren werden automatisch um Mitternacht zurückgesetzt
-- **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel oder Zählerrücksetzungen
+- **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel oder Zählerrücksetzungen 
+
+> ⚠️ **Warnung:** Die Offset-Funktion ist aktuell fehlerhaft implementiert und sollte **nicht genutzt werden**! Bitte warten Sie auf ein zukünftiges Release, bevor Sie Offsets verwenden.
+
 
 ## ⚡ Energieverbrauchssensoren
 
@@ -61,6 +64,8 @@ Detaillierte Energieverfolgung nach Betriebsart:
 
 ### Funktionen
 - **Konfigurierbare Quellsensoren**: Beliebige Energiezähler als Datenquelle. Wenn ein externer Stromverbrauchssensor (z.B. Shelly 3EM) vor der Wärmepumpe verbaut wurde, so kann dieser für die Berechnung des Stromverbrauchs benutzt werden. Externe Stromverbrauchssensor sind meist genauer als der interne Sensor der Lambda.
+Weitere Details und eine vollständige Auflistung aller Energieverbrauchssensoren finden Sie hier: [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md)
+
 
 ## 🌡️ Heizkurven-Konfiguration
 
