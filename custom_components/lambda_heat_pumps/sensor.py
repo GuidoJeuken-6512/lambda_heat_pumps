@@ -35,6 +35,8 @@ from .const import (
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
     ENERGY_CONSUMPTION_MODES,
     ENERGY_CONSUMPTION_PERIODS,
+    COP_MODES,
+    COP_PERIODS,
 )
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
@@ -698,14 +700,11 @@ async def async_setup_entry(
                 _LOGGER.debug(f"Created thermal energy consumption sensor: {names['entity_id']}")
 
     # COP sensors (per HP, per mode, per period)
-    # Nur für heating, hot_water, cooling (nicht defrost)
-    # Nur für daily, monthly, total (nicht yearly, 2h, 4h)
-    cop_modes = ["heating", "hot_water", "cooling"]
-    cop_periods = ["daily", "monthly", "total"]
-    
+    # COP_MODES: heating, hot_water, cooling (ohne defrost)
+    # COP_PERIODS: daily, monthly, yearly, total
     for hp_idx in range(1, num_hps + 1):
-        for mode in cop_modes:
-            for period in cop_periods:
+        for mode in COP_MODES:
+            for period in COP_PERIODS:
                 # Generiere Sensor-ID und Namen
                 sensor_id = f"{mode}_cop_{period}"
                 

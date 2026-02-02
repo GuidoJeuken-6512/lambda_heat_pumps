@@ -1,0 +1,15 @@
+/* Einrückung für Untermenüpunkte in der Navigation (z. B. Release 2.3 unter Releases) */
+/* Liste innerhalb einer Sektion einrücken */
+.md-nav__item--section > .md-nav > .md-nav__list {
+  margin-left: 1rem;
+}
+
+/* Unterpunkte (Links) innerhalb der Sektion einrücken */
+.md-nav__item--section .md-nav__list .md-nav__item .md-nav__link {
+  padding-left: 1rem;
+}
+
+/* Fallback: alle verschachtelten Nav-Items unter einer Sektion */
+.md-nav__item--section .md-nav__list > .md-nav__item {
+  padding-left: 1rem;
+}

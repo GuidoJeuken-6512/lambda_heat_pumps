@@ -2453,6 +2453,10 @@ ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
     if "period" in template or (template.get("reset_interval") is not None)
 ) | {"monthly", "yearly"}))
 
+# COP-Sensoren: Modi und Perioden (ohne Defrost)
+COP_MODES = ["heating", "hot_water", "cooling"]
+COP_PERIODS = ["daily", "monthly", "yearly", "total"]
+
 # Energy Consumption Migration Version
 ENERGY_CONSUMPTION_MIGRATION_VERSION = 4
 
