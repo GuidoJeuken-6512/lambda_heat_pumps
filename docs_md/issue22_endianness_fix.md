@@ -36,18 +36,18 @@ async def get_int32_register_order(hass) -> str:
     """Lädt Register-Reihenfolge-Konfiguration aus lambda_wp_config.yaml."""
     config = await load_lambda_config(hass)
     modbus_config = config.get("modbus", {})
-    # Rückwärtskompatibilität: Unterstützt auch int32_byte_order (alte Config)
-    return modbus_config.get("int32_register_order") or modbus_config.get("int32_byte_order", "big")
+    # Rückwärtskompatibilität: Unterstützt auch int32_byte_order / big / little (alte Config)
+    return modbus_config.get("int32_register_order") or modbus_config.get("int32_byte_order", "high_first")
 
-def combine_int32_registers(registers: list, register_order: str = "big") -> int:
+def combine_int32_registers(registers: list, register_order: str = "high_first") -> int:
     """Kombiniert zwei 16-Bit-Register zu einem 32-Bit-Wert.
     
-    register_order: "big" = Höherwertiges Register zuerst (Standard)
-                   "little" = Niedrigwertiges Register zuerst
+    register_order: "high_first" = Höherwertiges Register zuerst (Standard)
+                   "low_first" = Niedrigwertiges Register zuerst
     """
-    if register_order == "little":
+    if register_order == "low_first" or register_order == "little":
         return (registers[1] << 16) | registers[0]
-    else:  # big-endian register order
+    else:  # high_first (oder big)
         return (registers[0] << 16) | registers[1]
 ```
 
@@ -57,15 +57,15 @@ def combine_int32_registers(registers: list, register_order: str = "big") -> int
 ```yaml
 # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
 modbus:
-  int32_register_order: "big"    # Big-Endian Register Order (Standard)
+  int32_register_order: "high_first"   # Höherwertiges Register zuerst (Standard)
   # oder
-  int32_register_order: "little"  # Little-Endian Register Order
+  int32_register_order: "low_first"   # Niedrigwertiges Register zuerst
 ```
 
 **Rückwärtskompatibilität:**
-- Alte Config mit `int32_byte_order` wird automatisch erkannt und verwendet
-- Migration zu `int32_register_order` erfolgt automatisch
-- Fallback auf Big-Endian Register Order bei Konfigurationsfehlern
+- Alte Config mit `int32_byte_order` oder Werten `"big"`/`"little"` wird automatisch erkannt und verwendet
+- Migration zu `int32_register_order` mit `"high_first"`/`"low_first"` erfolgt automatisch
+- Fallback auf "high_first" bei Konfigurationsfehlern
 - Umfassendes Logging für Debugging
 
 #### 2. Coordinator-Integration
@@ -114,32 +114,29 @@ modbus:
   # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
   # Dies bezieht sich auf die Reihenfolge der 16-Bit-Register bei 32-Bit-Werten
   # (Register/Word Order), nicht auf Byte-Endianness innerhalb eines Registers
-  # "big" = Höherwertiges Register zuerst (Standard)
-  # "little" = Niedrigwertiges Register zuerst
-  int32_register_order: "big"  # oder "little"
+  # "high_first" = Höherwertiges Register zuerst (Standard)
+  # "low_first" = Niedrigwertiges Register zuerst
+  int32_register_order: "high_first"  # oder "low_first"
 ```
 
 **Rückwärtskompatibilität (Legacy-Support):**
 ```yaml
 # Alte Config wird weiterhin unterstützt, aber automatisch migriert
 modbus:
-  int32_byte_order: "big"  # Wird automatisch zu int32_register_order migriert
+  int32_byte_order: "big"  # Wird zu int32_register_order "high_first" migriert
+  # "little" wird zu "low_first" migriert
 ```
 
 #### 4. Template-Erweiterung
 
 **In `const.py` - `LAMBDA_WP_CONFIG_TEMPLATE`:**
 ```yaml
-# Endianness configuration for different Lambda models
-# Some Lambda devices may require different byte order for correct int32 value interpretation
-# "big" = Big-Endian (default, current behavior)
-# "little" = Little-Endian (alternative byte order for some devices)
+# Register-Reihenfolge für 32-Bit-Werte (int32-Sensoren)
+# "high_first" = Höherwertiges Register zuerst (Standard)
+# "low_first" = Niedrigwertiges Register zuerst
 # Example:
-#endianness: "big"  # or "little"
-
-# Alternative detailed configuration (Legacy-Support):
 #modbus:
-#  int32_byte_order: "big"  # or "little"
+#  int32_register_order: "high_first"  # oder "low_first"
 ```
 
 ### Betroffene Code-Stellen
@@ -169,22 +166,22 @@ value = combine_int32_registers(result.registers, self._int32_register_order)
 ```yaml
 # Register-Reihenfolge ändern
 modbus:
-  int32_register_order: "little"
+  int32_register_order: "low_first"
 ```
 
 #### Für bestehende Benutzer:
 ```yaml
-# Standard-Konfiguration (Big-Endian Register Order)
+# Standard-Konfiguration (Höherwertiges Register zuerst)
 modbus:
-  int32_register_order: "big"
+  int32_register_order: "high_first"
 
-# Oder gar nicht setzen (Standard ist "big")
+# Oder gar nicht setzen (Standard ist "high_first")
 ```
 
 #### Fehlerbehebung:
 Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge:
-1. **Falsche Werte** → Wechseln Sie zu `modbus.int32_register_order: "little"`
-2. **Korrekte Werte** → Behalten Sie `modbus.int32_register_order: "big"` bei (oder lassen Sie es leer)
+1. **Falsche Werte** → Wechseln Sie zu `modbus.int32_register_order: "low_first"`
+2. **Korrekte Werte** → Behalten Sie `modbus.int32_register_order: "high_first"` bei (oder lassen Sie es leer)
 
 ### Performance-Optimierung
 
@@ -194,8 +191,8 @@ Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register
 
 ### Fehlerbehandlung
 
-- **Graceful Fallback** auf "big" Endianness bei Konfigurationsfehlern
-- **Input-Validierung** für byte_order-Werte
+- **Graceful Fallback** auf "high_first" bei Konfigurationsfehlern
+- **Input-Validierung** für register_order-Werte
 - **Umfassendes Logging** für Debugging
 - **Sichere Standardwerte** bei Fehlern
 
@@ -211,7 +208,7 @@ Da Wärmepumpen über Jahre laufen und Energie akkumulieren, sind **32-Bit-Werte
 
 ### Register-Reihenfolge-Unterschiede
 
-**Big-Endian Register Order (Standard):**
+**high_first (Standard):**
 ```
 Register[0]: 0x1234 (MSW - höhere 16 Bits)
 Register[1]: 0x5678 (LSW - niedrigere 16 Bits)
@@ -219,7 +216,7 @@ Ergebnis: 0x12345678 = 305419896
 Formel: (Register[0] << 16) | Register[1]
 ```
 
-**Little-Endian Register Order (alternative):**
+**low_first (alternative):**
 ```
 Register[0]: 0x5678 (LSW - niedrigere 16 Bits)  
 Register[1]: 0x1234 (MSW - höhere 16 Bits)
@@ -239,12 +236,12 @@ Basierend auf `const.py` sind das **Energie-Sensoren** mit `data_type: "int32"`:
 
 ## Vorteile der Lösung
 
-✅ **Einfach** - nur zwei Optionen: "big" oder "little"  
+✅ **Einfach** - nur zwei Optionen: "high_first" oder "low_first"  
 ✅ **Klar** - Benutzer muss bewusst wählen  
-✅ **Rückwärtskompatibel** - Standard ist "big" (aktuelles Verhalten)  
+✅ **Rückwärtskompatibel** - Standard ist "high_first" (aktuelles Verhalten); "big"/"little" werden weiterhin akzeptiert  
 ✅ **Zentral** - eine Funktion für alle betroffenen Stellen  
-✅ **Sicher** - Fallback auf Big-Endian bei Fehlern  
-✅ **Debug-freundlich** - Logging der verwendeten Byte-Order  
+✅ **Sicher** - Fallback auf "high_first" bei Fehlern  
+✅ **Debug-freundlich** - Logging der verwendeten Register-Reihenfolge  
 ✅ **Performance-optimiert** - Caching verhindert wiederholte YAML-Zugriffe  
 ✅ **Vereinfacht** - Neue `endianness`-Konfiguration ist einfacher zu verwenden  
 ✅ **Frühe Konfiguration** - Endianness wird vor dem ersten Modbus-Zugriff geladen  
@@ -274,7 +271,7 @@ Die Register-Reihenfolge-Konfiguration wurde **korrigiert und verbessert**:
 1. **Korrekte Terminologie**: Umbenennung von "Endianness/Byte-Order" zu "Register-Order" 
 2. **Klare Dokumentation**: Erklärung des Unterschieds zwischen Register-Order und Byte-Endianness
 3. **Frühe Konfiguration**: Register Order wird vor dem ersten Modbus-Zugriff geladen
-4. **Automatische Migration**: Alte `modbus.int32_byte_order` wird automatisch zu `modbus.int32_register_order` migriert
+4. **Automatische Migration**: Alte `modbus.int32_byte_order` (bzw. "big"/"little") wird automatisch zu `modbus.int32_register_order` ("high_first"/"low_first") migriert
 5. **Verbesserte Fehlerbehandlung**: Detailliertes Logging und robuste Fallback-Mechanismen
 6. **Rückwärtskompatibilität**: Alte Config-Werte werden weiterhin erkannt und verwendet
 

@@ -74,6 +74,10 @@ Die COP-Sensoren aktualisieren sich automatisch, wenn sich die Quellsensoren (th
 3. **Präzision**: 2 Dezimalstellen (z.B. 3.45)
 4. **Unavailable State**: Wenn Quellsensoren nicht verfügbar sind, ist COP = `unavailable`
 
+### Periodische Werte und Anzeige
+
+Die periodischen COP-Sensoren (Daily, Monthly, Yearly) **bauen sich erst im Lauf der Zeit auf**. Bis in der jeweiligen Periode sowohl thermische als auch elektrische Energie erfasst wurden, kann der Sensor **`unknown`** oder **`0`** anzeigen – das ist normal. Sobald beide Quellwerte in der Periode anfallen, wird der COP berechnet. Siehe auch [FAQ – COP-Sensoren](../FAQ/cop-sensoren.md).
+
 ## Technische Details
 
 - **Unit**: Keine (COP ist dimensionslos)

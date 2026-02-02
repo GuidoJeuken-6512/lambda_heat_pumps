@@ -1816,6 +1816,9 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         self._attr_suggested_display_precision = 2  # Zeige 2 Dezimalstellen in der UI
         self._cop_value = None  # Initialisiere mit None (unavailable)
         self._unsub_state_changes = None  # Unsubscribe-Funktion für State-Changes
+        # Baseline für Total-COP: elektrische Sensoren länger im System als thermische
+        self._thermal_baseline = None
+        self._electrical_baseline = None
 
         if state_class == "measurement":
             self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -1828,7 +1831,8 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         self._attr_device_class = device_class
 
     def _calculate_cop(self) -> float | None:
-        """Berechne COP aus thermal_energy und electrical_energy."""
+        """Berechne COP aus thermal_energy und electrical_energy.
+        Für period=total: Deltas seit Baseline (thermische Sensoren kamen später)."""
         thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
         electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
 
@@ -1857,7 +1861,31 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
             thermal_value = float(thermal_str)
             electrical_value = float(electrical_str)
 
-            # Division durch 0 Schutz
+            # Total-COP: Deltas seit Baseline (elektrische Sensoren länger im System)
+            if self._period == "total" and self._thermal_baseline is not None and self._electrical_baseline is not None:
+                effective_thermal = thermal_value - self._thermal_baseline
+                effective_electrical = electrical_value - self._electrical_baseline
+                if effective_electrical <= 0:
+                    _LOGGER.debug(
+                        "COP total %s: effective_electrical <= 0 (%.6f), returning unavailable",
+                        self.entity_id,
+                        effective_electrical,
+                    )
+                    return None
+                if effective_thermal < 0:
+                    effective_thermal = 0.0
+                cop_exact = effective_thermal / effective_electrical
+                cop_rounded = round(cop_exact, self._precision)
+                _LOGGER.debug(
+                    "COP total (baseline) for %s: effective_thermal=%.6f, effective_electrical=%.6f, cop=%.2f",
+                    self.entity_id,
+                    effective_thermal,
+                    effective_electrical,
+                    cop_rounded,
+                )
+                return cop_rounded
+
+            # Daily/Monthly/Yearly oder Total ohne Baseline: direkte Division
             if electrical_value <= 0:
                 _LOGGER.debug(
                     "Electrical energy is 0 or negative (%.6f) for COP sensor %s, returning 0",
@@ -1866,10 +1894,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                 )
                 return 0.0
 
-            # Berechne COP = thermal_energy / electrical_energy
             cop_exact = thermal_value / electrical_value
-
-            # Runde auf 2 Dezimalstellen
             cop_rounded = round(cop_exact, self._precision)
 
             _LOGGER.debug(
@@ -1948,16 +1973,40 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
             _state_change_callback,
         )
 
+        # Total-COP: Baseline einmalig setzen, wenn noch keine vorhanden
+        if self._period == "total" and self._thermal_baseline is None and self._electrical_baseline is None:
+            thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
+            electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
+            if thermal_state and thermal_state.state not in (None, "unknown", "unavailable") and electrical_state and electrical_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    thermal_str = str(thermal_state.state).replace(",", ".")
+                    electrical_str = str(electrical_state.state).replace(",", ".")
+                    self._thermal_baseline = float(thermal_str)
+                    self._electrical_baseline = float(electrical_str)
+                    _LOGGER.info(
+                        "COP total %s: baseline set thermal=%.2f kWh, electrical=%.2f kWh (COP = delta since now)",
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+                    self._update_cop()
+                    self.async_write_ha_state()
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(
+                        "Could not set COP total baseline for %s: %s",
+                        self.entity_id,
+                        e,
+                    )
+
         # Initialisiere den State (berechnet oder restored)
-        # Wenn restore_state keinen Wert gesetzt hat, berechne jetzt
         if self._cop_value is None:
             self._update_cop()
-        else:
-            # State wurde restauriert, schreibe ihn ins UI
+        elif self._period != "total" or (self._thermal_baseline is not None and self._electrical_baseline is not None):
+            # State wurde restauriert oder Baseline war schon gesetzt, schreibe ins UI
             self.async_write_ha_state()
 
     async def restore_state(self, last_state):
-        """Restore state from database to prevent reset on reload."""
+        """Restore state and Total-COP baselines from database to prevent reset on reload."""
         if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
             try:
                 self._cop_value = round(float(last_state.state), self._precision)
@@ -1974,13 +2023,32 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                 )
                 self._cop_value = None
         else:
-            # Kein vorheriger State vorhanden, initialisiere mit None
-            # Wird bei _update_cop() berechnet
             self._cop_value = None
             _LOGGER.debug(
                 "No previous state for COP sensor %s, will calculate on first update",
                 self.entity_id,
             )
+
+        # Total-COP: Baselines aus Attributen wiederherstellen
+        if self._period == "total" and last_state is not None and last_state.attributes:
+            try:
+                tb = last_state.attributes.get("thermal_baseline")
+                eb = last_state.attributes.get("electrical_baseline")
+                if tb is not None and eb is not None:
+                    self._thermal_baseline = float(str(tb).replace(",", "."))
+                    self._electrical_baseline = float(str(eb).replace(",", "."))
+                    _LOGGER.debug(
+                        "COP total %s: restored baselines thermal=%.2f, electrical=%.2f",
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    "Could not restore COP total baselines for %s: %s",
+                    self.entity_id,
+                    e,
+                )
 
     async def async_will_remove_from_hass(self):
         """Clean up when entity is removed."""
@@ -2033,6 +2101,9 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
             "thermal_energy_entity": self._thermal_energy_entity_id,
             "electrical_energy_entity": self._electrical_energy_entity_id,
         }
+        if self._period == "total" and self._thermal_baseline is not None and self._electrical_baseline is not None:
+            attrs["thermal_baseline"] = round(self._thermal_baseline, 4)
+            attrs["electrical_baseline"] = round(self._electrical_baseline, 4)
         return attrs
 
     @property

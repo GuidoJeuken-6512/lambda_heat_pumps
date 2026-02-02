@@ -78,10 +78,20 @@ nav = [
     { "Sensoren-Übersicht" = "Entwickler/sensoren-uebersicht.md" },
     { "COP-Sensoren" = "Entwickler/cop-sensoren.md" },
     { "Modbus-Serialisierung" = "Entwickler/modbus-serialisierung.md" },
-    ] },
-    { "Releases" = [
-      { "Release 2.3" = "Entwickler/release-2-3.md" },
+    { "Register-Reihenfolge int32 (Issue #22)" = "Entwickler/register-reihenfolge-int32.md" },
   ] },
+  { "FAQ" = [
+    { "FAQ" = "FAQ/FAQ.md" },
+    { "COP-Sensoren" = "FAQ/cop-sensoren.md" },
+    { "Falsche / keine Sensorwerte" = "FAQ/falsche-keine-sensorwerte.md" },
+  ] },
+
+  { "Releases" = [
+      { "Releases" = "Releases/releases.md" },
+      { "Release 2.3" = "Releases/release-2-3.md" },
+      { "Release 2.2" = "Releases/release-2-2.md" },
+      { "Release 2.0" = "Releases/release-2-0.md" },
+    ] }, 
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize

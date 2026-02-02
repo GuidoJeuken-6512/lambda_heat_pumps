@@ -64,6 +64,8 @@ Die Sensoren werden als echte Python-Entities (`LambdaCOPSensor`) implementiert,
    - Division durch Null Schutz (COP = 0.0 wenn electrical <= 0)
    - Rundet auf 2 Dezimalstellen
 
+**Hinweis:** Periodische COP-Sensoren (daily, monthly, yearly) bauen sich erst im Lauf der Zeit auf; bis keine Berechnung stattgefunden hat, können sie `unknown` oder `0` anzeigen. Total-COP nutzt eine Baseline (Deltas seit Stichtag). Siehe [FAQ – COP-Sensoren](../FAQ/cop-sensoren.md).
+
 ## Implementierung
 
 ### 1. Sensor-Klasse
