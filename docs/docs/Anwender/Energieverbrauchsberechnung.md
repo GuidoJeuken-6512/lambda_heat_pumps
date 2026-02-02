@@ -13,9 +13,8 @@ Die Sensoren bieten:
 - **Betriebsart-spezifisches Tracking**: Für jede Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen, Standby)
 - **Zeiträume**: Total, Täglich, Monatlich, Jährlich
 - **Stromverbrauch (elektrisch)** und **Wärmeabgabe (thermisch)**
-- **Konfigurierbare Quellsensoren**: Eigene oder externe Energiezähler nutzbar
+- **Konfigurierbare Quellsensoren**: Lambda eigener oder externer Energiezähler nutzbar
 - **Automatische Einheitenkonvertierung**: Wh, kWh, MWh
-- **Sensor-Wechsel-Erkennung** und Flankenerkennung
 
 ## Verfügbare Sensoren
 
@@ -59,6 +58,7 @@ energy_consumption_sensors:
 **Hinweis:** Für thermische Energie werden immer die internen Sensoren verwendet.
 
 ### Energieverbrauchs-Offsets
+> **⚠️ WARNUNG:** Diese Funktion ist zur Zeit fehlerhaft implementiert und sollte **nicht genutzt werden**! Bitte warten Sie auf eine Korrektur in einer zukünftigen Version, bevor Sie die Offsets verwenden.
 
 Offsets für historische Daten sind für alle Total-Sensoren möglich (siehe [Historische Daten übernehmen](historische-daten.md)):
 
@@ -71,15 +71,16 @@ energy_consumption_offsets:
     defrost_energy_total: 0.0
 ```
 
-**⚠️ Alle Werte in kWh!**
+**⚠️ Die Offset Werte müssen in kWh angegeben werden!**
 
 ## Funktionsweise
 
 ### Flankenerkennung
 
-Die Integration nutzt Flankenerkennung, um Energie- und Wärme-Deltas exakt dem aktiven Betriebsmodus zuzuordnen. Bei jedem Moduswechsel wird das Delta berechnet und den passenden Sensoren (elektrisch/thermisch) zugewiesen.
+Die Integration nutzt die s.g. Flankenerkennung, um Energie- und Wärme-Deltas exakt dem aktiven Betriebsmodus zuzuordnen. Bei jedem Moduswechsel (Heizen / Kühlen / Abtauen...) wird das Delta berechnet und den passenden Sensoren (elektrisch/thermisch) zugewiesen.
 
 ### Automatische Einheitenkonvertierung
+Wenn ein externer Sensor für die Stromverbrauchsmessung eingesetzt wird, wird die Einheit dieses Sensors automatisch ausgelesen und die Werte ggf. korregiert.
 
 - **Wh**: Automatisch zu kWh (÷ 1000)
 - **kWh**: Direkt verwendet
