@@ -178,6 +178,7 @@
       "hot_water_cycling_yesterday": { "name": "Hot Water Cycles Yesterday" },
       "cooling_cycling_yesterday": { "name": "Cooling Cycles Yesterday" },
       "defrost_cycling_yesterday": { "name": "Defrost Cycles Yesterday" },
+      "compressor_start_cycling_yesterday": { "name": "Compressor Starts Yesterday" },
       "heating_cycling_daily": { "name": "Heating Cycles Daily" },
       "hot_water_cycling_daily": { "name": "Hot Water Cycles Daily" },
       "cooling_cycling_daily": { "name": "Cooling Cycles Daily" },
