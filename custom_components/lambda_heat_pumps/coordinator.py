@@ -414,11 +414,22 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 state_val = ent.native_value
                 if state_val is None:
                     continue
+                energy_val = round(getattr(ent, "_energy_value", 0), 2)
+                yesterday_val = round(getattr(ent, "_yesterday_value", 0), 2)
+                prev_monthly_val = round(getattr(ent, "_previous_monthly_value", 0), 2)
+                prev_yearly_val = round(getattr(ent, "_previous_yearly_value", 0), 2)
+                # Konsistenz: Basis-Wert darf nicht größer als energy_value sein (Periodenwert wäre sonst negativ)
+                if "_daily" in entity_id and yesterday_val > energy_val:
+                    yesterday_val = energy_val
+                if "_monthly" in entity_id and prev_monthly_val > energy_val:
+                    prev_monthly_val = energy_val
+                if "_yearly" in entity_id and prev_yearly_val > energy_val:
+                    prev_yearly_val = energy_val
                 attrs = {
-                    "energy_value": round(getattr(ent, "_energy_value", 0), 2),
-                    "yesterday_value": round(getattr(ent, "_yesterday_value", 0), 2),
-                    "previous_monthly_value": round(getattr(ent, "_previous_monthly_value", 0), 2),
-                    "previous_yearly_value": round(getattr(ent, "_previous_yearly_value", 0), 2),
+                    "energy_value": energy_val,
+                    "yesterday_value": yesterday_val,
+                    "previous_monthly_value": prev_monthly_val,
+                    "previous_yearly_value": prev_yearly_val,
                 }
                 out[entity_id] = {"state": round(float(state_val), 2), "attributes": attrs}
         except Exception as e:

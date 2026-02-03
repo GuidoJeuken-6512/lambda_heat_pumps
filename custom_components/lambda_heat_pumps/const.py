@@ -2453,6 +2453,19 @@ ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
     if "period" in template or (template.get("reset_interval") is not None)
 ) | {"monthly", "yearly"}))
 
+# Zeitzyklen-basierte Sensoren (Reset/Baseline-Konsistenz)
+# Sensoren mit periodenbezogenem Wert (daily = total - yesterday, etc.):
+# - Energy (electrical + thermal): daily, monthly, yearly – yesterday_value bzw. previous_monthly/yearly
+#   dürfen nicht > energy_value sein (Konsistenz in sensor.py + coordinator _collect).
+# - COP total: thermal_baseline, electrical_baseline dürfen nicht > aktueller Quellwert sein
+#   (Konsistenz in LambdaCOPSensor.restore_state).
+# - COP daily/monthly/yearly: lesen nur aus Energy-Sensoren, keine eigene Baseline → kein Reset-Fehler.
+# - Cycling (daily, 2h, 4h, monthly, yearly): eigener Zähler pro Periode, Reset auf 0 – kein yesterday-Fehler.
+
+# COP-Sensoren: Modi und Perioden (ohne Defrost)
+COP_MODES = ["heating", "hot_water", "cooling"]
+COP_PERIODS = ["daily", "monthly", "yearly", "total"]
+
 # Energy Consumption Migration Version
 ENERGY_CONSUMPTION_MIGRATION_VERSION = 4
 

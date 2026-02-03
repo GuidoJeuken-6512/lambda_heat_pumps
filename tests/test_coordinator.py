@@ -544,3 +544,46 @@ async def test_coordinator_last_state_persistence(mock_hass, mock_entry):
     assert coordinator._last_state["2"] == "3"
     assert coordinator._last_operating_state["1"] == "1"
     assert coordinator._last_operating_state["2"] == "2"
+
+
+def test_collect_energy_sensor_states_corrects_invalid_daily_monthly_yearly(mock_hass, mock_entry):
+    """_collect_energy_sensor_states speichert nie yesterday/previous_* > energy_value (Konsistenz)."""
+    from custom_components.lambda_heat_pumps.const import DOMAIN
+
+    # Echte Dict-Struktur, damit coordinator._collect_energy_sensor_states() sie findet
+    entities = {}
+    mock_hass.data = {DOMAIN: {mock_entry.entry_id: {"energy_entities": entities}}}
+
+    # Daily: yesterday_value > energy_value (inkonsistent)
+    daily_ent = MagicMock()
+    daily_ent._energy_value = 1668.47
+    daily_ent._yesterday_value = 1969.46
+    daily_ent._previous_monthly_value = 0.0
+    daily_ent._previous_yearly_value = 0.0
+    daily_ent.native_value = 0.0
+    entities["sensor.eu08l_hp1_heating_energy_daily"] = daily_ent
+
+    # Monthly: previous_monthly_value > energy_value
+    monthly_ent = MagicMock()
+    monthly_ent._energy_value = 1668.47
+    monthly_ent._yesterday_value = 0.0
+    monthly_ent._previous_monthly_value = 1800.0
+    monthly_ent._previous_yearly_value = 1500.0
+    monthly_ent.native_value = 0.0
+    entities["sensor.eu08l_hp1_heating_energy_monthly"] = monthly_ent
+
+    # Yearly: previous_yearly_value > energy_value
+    yearly_ent = MagicMock()
+    yearly_ent._energy_value = 1668.47
+    yearly_ent._yesterday_value = 0.0
+    yearly_ent._previous_monthly_value = 1600.0
+    yearly_ent._previous_yearly_value = 2000.0
+    yearly_ent.native_value = 0.0
+    entities["sensor.eu08l_hp1_heating_energy_yearly"] = yearly_ent
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    out = coordinator._collect_energy_sensor_states()
+
+    assert out["sensor.eu08l_hp1_heating_energy_daily"]["attributes"]["yesterday_value"] == 1668.47
+    assert out["sensor.eu08l_hp1_heating_energy_monthly"]["attributes"]["previous_monthly_value"] == 1668.47
+    assert out["sensor.eu08l_hp1_heating_energy_yearly"]["attributes"]["previous_yearly_value"] == 1668.47

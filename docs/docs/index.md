@@ -20,9 +20,9 @@ title: Home
 Die Integration ist mehrsprachig, im Moment wird Deutsch und Englisch unterstützt.
 
 Detaillierte Informationen zu den einzelnen Features finden Sie in den entsprechenden Unterseiten unter Anwender- bzw. Entwickler-Dokumentation.
-### [Anwender Dokumentation](anwender/)
+### [Anwender Dokumentation](Anwender/features.md)
 
-### [Entwickler Dokumentation](entwickler/)
+### [Entwickler Dokumentation](Entwickler/features.md)
 
 ## Home Assistant
 

@@ -64,6 +64,8 @@ Die Sensoren werden als echte Python-Entities (`LambdaCOPSensor`) implementiert,
    - Division durch Null Schutz (COP = 0.0 wenn electrical <= 0)
    - Rundet auf 2 Dezimalstellen
 
+**Hinweis:** Periodische COP-Sensoren (daily, monthly, yearly) bauen sich erst im Lauf der Zeit auf; bis keine Berechnung stattgefunden hat, können sie `unknown` oder `0` anzeigen. Total-COP nutzt eine Baseline (Deltas seit Stichtag). Siehe [FAQ – COP-Sensoren](../FAQ/cop-sensoren.md).
+
 ## Implementierung
 
 ### 1. Sensor-Klasse
@@ -289,6 +291,19 @@ if not thermal_state or thermal_state.state in (None, "unknown", "unavailable"):
 ### Fehlerhafte Werte
 
 Bei Konvertierungsfehlern (ValueError, TypeError) wird ein Warning geloggt und `None` zurückgegeben.
+
+### Konsistenz Total-COP (Baseline nach Neustart)
+
+**Problem:** Nach Neustart oder Reset der Quellsensoren können persistierte Baselines (`thermal_baseline`, `electrical_baseline`) höher sein als die aktuellen Werte der thermischen bzw. elektrischen Total-Sensoren. Dann wären die effektiven Deltas negativ (effective_thermal = current − baseline &lt; 0), was zu falschem oder „unavailable“ COP führt.
+
+**Lösung:** Beim Restore der Total-COP-Baselines aus den Attributen wird geprüft:
+
+- Ist `thermal_baseline` größer als der aktuelle State des thermischen Quellsensors → Baseline wird auf den aktuellen Wert gesetzt.
+- Ist `electrical_baseline` größer als der aktuelle State des elektrischen Quellsensors → Baseline wird auf den aktuellen Wert gesetzt.
+
+Damit gilt nach dem Restore stets: Baseline ≤ aktueller Quellwert; negative Deltas und daraus resultierende Fehlanzeigen werden vermieden. Die Prüfung erfolgt in `LambdaCOPSensor.restore_state()` (sensor.py).
+
+**Hinweis:** COP daily/monthly/yearly haben keine eigene Baseline; sie lesen nur die Quotienten aus den Energy-Sensoren. Ein Reset-Problem wie bei den Energy-Sensoren (yesterday &gt; energy_value) betrifft sie nicht direkt – sie profitieren von der dortigen Konsistenz-Korrektur.
 
 ## Performance
 

@@ -377,6 +377,22 @@ if current_energy_kwh < last_energy:
 
 Die Anzeige bleibt durch `native_value = max(0.0, _energy_value - _yesterday_value)` nach unten auf 0 begrenzt; durch die korrigierte Restore-Logik stimmen die internen Werte wieder und negative Werte treten nicht mehr auf.
 
+### Konsistenz Daily/Monthly/Yearly (yesterday/previous_* ≤ energy_value)
+
+**Problem:** Nach Neustart können persistierte Daten (Recorder oder `cycle_energy_persist`) inkonsistent sein: `yesterday_value` bzw. `previous_monthly_value` / `previous_yearly_value` sind größer als `energy_value`. Dann wäre der Periodenwert (daily = energy_value − yesterday_value usw.) negativ.
+
+**Lösung in der Implementierung:**
+
+1. **Restore** (`restore_state`): Nach dem Setzen von `_energy_value` und `_yesterday_value` (bzw. `_previous_monthly_value` / `_previous_yearly_value`) wird geprüft: Ist der Basis-Wert größer als `_energy_value`, wird er auf `_energy_value` gesetzt (Korrektur + Log-Warnung). Die Rekonstruktion „displayed = yesterday + displayed“ wird nur ausgeführt, wenn `_yesterday_value <= _energy_value` (konsistent), damit kein Überschreiben mit falschem Wert erfolgt.
+
+2. **Persist-Anwendung** (`_apply_persisted_energy_state`): Nach dem Übernehmen der Werte aus `cycle_energy_persist` wird für Daily/Monthly/Yearly dieselbe Prüfung durchgeführt; bei Bedarf Korrektur und Warnung.
+
+3. **Persist-Schreiben** (Coordinator `_collect_energy_sensor_states`): Beim Speichern in `cycle_energy_persist` wird nie ein Paar mit `yesterday_value` bzw. `previous_monthly_value` / `previous_yearly_value` größer als `energy_value` geschrieben; der Basis-Wert wird vor dem Schreiben auf `energy_value` begrenzt.
+
+4. **Daily-Init** (`_initialize_daily_yesterday_value`): Erkennt die Integration weiterhin negativen Tageswert (z. B. weil Total-Sensor beim Start noch nicht verfügbar war), setzt sie `yesterday_value = energy_value` und markiert Persist als „dirty“, damit die Korrektur beim nächsten Zyklus mitgespeichert wird.
+
+Damit können nach Neustart keine negativen Daily-/Monthly-/Yearly-Werte mehr aus inkonsistenten persistierten Daten entstehen; die Korrektur ist an Restore, Persist-Anwendung und Persist-Schreiben verankert.
+
 ### Migration Electrical (erstes Release)
 
 Beim ersten Start nach einem Update werden bestehende **elektrische** Daily-/Monthly-/Yearly-Sensoren beim Umstieg auf das Delta-Verfahren einmalig migriert: Fehlt in den persistierten Daten das Attribut **`energy_value`**, werden die Werte aus dem zugehörigen Total-Sensor abgeleitet (`restore_state()` nutzt `last_state.state` als Anzeigewert und setzt, falls der Total-Sensor verfügbar ist, `_energy_value` und `_yesterday_value` bzw. `_previous_monthly_value` / `_previous_yearly_value` entsprechend). Der angezeigte Tages-/Monats-/Jahreswert bleibt erhalten, keine negativen Werte. Danach greift die normale Restore-Logik (mit persistiertem `energy_value`). Thermische Sensoren benötigen diese Migration nicht (sie wurden mit dem Delta-Verfahren eingeführt).

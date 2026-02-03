@@ -1,0 +1,132 @@
+# Dashboard "lambda Energy" – 4 Spalten: Daily | Monthly | Yearly | Total
+# Pro Spalte: Heizen / Warmwasser / Kühlen / Abtau mit elektrischer Energie, thermischer Energie und COP
+#
+# ========== Variable (einmal ersetzen) ==========
+# ENTITY_PREFIX = eu08l_hp1
+# Ersetze unten in allen entity:-Zeilen "ENTITY_PREFIX" durch deinen Präfix
+# (z.B. eu08l_hp1, lambda_hp1 – aus Einstellungen → Geräte → Lambda).
+# Einmal Suchen & Ersetzen: ENTITY_PREFIX → dein_präfix
+#
+# Einbinden in HA: Einstellungen → Dashboard → "+ Dashboard" → "Importieren" oder Inhalt mit copy/paste einfügen.
+#
+title: lambda Energy
+views:
+  - title: lambda Energy
+    path: lambda-energy
+    panel: true
+    cards:
+      # Eine horizontale Karte mit 4 Spalten (nur Standard-Lovelace)
+      - type: horizontal-stack
+        cards:
+          # ========== Spalte 1: Daily ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Täglich"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_heating_thermal_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_daily
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_hot_water_thermal_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_daily
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_cooling_thermal_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_daily
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_energy_daily
+                  - entity: sensor.ENTITY_PREFIX_defrost_thermal_energy_daily
+          # ========== Spalte 2: Monthly ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Monatlich"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_heating_thermal_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_monthly
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_thermal_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_monthly
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_cooling_thermal_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_monthly
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_energy_monthly
+                  - entity: sensor.ENTITY_PREFIX_defrost_thermal_energy_monthly
+          # ========== Spalte 3: Yearly ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Jährlich"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_heating_thermal_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_yearly
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_thermal_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_yearly
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_cooling_thermal_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_yearly
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_energy_yearly
+                  - entity: sensor.ENTITY_PREFIX_defrost_thermal_energy_yearly
+          # ========== Spalte 4: Total ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Total"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_energy_total
+                  - entity: sensor.ENTITY_PREFIX_heating_thermal_energy_total
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_total
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_energy_total
+                  - entity: sensor.ENTITY_PREFIX_hot_water_thermal_energy_total
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_total
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_energy_total
+                  - entity: sensor.ENTITY_PREFIX_cooling_thermal_energy_total
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_total
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_energy_total
+                  - entity: sensor.ENTITY_PREFIX_defrost_thermal_energy_total

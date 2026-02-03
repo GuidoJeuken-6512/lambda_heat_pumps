@@ -359,18 +359,8 @@ def extra_state_attributes(self):
 
 **Wiederherstellung** (`restore_state`):
 
-```python
-async def restore_state(self, last_state):
-    """Restore the state from the last state."""
-    if last_state is not None and last_state.state != STATE_UNKNOWN:
-        self._energy_value = float(last_state.state)
-        
-        # Restore yesterday_value for daily sensors if available
-        if self._period == "daily":
-            restored_yesterday = last_state.attributes.get("yesterday_value")
-            if restored_yesterday is not None:
-                self._yesterday_value = float(restored_yesterday)
-```
+- Bei Daily/Monthly/Yearly wird **nicht** `_energy_value = last_state.state` gesetzt (State ist der Anzeigewert, nicht der Total). Stattdessen werden `energy_value` und `yesterday_value` bzw. `previous_monthly_value` / `previous_yearly_value` aus den Attributen gelesen; falls `energy_value` fehlt (Migration), werden Werte aus dem Total-Sensor abgeleitet.
+- **Konsistenzprüfung** am Ende des Daily-/Monthly-/Yearly-Blocks: Ist der Basis-Wert (yesterday/previous_monthly/previous_yearly) größer als `_energy_value`, wird er auf `_energy_value` gesetzt (Korrektur + Log-Warnung). Siehe Abschnitt „Konsistenz (yesterday/previous_* ≤ energy_value)“.
 
 ## Signal-Registrierung
 
@@ -460,9 +450,10 @@ else:
 
 **Lösung**: `_initialize_daily_yesterday_value()` korrigiert Yesterday-Werte beim Start:
 
-- Wenn `yesterday_value = 0` aber `total > 0`: Setze `yesterday = total`
-- Wenn `daily < 0`: Korrigiere Yesterday
+- Wenn `yesterday_value = 0` aber `total > 0`: Setze `yesterday = total` (oder aus angezeigtem Wert ableiten)
+- Wenn `daily < 0`: Korrigiere `yesterday_value = energy_value` (Konsistenz, siehe Abschnitt 4)
 - Wenn `daily > total * 1.1`: Korrigiere Yesterday
+- Nach Korrektur wird `set_energy_persist_dirty()` aufgerufen, damit die korrigierten Werte beim nächsten Zyklus in `cycle_energy_persist.json` gespeichert werden
 
 ### 3. Division durch Null Schutz
 
@@ -470,7 +461,20 @@ else:
 
 **Schutz**: `max(0.0, daily_value)` verhindert negative Werte.
 
-### 4. Entity nicht gefunden in `increment_energy_consumption_counter`
+### 4. Konsistenz (yesterday/previous_* ≤ energy_value) nach Neustart
+
+**Problem**: Nach Neustart können persistierte Daten (Recorder oder `cycle_energy_persist`) inkonsistent sein: `yesterday_value` bzw. `previous_monthly_value` / `previous_yearly_value` sind größer als `energy_value`. Dann wäre der Periodenwert (daily = energy_value − yesterday_value usw.) negativ.
+
+**Lösung in der Implementierung** (Details siehe [Energieverbrauchssensoren](energieverbrauchssensoren.md#konsistenz-dailymonthlyyearly-yesterdayprevious_-energy_value)):
+
+1. **Restore** (`restore_state`): Nach dem Setzen der Werte wird geprüft: Ist der Basis-Wert (yesterday/previous_monthly/previous_yearly) größer als `_energy_value`, wird er auf `_energy_value` gesetzt. Die Rekonstruktion „displayed = yesterday + displayed“ erfolgt nur, wenn `_yesterday_value <= _energy_value`.
+2. **Persist-Anwendung** (`_apply_persisted_energy_state`): Nach dem Übernehmen der Werte aus `cycle_energy_persist` dieselbe Prüfung; bei Bedarf Korrektur.
+3. **Persist-Schreiben** (Coordinator `_collect_energy_sensor_states`): Es wird nie ein Paar mit Basis-Wert > `energy_value` gespeichert; der Basis-Wert wird vor dem Schreiben auf `energy_value` begrenzt.
+4. **Daily-Init** (`_initialize_daily_yesterday_value`): Erkennt negativen Tageswert, setzt `yesterday_value = energy_value` und markiert Persist als „dirty“.
+
+**Cycling-Sensoren** sind davon nicht betroffen: Sie haben pro Periode einen eigenen Zähler (`_cycling_value`), der beim Reset auf 0 gesetzt wird; es gibt keine Formel „Anzeige = Total − Yesterday“. Siehe [Reset-Manager](reset-manager.md).
+
+### 5. Entity nicht gefunden in `increment_energy_consumption_counter`
 
 **Fallback**: Verwendet State (nur für Total-Sensoren OK):
 
@@ -493,8 +497,8 @@ else:
 
 **Initialisierung**:
 - `"Initialized yesterday value for {entity_id}: 0.0 -> {yesterday_value} kWh (from {total_entity_id})"`
-- `"Corrected invalid yesterday value for {entity_id}: yesterday was too high"`
-- `"Yesterday value for {entity_id} is valid: energy={energy}, yesterday={yesterday}, daily={daily}, total={total} kWh"`
+- `"Corrected invalid yesterday value for {entity_id}: yesterday was too high (daily would be negative). Set yesterday = energy_value = ..."`
+- `"Daily init {entity_id}: Werte gültig, keine Änderung: energy=..., yesterday=..., daily=..., total=... kWh"`
 
 **Kritische Behebung**:
 - `"Reading _energy_value directly from entity {entity_id}: {value} kWh (period: {period})"`
