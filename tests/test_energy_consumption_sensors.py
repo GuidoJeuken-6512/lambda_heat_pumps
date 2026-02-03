@@ -322,18 +322,101 @@ class TestLambdaEnergyConsumptionSensor:
         await energy_sensor.async_will_remove_from_hass()
 
     @pytest.mark.asyncio
-    async def test_handle_reset(self, energy_sensor, mock_entry):
-        """Test handle reset method."""
+    async def test_handle_reset_total(self, energy_sensor, mock_entry):
+        """Total-Sensor: _handle_reset ändert _energy_value nicht."""
         energy_sensor._energy_value = 100.0
-        
         await energy_sensor._handle_reset(mock_entry.entry_id)
-        
-        # For total sensors, value should not be reset to 0
-        # For non-total sensors, value should be reset
-        if energy_sensor._reset_interval == "total":
-            assert energy_sensor._energy_value == 100.0  # Total sensors don't reset
-        else:
-            assert energy_sensor._energy_value == 0.0  # Other sensors reset
+        assert energy_sensor._energy_value == 100.0
+
+    @pytest.mark.asyncio
+    async def test_handle_reset_daily_updates_yesterday_not_energy(self, mock_hass, mock_entry):
+        """Daily-Sensor: Reset setzt yesterday_value = Total, _energy_value bleibt unverändert."""
+        from unittest.mock import MagicMock
+        sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        sensor._energy_value = 500.0
+        sensor._yesterday_value = 100.0
+        total_state = MagicMock()
+        total_state.state = "500.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+        with patch.object(sensor, "async_write_ha_state", MagicMock()):
+            await sensor._handle_reset(mock_entry.entry_id)
+        assert sensor._energy_value == 500.0, "Daily reset darf _energy_value nicht auf 0 setzen"
+        assert sensor._yesterday_value == 500.0, "yesterday_value soll auf Total gesetzt werden"
+
+    @pytest.mark.asyncio
+    async def test_handle_reset_monthly_updates_previous_monthly_not_energy(self, mock_hass, mock_entry):
+        """Monthly-Sensor: Reset setzt previous_monthly_value = Total, _energy_value bleibt unverändert."""
+        from unittest.mock import MagicMock, patch
+        sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_monthly",
+            name="Heating Energy Monthly",
+            entity_id="sensor.eu08l_hp1_heating_energy_monthly",
+            unique_id="eu08l_hp1_heating_energy_monthly",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="monthly",
+        )
+        sensor._energy_value = 2000.0
+        sensor._previous_monthly_value = 500.0
+        total_state = MagicMock()
+        total_state.state = "2000.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+        with patch.object(sensor, "async_write_ha_state", MagicMock()):
+            await sensor._handle_reset(mock_entry.entry_id)
+        assert sensor._energy_value == 2000.0, "Monthly reset darf _energy_value nicht auf 0 setzen"
+        assert sensor._previous_monthly_value == 2000.0, "previous_monthly_value soll auf Total gesetzt werden"
+
+    @pytest.mark.asyncio
+    async def test_handle_reset_yearly_updates_previous_yearly_not_energy(self, mock_hass, mock_entry):
+        """Yearly-Sensor: Reset setzt previous_yearly_value = Total, _energy_value bleibt unverändert."""
+        from unittest.mock import MagicMock, patch
+        sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_yearly",
+            name="Heating Energy Yearly",
+            entity_id="sensor.eu08l_hp1_heating_energy_yearly",
+            unique_id="eu08l_hp1_heating_energy_yearly",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="yearly",
+        )
+        sensor._energy_value = 10000.0
+        sensor._previous_yearly_value = 2000.0
+        total_state = MagicMock()
+        total_state.state = "10000.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+        with patch.object(sensor, "async_write_ha_state", MagicMock()):
+            await sensor._handle_reset(mock_entry.entry_id)
+        assert sensor._energy_value == 10000.0, "Yearly reset darf _energy_value nicht auf 0 setzen"
+        assert sensor._previous_yearly_value == 10000.0, "previous_yearly_value soll auf Total gesetzt werden"
 
     def test_device_info(self, energy_sensor, mock_entry):
         """Test device info property."""

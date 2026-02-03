@@ -1360,6 +1360,24 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                         f"yesterday was too high (daily would be negative). "
                         f"Set yesterday = energy_value = {self._yesterday_value:.2f} kWh"
                     )
+                    # Wichtig: Total-Sensor kann höher sein (Restore hatte veralteten energy_value).
+                    # Daily mit Total synchronisieren, damit increment_energy_consumption_counter nicht hinterherhinkt.
+                    if total_value > self._energy_value:
+                        self._energy_value = total_value
+                        self._yesterday_value = total_value
+                        _LOGGER.info(
+                            f"Daily sensor {self.entity_id}: mit Total synchronisiert (energy_value=yesterday_value={total_value:.2f} kWh, daily=0)"
+                        )
+                    try:
+                        reg = async_get_entity_registry(self.hass)
+                        entry = reg.async_get(self.entity_id)
+                        if entry and entry.config_entry_id:
+                            comp = self.hass.data.get(DOMAIN, {}).get(entry.config_entry_id, {})
+                            coord = comp.get("coordinator")
+                            if coord and hasattr(coord, "set_energy_persist_dirty"):
+                                coord.set_energy_persist_dirty()
+                    except Exception:
+                        pass
                     self.async_write_ha_state()
                 # Wenn Daily-Wert größer als Total-Wert ist (unmöglich), korrigiere Yesterday
                 elif current_daily > total_value * 1.1:  # 10% Toleranz
@@ -1414,6 +1432,25 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             self._yesterday_value = float(attrs.get("yesterday_value", self._yesterday_value))
             self._previous_monthly_value = float(attrs.get("previous_monthly_value", self._previous_monthly_value))
             self._previous_yearly_value = float(attrs.get("previous_yearly_value", self._previous_yearly_value))
+            # Konsistenz Daily/Monthly/Yearly: Basis-Wert darf nicht größer als energy_value sein (Periodenwert wäre sonst negativ)
+            if self._period == "daily" and self._yesterday_value > self._energy_value:
+                _LOGGER.warning(
+                    f"Energy sensor {self.entity_id}: Persist yesterday_value ({self._yesterday_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                    f"korrigiere yesterday_value = energy_value"
+                )
+                self._yesterday_value = self._energy_value
+            elif self._period == "monthly" and self._previous_monthly_value > self._energy_value:
+                _LOGGER.warning(
+                    f"Energy sensor {self.entity_id}: Persist previous_monthly_value ({self._previous_monthly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                    f"korrigiere previous_monthly_value = energy_value"
+                )
+                self._previous_monthly_value = self._energy_value
+            elif self._period == "yearly" and self._previous_yearly_value > self._energy_value:
+                _LOGGER.warning(
+                    f"Energy sensor {self.entity_id}: Persist previous_yearly_value ({self._previous_yearly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                    f"korrigiere previous_yearly_value = energy_value"
+                )
+                self._previous_yearly_value = self._energy_value
             _LOGGER.info(
                 f"Energy sensor {self.entity_id}: State aus cycle_energy_persist übernommen "
                 f"(state=%s, energy_value=%s)",
@@ -1462,9 +1499,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                     if persisted_total is not None:
                         try:
                             self._energy_value = float(persisted_total)
-                            # Immer aus displayed rekonstruieren, damit 0,44 nicht zu 0,4 wird
+                            # Immer aus displayed rekonstruieren, damit 0,44 nicht zu 0,4 wird – aber nur wenn konsistent (yesterday <= energy)
                             displayed_from_calc = self._energy_value - self._yesterday_value
-                            if abs(displayed_from_calc - displayed) > 0.001:
+                            if abs(displayed_from_calc - displayed) > 0.001 and self._yesterday_value <= self._energy_value:
                                 self._energy_value = self._yesterday_value + displayed
                                 _LOGGER.info(
                                     f"Restore daily {self.entity_id}: current_daily_value erhalten (displayed={displayed:.2f}), "
@@ -1503,6 +1540,13 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                                 f"Restore daily {self.entity_id} (reconstructed, Total not ready): energy_value={self._energy_value:.2f}, "
                                 f"yesterday_value={self._yesterday_value:.2f}, displayed={displayed:.2f} kWh"
                             )
+                    # Konsistenz: yesterday_value darf nicht größer als energy_value sein (daily wäre sonst negativ)
+                    if self._yesterday_value > self._energy_value:
+                        _LOGGER.warning(
+                            f"Restore daily {self.entity_id}: yesterday_value ({self._yesterday_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                            f"korrigiere yesterday_value = energy_value"
+                        )
+                        self._yesterday_value = self._energy_value
                 elif self._period == "monthly":
                     prev = attrs.get("previous_monthly_value")
                     if prev is not None:
@@ -1537,6 +1581,13 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                                 self._energy_value = self._previous_monthly_value + displayed
                         else:
                             self._energy_value = self._previous_monthly_value + displayed
+                    # Konsistenz: previous_monthly_value darf nicht größer als energy_value sein (monthly wäre sonst negativ)
+                    if self._previous_monthly_value > self._energy_value:
+                        _LOGGER.warning(
+                            f"Restore monthly {self.entity_id}: previous_monthly_value ({self._previous_monthly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                            f"korrigiere previous_monthly_value = energy_value"
+                        )
+                        self._previous_monthly_value = self._energy_value
                     _LOGGER.debug(
                         f"Restored energy value for {self.entity_id} (monthly): {self._energy_value:.2f} kWh"
                     )
@@ -1574,6 +1625,13 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                                 self._energy_value = self._previous_yearly_value + displayed
                         else:
                             self._energy_value = self._previous_yearly_value + displayed
+                    # Konsistenz: previous_yearly_value darf nicht größer als energy_value sein (yearly wäre sonst negativ)
+                    if self._previous_yearly_value > self._energy_value:
+                        _LOGGER.warning(
+                            f"Restore yearly {self.entity_id}: previous_yearly_value ({self._previous_yearly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                            f"korrigiere previous_yearly_value = energy_value"
+                        )
+                        self._previous_yearly_value = self._energy_value
                     _LOGGER.debug(
                         f"Restored energy value for {self.entity_id} (yearly): {self._energy_value:.2f} kWh"
                     )
@@ -1683,8 +1741,52 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             # _energy_value wird NICHT auf 0 gesetzt, da es weiterhin vom Total-Sensor aktualisiert wird
             # Die Daily-Berechnung wird automatisch korrekt sein: daily = _energy_value - _yesterday_value
             _LOGGER.info(f"Daily sensor {self.entity_id} reset complete: yesterday_value = {self._yesterday_value:.2f} kWh")
-        elif self._reset_interval != "total":
-            # Für andere Reset-Intervalle (2h, 4h): einfach auf 0 setzen
+        elif self._reset_interval == "monthly" and self._period == "monthly":
+            # Wie Daily: previous_monthly_value = aktueller Total, _energy_value bleibt (wird weiter erhöht)
+            total_entity_id = self.entity_id.replace("_monthly", "_total")
+            total_state = self.hass.states.get(total_entity_id)
+            if total_state and total_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    total_value = float(total_state.state)
+                    old_prev = self._previous_monthly_value
+                    self._previous_monthly_value = total_value
+                    _LOGGER.info(
+                        f"Updated previous_monthly_value for {self.entity_id}: {old_prev:.2f} -> {self._previous_monthly_value:.2f} kWh (from {total_entity_id})"
+                    )
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(f"Could not get total from {total_entity_id} for {self.entity_id}: {e}")
+                    self._previous_monthly_value = self._energy_value
+                    _LOGGER.info(f"Updated previous_monthly_value for {self.entity_id} (fallback): -> {self._previous_monthly_value:.2f} kWh")
+            else:
+                self._previous_monthly_value = self._energy_value
+                _LOGGER.info(
+                    f"Updated previous_monthly_value for {self.entity_id} (fallback, total not found): -> {self._previous_monthly_value:.2f} kWh"
+                )
+            _LOGGER.info(f"Monthly sensor {self.entity_id} reset complete: previous_monthly_value = {self._previous_monthly_value:.2f} kWh")
+        elif self._reset_interval == "yearly" and self._period == "yearly":
+            # Wie Daily: previous_yearly_value = aktueller Total, _energy_value bleibt (wird weiter erhöht)
+            total_entity_id = self.entity_id.replace("_yearly", "_total")
+            total_state = self.hass.states.get(total_entity_id)
+            if total_state and total_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    total_value = float(total_state.state)
+                    old_prev = self._previous_yearly_value
+                    self._previous_yearly_value = total_value
+                    _LOGGER.info(
+                        f"Updated previous_yearly_value for {self.entity_id}: {old_prev:.2f} -> {self._previous_yearly_value:.2f} kWh (from {total_entity_id})"
+                    )
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(f"Could not get total from {total_entity_id} for {self.entity_id}: {e}")
+                    self._previous_yearly_value = self._energy_value
+                    _LOGGER.info(f"Updated previous_yearly_value for {self.entity_id} (fallback): -> {self._previous_yearly_value:.2f} kWh")
+            else:
+                self._previous_yearly_value = self._energy_value
+                _LOGGER.info(
+                    f"Updated previous_yearly_value for {self.entity_id} (fallback, total not found): -> {self._previous_yearly_value:.2f} kWh"
+                )
+            _LOGGER.info(f"Yearly sensor {self.entity_id} reset complete: previous_yearly_value = {self._previous_yearly_value:.2f} kWh")
+        elif self._reset_interval in ("2h", "4h"):
+            # Nur 2h/4h: Anzeige = _energy_value, Reset = auf 0 setzen
             self._energy_value = 0.0
             _LOGGER.info(f"Sensor {self.entity_id} reset to 0.0 kWh.")
         else:
@@ -1973,6 +2075,11 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
             _state_change_callback,
         )
 
+        # Nach Listener-Registrierung einmal mit aktuellen Quell-Sensoren synchronisieren.
+        # Verhindert, dass COP nach Restart veralteten DB-State zeigt, wenn Energy-Sensoren
+        # vor dem COP-Sensor korrigiert wurden und ihr State-Update vor dem Listener kam.
+        self._update_cop()
+
         # Total-COP: Baseline einmalig setzen, wenn noch keine vorhanden
         if self._period == "total" and self._thermal_baseline is None and self._electrical_baseline is None:
             thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
@@ -2037,6 +2144,31 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                 if tb is not None and eb is not None:
                     self._thermal_baseline = float(str(tb).replace(",", "."))
                     self._electrical_baseline = float(str(eb).replace(",", "."))
+                    # Konsistenz: Baseline darf nicht größer als aktueller Wert sein (nach Neustart/Reset)
+                    thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
+                    electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
+                    if thermal_state and thermal_state.state not in (None, "unknown", "unavailable"):
+                        try:
+                            current_thermal = float(str(thermal_state.state).replace(",", "."))
+                            if self._thermal_baseline > current_thermal:
+                                _LOGGER.warning(
+                                    "COP total %s: thermal_baseline (%.2f) > current (%.2f), korrigiere baseline = current",
+                                    self.entity_id, self._thermal_baseline, current_thermal,
+                                )
+                                self._thermal_baseline = current_thermal
+                        except (ValueError, TypeError):
+                            pass
+                    if electrical_state and electrical_state.state not in (None, "unknown", "unavailable"):
+                        try:
+                            current_electrical = float(str(electrical_state.state).replace(",", "."))
+                            if self._electrical_baseline > current_electrical:
+                                _LOGGER.warning(
+                                    "COP total %s: electrical_baseline (%.2f) > current (%.2f), korrigiere baseline = current",
+                                    self.entity_id, self._electrical_baseline, current_electrical,
+                                )
+                                self._electrical_baseline = current_electrical
+                        except (ValueError, TypeError):
+                            pass
                     _LOGGER.debug(
                         "COP total %s: restored baselines thermal=%.2f, electrical=%.2f",
                         self.entity_id,

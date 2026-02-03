@@ -157,7 +157,11 @@ Jedes Reset-Intervall sendet ein entsprechendes Dispatcher-Signal:
 - `SIGNAL_RESET_MONTHLY`
 - `SIGNAL_RESET_YEARLY`
 
-## Sensor-Handler
+## Sensor-Handler: Cycling vs. Energy
+
+**Cycling-Sensoren**: Pro Periode ein **eigener Zähler** (`_cycling_value`). Beim Reset wird der Zähler auf 0 gesetzt. Es gibt keine Differenzberechnung „Anzeige = Total − Yesterday“; daher **kein Konsistenzproblem** (yesterday/previous_* > current) wie bei Energy.
+
+**Energy-Sensoren (Daily/Monthly/Yearly)**: **Ein** Total-Zähler (`_energy_value`), Anzeige = `_energy_value - _yesterday_value` (bzw. `_previous_monthly_value` / `_previous_yearly_value`). Beim Reset wird nur der Basis-Wert (yesterday/previous_*) aktualisiert, nicht `_energy_value`. Damit nach Neustart keine negativen Periodenwerte entstehen, gibt es **Konsistenzprüfungen** (Basis-Wert ≤ energy_value) bei Restore, Persist-Anwendung und Persist-Schreiben. Details: [Reset-Logik und Yesterday-Sensoren](reset-logik-yesterday-sensoren.md#4-konsistenz-yesterdayprevious_-energy_value-nach-neustart).
 
 ### Cycling-Sensoren
 
@@ -293,6 +297,7 @@ if "reset_manager" in hass.data["lambda_heat_pumps"][entry.entry_id]:
 
 ## Verwandte Dokumentation
 
-- [Reset-Logik und Yesterday-Sensoren](reset-logik-yesterday-sensoren.md) - Details zur Energy-Sensor Reset-Logik
-- [Cycling-Sensoren](cycling-sensoren.md) - Details zur Cycling-Sensor Reset-Logik
+- [Reset-Logik und Yesterday-Sensoren](reset-logik-yesterday-sensoren.md) – Details zur Energy-Sensor Reset-Logik inkl. Konsistenz (yesterday/previous_* ≤ energy_value)
+- [Energieverbrauchssensoren](energieverbrauchssensoren.md) – Technische Details inkl. Konsistenz-Korrektur bei Restore/Persist
+- [Cycling-Sensoren](cycling-sensoren.md) – Details zur Cycling-Sensor Reset-Logik
 

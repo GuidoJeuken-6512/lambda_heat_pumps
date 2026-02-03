@@ -71,6 +71,44 @@ def _total_sensor(hass, entry, entity_id="sensor.eu08l_hp1_heating_energy_total"
     )
 
 
+def _monthly_sensor(hass, entry, entity_id="sensor.eu08l_hp1_heating_energy_monthly"):
+    """Create a monthly energy consumption sensor."""
+    return LambdaEnergyConsumptionSensor(
+        hass=hass,
+        entry=entry,
+        sensor_id="heating_energy_monthly",
+        name="Heating Energy Monthly",
+        entity_id=entity_id,
+        unique_id="eu08l_hp1_heating_energy_monthly",
+        unit="kWh",
+        state_class="total",
+        device_class=SensorDeviceClass.ENERGY,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+        period="monthly",
+    )
+
+
+def _yearly_sensor(hass, entry, entity_id="sensor.eu08l_hp1_heating_energy_yearly"):
+    """Create a yearly energy consumption sensor."""
+    return LambdaEnergyConsumptionSensor(
+        hass=hass,
+        entry=entry,
+        sensor_id="heating_energy_yearly",
+        name="Heating Energy Yearly",
+        entity_id=entity_id,
+        unique_id="eu08l_hp1_heating_energy_yearly",
+        unit="kWh",
+        state_class="total",
+        device_class=SensorDeviceClass.ENERGY,
+        device_type="hp",
+        hp_index=1,
+        mode="heating",
+        period="yearly",
+    )
+
+
 # --- set_energy_value: Wert darf nicht verringert werden (Neustart-Werterhalt) ---
 
 
@@ -187,6 +225,67 @@ async def test_restore_daily_state_overrides_rounded_attrs(mock_hass, mock_entry
     assert sensor._energy_value == pytest.approx(212.33 + 0.44, abs=0.01)
 
 
+# --- restore_state: Konsistenz-Korrektur (yesterday/previous_* > energy_value → Fehler nach Neustart) ---
+
+
+@pytest.mark.asyncio
+async def test_restore_daily_corrects_yesterday_greater_than_energy_value(mock_hass, mock_entry):
+    """Daily: Wenn yesterday_value > energy_value (inkonsistent nach Neustart), wird yesterday_value = energy_value gesetzt."""
+    sensor = _daily_sensor(mock_hass, mock_entry)
+    sensor.async_write_ha_state = MagicMock()
+    # Inkonsistent: yesterday 1969 > energy 1668 → daily wäre negativ
+    last_state = Mock(state="0.0")
+    last_state.attributes = {
+        "yesterday_value": 1969.46,
+        "energy_value": 1668.47,
+        "current_daily_value": 0.0,
+    }
+
+    await sensor.restore_state(last_state)
+
+    assert sensor._energy_value == 1668.47
+    assert sensor._yesterday_value == 1668.47  # korrigiert
+    assert sensor.native_value == 0.0
+
+
+@pytest.mark.asyncio
+async def test_restore_monthly_corrects_previous_monthly_greater_than_energy_value(mock_hass, mock_entry):
+    """Monthly: Wenn previous_monthly_value > energy_value, wird previous_monthly_value = energy_value gesetzt."""
+    sensor = _monthly_sensor(mock_hass, mock_entry)
+    sensor.async_write_ha_state = MagicMock()
+    last_state = Mock(state="0.0")
+    last_state.attributes = {
+        "energy_value": 1668.47,
+        "previous_monthly_value": 1800.0,  # > energy_value
+        "previous_yearly_value": 1500.0,
+    }
+
+    await sensor.restore_state(last_state)
+
+    assert sensor._energy_value == 1668.47
+    assert sensor._previous_monthly_value == 1668.47  # korrigiert
+    assert sensor.native_value == 0.0
+
+
+@pytest.mark.asyncio
+async def test_restore_yearly_corrects_previous_yearly_greater_than_energy_value(mock_hass, mock_entry):
+    """Yearly: Wenn previous_yearly_value > energy_value, wird previous_yearly_value = energy_value gesetzt."""
+    sensor = _yearly_sensor(mock_hass, mock_entry)
+    sensor.async_write_ha_state = MagicMock()
+    last_state = Mock(state="0.0")
+    last_state.attributes = {
+        "energy_value": 1668.47,
+        "previous_monthly_value": 1600.0,
+        "previous_yearly_value": 2000.0,  # > energy_value
+    }
+
+    await sensor.restore_state(last_state)
+
+    assert sensor._energy_value == 1668.47
+    assert sensor._previous_yearly_value == 1668.47  # korrigiert
+    assert sensor.native_value == 0.0
+
+
 # --- cycle_energy_persist: _apply_persisted_energy_state ---
 
 
@@ -222,6 +321,60 @@ def test_apply_persisted_energy_state_empty_attrs(mock_hass, mock_entry):
     sensor._apply_persisted_energy_state({"state": 1.0, "attributes": {}})
     assert sensor._energy_value == 100.0
     assert sensor._yesterday_value == 99.0
+
+
+def test_apply_persisted_energy_state_daily_corrects_yesterday_greater_than_energy(mock_hass, mock_entry):
+    """Persist Daily: yesterday_value > energy_value wird zu yesterday_value = energy_value korrigiert."""
+    sensor = _daily_sensor(mock_hass, mock_entry)
+    data = {
+        "state": 0.0,
+        "attributes": {
+            "energy_value": 1668.47,
+            "yesterday_value": 1969.46,  # inkonsistent
+            "previous_monthly_value": 0.0,
+            "previous_yearly_value": 0.0,
+        },
+    }
+    sensor._apply_persisted_energy_state(data)
+    assert sensor._energy_value == 1668.47
+    assert sensor._yesterday_value == 1668.47
+    assert sensor.native_value == 0.0
+
+
+def test_apply_persisted_energy_state_monthly_corrects_previous_monthly_greater_than_energy(mock_hass, mock_entry):
+    """Persist Monthly: previous_monthly_value > energy_value wird korrigiert."""
+    sensor = _monthly_sensor(mock_hass, mock_entry)
+    data = {
+        "state": 0.0,
+        "attributes": {
+            "energy_value": 1668.47,
+            "yesterday_value": 0.0,
+            "previous_monthly_value": 1800.0,  # inkonsistent
+            "previous_yearly_value": 1500.0,
+        },
+    }
+    sensor._apply_persisted_energy_state(data)
+    assert sensor._energy_value == 1668.47
+    assert sensor._previous_monthly_value == 1668.47
+    assert sensor.native_value == 0.0
+
+
+def test_apply_persisted_energy_state_yearly_corrects_previous_yearly_greater_than_energy(mock_hass, mock_entry):
+    """Persist Yearly: previous_yearly_value > energy_value wird korrigiert."""
+    sensor = _yearly_sensor(mock_hass, mock_entry)
+    data = {
+        "state": 0.0,
+        "attributes": {
+            "energy_value": 1668.47,
+            "yesterday_value": 0.0,
+            "previous_monthly_value": 1600.0,
+            "previous_yearly_value": 2000.0,  # inkonsistent
+        },
+    }
+    sensor._apply_persisted_energy_state(data)
+    assert sensor._energy_value == 1668.47
+    assert sensor._previous_yearly_value == 1668.47
+    assert sensor.native_value == 0.0
 
 
 # --- _get_energy_sensor_persisted_state_from_coordinator ---

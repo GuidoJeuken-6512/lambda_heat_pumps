@@ -65,6 +65,9 @@ nav = [
     { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
   ] },
+  { "Vorlagen Templates" = [
+    { "Lambda_energy_dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
+  ] },
   { "Entwickler" = [
     { "Features (Technische Übersicht)" = "Entwickler/features.md" },
     { "Installation" = "Entwickler/installation.md" },

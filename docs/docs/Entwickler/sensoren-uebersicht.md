@@ -83,7 +83,7 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 | `eu08l_hp1_cooling_max_output_power` | `cooling_max_output_power` | 59 | 0.1 | measurement | power | Cooling Max Output Power |
 | `eu08l_hp1_config_parameter_60` | `config_parameter_60` | 60 | 1 | measurement | - | Unknown Parameter (R1060) |
 
-### Berechnet (62 Sensoren)
+### Berechnet (75 Sensoren, inkl. COP)
 
 | unique_id | sensor_id | Register | Scale | State Class | Device Class | Data Type | Name |
 |-----------|-----------|----------|-------|-------------|--------------|-----------|------|
@@ -92,6 +92,7 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 | `eu08l_hp1_compressor_start_cycling_daily` | `compressor_start_cycling_daily` | - | - | total | - | calculated | Compressor Start Cycling Daily |
 | `eu08l_hp1_compressor_start_cycling_monthly` | `compressor_start_cycling_monthly` | - | - | total | - | calculated | Compressor Start Cycling Monthly |
 | `eu08l_hp1_compressor_start_cycling_total` | `compressor_start_cycling_total` | - | - | total_increasing | - | calculated | Compressor Start Cycling Total |
+| `eu08l_hp1_compressor_start_cycling_yesterday` | `compressor_start_cycling_yesterday` | - | - | total | - | calculated | Compressor Start Cycling Yesterday |
 | `eu08l_hp1_cooling_cycling_2h` | `cooling_cycling_2h` | - | - | total | - | calculated | Cooling Cycling 2h |
 | `eu08l_hp1_cooling_cycling_4h` | `cooling_cycling_4h` | - | - | total | - | calculated | Cooling Cycling 4h |
 | `eu08l_hp1_cooling_cycling_daily` | `cooling_cycling_daily` | - | - | total | - | calculated | Cooling Cycling Daily |
@@ -149,6 +150,25 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 | `eu08l_hp1_stby_energy_monthly` | `stby_energy_monthly` | - | - | total | energy | calculated | STBY Energy Monthly |
 | `eu08l_hp1_stby_energy_total` | `stby_energy_total` | - | - | total_increasing | energy | calculated | STBY Energy Total |
 | `eu08l_hp1_stby_energy_yearly` | `stby_energy_yearly` | - | - | total | energy | calculated | STBY Energy Yearly |
+
+### COP-Sensoren (berechnet, 12 pro Wärmepumpe)
+
+COP = thermische Energie / elektrische Energie (Quellen: Thermal- und Energy-Sensoren). Kein Register, State Class: measurement.
+
+| unique_id | sensor_id | Register | Scale | State Class | Device Class | Data Type | Name |
+|-----------|-----------|----------|-------|-------------|--------------|-----------|------|
+| `eu08l_hp1_heating_cop_daily` | `heating_cop_daily` | - | - | measurement | - | cop | Heating COP Daily |
+| `eu08l_hp1_heating_cop_monthly` | `heating_cop_monthly` | - | - | measurement | - | cop | Heating COP Monthly |
+| `eu08l_hp1_heating_cop_yearly` | `heating_cop_yearly` | - | - | measurement | - | cop | Heating COP Yearly |
+| `eu08l_hp1_heating_cop_total` | `heating_cop_total` | - | - | measurement | - | cop | Heating COP Total |
+| `eu08l_hp1_hot_water_cop_daily` | `hot_water_cop_daily` | - | - | measurement | - | cop | Hot Water COP Daily |
+| `eu08l_hp1_hot_water_cop_monthly` | `hot_water_cop_monthly` | - | - | measurement | - | cop | Hot Water COP Monthly |
+| `eu08l_hp1_hot_water_cop_yearly` | `hot_water_cop_yearly` | - | - | measurement | - | cop | Hot Water COP Yearly |
+| `eu08l_hp1_hot_water_cop_total` | `hot_water_cop_total` | - | - | measurement | - | cop | Hot Water COP Total |
+| `eu08l_hp1_cooling_cop_daily` | `cooling_cop_daily` | - | - | measurement | - | cop | Cooling COP Daily |
+| `eu08l_hp1_cooling_cop_monthly` | `cooling_cop_monthly` | - | - | measurement | - | cop | Cooling COP Monthly |
+| `eu08l_hp1_cooling_cop_yearly` | `cooling_cop_yearly` | - | - | measurement | - | cop | Cooling COP Yearly |
+| `eu08l_hp1_cooling_cop_total` | `cooling_cop_total` | - | - | measurement | - | cop | Cooling COP Total |
 
 
 ## Boiler (Warmwasserspeicher)
@@ -226,3 +246,6 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 |-----------|-----------|----------|-------|-------------|--------------|-----------|------|
 | `eu08l_hc1_heating_curve_flow_line_temperature_calc` | `heating_curve_flow_line_temperature_calc` | - | - | measurement | temperature | calculated | Heating Curve Flow Line Temperature Calc |
 
+## Verwandte Dokumentation- [COP-Sensoren](cop-sensoren.md) – Technische Details zu COP-Sensoren (Quellen: Thermal- und Energy-Sensoren)
+- [Energieverbrauchssensoren](energieverbrauchssensoren.md) – Energy- und Thermal-Energy-Sensoren
+- [Cycling-Sensoren](cycling-sensoren.md) – Cycling- und Yesterday-Sensoren
