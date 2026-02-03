@@ -64,6 +64,7 @@ nav = [
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
     { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
+    { "Konfiguration löschen" = "Anwender/konfiguration_loeschen.md" },
   ] },
   { "Entwickler" = [
     { "Features (Technische Übersicht)" = "Entwickler/features.md" },
