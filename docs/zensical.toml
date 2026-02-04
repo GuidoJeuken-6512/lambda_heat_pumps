@@ -62,8 +62,10 @@ nav = [
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
+    { "Historische Daten löschen" = "Anwender/historische_daten_loeschen.md" },    
     { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
+    { "Konfiguration löschen" = "Anwender/konfiguration_loeschen.md" },
   ] },
   { "Vorlagen Templates" = [
     { "Lambda_energy_dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
