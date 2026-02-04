@@ -418,6 +418,92 @@ class TestLambdaEnergyConsumptionSensor:
         assert sensor._energy_value == 10000.0, "Yearly reset darf _energy_value nicht auf 0 setzen"
         assert sensor._previous_yearly_value == 10000.0, "previous_yearly_value soll auf Total gesetzt werden"
 
+    @pytest.mark.asyncio
+    async def test_day_change_simulation_daily_reset_then_increment(self, mock_hass, mock_entry):
+        """Tageswechsel simulieren: Vor Mitternacht → Reset → Nach Mitternacht Inkrement.
+        Stellt sicher, dass Daily-Sensoren nach dem Reset wieder korrekt aktualisiert werden
+        (yesterday_value = Total, Anzeige 0; danach Inkrement erhöht Tageswert).
+        """
+        from unittest.mock import MagicMock
+        # Daily-Sensor (Heizung, Tageswert)
+        daily_sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        # Total-Sensor-State mocken (wird bei Reset für yesterday_value gelesen)
+        total_state = MagicMock()
+        total_state.state = "100.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+
+        with patch.object(daily_sensor, "async_write_ha_state", MagicMock()):
+            # —— Vor Mitternacht: Tageswert 100 kWh (Total 100, yesterday 0)
+            daily_sensor._energy_value = 100.0
+            daily_sensor._yesterday_value = 0.0
+            assert daily_sensor.native_value == 100.0, "Vor Reset: Tageswert soll 100 kWh sein"
+
+            # —— Mitternacht: Daily-Reset (Signal würde _handle_reset auslösen)
+            await daily_sensor._handle_reset(mock_entry.entry_id)
+
+            # Nach Reset: yesterday_value = Total, Anzeige = 0
+            assert daily_sensor._yesterday_value == 100.0, (
+                "Nach Reset: yesterday_value muss auf Total (100) gesetzt werden"
+            )
+            assert daily_sensor._energy_value == 100.0, (
+                "Nach Reset: _energy_value bleibt unverändert (wird vom Coordinator weiter erhöht)"
+            )
+            assert daily_sensor.native_value == 0.0, (
+                "Nach Reset: Tagesanzeige muss 0 sein (daily = _energy_value - yesterday_value)"
+            )
+
+            # —— Nach Mitternacht: Erstes Inkrement (Coordinator liefert 100.5 kWh)
+            daily_sensor.set_energy_value(100.5)
+
+            # Tageswert muss 0,5 kWh sein (100.5 - 100)
+            assert daily_sensor._energy_value == 100.5
+            assert daily_sensor.native_value == 0.5, (
+                "Nach erstem Inkrement: Tageswert muss 0,5 kWh sein – "
+                "wenn 0 bleibt, werden Daily-Sensoren nach Reset nicht aktualisiert (Bug)"
+            )
+
+    @pytest.mark.asyncio
+    async def test_day_change_simulation_wrong_entry_id_ignored(self, mock_hass, mock_entry):
+        """Tageswechsel: _handle_reset mit falscher entry_id ändert nichts (anderer Config-Eintrag)."""
+        from unittest.mock import MagicMock
+        daily_sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        daily_sensor._energy_value = 80.0
+        daily_sensor._yesterday_value = 20.0
+        with patch.object(daily_sensor, "async_write_ha_state", MagicMock()):
+            await daily_sensor._handle_reset("other_entry_id")
+        assert daily_sensor._yesterday_value == 20.0, "Falsche entry_id: yesterday_value unverändert"
+        assert daily_sensor._energy_value == 80.0
+        assert daily_sensor.native_value == 60.0
+
     def test_device_info(self, energy_sensor, mock_entry):
         """Test device info property."""
         # device_info calls build_subdevice_info (since hp_index is set)

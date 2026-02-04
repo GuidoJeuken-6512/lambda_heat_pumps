@@ -153,7 +153,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 hp_index=hp_idx,
                 energy_delta=energy_delta,
                 name_prefix=name_prefix,
-                use_legacy_modbus_names=True,
+                use_legacy_modbus_names=self._use_legacy_names,
                 energy_offsets=energy_offsets,
                 sensor_type="thermal",
             )
@@ -2128,7 +2128,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         sensor_config = self._energy_sensor_configs.get(hp_key, {})
         sensor_entity_id = sensor_config.get(f"{sensor_type}_sensor_entity_id")
         if not sensor_entity_id:
-            name_prefix = self.entry.data.get("name", "eu08l")
+            # Entity-IDs der Sensoren werden in sensor.py mit kleingeschriebenem name_prefix erzeugt
+            name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
             sensor_entity_id = default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
             _LOGGER.info(f"INTERNAL-SENSOR: HP{hp_idx} - Verwende internen Modbus-Sensor '{sensor_entity_id}' zur {sensor_type}-Verbrauchsberechnung")
         # Get current energy reading from the configured sensor
@@ -2221,7 +2222,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 hp_index=hp_idx,
                 energy_delta=energy_delta,
                 name_prefix=name_prefix,
-                use_legacy_modbus_names=True,
+                use_legacy_modbus_names=self._use_legacy_names,
                 energy_offsets=energy_offsets,
             )
 

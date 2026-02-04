@@ -67,6 +67,7 @@ nav = [
   ] },
   { "Vorlagen Templates" = [
     { "Lambda_energy_dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
+    { "Lambda_heizkurve_card" = "Vorlagen/Lambda_heizkurve_card.md" },
   ] },
   { "Entwickler" = [
     { "Features (Technische Übersicht)" = "Entwickler/features.md" },

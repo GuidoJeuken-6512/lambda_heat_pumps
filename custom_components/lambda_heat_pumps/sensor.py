@@ -19,7 +19,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.template import Template
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from datetime import timedelta
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 
@@ -1701,6 +1702,8 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
     async def _handle_reset(self, entry_id: str):
         """Handle reset signal."""
+        if entry_id != self._entry.entry_id:
+            return
         _LOGGER.info(f"Resetting energy sensor {self.entity_id} (period: {self._period}, reset_interval: {self._reset_interval})")
         
         # Für Daily-Sensoren: Vor dem Reset Yesterday-Wert mit aktuellem Total-Wert aktualisieren
@@ -1918,6 +1921,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         self._attr_suggested_display_precision = 2  # Zeige 2 Dezimalstellen in der UI
         self._cop_value = None  # Initialisiere mit None (unavailable)
         self._unsub_state_changes = None  # Unsubscribe-Funktion für State-Changes
+        self._unsub_timer = None  # Periodisches Auffrischen (daily/monthly/yearly nach Reset)
         # Baseline für Total-COP: elektrische Sensoren länger im System als thermische
         self._thermal_baseline = None
         self._electrical_baseline = None
@@ -2080,6 +2084,18 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         # vor dem COP-Sensor korrigiert wurden und ihr State-Update vor dem Listener kam.
         self._update_cop()
 
+        # Daily/Monthly/Yearly: Periodisch (alle 5 Min) neu berechnen, damit COP nach Mitternacht-Reset
+        # wieder aktualisiert wird, falls State-Change-Events der Energy-Sensoren nicht ankommen.
+        # State immer schreiben, damit "Zuletzt aktualisiert" auch bei unverändertem Wert (z.B. 0) aktualisiert wird.
+        if self._period in ("daily", "monthly", "yearly"):
+            @callback
+            def _periodic_refresh(_now):
+                self._update_cop()
+                self.async_write_ha_state()
+            self._unsub_timer = async_track_time_interval(
+                self.hass, _periodic_refresh, timedelta(minutes=5)
+            )
+
         # Total-COP: Baseline einmalig setzen, wenn noch keine vorhanden
         if self._period == "total" and self._thermal_baseline is None and self._electrical_baseline is None:
             thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
@@ -2187,6 +2203,9 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         if self._unsub_state_changes:
             self._unsub_state_changes()
             self._unsub_state_changes = None
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
         await super().async_will_remove_from_hass()
 
     @property

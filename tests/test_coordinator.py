@@ -587,3 +587,99 @@ def test_collect_energy_sensor_states_corrects_invalid_daily_monthly_yearly(mock
     assert out["sensor.eu08l_hp1_heating_energy_daily"]["attributes"]["yesterday_value"] == 1668.47
     assert out["sensor.eu08l_hp1_heating_energy_monthly"]["attributes"]["previous_monthly_value"] == 1668.47
     assert out["sensor.eu08l_hp1_heating_energy_yearly"]["attributes"]["previous_yearly_value"] == 1668.47
+
+
+# --- Tests für Daily-Reset / Energy-Consumption-Fixes (Entity-ID + use_legacy_modbus_names) ---
+
+
+@pytest.mark.asyncio
+async def test_coordinator_use_legacy_modbus_names_from_entry(mock_hass, mock_entry):
+    """Coordinator muss use_legacy_modbus_names aus Entry übergeben, nicht hardcoded True.
+    Verhindert, dass Daily-Sensoren nach Mitternachts-Reset nicht mehr aktualisiert werden.
+    """
+    mock_entry.data["use_legacy_modbus_names"] = False
+    mock_entry.data["name"] = "eu08l"
+
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.increment_energy_consumption_counter",
+        new_callable=AsyncMock,
+    ) as mock_increment:
+        coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+        await coordinator._increment_energy_consumption(1, "heating", 0.5)
+
+        mock_increment.assert_called_once()
+        call_kwargs = mock_increment.call_args[1]
+        assert call_kwargs["use_legacy_modbus_names"] is False, (
+            "Coordinator muss use_legacy_modbus_names aus Entry übergeben (False), "
+            "nicht hardcoded True – sonst werden Energy-Entities nicht gefunden."
+        )
+
+
+@pytest.mark.asyncio
+async def test_coordinator_use_legacy_modbus_names_true_from_entry(mock_hass, mock_entry):
+    """Bei use_legacy_modbus_names=True wird True an increment_energy_consumption_counter übergeben."""
+    mock_entry.data["use_legacy_modbus_names"] = True
+    mock_entry.data.setdefault("name", "eu08l")
+
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.increment_energy_consumption_counter",
+        new_callable=AsyncMock,
+    ) as mock_increment:
+        coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+        await coordinator._increment_energy_consumption(1, "heating", 0.5)
+
+        call_kwargs = mock_increment.call_args[1]
+        assert call_kwargs["use_legacy_modbus_names"] is True
+
+
+@pytest.mark.asyncio
+async def test_coordinator_energy_sensor_entity_id_uses_lowercase_name_prefix(mock_hass, mock_entry):
+    """Default-Energie-Sensor-Entity-ID muss kleingeschriebenen name_prefix verwenden.
+    Sensoren werden in sensor.py mit name_prefix.lower() erzeugt – sonst findet der
+    Coordinator den Sensor nicht und alle Daily-Werte bleiben 0.
+    """
+    mock_entry.data["name"] = "EU08L"
+    mock_entry.data.setdefault("num_hps", 1)
+
+    mock_state = Mock()
+    mock_state.state = "100.0"
+    mock_state.attributes = {"unit_of_measurement": "kWh"}
+    mock_hass.states.get = Mock(return_value=mock_state)
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    coordinator._energy_sensor_configs = {}
+    coordinator._energy_unit_cache_all = {"electrical_hp1": "kWh"}
+    coordinator._last_operating_state = {"1": 0}
+    coordinator._persist_counters = AsyncMock()
+
+    last_reading_dict = {"hp1": 99.0}
+    first_value_seen_dict = {"hp1": True}
+
+    def unit_ok(unit):
+        return unit == "kWh"
+
+    def convert_kwh(val, unit):
+        return float(val)
+
+    increment_fn = AsyncMock()
+
+    await coordinator._track_hp_energy_type_consumption(
+        1,
+        1,
+        {},
+        "electrical",
+        "sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated",
+        unit_ok,
+        convert_kwh,
+        last_reading_dict,
+        first_value_seen_dict,
+        increment_fn,
+    )
+
+    mock_hass.states.get.assert_called()
+    call_args = mock_hass.states.get.call_args[0]
+    entity_id_used = call_args[0]
+    assert entity_id_used == "sensor.eu08l_hp1_compressor_power_consumption_accumulated", (
+        "Entity-ID muss kleingeschriebenen name_prefix verwenden (eu08l), "
+        "nicht Konfigurationswert (EU08L) – sonst wird der Sensor nicht gefunden."
+    )
