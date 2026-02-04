@@ -4,6 +4,8 @@ title: "Lambda Energy Dashboard"
 
 # Lambda Energy Dashboard (Vorlage)
 
+### ⚠️ ⚠️ Achtung, dies dashboard nebötigt Sensoren, die erst mit der Version 2.3 der Lambda Integration herauskommen. Mit der aktuellen Version 2.2 werden viele Werte nicht gefunden
+
 Diese Vorlage erstellt ein Lovelace-Dashboard **„lambda Energy“** mit vier Spalten: **Täglich**, **Monatlich**, **Jährlich** und **Total**. Pro Spalte werden für Heizen, Warmwasser, Kühlen und Abtauen die elektrische Energie, die thermische Energie und der COP angezeigt (Abtau ohne COP).
 
 <a href="../../assets/dashboard-lambda-energy.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../../assets/dashboard-lambda-energy.png" alt="Lambda Energy Dashboard" width="600" style="max-width: 100%; height: auto;" /></a>

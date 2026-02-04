@@ -6,6 +6,7 @@ Alle Commits des Branches Release2.3 (seit Release2.2). Oben Stichpunkte mit Ver
 
 ## Stichpunkte (Übersicht)
 
+- [docs: Lambda Heizkurven-Card (Vorlage)](#heizkurven-card)
 - [Merge branch 'Release2.3' (5b970a4)](#commit-1)
 - [feat: add German and English translations for compressor start cycling sensor (477b743)](#commit-2)
 - [Merge branch 'Release2.3' (dfca789)](#commit-3)
@@ -41,6 +42,15 @@ Alle Commits des Branches Release2.3 (seit Release2.2). Oben Stichpunkte mit Ver
 ---
 
 ## Commit-Details
+
+<a id="heizkurven-card"></a>
+### Lambda Heizkurven-Card (Vorlage)
+- **Lovelace-Custom-Card** zur Darstellung der Heizkurve einer Lambda-Wärmepumpe: X-Achse Außentemperatur (22 °C bis -22 °C), Y-Achse Vorlauftemperatur (10–75 °C), Linie durch drei Stützpunkte und aktueller Betriebspunkt (roter Punkt) aus Sensoren.
+- Y-Werte der Stützpunkte wahlweise fest oder aus Number-Entities (z. B. `heating_curve_warm_outside_temp`, `heating_curve_mid_outside_temp`, `heating_curve_cold_outside_temp`).
+- Vorlage inkl. vollständigem JavaScript-Modul (ohne externe Bibliotheken), YAML-Konfiguration und Einrichtungsanleitung in der Doku.
+- **Dokumentation:** [Vorlagen → Lambda_heizkurve_card](../Vorlagen/Lambda_heizkurve_card.md). Dateien: `docs/lovelace/lambda_heizkurve_card.js`, `dashboard_heizkurve.yaml`, `heizkurve_card.yaml`.
+
+---
 
 <a id="commit-1"></a>
 ### 1 · 5b970a4 – Merge branch 'Release2.3'
