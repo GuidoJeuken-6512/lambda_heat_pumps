@@ -15,6 +15,7 @@ from .automations import (
     SIGNAL_RESET_DAILY,
     SIGNAL_RESET_2H,
     SIGNAL_RESET_4H,
+    SIGNAL_RESET_HOURLY,
     SIGNAL_RESET_MONTHLY,
     SIGNAL_RESET_YEARLY,
     _update_yesterday_sensors_async,
@@ -84,6 +85,18 @@ class ResetManager:
 
         self._unsub_timers["4h"] = async_track_time_change(
             self.hass, reset_4h, hour=[0, 4, 8, 12, 16, 20], minute=0, second=0
+        )
+
+        # Hourly Reset (jede volle Stunde, für Heating Energy Hourly Debug-Sensor)
+        @callback
+        def reset_hourly(now: datetime) -> None:
+            """Reset hourly energy sensors every full hour."""
+            _LOGGER.info("Resetting hourly energy sensors at %s:%s", now.hour, now.minute)
+
+            self.hass.async_create_task(self._send_reset_signal_async(SIGNAL_RESET_HOURLY))
+
+        self._unsub_timers["hourly"] = async_track_time_change(
+            self.hass, reset_hourly, hour=list(range(24)), minute=0, second=0
         )
 
         # Monthly Reset (1. des Monats)

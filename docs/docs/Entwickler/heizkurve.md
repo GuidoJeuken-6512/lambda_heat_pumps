@@ -131,6 +131,117 @@ Die Integration erstellt automatisch einen Sensor, der die berechnete Vorlauftem
 
 Dieser Sensor zeigt die final berechnete Vorlauftemperatur nach allen Anpassungen (Heizkurve, Flow-Line-Offset, Raumthermomenter, ECO-Modus).
 
+### Aus welchen Werten wird die Entity berechnet?
+
+Die Entity `sensor.*_hc1_heating_curve_flow_line_temperature_calc` wird in der Klasse **LambdaHeatingCurveCalcSensor** (`template_sensor.py`) berechnet. Verwendet werden:
+
+| Schritt | Quelle | Beschreibung |
+|--------|--------|--------------|
+| **1. Außentemperatur** | `sensor.*_ambient_temperature_calculated` | Aktuelle Außentemperatur (X für die Heizkurve). |
+| **2. Stützpunkte (Y)** | `number.*_hc1_heating_curve_cold_outside_temp` | Vorlauf bei -22 °C (Kaltpunkt). |
+| | `number.*_hc1_heating_curve_mid_outside_temp` | Vorlauf bei 0 °C (Mittelpunkt). |
+| | `number.*_hc1_heating_curve_warm_outside_temp` | Vorlauf bei +22 °C (Warmpunkt). |
+| **3. Stützpunkte (X)** | fest | Kalt = -22 °C, Mitte = 0 °C, Warm = +22 °C. |
+| **4. Grundwert** | berechnet | Lineare Interpolation zwischen den Stützpunkten: *y = y_a + (x − x_a) × (y_b − y_a) / (x_b − x_a)*. Bei Außentemperatur ≥ +22 °C wird der Warmpunkt-Wert verwendet, bei ≤ -22 °C der Kaltpunkt-Wert. |
+| **5. Flow-Line-Offset** | Coordinator-Daten `hc{idx}_set_flow_line_offset_temperature` | Wird zum interpolierten Wert addiert (z. B. aus Number-Entity `number.*_hc1_flow_line_offset_temperature` / Modbus). |
+| **6. Raumthermostat** (wenn aktiviert) | `number.*_hc1_room_thermostat_offset`, `number.*_hc1_room_thermostat_factor` | Offset und Faktor für die Raumtemperatur-Anpassung. |
+| | Coordinator `hc{idx}_room_device_temperature`, `hc{idx}_target_room_temperature` | Ist- und Soll-Raumtemperatur. **Anpassung** = (Soll − Ist − Offset) × Faktor, wird zum Zwischenergebnis addiert. |
+| **7. ECO-Modus** (wenn operating_state = 1) | Coordinator `hc{idx}_operating_state` | Wert 1 = ECO aktiv. |
+| | `number.*_hc1_eco_temp_reduction` | Temperaturreduktion (z. B. -1 °C), wird addiert. |
+| **8. Endergebnis** | — | Auf die konfigurierte Nachkommastelle gerundet (z. B. 1 Dezimalstelle). |
+
+*Hinweis:* `*` steht für deinen Geräte-/Namenspräfix (z. B. `eu08l`), `hc1` für Heizkreis 1 (bei mehreren Heizkreisen `hc2` usw.).
+
+## Template-Sensor ohne Lambda-Integration (Standalone)
+
+Wenn Sie Home Assistant nutzen, aber **nicht** diese Lambda-Integration (z. B. andere Wärmepumpe oder manuelle Heizungssteuerung), können Sie die gleiche Heizkurven-Berechnung mit einem **Template-Sensor** nachbilden. Der Sensor berechnet die Vorlauftemperatur aus der Außentemperatur und drei Stützpunkten (lineare Interpolation wie oben).
+
+### Voraussetzungen
+
+- Ein **Sensor für die Außentemperatur** (z. B. `sensor.outside_temperature` oder `sensor.weather_temperature`).
+- Drei Werte für die Heizkurven-Stützpunkte:
+  - **Kaltpunkt (-22 °C):** Vorlauftemperatur bei -22 °C Außentemperatur (z. B. 50 °C).
+  - **Mittelpunkt (0 °C):** Vorlauftemperatur bei 0 °C (z. B. 41 °C).
+  - **Warmpunkt (+22 °C):** Vorlauftemperatur bei +22 °C (z. B. 35 °C).
+
+Diese Werte können fest im Template stehen oder aus **Input-Number**-Helfern kommen (dann sind sie im UI änderbar).
+
+### Variante A: Feste Stützpunkte im Template
+
+In **Einstellungen** → **Geräte & Dienste** → **Helfer** → **Template-Sensor** einen neuen Sensor anlegen, oder in `configuration.yaml` unter `template:` einbinden:
+
+```yaml
+# configuration.yaml (Ausschnitt)
+template:
+  - sensor:
+      - name: "Heizkurve Vorlauf berechnet"
+        unique_id: heating_curve_flow_standalone
+        unit_of_measurement: "°C"
+        state: >
+          {% set t = states('sensor.outside_temperature') | float(10) %}
+          {% set y_cold = 50.0 %}
+          {% set y_mid = 41.0 %}
+          {% set y_warm = 35.0 %}
+          {% set x_cold = -22 %}
+          {% set x_mid = 0 %}
+          {% set x_warm = 22 %}
+          {% if t >= x_warm %}
+            {{ y_warm | round(1) }}
+          {% elif t > x_mid %}
+            {{ (y_mid + (t - x_mid) * (y_warm - y_mid) / (x_warm - x_mid)) | round(1) }}
+          {% elif t > x_cold %}
+            {{ (y_cold + (t - x_cold) * (y_mid - y_cold) / (x_mid - x_cold)) | round(1) }}
+          {% else %}
+            {{ y_cold | round(1) }}
+          {% endif %}
+```
+
+- **`sensor.outside_temperature`** durch Ihre Außentemperatur-Entity ersetzen.
+- **`y_cold`, `y_mid`, `y_warm`** (50, 41, 35) nach Bedarf anpassen.
+
+### Variante B: Stützpunkte aus Input-Number-Helfern
+
+Zuerst drei **Helfer** → **Zahl** anlegen (z. B. `input_number.heating_curve_cold`, `input_number.heating_curve_mid`, `input_number.heating_curve_warm`) mit Min/Max z. B. 15–75 °C und gewünschten Standardwerten. Dann den Template-Sensor so definieren, dass er diese Entities liest:
+
+```yaml
+template:
+  - sensor:
+      - name: "Heizkurve Vorlauf berechnet"
+        unique_id: heating_curve_flow_standalone
+        unit_of_measurement: "°C"
+        state: >
+          {% set t = states('sensor.outside_temperature') | float(10) %}
+          {% set y_cold = states('input_number.heating_curve_cold') | float(50) %}
+          {% set y_mid = states('input_number.heating_curve_mid') | float(41) %}
+          {% set y_warm = states('input_number.heating_curve_warm') | float(35) %}
+          {% set x_cold = -22 %}
+          {% set x_mid = 0 %}
+          {% set x_warm = 22 %}
+          {% if t >= x_warm %}
+            {{ y_warm | round(1) }}
+          {% elif t > x_mid %}
+            {{ (y_mid + (t - x_mid) * (y_warm - y_mid) / (x_warm - x_mid)) | round(1) }}
+          {% elif t > x_cold %}
+            {{ (y_cold + (t - x_cold) * (y_mid - y_cold) / (x_mid - x_cold)) | round(1) }}
+          {% else %}
+            {{ y_cold | round(1) }}
+          {% endif %}
+```
+
+- **`sensor.outside_temperature`** durch Ihre Außentemperatur-Entity ersetzen.
+- **`input_number.heating_curve_*`** durch Ihre Helfer-IDs ersetzen; die `float(50)` usw. sind Fallbacks, wenn die Entity noch keinen Wert hat.
+
+### Formel (Kurz)
+
+- **Außentemperatur ≥ +22 °C:** Ausgabe = Warmpunkt.
+- **Zwischen 0 °C und +22 °C:** Lineare Interpolation zwischen Mittelpunkt und Warmpunkt:  
+  *Vorlauf = y_mid + (t − 0) × (y_warm − y_mid) / 22*
+- **Zwischen -22 °C und 0 °C:** Lineare Interpolation zwischen Kaltpunkt und Mittelpunkt:  
+  *Vorlauf = y_cold + (t − (−22)) × (y_mid − y_cold) / 22*
+- **Außentemperatur ≤ -22 °C:** Ausgabe = Kaltpunkt.
+
+Optional können Sie einen **Flow-Line-Offset** (z. B. aus einem weiteren `input_number`) addieren, indem Sie im Template zum Endergebnis `+ states('input_number.flow_offset') | float(0)` hinzufügen.
+
 ## Feineinstellung
 
 ### Flow-Line-Offset verwenden

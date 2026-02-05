@@ -36,11 +36,14 @@ from .const import (
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
     ENERGY_CONSUMPTION_MODES,
     ENERGY_CONSUMPTION_PERIODS,
+    ENERGY_PERIOD_CONFIG,
+    ENERGY_REGISTRATION_ORDER,
     COP_MODES,
     COP_PERIODS,
 )
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
+    apply_energy_period_reset,
     build_device_info,
     build_subdevice_info,
     extract_device_info_from_sensor_id,
@@ -50,6 +53,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     get_entity_icon,
+    restore_energy_period_state,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
 from .const_mapping import HP_STATE  # noqa: F401
@@ -615,11 +619,9 @@ async def async_setup_entry(
         four_hour_sensor_ids,
     )
 
-    # Energy consumption sensors: Total vor Daily registrieren, damit Daily-Init den Total-Sensor findet
-    _ENERGY_REGISTRATION_ORDER = ("total", "yearly", "monthly", "daily")
     for hp_idx in range(1, num_hps + 1):
         for mode in ENERGY_CONSUMPTION_MODES:
-            for period in _ENERGY_REGISTRATION_ORDER:
+            for period in ENERGY_REGISTRATION_ORDER:
                 if period not in ENERGY_CONSUMPTION_PERIODS:
                     continue
                 sensor_id = f"{mode}_energy_{period}"
@@ -656,10 +658,9 @@ async def async_setup_entry(
                 sensors.append(sensor)
                 _LOGGER.debug(f"Created energy consumption sensor: {names['entity_id']}")
 
-    # Thermal energy sensors: Total vor Daily registrieren (wie electrical)
     for hp_idx in range(1, num_hps + 1):
         for mode in ENERGY_CONSUMPTION_MODES:
-            for period in _ENERGY_REGISTRATION_ORDER:
+            for period in ENERGY_REGISTRATION_ORDER:
                 if period not in ENERGY_CONSUMPTION_PERIODS:
                     continue
                 sensor_id = f"{mode}_thermal_energy_{period}"
@@ -1199,6 +1200,8 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._energy_value = 0.0
         # Yesterday-Wert für Daily-Berechnung
         self._yesterday_value = 0.0
+        # Last-Hour-Wert für Hourly-Berechnung (Debug)
+        self._last_hour_value = 0.0
         # Previous Period-Werte für Monthly/Yearly-Berechnung
         self._previous_monthly_value = 0.0
         self._previous_yearly_value = 0.0
@@ -1247,8 +1250,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         """Update yesterday value with current total value (called at midnight)."""
         old_yesterday = self._yesterday_value
         self._yesterday_value = self._energy_value
-        _LOGGER.info(
-            f"Yesterday value updated for {self.entity_id}: {old_yesterday:.2f} -> {self._yesterday_value:.2f}"
+        _LOGGER.debug(
+            "Yesterday value updated for %s: %.2f -> %.2f",
+            self.entity_id, old_yesterday, self._yesterday_value,
         )
 
     async def async_added_to_hass(self):
@@ -1276,14 +1280,14 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                     await asyncio.sleep(5.0)
                     await self._initialize_daily_yesterday_value()
                 self.hass.async_create_task(_delayed_daily_init())
-                _LOGGER.info(
-                    f"Daily sensor {self.entity_id}: Total-Sensor beim Start nicht verfügbar, "
-                    f"verzögerter Zweitlauf in 5s geplant"
+                _LOGGER.debug(
+                    "Daily sensor %s: Total-Sensor beim Start nicht verfügbar, verzögerter Zweitlauf in 5s geplant",
+                    self.entity_id,
                 )
 
         # Registriere Signal-Handler für Reset-Signale
         # Verwende zentrale Signale wie Cycling Sensoren
-        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
+        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_HOURLY, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
         
         # Wrapper-Funktion für asynchronen Handler mit @callback
         @callback
@@ -1310,6 +1314,10 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             self._unsub_dispatcher = async_dispatcher_connect(
                 self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
             )
+        elif self._reset_interval == "hourly":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_HOURLY, _wrap_reset
+            )
 
     async def _initialize_daily_yesterday_value(self):
         """Initialisiere Yesterday-Wert für Daily-Sensoren beim Start.
@@ -1320,9 +1328,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         """
         total_entity_id = self.entity_id.replace("_daily", "_total")
         current_daily_before = self._energy_value - self._yesterday_value
-        _LOGGER.info(
-            f"Daily init {self.entity_id}: vor Prüfung energy_value={self._energy_value:.2f}, "
-            f"yesterday_value={self._yesterday_value:.2f}, current_daily={current_daily_before:.2f} kWh"
+        _LOGGER.debug(
+            "Daily init %s: vor Prüfung energy_value=%.2f, yesterday_value=%.2f, current_daily=%.2f kWh",
+            self.entity_id, self._energy_value, self._yesterday_value, current_daily_before,
         )
         total_state = self.hass.states.get(total_entity_id)
 
@@ -1341,16 +1349,16 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                         displayed_before = self._energy_value
                         self._energy_value = total_value
                         self._yesterday_value = total_value - displayed_before
-                        _LOGGER.info(
-                            f"Daily sensor {self.entity_id}: Baseline aus Total gesetzt (angezeigter Wert erhalten): "
-                            f"energy_value={self._energy_value:.2f}, yesterday_value={self._yesterday_value:.2f} kWh "
-                            f"(displayed={displayed_before:.2f}, from {total_entity_id})"
+                        _LOGGER.debug(
+                            "Daily sensor %s: Baseline aus Total gesetzt (angezeigter Wert erhalten): "
+                            "energy_value=%.2f, yesterday_value=%.2f kWh (displayed=%.2f, from %s)",
+                            self.entity_id, self._energy_value, self._yesterday_value, displayed_before, total_entity_id,
                         )
                     else:
                         self._yesterday_value = total_value
-                        _LOGGER.info(
-                            f"Initialized yesterday value for {self.entity_id}: 0.0 -> {self._yesterday_value:.2f} kWh "
-                            f"(from {total_entity_id}, total={total_value:.2f} kWh)"
+                        _LOGGER.debug(
+                            "Initialized yesterday value for %s: 0.0 -> %.2f kWh (from %s, total=%.2f kWh)",
+                            self.entity_id, self._yesterday_value, total_entity_id, total_value,
                         )
                     self.async_write_ha_state()
                 # Wenn Daily-Wert negativ ist (Yesterday > Total), korrigiere Yesterday
@@ -1366,8 +1374,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                     if total_value > self._energy_value:
                         self._energy_value = total_value
                         self._yesterday_value = total_value
-                        _LOGGER.info(
-                            f"Daily sensor {self.entity_id}: mit Total synchronisiert (energy_value=yesterday_value={total_value:.2f} kWh, daily=0)"
+                        _LOGGER.debug(
+                            "Daily sensor %s: mit Total synchronisiert (energy_value=yesterday_value=%.2f kWh, daily=0)",
+                            self.entity_id, total_value,
                         )
                     try:
                         reg = async_get_entity_registry(self.hass)
@@ -1390,10 +1399,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                     )
                     self.async_write_ha_state()
                 else:
-                    _LOGGER.info(
-                        f"Daily init {self.entity_id}: Werte gültig, keine Änderung: "
-                        f"energy={self._energy_value:.2f}, yesterday={self._yesterday_value:.2f}, "
-                        f"daily={current_daily:.2f}, total={total_value:.2f} kWh"
+                    _LOGGER.debug(
+                        "Daily init %s: Werte gültig, keine Änderung: energy=%.2f, yesterday=%.2f, daily=%.2f, total=%.2f kWh",
+                        self.entity_id, self._energy_value, self._yesterday_value, current_daily, total_value,
                     )
                     # Trotzdem State schreiben, damit Recorder/HIST nach Restart sofort den Wert hat
                     self.async_write_ha_state()
@@ -1404,9 +1412,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                 )
                 return False
         else:
-            _LOGGER.info(
-                f"Daily init {self.entity_id}: Total-Sensor {total_entity_id} nicht verfügbar, "
-                f"energy_value={self._energy_value:.2f}, yesterday_value={self._yesterday_value:.2f} kWh"
+            _LOGGER.debug(
+                "Daily init %s: Total-Sensor %s nicht verfügbar, energy_value=%.2f, yesterday_value=%.2f kWh",
+                self.entity_id, total_entity_id, self._energy_value, self._yesterday_value,
             )
             return True  # Total war nicht verfügbar → Zweitlauf sinnvoll
 
@@ -1430,32 +1438,23 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         try:
             attrs = data.get("attributes") or {}
             self._energy_value = float(attrs.get("energy_value", self._energy_value))
-            self._yesterday_value = float(attrs.get("yesterday_value", self._yesterday_value))
-            self._previous_monthly_value = float(attrs.get("previous_monthly_value", self._previous_monthly_value))
-            self._previous_yearly_value = float(attrs.get("previous_yearly_value", self._previous_yearly_value))
-            # Konsistenz Daily/Monthly/Yearly: Basis-Wert darf nicht größer als energy_value sein (Periodenwert wäre sonst negativ)
-            if self._period == "daily" and self._yesterday_value > self._energy_value:
-                _LOGGER.warning(
-                    f"Energy sensor {self.entity_id}: Persist yesterday_value ({self._yesterday_value:.2f}) > energy_value ({self._energy_value:.2f}), "
-                    f"korrigiere yesterday_value = energy_value"
-                )
-                self._yesterday_value = self._energy_value
-            elif self._period == "monthly" and self._previous_monthly_value > self._energy_value:
-                _LOGGER.warning(
-                    f"Energy sensor {self.entity_id}: Persist previous_monthly_value ({self._previous_monthly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
-                    f"korrigiere previous_monthly_value = energy_value"
-                )
-                self._previous_monthly_value = self._energy_value
-            elif self._period == "yearly" and self._previous_yearly_value > self._energy_value:
-                _LOGGER.warning(
-                    f"Energy sensor {self.entity_id}: Persist previous_yearly_value ({self._previous_yearly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
-                    f"korrigiere previous_yearly_value = energy_value"
-                )
-                self._previous_yearly_value = self._energy_value
-            _LOGGER.info(
-                f"Energy sensor {self.entity_id}: State aus cycle_energy_persist übernommen "
-                f"(state=%s, energy_value=%s)",
-                data.get("state"), self._energy_value,
+            for period, cfg in ENERGY_PERIOD_CONFIG.items():
+                val = attrs.get(cfg["attr_name"])
+                if val is not None:
+                    setattr(self, cfg["baseline_attr"], float(val))
+            for period, cfg in ENERGY_PERIOD_CONFIG.items():
+                if self._period == period:
+                    baseline = getattr(self, cfg["baseline_attr"])
+                    if baseline > self._energy_value:
+                        _LOGGER.warning(
+                            "Energy sensor %s: Persist %s (%.2f) > energy_value (%.2f), correct to energy_value",
+                            self.entity_id, cfg["attr_name"], baseline, self._energy_value,
+                        )
+                        setattr(self, cfg["baseline_attr"], self._energy_value)
+                    break
+            _LOGGER.debug(
+                "Energy sensor %s: State aus cycle_energy_persist übernommen (state=%s, energy_value=%s)",
+                self.entity_id, data.get("state"), self._energy_value,
             )
         except (ValueError, TypeError) as e:
             _LOGGER.warning("Apply persisted energy state for %s: %s", self.entity_id, e)
@@ -1504,14 +1503,15 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                             displayed_from_calc = self._energy_value - self._yesterday_value
                             if abs(displayed_from_calc - displayed) > 0.001 and self._yesterday_value <= self._energy_value:
                                 self._energy_value = self._yesterday_value + displayed
-                                _LOGGER.info(
-                                    f"Restore daily {self.entity_id}: current_daily_value erhalten (displayed={displayed:.2f}), "
-                                    f"energy_value={self._energy_value:.2f}, yesterday_value={self._yesterday_value:.2f} kWh"
+                                _LOGGER.debug(
+                                    "Restore daily %s: current_daily_value erhalten (displayed=%.2f), "
+                                    "energy_value=%.2f, yesterday_value=%.2f kWh",
+                                    self.entity_id, displayed, self._energy_value, self._yesterday_value,
                                 )
                             else:
-                                _LOGGER.info(
-                                    f"Restore daily {self.entity_id}: energy_value={self._energy_value:.2f}, "
-                                    f"yesterday_value={self._yesterday_value:.2f} kWh (from attributes)"
+                                _LOGGER.debug(
+                                    "Restore daily %s: energy_value=%.2f, yesterday_value=%.2f kWh (from attributes)",
+                                    self.entity_id, self._energy_value, self._yesterday_value,
                                 )
                         except (ValueError, TypeError):
                             self._energy_value = self._yesterday_value + displayed
@@ -1524,22 +1524,21 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                                 total_value = float(total_state.state)
                                 self._energy_value = total_value
                                 self._yesterday_value = total_value - displayed
-                                _LOGGER.info(
-                                    f"Restore daily {self.entity_id} (from Total): energy_value={self._energy_value:.2f}, "
-                                    f"yesterday_value={self._yesterday_value:.2f} kWh, displayed={displayed:.2f} "
-                                    f"(from {total_entity_id})"
+                                _LOGGER.debug(
+                                    "Restore daily %s (from Total): energy_value=%.2f, yesterday_value=%.2f kWh, displayed=%.2f (from %s)",
+                                    self.entity_id, self._energy_value, self._yesterday_value, displayed, total_entity_id,
                                 )
                             except (ValueError, TypeError):
                                 self._energy_value = self._yesterday_value + displayed
-                                _LOGGER.info(
-                                    f"Restore daily {self.entity_id} (reconstructed): energy_value={self._energy_value:.2f}, "
-                                    f"yesterday_value={self._yesterday_value:.2f}, displayed={displayed:.2f} kWh"
+                                _LOGGER.debug(
+                                    "Restore daily %s (reconstructed): energy_value=%.2f, yesterday_value=%.2f, displayed=%.2f kWh",
+                                    self.entity_id, self._energy_value, self._yesterday_value, displayed,
                                 )
                         else:
                             self._energy_value = self._yesterday_value + displayed
-                            _LOGGER.info(
-                                f"Restore daily {self.entity_id} (reconstructed, Total not ready): energy_value={self._energy_value:.2f}, "
-                                f"yesterday_value={self._yesterday_value:.2f}, displayed={displayed:.2f} kWh"
+                            _LOGGER.debug(
+                                "Restore daily %s (reconstructed, Total not ready): energy_value=%.2f, yesterday_value=%.2f, displayed=%.2f kWh",
+                                self.entity_id, self._energy_value, self._yesterday_value, displayed,
                             )
                     # Konsistenz: yesterday_value darf nicht größer als energy_value sein (daily wäre sonst negativ)
                     if self._yesterday_value > self._energy_value:
@@ -1548,93 +1547,11 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                             f"korrigiere yesterday_value = energy_value"
                         )
                         self._yesterday_value = self._energy_value
-                elif self._period == "monthly":
-                    prev = attrs.get("previous_monthly_value")
-                    if prev is not None:
-                        try:
-                            self._previous_monthly_value = float(prev)
-                        except (ValueError, TypeError):
-                            pass
-                    displayed = float(last_state.state)
-                    persisted_total = attrs.get("energy_value")
-                    if persisted_total is not None:
-                        try:
-                            self._energy_value = float(persisted_total)
-                        except (ValueError, TypeError):
-                            self._energy_value = self._previous_monthly_value + displayed
-                    else:
-                        if "_thermal_energy_" not in self.entity_id:
-                            total_entity_id = self.entity_id.replace("_monthly", "_total")
-                            total_state = self.hass.states.get(total_entity_id)
-                            if total_state and total_state.state not in (None, "unknown", "unavailable"):
-                                try:
-                                    total_value = float(total_state.state)
-                                    self._energy_value = total_value
-                                    self._previous_monthly_value = total_value - displayed
-                                    _LOGGER.info(
-                                        f"Migration Electrical (monthly): {self.entity_id} aus Total-Sensor "
-                                        f"{total_entity_id}: energy_value={self._energy_value:.2f}, "
-                                        f"previous_monthly_value={self._previous_monthly_value:.2f} kWh"
-                                    )
-                                except (ValueError, TypeError):
-                                    self._energy_value = self._previous_monthly_value + displayed
-                            else:
-                                self._energy_value = self._previous_monthly_value + displayed
-                        else:
-                            self._energy_value = self._previous_monthly_value + displayed
-                    # Konsistenz: previous_monthly_value darf nicht größer als energy_value sein (monthly wäre sonst negativ)
-                    if self._previous_monthly_value > self._energy_value:
-                        _LOGGER.warning(
-                            f"Restore monthly {self.entity_id}: previous_monthly_value ({self._previous_monthly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
-                            f"korrigiere previous_monthly_value = energy_value"
-                        )
-                        self._previous_monthly_value = self._energy_value
+                elif self._period in ("monthly", "yearly", "hourly"):
+                    restore_energy_period_state(self, self._period, attrs, last_state)
                     _LOGGER.debug(
-                        f"Restored energy value for {self.entity_id} (monthly): {self._energy_value:.2f} kWh"
-                    )
-                elif self._period == "yearly":
-                    prev = attrs.get("previous_yearly_value")
-                    if prev is not None:
-                        try:
-                            self._previous_yearly_value = float(prev)
-                        except (ValueError, TypeError):
-                            pass
-                    displayed = float(last_state.state)
-                    persisted_total = attrs.get("energy_value")
-                    if persisted_total is not None:
-                        try:
-                            self._energy_value = float(persisted_total)
-                        except (ValueError, TypeError):
-                            self._energy_value = self._previous_yearly_value + displayed
-                    else:
-                        if "_thermal_energy_" not in self.entity_id:
-                            total_entity_id = self.entity_id.replace("_yearly", "_total")
-                            total_state = self.hass.states.get(total_entity_id)
-                            if total_state and total_state.state not in (None, "unknown", "unavailable"):
-                                try:
-                                    total_value = float(total_state.state)
-                                    self._energy_value = total_value
-                                    self._previous_yearly_value = total_value - displayed
-                                    _LOGGER.info(
-                                        f"Migration Electrical (yearly): {self.entity_id} aus Total-Sensor "
-                                        f"{total_entity_id}: energy_value={self._energy_value:.2f}, "
-                                        f"previous_yearly_value={self._previous_yearly_value:.2f} kWh"
-                                    )
-                                except (ValueError, TypeError):
-                                    self._energy_value = self._previous_yearly_value + displayed
-                            else:
-                                self._energy_value = self._previous_yearly_value + displayed
-                        else:
-                            self._energy_value = self._previous_yearly_value + displayed
-                    # Konsistenz: previous_yearly_value darf nicht größer als energy_value sein (yearly wäre sonst negativ)
-                    if self._previous_yearly_value > self._energy_value:
-                        _LOGGER.warning(
-                            f"Restore yearly {self.entity_id}: previous_yearly_value ({self._previous_yearly_value:.2f}) > energy_value ({self._energy_value:.2f}), "
-                            f"korrigiere previous_yearly_value = energy_value"
-                        )
-                        self._previous_yearly_value = self._energy_value
-                    _LOGGER.debug(
-                        f"Restored energy value for {self.entity_id} (yearly): {self._energy_value:.2f} kWh"
+                        "Restored energy value for %s (%s): energy_value=%.2f kWh",
+                        self.entity_id, self._period, self._energy_value,
                     )
                 else:
                     # Total und andere Perioden: state ist direkt _energy_value
@@ -1645,8 +1562,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                 self._energy_value = 0.0
         else:
             self._energy_value = 0.0
-            _LOGGER.info(
-                f"Restore {self.entity_id}: kein State vorhanden, initialisiert mit 0.0 kWh"
+            _LOGGER.debug(
+                "Restore %s: kein State vorhanden, initialisiert mit 0.0 kWh",
+                self.entity_id,
             )
         self.async_write_ha_state()
 
@@ -1684,16 +1602,18 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                 self._energy_value += float(offset_difference)
                 self._applied_offset = current_offset  # Update applied offset
                 self.async_write_ha_state()
-                _LOGGER.info(
-                    f"Applied energy offset for {self.entity_id}: +{offset_difference:.2f} kWh (new total: {self._energy_value:.2f} kWh)"
+                _LOGGER.debug(
+                    "Applied energy offset for %s: +%.2f kWh (new total: %.2f kWh)",
+                    self.entity_id, offset_difference, self._energy_value,
                 )
             elif offset_difference < 0:
                 # Offset was reduced, subtract the difference
                 self._energy_value += float(offset_difference)  # offset_difference is negative
                 self._applied_offset = current_offset
                 self.async_write_ha_state()
-                _LOGGER.info(
-                    f"Reduced energy offset for {self.entity_id}: {offset_difference:.2f} kWh (new total: {self._energy_value:.2f} kWh)"
+                _LOGGER.debug(
+                    "Reduced energy offset for %s: %.2f kWh (new total: %.2f kWh)",
+                    self.entity_id, offset_difference, self._energy_value,
                 )
             else:
                 _LOGGER.debug(f"No offset change for {self.entity_id}")
@@ -1701,110 +1621,24 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             _LOGGER.error(f"Error applying energy offset for {self.entity_id}: {e}")
 
     async def _handle_reset(self, entry_id: str):
-        """Handle reset signal."""
+        """Handle reset signal. Periodenbezogene Resets (daily/hourly/monthly/yearly) über utils."""
         if entry_id != self._entry.entry_id:
             return
-        _LOGGER.info(f"Resetting energy sensor {self.entity_id} (period: {self._period}, reset_interval: {self._reset_interval})")
-        
-        # Für Daily-Sensoren: Vor dem Reset Yesterday-Wert mit aktuellem Total-Wert aktualisieren
-        # Die Daily-Berechnung ist: daily_value = _energy_value - _yesterday_value
-        # Dabei ist _energy_value der Total-Wert (wird von increment_energy_consumption_counter gleichzeitig mit Total erhöht)
-        # Beim Reset müssen wir:
-        # 1. _yesterday_value auf den aktuellen Total-Wert setzen (aus dem entsprechenden Total-Sensor)
-        # 2. _energy_value bleibt unverändert (wird weiterhin von increment_energy_consumption_counter aktualisiert)
-        if self._reset_interval == "daily" and self._period == "daily":
-            # Finde den entsprechenden Total-Sensor, um den aktuellen Total-Wert zu holen
-            total_entity_id = self.entity_id.replace("_daily", "_total")
-            total_state = self.hass.states.get(total_entity_id)
-            
-            if total_state and total_state.state not in (None, "unknown", "unavailable"):
-                try:
-                    total_value = float(total_state.state)
-                    # Aktualisiere Yesterday-Wert mit aktuellem Total-Wert
-                    old_yesterday = self._yesterday_value
-                    self._yesterday_value = total_value
-                    _LOGGER.info(
-                        f"Updated yesterday value for {self.entity_id}: {old_yesterday:.2f} -> {self._yesterday_value:.2f} kWh (from {total_entity_id})"
-                    )
-                except (ValueError, TypeError) as e:
-                    _LOGGER.warning(f"Could not get total value from {total_entity_id} for {self.entity_id}: {e}")
-                    # Fallback: Verwende aktuellen _energy_value
-                    old_yesterday = self._yesterday_value
-                    self._yesterday_value = self._energy_value
-                    _LOGGER.info(
-                        f"Updated yesterday value for {self.entity_id} (fallback): {old_yesterday:.2f} -> {self._yesterday_value:.2f} kWh"
-                    )
-            else:
-                # Fallback: Verwende aktuellen _energy_value
-                old_yesterday = self._yesterday_value
-                self._yesterday_value = self._energy_value
-                _LOGGER.info(
-                    f"Updated yesterday value for {self.entity_id} (fallback, total sensor not found): {old_yesterday:.2f} -> {self._yesterday_value:.2f} kWh"
-                )
-            # _energy_value wird NICHT auf 0 gesetzt, da es weiterhin vom Total-Sensor aktualisiert wird
-            # Die Daily-Berechnung wird automatisch korrekt sein: daily = _energy_value - _yesterday_value
-            _LOGGER.info(f"Daily sensor {self.entity_id} reset complete: yesterday_value = {self._yesterday_value:.2f} kWh")
-        elif self._reset_interval == "monthly" and self._period == "monthly":
-            # Wie Daily: previous_monthly_value = aktueller Total, _energy_value bleibt (wird weiter erhöht)
-            total_entity_id = self.entity_id.replace("_monthly", "_total")
-            total_state = self.hass.states.get(total_entity_id)
-            if total_state and total_state.state not in (None, "unknown", "unavailable"):
-                try:
-                    total_value = float(total_state.state)
-                    old_prev = self._previous_monthly_value
-                    self._previous_monthly_value = total_value
-                    _LOGGER.info(
-                        f"Updated previous_monthly_value for {self.entity_id}: {old_prev:.2f} -> {self._previous_monthly_value:.2f} kWh (from {total_entity_id})"
-                    )
-                except (ValueError, TypeError) as e:
-                    _LOGGER.warning(f"Could not get total from {total_entity_id} for {self.entity_id}: {e}")
-                    self._previous_monthly_value = self._energy_value
-                    _LOGGER.info(f"Updated previous_monthly_value for {self.entity_id} (fallback): -> {self._previous_monthly_value:.2f} kWh")
-            else:
-                self._previous_monthly_value = self._energy_value
-                _LOGGER.info(
-                    f"Updated previous_monthly_value for {self.entity_id} (fallback, total not found): -> {self._previous_monthly_value:.2f} kWh"
-                )
-            _LOGGER.info(f"Monthly sensor {self.entity_id} reset complete: previous_monthly_value = {self._previous_monthly_value:.2f} kWh")
-        elif self._reset_interval == "yearly" and self._period == "yearly":
-            # Wie Daily: previous_yearly_value = aktueller Total, _energy_value bleibt (wird weiter erhöht)
-            total_entity_id = self.entity_id.replace("_yearly", "_total")
-            total_state = self.hass.states.get(total_entity_id)
-            if total_state and total_state.state not in (None, "unknown", "unavailable"):
-                try:
-                    total_value = float(total_state.state)
-                    old_prev = self._previous_yearly_value
-                    self._previous_yearly_value = total_value
-                    _LOGGER.info(
-                        f"Updated previous_yearly_value for {self.entity_id}: {old_prev:.2f} -> {self._previous_yearly_value:.2f} kWh (from {total_entity_id})"
-                    )
-                except (ValueError, TypeError) as e:
-                    _LOGGER.warning(f"Could not get total from {total_entity_id} for {self.entity_id}: {e}")
-                    self._previous_yearly_value = self._energy_value
-                    _LOGGER.info(f"Updated previous_yearly_value for {self.entity_id} (fallback): -> {self._previous_yearly_value:.2f} kWh")
-            else:
-                self._previous_yearly_value = self._energy_value
-                _LOGGER.info(
-                    f"Updated previous_yearly_value for {self.entity_id} (fallback, total not found): -> {self._previous_yearly_value:.2f} kWh"
-                )
-            _LOGGER.info(f"Yearly sensor {self.entity_id} reset complete: previous_yearly_value = {self._previous_yearly_value:.2f} kWh")
+        _LOGGER.debug("Resetting energy sensor %s (period: %s, reset_interval: %s)", self.entity_id, self._period, self._reset_interval)
+        if self._reset_interval in ("daily", "hourly", "monthly", "yearly") and self._period == self._reset_interval:
+            apply_energy_period_reset(self, self._period)
         elif self._reset_interval in ("2h", "4h"):
-            # Nur 2h/4h: Anzeige = _energy_value, Reset = auf 0 setzen
             self._energy_value = 0.0
-            _LOGGER.info(f"Sensor {self.entity_id} reset to 0.0 kWh.")
+            _LOGGER.debug("Sensor %s reset to 0.0 kWh.", self.entity_id)
         else:
-            _LOGGER.debug(f"Total sensor {self.entity_id} not reset.")
-        
+            _LOGGER.debug("Total sensor %s not reset.", self.entity_id)
         self.async_write_ha_state()
 
     def _get_total_entity_id(self) -> str | None:
-        """Entity-ID des zugehörigen Total-Sensors (für Daily/Monthly/Yearly)."""
-        if self._period == "daily":
-            return self.entity_id.replace("_daily", "_total")
-        if self._period == "monthly":
-            return self.entity_id.replace("_monthly", "_total")
-        if self._period == "yearly":
-            return self.entity_id.replace("_yearly", "_total")
+        """Entity-ID des zugehörigen Total-Sensors (für Daily/Hourly/Monthly/Yearly)."""
+        cfg = ENERGY_PERIOD_CONFIG.get(self._period)
+        if cfg:
+            return self.entity_id.replace(cfg["suffix"], "_total")
         return None
 
     def _total_sensor_has_value(self) -> bool:
@@ -1823,26 +1657,18 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
     @property
     def native_value(self) -> float:
-        """Return the current value based on period.
-        Daily/Monthly/Yearly: Immer den berechneten Wert (bzw. letzten/restored Wert) anzeigen.
-        Auf 2 Dezimalstellen runden, damit Restore-State nicht 0,39999… speichert (Float-Artefakte).
-        """
+        """Return the current value based on period. Periodenbezogen: energy_value - baseline (aus ENERGY_PERIOD_CONFIG)."""
         if self._period == "total":
             return round(self._energy_value, 2)
-        if self._period == "daily":
-            daily_value = self._energy_value - self._yesterday_value
-            return round(max(0.0, daily_value), 2)
-        if self._period == "monthly":
-            monthly_value = self._energy_value - self._previous_monthly_value
-            return round(max(0.0, monthly_value), 2)
-        if self._period == "yearly":
-            yearly_value = self._energy_value - self._previous_yearly_value
-            return round(max(0.0, yearly_value), 2)
+        cfg = ENERGY_PERIOD_CONFIG.get(self._period)
+        if cfg:
+            baseline = getattr(self, cfg["baseline_attr"], 0.0)
+            return round(max(0.0, self._energy_value - baseline), 2)
         return round(self._energy_value, 2)
 
     @property
     def extra_state_attributes(self):
-        """Return extra state attributes."""
+        """Return extra state attributes. Periodenbezogene Werte aus ENERGY_PERIOD_CONFIG."""
         attrs = {
             "sensor_type": "energy_consumption",
             "mode": self._mode,
@@ -1851,18 +1677,13 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             "hp_index": self._hp_index,
             "applied_offset": self._applied_offset,
         }
-        # Füge Yesterday-Werte und energy_value für Daily/Monthly/Yearly-Sensoren hinzu (für Persistierung)
-        # energy_value = kumulativer Total, damit Restore nicht aus Anzeige-Wert rekonstruieren muss
-        if self._period == "daily":
-            attrs["yesterday_value"] = round(self._yesterday_value, 2)
-            attrs["current_daily_value"] = round(self._energy_value - self._yesterday_value, 2)
+        cfg = ENERGY_PERIOD_CONFIG.get(self._period)
+        if cfg:
+            baseline = getattr(self, cfg["baseline_attr"], 0.0)
+            attrs[cfg["attr_name"]] = round(baseline, 2)
             attrs["energy_value"] = round(self._energy_value, 2)
-        elif self._period == "monthly":
-            attrs["previous_monthly_value"] = round(self._previous_monthly_value, 2)
-            attrs["energy_value"] = round(self._energy_value, 2)
-        elif self._period == "yearly":
-            attrs["previous_yearly_value"] = round(self._previous_yearly_value, 2)
-            attrs["energy_value"] = round(self._energy_value, 2)
+            if self._period in ("daily", "hourly"):
+                attrs[f"current_{self._period}_value"] = round(self._energy_value - baseline, 2)
         return attrs
 
     @property

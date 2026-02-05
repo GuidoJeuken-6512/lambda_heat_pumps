@@ -68,8 +68,8 @@ nav = [
     { "Konfiguration löschen" = "Anwender/konfiguration_loeschen.md" },
   ] },
   { "Vorlagen Templates" = [
-    { "Lambda_energy_dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
-    { "Lambda_heizkurve_card" = "Vorlagen/Lambda_heizkurve_card.md" },
+    { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
+    { "Lambda Heizkurven Card" = "Vorlagen/Lambda_heizkurve_card.md" },
   ] },
   { "Entwickler" = [
     { "Features (Technische Übersicht)" = "Entwickler/features.md" },

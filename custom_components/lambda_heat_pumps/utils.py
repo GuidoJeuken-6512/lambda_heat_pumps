@@ -21,7 +21,11 @@ from .const import (
     DOMAIN,
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
     ENERGY_CONSUMPTION_MODES,
+    ENERGY_INCREMENT_PERIODS,
+    ENERGY_PERIOD_CONFIG,
     LAMBDA_WP_CONFIG_TEMPLATE,
+    RESET_VALID_PERIODS,
+    RESET_VALID_SENSOR_TYPES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1311,6 +1315,101 @@ def generate_energy_sensor_names(
     )
 
 
+def apply_energy_period_reset(sensor_entity, period: str) -> None:
+    """
+    Setzt für einen Energy-Sensor mit periodenbezogenem Wert (daily/hourly/monthly/yearly)
+    den Basis-Wert und _energy_value aus dem zugehörigen Total-Sensor.
+    period: "daily" | "hourly" | "monthly" | "yearly"
+    """
+    if period not in ENERGY_PERIOD_CONFIG:
+        return
+    cfg = ENERGY_PERIOD_CONFIG[period]
+    suffix = cfg["suffix"]
+    baseline_attr = cfg["baseline_attr"]
+    label = cfg["attr_name"]
+    total_entity_id = sensor_entity.entity_id.replace(suffix, "_total")
+    total_state = sensor_entity.hass.states.get(total_entity_id)
+
+    if total_state and total_state.state not in (None, "unknown", "unavailable"):
+        try:
+            total_value = float(total_state.state)
+            old_baseline = getattr(sensor_entity, baseline_attr, 0.0)
+            setattr(sensor_entity, baseline_attr, total_value)
+            old_energy = sensor_entity._energy_value
+            sensor_entity._energy_value = total_value
+            _LOGGER.debug(
+                "Updated %s for %s: %.2f -> %.2f kWh (from %s); energy_value %.2f -> %.2f (sync)",
+                label, sensor_entity.entity_id, old_baseline, total_value, total_entity_id, old_energy, sensor_entity._energy_value,
+            )
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning("Could not get total from %s for %s: %s", total_entity_id, sensor_entity.entity_id, e)
+            setattr(sensor_entity, baseline_attr, sensor_entity._energy_value)
+            _LOGGER.debug("Updated %s for %s (fallback): -> %.2f kWh", label, sensor_entity.entity_id, getattr(sensor_entity, baseline_attr))
+    else:
+        setattr(sensor_entity, baseline_attr, sensor_entity._energy_value)
+        _LOGGER.debug(
+            "Updated %s for %s (fallback, total not found): -> %.2f kWh",
+            label, sensor_entity.entity_id, getattr(sensor_entity, baseline_attr),
+        )
+    _LOGGER.debug(
+        "%s sensor %s reset complete: %s = %.2f kWh",
+        period.title(), sensor_entity.entity_id, label, getattr(sensor_entity, baseline_attr),
+    )
+
+
+def restore_energy_period_state(sensor_entity, period: str, attrs: dict, last_state) -> None:
+    """
+    Stellt den State eines periodenbezogenen Energy-Sensors aus Restore-Attributen wieder her.
+    Nutzt ENERGY_PERIOD_CONFIG für baseline_attr und suffix.
+    period: "monthly" | "yearly" | "hourly"
+    """
+    if period not in ENERGY_PERIOD_CONFIG:
+        return
+    cfg = ENERGY_PERIOD_CONFIG[period]
+    baseline_attr = cfg["baseline_attr"]
+    suffix = cfg["suffix"]
+    attr_name = cfg["attr_name"]
+    baseline_val = attrs.get(attr_name)
+    if baseline_val is not None:
+        try:
+            setattr(sensor_entity, baseline_attr, float(baseline_val))
+        except (ValueError, TypeError):
+            pass
+    displayed = float(last_state.state)
+    persisted_total = attrs.get("energy_value")
+    if persisted_total is not None:
+        try:
+            sensor_entity._energy_value = float(persisted_total)
+        except (ValueError, TypeError):
+            setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+    else:
+        total_entity_id = sensor_entity.entity_id.replace(suffix, "_total")
+        if "_thermal_energy_" not in sensor_entity.entity_id:
+            total_state = sensor_entity.hass.states.get(total_entity_id)
+            if total_state and total_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    total_value = float(total_state.state)
+                    sensor_entity._energy_value = total_value
+                    setattr(sensor_entity, baseline_attr, total_value - displayed)
+                    _LOGGER.debug(
+                        "Restore %s %s from %s: energy_value=%.2f, %s=%.2f kWh",
+                        period, sensor_entity.entity_id, total_entity_id, sensor_entity._energy_value, attr_name, getattr(sensor_entity, baseline_attr),
+                    )
+                except (ValueError, TypeError):
+                    setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+            else:
+                setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+        else:
+            setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+    baseline = getattr(sensor_entity, baseline_attr)
+    if baseline > sensor_entity._energy_value:
+        _LOGGER.warning(
+            "Restore %s %s: %s (%.2f) > energy_value (%.2f), correct to energy_value",
+            period, sensor_entity.entity_id, attr_name, baseline, sensor_entity._energy_value,
+        )
+        setattr(sensor_entity, baseline_attr, sensor_entity._energy_value)
+
+
 async def increment_energy_consumption_counter(
     hass: HomeAssistant,
     mode: str,
@@ -1352,13 +1451,12 @@ async def increment_energy_consumption_counter(
     device_prefix = f"hp{hp_index}"
     
     # Alle Sensor-Perioden, die aktualisiert werden sollen
-    sensor_periods = ["total", "daily", "monthly", "yearly", "2h", "4h"]
     changes_summary = []
     
     # Format mode name: "hot_water" -> "Hot_Water", "heating" -> "Heating"
     mode_display = mode.replace("_", " ").title().replace(" ", "_")
     
-    for period in sensor_periods:
+    for period in ENERGY_INCREMENT_PERIODS:
         # Bestimme sensor_id und sensor_name basierend auf sensor_type
         if sensor_type == "thermal":
             sensor_id = f"{mode}_thermal_energy_{period}"
@@ -1380,15 +1478,16 @@ async def increment_energy_consumption_counter(
                 warning_count = coordinator._energy_warnings.get(entity_id, 0)
                 coordinator._energy_warnings[entity_id] = warning_count + 1
                 if warning_count < coordinator._max_energy_warnings:
-                    _LOGGER.debug(
-                        f"Energy entity {entity_id} not yet registered "
-                        f"(attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                    _LOGGER.info(
+                        "[Energy] Entity %s nicht registriert (Versuch %s/%s) – Inkrement für %s HP%s %s wird übersprungen",
+                        entity_id, warning_count + 1, coordinator._max_energy_warnings, mode, hp_index, period,
                     )
             continue
 
         # Prüfe ob State verfügbar ist
         state_obj = hass.states.get(entity_id)
         if state_obj is None:
+            _LOGGER.info("[Energy] Entity %s hat keinen State – Inkrement für %s HP%s %s übersprungen", entity_id, mode, hp_index, period)
             continue
 
         # Reset Warning Counter bei erfolgreicher Registrierung
@@ -1415,7 +1514,8 @@ async def increment_energy_consumption_counter(
             # Verwende _energy_value direkt (korrekt für alle Perioden)
             current_value = energy_entity._energy_value
             _LOGGER.debug(
-                f"Reading _energy_value directly from entity {entity_id}: {current_value:.6f} kWh (period: {period})"
+                "[Energy] Lesen _energy_value von %s: %.6f kWh (period=%s)",
+                entity_id, current_value, period,
             )
         else:
             # Fallback: Verwende State (nur wenn Entity nicht gefunden wurde)
@@ -1459,14 +1559,22 @@ async def increment_energy_consumption_counter(
                 changes_summary.append(
                     f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
                 )
+                _LOGGER.debug(
+                    "[Energy] Update %s: %.2f -> %.2f kWh (delta %.2f, period=%s)",
+                    entity_id, current_value, new_value, energy_delta, period,
+                )
+                if period == "hourly":
+                    _LOGGER.debug(
+                        "[Energy] Hourly aktualisiert: %s = %.2f kWh (vorher %.2f, delta %.2f)",
+                        entity_id, new_value, current_value, energy_delta,
+                    )
         else:
             # Ohne Entity-Referenz kein async_set: state_obj liefert oft alten Wert nach Neustart
             # (z. B. Total 220,25 statt 220,84) und würde Restore-Wert überschreiben.
             _LOGGER.debug(
-                f"Skip update for {entity_id} (period={period}, entity not found, "
-                f"restored value will be used until next run)"
+                "[Energy] Keine Entity-Referenz für %s (period=%s) – Update übersprungen, Restore-Wert bleibt",
+                entity_id, period,
             )
-
         # Optional: Entity zum Update zwingen
         try:
             await async_update_entity(hass, entity_id)
@@ -1645,15 +1753,10 @@ def create_reset_signal(sensor_type: str, period: str) -> str:
     Raises:
         ValueError: Wenn sensor_type oder period ungültig ist
     """
-    # Validiere sensor_type
-    valid_sensor_types = ['cycling', 'energy', 'general']
-    if sensor_type not in valid_sensor_types:
-        raise ValueError(f"Ungültiger sensor_type: {sensor_type}. Erlaubt: {valid_sensor_types}")
-    
-    # Validiere period
-    valid_periods = ['daily', '2h', '4h']
-    if period not in valid_periods:
-        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
+    if sensor_type not in RESET_VALID_SENSOR_TYPES:
+        raise ValueError(f"Ungültiger sensor_type: {sensor_type}. Erlaubt: {RESET_VALID_SENSOR_TYPES}")
+    if period not in RESET_VALID_PERIODS:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {RESET_VALID_PERIODS}")
     
     return f"lambda_heat_pumps_reset_{period}_{sensor_type}"
 
@@ -1671,11 +1774,8 @@ def get_reset_signal_for_period(period: str) -> str:
     Raises:
         ValueError: Wenn period ungültig ist
     """
-    # Validiere period
-    valid_periods = ['daily', '2h', '4h']
-    if period not in valid_periods:
-        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
-    
+    if period not in RESET_VALID_PERIODS:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {RESET_VALID_PERIODS}")
     return f"lambda_heat_pumps_reset_{period}"
 
 
@@ -1686,13 +1786,10 @@ def get_all_reset_signals() -> dict:
     Returns:
         Dictionary mit allen Signal-Kombinationen
     """
-    sensor_types = ['cycling', 'energy', 'general']
-    periods = ['daily', '2h', '4h']
-    
     signals = {}
-    for sensor_type in sensor_types:
+    for sensor_type in RESET_VALID_SENSOR_TYPES:
         signals[sensor_type] = {}
-        for period in periods:
+        for period in RESET_VALID_PERIODS:
             signals[sensor_type][period] = create_reset_signal(sensor_type, period)
     
     return signals
@@ -1719,16 +1816,10 @@ def validate_reset_signal(signal: str) -> bool:
     if parts[0] != 'lambda' or parts[1] != 'heat' or parts[2] != 'pumps' or parts[3] != 'reset':
         return False
     
-    # Prüfe ob es ein spezifisches Signal ist (mit sensor_type)
     if len(parts) == 6:  # lambda_heat_pumps_reset_{period}_{sensor_type}
-        period = parts[4]
-        sensor_type = parts[5]
-        return period in ['daily', '2h', '4h'] and sensor_type in ['cycling', 'energy', 'general']
-    
-    # Prüfe ob es ein allgemeines Signal ist (ohne sensor_type)
-    elif len(parts) == 5:  # lambda_heat_pumps_reset_{period}
-        period = parts[4]
-        return period in ['daily', '2h', '4h']
+        return parts[4] in RESET_VALID_PERIODS and parts[5] in RESET_VALID_SENSOR_TYPES
+    if len(parts) == 5:  # lambda_heat_pumps_reset_{period}
+        return parts[4] in RESET_VALID_PERIODS
     
     return False
 

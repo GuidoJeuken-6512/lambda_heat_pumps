@@ -2168,6 +2168,20 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "reset_interval": "daily",
         "description": "Täglicher Verbrauch für Heizen in kWh",
     },
+    "heating_energy_hourly": {
+        "name": "Heating Energy Hourly",
+        "unit": "kWh",
+        "precision": 6,
+        "data_type": "calculated",
+        "firmware_version": 1,
+        "device_type": "hp",
+        "writeable": False,
+        "state_class": "total",
+        "device_class": "energy",
+        "operating_state": "heating",
+        "reset_interval": "hourly",
+        "description": "Stündlicher Verbrauch für Heizen in kWh (Debug)",
+    },
     # Hot Water Energy Sensoren
     "hot_water_energy_total": {
         "name": "Hot Water Energy Total",
@@ -2453,6 +2467,14 @@ ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
     if "period" in template or (template.get("reset_interval") is not None)
 ) | {"monthly", "yearly"}))
 
+# Zentrale Konfiguration für Energy-Sensoren nach Zeitzyklus (Basis-Attribut, Persist-Name, Entity-Suffix)
+ENERGY_PERIOD_CONFIG = {
+    "daily": {"baseline_attr": "_yesterday_value", "attr_name": "yesterday_value", "suffix": "_daily"},
+    "hourly": {"baseline_attr": "_last_hour_value", "attr_name": "last_hour_value", "suffix": "_hourly"},
+    "monthly": {"baseline_attr": "_previous_monthly_value", "attr_name": "previous_monthly_value", "suffix": "_monthly"},
+    "yearly": {"baseline_attr": "_previous_yearly_value", "attr_name": "previous_yearly_value", "suffix": "_yearly"},
+}
+
 # Zeitzyklen-basierte Sensoren (Reset/Baseline-Konsistenz)
 # Sensoren mit periodenbezogenem Wert (daily = total - yesterday, etc.):
 # - Energy (electrical + thermal): daily, monthly, yearly – yesterday_value bzw. previous_monthly/yearly
@@ -2461,6 +2483,16 @@ ENERGY_CONSUMPTION_PERIODS = sorted(list(set(
 #   (Konsistenz in LambdaCOPSensor.restore_state).
 # - COP daily/monthly/yearly: lesen nur aus Energy-Sensoren, keine eigene Baseline → kein Reset-Fehler.
 # - Cycling (daily, 2h, 4h, monthly, yearly): eigener Zähler pro Periode, Reset auf 0 – kein yesterday-Fehler.
+
+# Reihenfolge der Perioden beim Inkrement der Energy-Sensoren (utils.increment_energy_consumption_counter)
+ENERGY_INCREMENT_PERIODS = ["total", "daily", "monthly", "yearly", "2h", "4h", "hourly"]
+
+# Reihenfolge bei der Registrierung der Energy-Sensoren (Total zuerst, damit Daily-Init den Total-Sensor findet)
+ENERGY_REGISTRATION_ORDER = ("total", "yearly", "monthly", "daily", "hourly")
+
+# Gültige Werte für Reset-Signal-Helfer (utils.create_reset_signal, get_reset_signal_for_period)
+RESET_VALID_PERIODS = ["daily", "2h", "4h"]
+RESET_VALID_SENSOR_TYPES = ["cycling", "energy", "general"]
 
 # COP-Sensoren: Modi und Perioden (ohne Defrost)
 COP_MODES = ["heating", "hot_water", "cooling"]

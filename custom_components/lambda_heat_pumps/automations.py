@@ -21,6 +21,8 @@ SIGNAL_RESET_4H = "lambda_heat_pumps_reset_4h"
 SIGNAL_RESET_MONTHLY = "lambda_heat_pumps_reset_monthly"
 # Signal für Yearly-Reset (1. Januar um Mitternacht)
 SIGNAL_RESET_YEARLY = "lambda_heat_pumps_reset_yearly"
+# Signal für Hourly-Reset (jede volle Stunde)
+SIGNAL_RESET_HOURLY = "lambda_heat_pumps_reset_hourly"
 
 
 # setup_cycling_automations() wurde durch ResetManager ersetzt

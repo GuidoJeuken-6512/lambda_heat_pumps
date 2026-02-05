@@ -19,6 +19,8 @@ title: "Lambda Heizkurven-Card"
 <li><strong>Punkt:</strong> Aktueller Wert aus den Sensoren <code>eu08l_ambient_temperature_calculated</code> (X) und <code>eu08l_hc1_heating_curve_flow_line_temperature_calc</code> (Y)</li>
 ---
 
+**⚠️Nutzug der Card ohne Lambda-Integration:** Wenn Sie die Heizkurven-Card ohne diese Home-Assistsnt-Integration für die Lambda nutzen möchten, können Sie die Vorlauftemperatur mit einem **Template-Sensor** berechnen. Siehe [Template-Sensor ohne Lambda-Integration (Standalone)](../Entwickler/heizkurve.md#template-sensor-ohne-lambda-integration-standalone).
+
 ## Einrichtung
 
 ### Schritt 1: Ordner und JS-Modul anlegen
@@ -41,7 +43,7 @@ title: "Lambda Heizkurven-Card"
 ### Schritt 3: Karte ins Dashboard einfügen
 
 - **Option A – Neues Dashboard:** Siehe [„Einbindung der Karte“](#einbindung-der-karte) → Option A (Dashboard importieren).
-- **Option B – Bestehendes Dashboard:** Ansicht bearbeiten → **„+ Karte hinzufügen“** → **„Code bearbeiten“** → YAML der Karte (siehe [„YAML (Copy & Paste)“](#yaml-copy--paste)) einfügen.
+- **Option B – Bestehendes Dashboard:** Ansicht bearbeiten → **„+ Karte hinzufügen“** → **„Code bearbeiten“** → YAML der Karte (siehe [„YAML (Copy & Paste)“](#yaml-copy-paste)) einfügen.
 
 ### Schritt 4: Entity-IDs anpassen
 

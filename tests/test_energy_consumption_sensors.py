@@ -330,7 +330,7 @@ class TestLambdaEnergyConsumptionSensor:
 
     @pytest.mark.asyncio
     async def test_handle_reset_daily_updates_yesterday_not_energy(self, mock_hass, mock_entry):
-        """Daily-Sensor: Reset setzt yesterday_value = Total, _energy_value bleibt unverändert."""
+        """Daily-Sensor: Reset setzt yesterday_value = Total und synchronisiert _energy_value mit Total."""
         from unittest.mock import MagicMock
         sensor = LambdaEnergyConsumptionSensor(
             hass=mock_hass,
@@ -355,12 +355,12 @@ class TestLambdaEnergyConsumptionSensor:
         mock_hass.states.get = MagicMock(return_value=total_state)
         with patch.object(sensor, "async_write_ha_state", MagicMock()):
             await sensor._handle_reset(mock_entry.entry_id)
-        assert sensor._energy_value == 500.0, "Daily reset darf _energy_value nicht auf 0 setzen"
+        assert sensor._energy_value == 500.0, "Daily reset synchronisiert _energy_value mit Total"
         assert sensor._yesterday_value == 500.0, "yesterday_value soll auf Total gesetzt werden"
 
     @pytest.mark.asyncio
     async def test_handle_reset_monthly_updates_previous_monthly_not_energy(self, mock_hass, mock_entry):
-        """Monthly-Sensor: Reset setzt previous_monthly_value = Total, _energy_value bleibt unverändert."""
+        """Monthly-Sensor: Reset setzt previous_monthly_value = Total und synchronisiert _energy_value mit Total."""
         from unittest.mock import MagicMock, patch
         sensor = LambdaEnergyConsumptionSensor(
             hass=mock_hass,
@@ -385,12 +385,12 @@ class TestLambdaEnergyConsumptionSensor:
         mock_hass.states.get = MagicMock(return_value=total_state)
         with patch.object(sensor, "async_write_ha_state", MagicMock()):
             await sensor._handle_reset(mock_entry.entry_id)
-        assert sensor._energy_value == 2000.0, "Monthly reset darf _energy_value nicht auf 0 setzen"
+        assert sensor._energy_value == 2000.0, "Monthly reset synchronisiert _energy_value mit Total"
         assert sensor._previous_monthly_value == 2000.0, "previous_monthly_value soll auf Total gesetzt werden"
 
     @pytest.mark.asyncio
     async def test_handle_reset_yearly_updates_previous_yearly_not_energy(self, mock_hass, mock_entry):
-        """Yearly-Sensor: Reset setzt previous_yearly_value = Total, _energy_value bleibt unverändert."""
+        """Yearly-Sensor: Reset setzt previous_yearly_value = Total und synchronisiert _energy_value mit Total."""
         from unittest.mock import MagicMock, patch
         sensor = LambdaEnergyConsumptionSensor(
             hass=mock_hass,
@@ -415,7 +415,7 @@ class TestLambdaEnergyConsumptionSensor:
         mock_hass.states.get = MagicMock(return_value=total_state)
         with patch.object(sensor, "async_write_ha_state", MagicMock()):
             await sensor._handle_reset(mock_entry.entry_id)
-        assert sensor._energy_value == 10000.0, "Yearly reset darf _energy_value nicht auf 0 setzen"
+        assert sensor._energy_value == 10000.0, "Yearly reset synchronisiert _energy_value mit Total"
         assert sensor._previous_yearly_value == 10000.0, "previous_yearly_value soll auf Total gesetzt werden"
 
     @pytest.mark.asyncio
@@ -461,7 +461,7 @@ class TestLambdaEnergyConsumptionSensor:
                 "Nach Reset: yesterday_value muss auf Total (100) gesetzt werden"
             )
             assert daily_sensor._energy_value == 100.0, (
-                "Nach Reset: _energy_value bleibt unverändert (wird vom Coordinator weiter erhöht)"
+                "Nach Reset: _energy_value wird mit Total synchronisiert (vom Coordinator weiter erhöht)"
             )
             assert daily_sensor.native_value == 0.0, (
                 "Nach Reset: Tagesanzeige muss 0 sein (daily = _energy_value - yesterday_value)"

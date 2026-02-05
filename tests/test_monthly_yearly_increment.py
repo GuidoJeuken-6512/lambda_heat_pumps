@@ -1,73 +1,60 @@
 #!/usr/bin/env python3
 """
-Test für Monthly und Yearly Sensoren in increment_energy_consumption_counter
-Erstellt: 2025-01-14
-Zweck: Testet ob monthly und yearly Sensoren korrekt aktualisiert werden
+Test für alle Energie-Inkrement-Perioden in increment_energy_consumption_counter.
+Stellt sicher, dass total, daily, monthly, yearly, 2h, 4h und hourly berücksichtigt werden.
 """
 
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'custom_components', 'lambda_heat_pumps'))
+import pytest
 
-def test_sensor_types_in_increment_function():
-    """Test ob alle Sensor-Typen in increment_energy_consumption_counter berücksichtigt werden."""
-    
-    print("🧪 Teste Sensor-Typen in increment_energy_consumption_counter...")
-    
-    # Simuliere die Logik aus utils.py
-    def get_sensor_types_for_mode(mode):
-        """Simuliert die Sensor-Typen-Liste aus increment_energy_consumption_counter."""
-        sensor_types = [
-            f"{mode}_energy_total",
-            f"{mode}_energy_daily",
-            f"{mode}_energy_monthly",
-            f"{mode}_energy_yearly",
-        ]
-        return sensor_types
-    
-    def get_period_for_sensor_id(sensor_id):
-        """Simuliert die Period-Bestimmung aus increment_energy_consumption_counter."""
-        if sensor_id.endswith("_total"):
-            return "total"
-        elif sensor_id.endswith("_daily"):
-            return "daily"
-        elif sensor_id.endswith("_monthly"):
-            return "monthly"
-        elif sensor_id.endswith("_yearly"):
-            return "yearly"
-        else:
-            return "total"  # Fallback
-    
-    # Test für alle Modi
-    modes = ["heating", "hot_water", "cooling", "defrost", "stby"]
-    
-    for mode in modes:
-        print(f"\n📊 Teste Modus: {mode}")
-        sensor_types = get_sensor_types_for_mode(mode)
-        
-        print(f"  Sensor-Typen: {sensor_types}")
-        
-        for sensor_id in sensor_types:
-            period = get_period_for_sensor_id(sensor_id)
-            print(f"    {sensor_id} -> Period: {period}")
-            
-            # Validiere die Period-Zuordnung
-            if sensor_id.endswith("_total") and period != "total":
-                print(f"    ❌ FEHLER: {sensor_id} sollte 'total' sein, ist aber '{period}'")
-            elif sensor_id.endswith("_daily") and period != "daily":
-                print(f"    ❌ FEHLER: {sensor_id} sollte 'daily' sein, ist aber '{period}'")
-            elif sensor_id.endswith("_monthly") and period != "monthly":
-                print(f"    ❌ FEHLER: {sensor_id} sollte 'monthly' sein, ist aber '{period}'")
-            elif sensor_id.endswith("_yearly") and period != "yearly":
-                print(f"    ❌ FEHLER: {sensor_id} sollte 'yearly' sein, ist aber '{period}'")
-            else:
-                print(f"    ✅ OK: {sensor_id} -> {period}")
-    
-    print("\n✅ Test abgeschlossen!")
-    print("\n📋 Erwartetes Verhalten:")
-    print("- Alle 4 Sensor-Typen (total, daily, monthly, yearly) werden für jeden Modus erstellt")
-    print("- Jeder Sensor-Typ bekommt die korrekte Period zugewiesen")
-    print("- Monthly und Yearly Sensoren werden jetzt auch aktualisiert!")
+from custom_components.lambda_heat_pumps.const import (
+    ENERGY_CONSUMPTION_MODES,
+    ENERGY_INCREMENT_PERIODS,
+)
 
-if __name__ == "__main__":
-    test_sensor_types_in_increment_function()
+
+def _sensor_id_to_period(sensor_id: str) -> str:
+    """Leitet die Period aus sensor_id ab (wie in increment_energy_consumption_counter)."""
+    for period in ENERGY_INCREMENT_PERIODS:
+        if sensor_id.endswith(f"_{period}"):
+            return period
+    return "total"
+
+
+def test_sensor_types_use_energy_increment_periods():
+    """Alle in increment_energy_consumption_counter verwendeten Perioden kommen aus ENERGY_INCREMENT_PERIODS."""
+    assert "total" in ENERGY_INCREMENT_PERIODS
+    assert "daily" in ENERGY_INCREMENT_PERIODS
+    assert "monthly" in ENERGY_INCREMENT_PERIODS
+    assert "yearly" in ENERGY_INCREMENT_PERIODS
+    assert "2h" in ENERGY_INCREMENT_PERIODS
+    assert "4h" in ENERGY_INCREMENT_PERIODS
+    assert "hourly" in ENERGY_INCREMENT_PERIODS
+
+
+def test_sensor_id_to_period_mapping():
+    """Jede Period aus ENERGY_INCREMENT_PERIODS wird korrekt aus sensor_id erkannt."""
+    for period in ENERGY_INCREMENT_PERIODS:
+        sensor_id = f"heating_energy_{period}"
+        assert _sensor_id_to_period(sensor_id) == period, (
+            f"heating_energy_{period} sollte Period '{period}' ergeben"
+        )
+
+
+def test_all_modes_have_all_periods():
+    """Für jeden Modus werden alle ENERGY_INCREMENT_PERIODS als Sensor-Typen erzeugt."""
+    for mode in ENERGY_CONSUMPTION_MODES:
+        for period in ENERGY_INCREMENT_PERIODS:
+            sensor_id = f"{mode}_energy_{period}"
+            resolved = _sensor_id_to_period(sensor_id)
+            assert resolved == period, (
+                f"Modus {mode}, Period {period}: sensor_id {sensor_id} -> {resolved}"
+            )
+
+
+def test_thermal_sensor_ids_use_same_periods():
+    """Thermal-Sensoren nutzen dieselben Perioden (thermal_energy_{period})."""
+    for period in ENERGY_INCREMENT_PERIODS:
+        sensor_id = f"heating_thermal_energy_{period}"
+        # Suffix _period muss erkennbar sein (z.B. _daily, _monthly, _2h)
+        assert sensor_id.endswith(f"_{period}")
+        assert _sensor_id_to_period(sensor_id) == period

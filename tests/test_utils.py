@@ -9,6 +9,7 @@ import yaml
 
 import custom_components.lambda_heat_pumps.utils as utils_module
 from custom_components.lambda_heat_pumps.utils import (
+    apply_energy_period_reset,
     build_device_info,
     clamp_to_int16,
     generate_base_addresses,
@@ -17,6 +18,7 @@ from custom_components.lambda_heat_pumps.utils import (
     is_register_disabled,
     load_disabled_registers,
     load_sensor_translations,
+    restore_energy_period_state,
     to_signed_16bit,
     to_signed_32bit,
     _get_coordinator,
@@ -695,3 +697,76 @@ def test_get_coordinator():
     mock_hass.data = {}
     coordinator = _get_coordinator(mock_hass)
     assert coordinator is None
+
+
+def test_apply_energy_period_reset_daily():
+    """apply_energy_period_reset setzt baseline und _energy_value aus Total-Sensor (daily)."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_daily"
+    sensor._energy_value = 50.0
+    sensor._yesterday_value = 10.0
+    total_state = MagicMock()
+    total_state.state = "100.0"
+    total_state.attributes = {}
+    sensor.hass = MagicMock()
+    sensor.hass.states.get = MagicMock(return_value=total_state)
+
+    apply_energy_period_reset(sensor, "daily")
+
+    assert sensor._yesterday_value == 100.0
+    assert sensor._energy_value == 100.0
+    sensor.hass.states.get.assert_called_once()
+    call_entity_id = sensor.hass.states.get.call_args[0][0]
+    assert call_entity_id == "sensor.eu08l_hp1_heating_energy_total"
+
+
+def test_apply_energy_period_reset_unknown_period_no_op():
+    """apply_energy_period_reset bei unbekannter Period ändert nichts."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_daily"
+    sensor._energy_value = 50.0
+    sensor._yesterday_value = 10.0
+    sensor.hass = MagicMock()
+
+    apply_energy_period_reset(sensor, "unknown_period")
+
+    assert sensor._yesterday_value == 10.0
+    assert sensor._energy_value == 50.0
+    sensor.hass.states.get.assert_not_called()
+
+
+def test_restore_energy_period_state_monthly_from_attrs():
+    """restore_energy_period_state setzt baseline und _energy_value aus attrs/last_state."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_monthly"
+    sensor._energy_value = 0.0
+    sensor._previous_monthly_value = 0.0
+    attrs = {"previous_monthly_value": 200.0, "energy_value": 250.0}
+    last_state = MagicMock()
+    last_state.state = "50.0"
+
+    restore_energy_period_state(sensor, "monthly", attrs, last_state)
+
+    assert sensor._previous_monthly_value == 200.0
+    assert sensor._energy_value == 250.0
+
+
+def test_restore_energy_period_state_unknown_period_no_op():
+    """restore_energy_period_state bei unbekannter Period ändert nichts."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_daily"
+    sensor._energy_value = 50.0
+    sensor._yesterday_value = 10.0
+
+    restore_energy_period_state(sensor, "unknown_period", {}, MagicMock(state="20.0"))
+
+    assert sensor._yesterday_value == 10.0
+    assert sensor._energy_value == 50.0
