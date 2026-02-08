@@ -6,7 +6,10 @@ title: "Lambda Energy Dashboard"
 
 ### ⚠️ ⚠️ Achtung, dies Dashboard benötigt Sensoren, die erst mit der Version 2.3 der Lambda Integration herauskommen. Mit der aktuellen Version 2.2 werden viele Werte nicht gefunden
 
-Diese Vorlage erstellt ein Lovelace-Dashboard **„lambda Energy“** mit vier Spalten: **Täglich**, **Monatlich**, **Jährlich** und **Total**. Pro Spalte werden für Heizen, Warmwasser, Kühlen und Abtauen die elektrische Energie, die thermische Energie und der COP angezeigt (Abtau ohne COP).
+Diese Vorlage erstellt ein Lovelace-Dashboard **„lambda Energy“** mit zwei Reitern:
+
+1. **lambda Energy** – vier Spalten: **Täglich**, **Monatlich**, **Jährlich** und **Total**. Pro Spalte werden für Heizen, Warmwasser, Kühlen und Abtauen die elektrische Energie, die thermische Energie und der COP angezeigt (Abtau ohne COP).
+2. **lambda taktungen** – Cycling-Zähler (Taktungen) nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen, Kompressor-Starts) sowie COP-Übersichten für Heizen, Warmwasser und Kühlen.
 
 <a href="../../assets/dashboard-lambda-energy.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../../assets/dashboard-lambda-energy.png" alt="Lambda Energy Dashboard" width="600" style="max-width: 100%; height: auto;" /></a>
 
@@ -139,9 +142,110 @@ views:
                 entities:
                   - entity: sensor.ENTITY_PREFIX_defrost_energy_total
                   - entity: sensor.ENTITY_PREFIX_defrost_thermal_energy_total
+  - title: lambda taktungen
+    path: lambda-taktungen
+    panel: true
+    cards:
+      - type: horizontal-stack
+        cards:
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Täglich"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_cycling_daily
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cycling_daily
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_cycling_daily
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_cycling_daily
+              - type: entities
+                title: Kompressor-Starts
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_compressor_start_cycling_daily
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Monatlich"
+              - type: entities
+                title: Kompressor-Starts (monatlich)
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_compressor_start_cycling_monthly
+              - type: markdown
+                content: "*Weitere Cycling-Sensoren nur Total/Daily.*"
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Jährlich"
+              - type: markdown
+                content: "*Cycling-Sensoren nur Total/Daily/Monthly (Kompressor).*"
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Total"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_cycling_total
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cycling_total
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_cycling_total
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_cycling_total
+              - type: entities
+                title: Kompressor-Starts
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_compressor_start_cycling_total
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## COP Heizen"
+              - type: entities
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_daily
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_monthly
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_yearly
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_total
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## COP Warmwasser"
+              - type: entities
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_daily
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_monthly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_yearly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_total
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## COP Kühlen"
+              - type: entities
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_daily
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_monthly
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_yearly
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_total
 ```
 
 ## Hinweise
 
 - **panel: true** sorgt dafür, dass die View die volle Seitenbreite nutzt.
 - Die Entity-IDs basieren auf der Lambda Heat Pumps Integration; bei mehreren Wärmepumpen z. B. `hp2` verwenden und den Präfix anpassen.
+

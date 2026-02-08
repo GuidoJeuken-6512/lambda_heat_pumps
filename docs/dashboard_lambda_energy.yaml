@@ -1,5 +1,4 @@
-# Dashboard "lambda Energy" – 4 Spalten: Daily | Monthly | Yearly | Total
-# Pro Spalte: Heizen / Warmwasser / Kühlen / Abtau mit elektrischer Energie, thermischer Energie und COP
+# Dashboard "lambda Energy" – Tab 1: Energy (Daily|Monthly|Yearly|Total), Tab 2: lambda taktungen (Cycling + COP)
 #
 # ========== Variable (einmal ersetzen) ==========
 # ENTITY_PREFIX = eu08l_hp1
@@ -130,3 +129,112 @@ views:
                 entities:
                   - entity: sensor.ENTITY_PREFIX_defrost_energy_total
                   - entity: sensor.ENTITY_PREFIX_defrost_thermal_energy_total
+
+  # ========== Tab: lambda taktungen (Cycling + COP nach Betriebsart) ==========
+  - title: lambda taktungen
+    path: lambda-taktungen
+    panel: true
+    cards:
+      - type: horizontal-stack
+        cards:
+          # ========== Spalte 1: Täglich (Cycling) ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Täglich"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_cycling_daily
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cycling_daily
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_cycling_daily
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_cycling_daily
+              - type: entities
+                title: Kompressor-Starts
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_compressor_start_cycling_daily
+          # ========== Spalte 2: Monatlich (Cycling) ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Monatlich"
+              - type: entities
+                title: Kompressor-Starts (monatlich)
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_compressor_start_cycling_monthly
+              - type: markdown
+                content: "*Weitere Cycling-Sensoren nur Total/Daily.*"
+          # ========== Spalte 3: Jährlich (Platzhalter) ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Jährlich"
+              - type: markdown
+                content: "*Cycling-Sensoren nur Total/Daily/Monthly (Kompressor).*"
+          # ========== Spalte 4: Total (Cycling) ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## Total"
+              - type: entities
+                title: Heizen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_cycling_total
+              - type: entities
+                title: Warmwasser
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cycling_total
+              - type: entities
+                title: Kühlen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_cycling_total
+              - type: entities
+                title: Abtauen
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_defrost_cycling_total
+              - type: entities
+                title: Kompressor-Starts
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_compressor_start_cycling_total
+          # ========== Spalte 5: COP Heizen ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## COP Heizen"
+              - type: entities
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_daily
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_monthly
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_yearly
+                  - entity: sensor.ENTITY_PREFIX_heating_cop_total
+          # ========== Spalte 6: COP Warmwasser ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## COP Warmwasser"
+              - type: entities
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_daily
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_monthly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_yearly
+                  - entity: sensor.ENTITY_PREFIX_hot_water_cop_total
+          # ========== Spalte 7: COP Kühlen ==========
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "## COP Kühlen"
+              - type: entities
+                entities:
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_daily
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_monthly
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_yearly
+                  - entity: sensor.ENTITY_PREFIX_cooling_cop_total
