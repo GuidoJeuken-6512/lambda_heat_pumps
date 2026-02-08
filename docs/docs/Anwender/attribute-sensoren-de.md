@@ -23,3 +23,17 @@ Um die Attribute eines Sensors asuzulesen gibt es mehrere Möglichkeiten.
 
 In den Entwicklertools über den Namen den Sensor suchen, in der rechten Spalte sind alle Attribute zu finden.
 <img src="../../assets/attributes_sensor_devtools_de.png" alt="Attribute eines Sensors in den Entwicklertools anzeigen" style="width:100%;max-width:650px;margin:20px 0;border-radius:8px;">
+
+## Über ein Jinja2 Template
+
+```jinja2
+{% set entity_id = 'sensor.eu08l_hc1_flow_line_temperature' %}
+{% if states[entity_id] is defined %}
+Zustand: {{ states[entity_id].state }}
+{% for k in states[entity_id].attributes.keys() %}
+- {{ k }}: {{ states[entity_id].attributes[k] }}
+{% endfor %}
+{% else %}
+Sensor nicht verfügbar.
+{% endif %}
+```
