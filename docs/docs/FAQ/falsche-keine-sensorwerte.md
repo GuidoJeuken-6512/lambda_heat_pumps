@@ -64,7 +64,7 @@ disabled_registers:
 
 **Vorgehen:**
 
-1. Im Home-Assistant-Log die **Register-Adresse** des fehlschlagenden Zugriffs ermitteln.
+1. Im Home-Assistant-Log die **Register-Adresse** des fehlschlagenden Zugriffs ermitteln. Oder die Register Info aus den Attributen des Sensors auslesen. [Attribute des Sensors auslesen](../Anwender/attribute-sensoren-de.md).
 2. Diese Adresse (als Zahl) unter `disabled_registers` in der **lambda_wp_config.yaml** eintragen.
 3. Konfiguration speichern und Integration neu laden (oder Home Assistant neu starten).
 

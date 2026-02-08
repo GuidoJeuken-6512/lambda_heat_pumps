@@ -65,6 +65,7 @@ nav = [
     { "Historische Daten löschen" = "Anwender/historische_daten_loeschen.md" },    
     { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
+    { "Attribute eines Sensors anzeigen" = "Anwender/attribute-sensoren-de.md" },
     { "Konfiguration löschen" = "Anwender/konfiguration_loeschen.md" },
   ] },
   { "Vorlagen Templates" = [
