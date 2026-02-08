@@ -136,32 +136,38 @@ Weitere Informationen: [Historische Daten übernehmen](historische-daten.md)
 
 ### 4. Energieverbrauchs-Sensoren
 
-Definiert welche Sensoren Basis-Energieverbrauchsdaten liefern. Standardmäßig verwendet die Integration die Lambda-eigenen Sensoren, aber Sie können externe Energiezähler (z.B. Shelly3EM) verwenden.
-Die Option sollte nur verwendet werden, wenn ein anderer Sensor genutzt wird. Der Lambda eigene Sensor wird automatisch verwendet.
+Definiert, welche Sensoren die Basis-Energieverbrauchsdaten liefern. Pro Wärmepumpe können Sie **elektrischen** und **thermischen** Verbrauch getrennt konfigurieren.
+
+- **`sensor_entity_id`**: Quellsensor für **Stromverbrauch** (elektrisch). Wenn nicht gesetzt, wird der Lambda-interne Sensor verwendet.
+- **`thermal_sensor_entity_id`** (optional): Quellsensor für **Wärmeabgabe** (thermisch). Wenn nicht gesetzt, wird der Lambda-interne Thermik-Sensor verwendet.
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Externer Verbrauchssensor
+    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"   # elektrisch (Strom)
+    thermal_sensor_entity_id: "sensor.lambda_wp_waerme"       # optional, thermisch (Wärme)
   hp2:
-    sensor_entity_id: "sensor.lambda_wp_verbrauch2"  # Zweiter Verbrauchssensor
+    sensor_entity_id: "sensor.lambda_wp_verbrauch2"
+    # thermal_sensor_entity_id weglassen = interner Thermik-Sensor
 ```
 
-**Standard-Sensoren:**
-- **HP1**: `sensor.eu08l_hp1_compressor_power_consumption_accumulated`
-- **HP2**: `sensor.eu08l_hp2_compressor_power_consumption_accumulated`
-- **HP3**: `sensor.eu08l_hp3_compressor_power_consumption_accumulated`
+**Standard-Sensoren (wenn nichts konfiguriert):**
 
-**Hinweis**: Diese Sensoren müssen Energieverbrauchsdaten in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh für die Berechnungen.
+| Typ      | HP1 | HP2 | HP3 |
+|----------|-----|-----|-----|
+| Elektrisch | `sensor.eu08l_hp1_compressor_power_consumption_accumulated` | `sensor.eu08l_hp2_compressor_power_consumption_accumulated` | … |
+| Thermisch  | `sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated` | `sensor.eu08l_hp2_compressor_thermal_energy_output_accumulated` | … |
 
-**Beispiel: Externer Shelly3EM Sensor**
+**Hinweis:** Die Quellsensoren müssen kumulative Verbrauchswerte in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh.
+
+**Beispiel: Nur elektrischer externer Sensor (Shelly3EM), thermisch intern**
 ```yaml
 energy_consumption_sensors:
   hp1:
     sensor_entity_id: "sensor.shelly3em_channel_1_energy"  # Shelly3EM Kanal 1
 ```
 
-Weitere Informationen: [Stromverbrauchsberechnung](stromverbrauchsberechnung.md)
+Weitere Informationen: [Energieverbrauchsberechnung](Energieverbrauchsberechnung.md)
 
 ### 5. Energieverbrauchs-Offsets
 
@@ -271,10 +277,11 @@ cycling_offsets:
     defrost_cycling_total: 50
     compressor_start_cycling_total: 5000
 
-# Energieverbrauchs-Sensor-Konfiguration
+# Energieverbrauchs-Sensor-Konfiguration (elektrisch + optional thermisch)
 energy_consumption_sensors:
   hp1:
     sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    # thermal_sensor_entity_id: "sensor.xyz"  # optional, sonst interner Thermik-Sensor
   hp2:
     sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Externer Sensor
 

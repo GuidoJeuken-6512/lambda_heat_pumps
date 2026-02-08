@@ -91,7 +91,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._last_energy_reading = {}  # {hp_index: last_kwh_value}
         self._energy_consumption = {}   # {hp_index: {mode: {period: value}}}
         self._energy_sensor_configs = {}  # Sensor-Konfigurationen aus Config (optional)
-        self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung
+        self._sensor_ids = {}  # {hp_index: sensor_entity_id} für Sensor-Wechsel-Erkennung (elektrisch)
+        self._thermal_sensor_ids = {}  # {hp_index: sensor_entity_id} für Thermik-Sensor-Wechsel-Erkennung
         self._energy_sensor_states = {}  # {entity_id: {state, energy_value, yesterday_value, ...}} aus cycle_energy_persist
         self._energy_unit_cache = {}  # {hp_index: unit_string} - Memory-only cache for performance
         self._energy_first_value_seen = {}  # {hp_index: bool} - In-Memory Flag für Zero-Value Protection
@@ -255,10 +256,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             data[field] = {}
                             _LOGGER.info(f"Added missing field {field} to repaired JSON")
                     
-                    # sensor_ids nur hinzufügen wenn komplett fehlt, nicht wenn leer
+                    # sensor_ids / thermal_sensor_ids nur hinzufügen wenn komplett fehlt
                     if "sensor_ids" not in data:
                         data["sensor_ids"] = {}
                         _LOGGER.info("Added missing sensor_ids field to repaired JSON")
+                    if "thermal_sensor_ids" not in data:
+                        data["thermal_sensor_ids"] = {}
+                    if "last_thermal_energy_readings" not in data:
+                        data["last_thermal_energy_readings"] = {}
                     
                 return data
                 
@@ -292,7 +297,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     # Stelle sicher, dass alle wichtigen Felder existieren
                     required_fields = [
                         "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "energy_offsets", "sensor_ids",
+                        "energy_consumption", "last_energy_readings", "last_thermal_energy_readings",
+                        "energy_offsets", "sensor_ids", "thermal_sensor_ids",
                         "energy_sensor_states",
                     ]
                     for field in required_fields:
@@ -348,24 +354,23 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             getattr(self, "_last_state", {})
         )
         
-        # Prüfe ob sensor_ids in der aktuellen Datei existieren und verwende sie falls self._sensor_ids leer ist
+        # Prüfe ob sensor_ids/thermal_sensor_ids in der Datei existieren, falls im Speicher leer
         sensor_ids_to_save = getattr(self, "_sensor_ids", {})
-        if not sensor_ids_to_save and os.path.exists(self._persist_file):
-            
+        thermal_sensor_ids_to_save = getattr(self, "_thermal_sensor_ids", {})
+        if (not sensor_ids_to_save or not thermal_sensor_ids_to_save) and os.path.exists(self._persist_file):
+
             def _read_existing_sensor_ids():
                 try:
                     with open(self._persist_file) as f:
                         existing_data = json.loads(f.read())
-                        existing_sensor_ids = existing_data.get("sensor_ids", {})
-                        if existing_sensor_ids:
-                            _LOGGER.debug(f"Using existing sensor_ids from file: {existing_sensor_ids}")
-                            return existing_sensor_ids
+                        out_sensor = sensor_ids_to_save or existing_data.get("sensor_ids", {})
+                        out_thermal = thermal_sensor_ids_to_save or existing_data.get("thermal_sensor_ids", {})
+                        return out_sensor, out_thermal
                 except Exception:
-                    pass  # Ignore errors when reading existing file
-                return {}
-            
-            sensor_ids_to_save = await self.hass.async_add_executor_job(_read_existing_sensor_ids)
-        
+                    return sensor_ids_to_save, thermal_sensor_ids_to_save
+
+            sensor_ids_to_save, thermal_sensor_ids_to_save = await self.hass.async_add_executor_job(_read_existing_sensor_ids)
+
         # Energy-Sensor-States aus Entities sammeln (electrical + thermal, alle Perioden)
         energy_sensor_states_to_save = self._collect_energy_sensor_states()
 
@@ -376,8 +381,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "last_states": normalized_states,
             "energy_consumption": self._energy_consumption,
             "last_energy_readings": self._last_energy_reading,
+            "last_thermal_energy_readings": getattr(self, "_last_thermal_energy_reading", {}),
             "energy_offsets": self._energy_offsets,
             "sensor_ids": sensor_ids_to_save,
+            "thermal_sensor_ids": thermal_sensor_ids_to_save,
             "energy_sensor_states": energy_sensor_states_to_save,
         }
 
@@ -495,6 +502,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # Lade persistierte Energy Consumption Daten
         self._energy_consumption = data.get("energy_consumption", {})
         self._sensor_ids = data.get("sensor_ids", {})
+        self._thermal_sensor_ids = data.get("thermal_sensor_ids", {})
         self._energy_sensor_states = data.get("energy_sensor_states", {})
         # Energy Offsets werden bereits aus der Config geladen
 
@@ -502,9 +510,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         # damit kein falsches Delta (alter last + neuer Sensor) addiert wird – verhindert Sprung/Spike.
         loaded_last = data.get("last_energy_readings", {})
         corrected_last = dict(loaded_last)
-        from .utils import detect_sensor_change, get_stored_sensor_id
-        all_hp_keys = set(self._energy_sensor_configs.keys()) | set(self._sensor_ids.keys())
-        persist_data = {"sensor_ids": self._sensor_ids}
+        from .utils import detect_sensor_change, get_stored_sensor_id, get_stored_thermal_sensor_id
+        all_hp_keys = set(self._energy_sensor_configs.keys()) | set(self._sensor_ids.keys()) | set(self._thermal_sensor_ids.keys())
+        persist_data = {"sensor_ids": self._sensor_ids, "thermal_sensor_ids": self._thermal_sensor_ids}
         for hp_key in all_hp_keys:
             try:
                 hp_idx = int(hp_key.replace("hp", ""))
@@ -514,7 +522,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if hp_key in self._energy_sensor_configs:
                 current_sensor_id = self._energy_sensor_configs[hp_key].get("sensor_entity_id")
             if not current_sensor_id:
-                name_prefix = self.entry.data.get("name", "eu08l")
+                name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
                 current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
             stored_sensor_id = get_stored_sensor_id(persist_data, hp_idx)
             if detect_sensor_change(stored_sensor_id, current_sensor_id):
@@ -525,7 +533,31 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     hp_key,
                 )
         self._last_energy_reading = corrected_last
-        
+
+        # Thermik: last_thermal_energy_reading bei Sensor-Wechsel auf None setzen
+        loaded_thermal_last = data.get("last_thermal_energy_readings", {})
+        corrected_thermal_last = dict(loaded_thermal_last)
+        for hp_key in all_hp_keys:
+            try:
+                hp_idx = int(hp_key.replace("hp", ""))
+            except (ValueError, AttributeError):
+                continue
+            current_thermal_id = None
+            if hp_key in self._energy_sensor_configs:
+                current_thermal_id = self._energy_sensor_configs[hp_key].get("thermal_sensor_entity_id")
+            if not current_thermal_id:
+                name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+                current_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+            stored_thermal_id = get_stored_thermal_sensor_id(persist_data, hp_idx)
+            if detect_sensor_change(stored_thermal_id, current_thermal_id):
+                corrected_thermal_last[hp_key] = None
+                self._thermal_energy_first_value_seen[hp_key] = False
+                _LOGGER.info(
+                    "SENSOR-CHANGE-DETECTION: %s last_thermal_energy_reading auf None (Thermik-Sensor-Wechsel)",
+                    hp_key,
+                )
+        self._last_thermal_energy_reading = corrected_thermal_last
+
         _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Geladene sensor_ids: {self._sensor_ids}")
         
         _LOGGER.info(
@@ -542,10 +574,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
         
         try:
-            from .utils import detect_sensor_change, get_stored_sensor_id, store_sensor_id
-            
+            from .utils import (
+                detect_sensor_change,
+                get_stored_sensor_id,
+                store_sensor_id,
+                get_stored_thermal_sensor_id,
+                store_thermal_sensor_id,
+            )
             # Erstelle persist_data dict für die Hilfsfunktionen
-            persist_data = {"sensor_ids": self._sensor_ids}
+            persist_data = {"sensor_ids": self._sensor_ids, "thermal_sensor_ids": self._thermal_sensor_ids}
             
             # Prüfe alle Wärmepumpen, die in _sensor_ids gespeichert sind (auch wenn keine Custom-Sensoren konfiguriert sind)
             all_hp_keys = set()
@@ -554,8 +591,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             for hp_key in self._energy_sensor_configs.keys():
                 all_hp_keys.add(hp_key)
             
-            # Füge alle Wärmepumpen aus _sensor_ids hinzu (für Default-Sensor-Wechsel)
+            # Füge alle Wärmepumpen aus _sensor_ids und _thermal_sensor_ids hinzu
             for hp_key in self._sensor_ids.keys():
+                all_hp_keys.add(hp_key)
+            for hp_key in self._thermal_sensor_ids.keys():
                 all_hp_keys.add(hp_key)
             
             _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe {len(all_hp_keys)} Wärmepumpen: {sorted(all_hp_keys)}")
@@ -576,9 +615,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     current_sensor_id = self._energy_sensor_configs[hp_key].get("sensor_entity_id")
                     _LOGGER.info(f"SENSOR-CHANGE-DETECTION: {hp_key} - Custom-Sensor: {current_sensor_id}")
                 
-                # Falls kein Custom-Sensor, verwende Default-Sensor
+                # Falls kein Custom-Sensor, verwende Default-Sensor (lowercase wie entity_id)
                 if not current_sensor_id:
-                    name_prefix = self.entry.data.get("name", "eu08l")
+                    name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
                     current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
                     _LOGGER.info(f"SENSOR-CHANGE-DETECTION: {hp_key} - Default-Sensor: {current_sensor_id}")
                 
@@ -597,10 +636,35 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 self._sensor_ids = persist_data["sensor_ids"]
                 
                 _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} aktualisiert: {current_sensor_id}")
-            
+
+            # Thermik-Sensor-Wechsel prüfen (analog zu elektrisch)
+            for hp_key in all_hp_keys:
+                try:
+                    hp_idx = int(hp_key.replace("hp", ""))
+                except (ValueError, AttributeError):
+                    continue
+                current_thermal_id = None
+                if hp_key in self._energy_sensor_configs:
+                    current_thermal_id = self._energy_sensor_configs[hp_key].get("thermal_sensor_entity_id")
+                if not current_thermal_id:
+                    name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+                    current_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+                stored_thermal_id = get_stored_thermal_sensor_id(persist_data, hp_idx)
+                if detect_sensor_change(stored_thermal_id, current_thermal_id):
+                    _LOGGER.info(
+                        "SENSOR-CHANGE-DETECTION: Thermik-Sensor-Wechsel für %s: %s -> %s",
+                        hp_key, stored_thermal_id, current_thermal_id,
+                    )
+                    await self._handle_thermal_sensor_change(hp_idx, current_thermal_id)
+                store_thermal_sensor_id(persist_data, hp_idx, current_thermal_id)
+                self._thermal_sensor_ids = persist_data["thermal_sensor_ids"]
+
             # Speichere alle Änderungen in der JSON-Datei
-            if self._sensor_ids:
-                _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Speichere sensor_ids in JSON: {self._sensor_ids}")
+            if self._sensor_ids or self._thermal_sensor_ids:
+                _LOGGER.info(
+                    "SENSOR-CHANGE-DETECTION: Speichere sensor_ids + thermal_sensor_ids in JSON"
+                )
+                self._persist_dirty = True
                 await self._persist_counters()
                 _LOGGER.info("SENSOR-CHANGE-DETECTION: sensor_ids erfolgreich gespeichert")
             
@@ -648,7 +712,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         # Setze DB-Wert als last_energy
                         self._last_energy_reading[hp_key] = db_value
                         self._energy_first_value_seen[hp_key] = True
-                        
+                        self._persist_dirty = True
                         await self._persist_counters()
                         _LOGGER.info(f"SENSOR-CHANGE: → ✅ Referenzwert gesetzt, warte auf ersten Messwert")
                         _LOGGER.info(f"SENSOR-CHANGE: === SENSOR-WECHSEL ABGESCHLOSSEN: DB-REFERENZ GESETZT ===")
@@ -680,9 +744,36 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         self._last_energy_reading[hp_key] = None
         self._energy_first_value_seen[hp_key] = False
+        self._persist_dirty = True
         await self._persist_counters()
         _LOGGER.info(f"SENSOR-CHANGE: === SENSOR-WECHSEL ABGESCHLOSSEN: ZERO-VALUE PROTECTION AKTIV ===")
 
+    async def _handle_thermal_sensor_change(self, hp_idx: int, new_sensor_id: str):
+        """Behandle Thermik-Sensor-Wechsel (analog zu _handle_sensor_change)."""
+        _LOGGER.info("SENSOR-CHANGE: === THERMIK-SENSOR-WECHSEL HP%s === Neuer Sensor: %s", hp_idx, new_sensor_id)
+        hp_key = f"hp{hp_idx}"
+        name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+        default_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+        is_default = new_sensor_id == default_thermal_id
+        if is_default:
+            db_state = self.hass.states.get(new_sensor_id)
+            if db_state and db_state.state not in ("unknown", "unavailable", "None"):
+                try:
+                    db_value = float(db_state.state)
+                    if db_value > 0:
+                        self._last_thermal_energy_reading[hp_key] = db_value
+                        self._thermal_energy_first_value_seen[hp_key] = True
+                        self._persist_dirty = True
+                        await self._persist_counters()
+                        _LOGGER.info("SENSOR-CHANGE: Thermik-Referenzwert gesetzt HP%s: %.2f kWh", hp_idx, db_value)
+                        return
+                except (ValueError, TypeError):
+                    pass
+        self._last_thermal_energy_reading[hp_key] = None
+        self._thermal_energy_first_value_seen[hp_key] = False
+        self._persist_dirty = True
+        await self._persist_counters()
+        _LOGGER.info("SENSOR-CHANGE: Thermik Zero-Value Protection aktiv HP%s", hp_idx)
 
     def _generate_entity_id(self, sensor_type, idx):
         if self._use_legacy_names:
@@ -2127,8 +2218,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         hp_key = f"hp{hp_idx}"
         sensor_config = self._energy_sensor_configs.get(hp_key, {})
         sensor_entity_id = sensor_config.get(f"{sensor_type}_sensor_entity_id")
-        if not sensor_entity_id:
-            # Fallback: generischer sensor_entity_id aus Config (für electrical und thermal)
+        if not sensor_entity_id and sensor_type == "electrical":
+            # Fallback: generischer sensor_entity_id aus Config (nur für elektrisch)
             sensor_entity_id = sensor_config.get("sensor_entity_id")
         if not sensor_entity_id:
             # Entity-IDs der Sensoren werden in sensor.py mit kleingeschriebenem name_prefix erzeugt

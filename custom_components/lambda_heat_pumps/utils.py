@@ -300,127 +300,13 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
         return False
 
 
-def _extract_config_sections() -> dict[str, str]:
-    """
-    Extrahiert alle Konfigurationsabschnitte aus dem LAMBDA_WP_CONFIG_TEMPLATE.
-    
-    Returns:
-        dict: Dictionary mit Abschnittsnamen als Keys und vollständigen Abschnitten als Values
-    """
-    sections = {}
-    lines = LAMBDA_WP_CONFIG_TEMPLATE.split('\n')
-    
-    # Definiere die Abschnitts-Header und ihre Namen
-    section_headers = {
-        "# Override sensor names (only works if use_legacy_modbus_names is true)": "sensors_names_override",
-        "# Cycling counter offsets for total sensors": "cycling_offsets",
-        "# Energy consumption sensor configuration": "energy_consumption_sensors", 
-        "# Energy consumption offsets for total sensors": "energy_consumption_offsets",
-        "# Modbus configuration": "modbus"
-    }
-    
-    current_section = None
-    current_content = []
-    
-    for line in lines:
-        # Prüfe ob dies ein neuer Abschnitts-Header ist
-        if line.strip() in section_headers:
-            # Speichere vorherigen Abschnitt falls vorhanden
-            if current_section and current_content:
-                sections[current_section] = '\n'.join(current_content).strip()
-            
-            # Starte neuen Abschnitt
-            current_section = section_headers[line.strip()]
-            current_content = [line]
-        elif current_section:
-            # Füge Zeile zum aktuellen Abschnitt hinzu
-            current_content.append(line)
-        else:
-            # Wir sind noch nicht in einem relevanten Abschnitt
-            continue
-    
-    # Speichere den letzten Abschnitt
-    if current_section and current_content:
-        sections[current_section] = '\n'.join(current_content).strip()
-    
-    _LOGGER.debug("Extracted config sections: %s", list(sections.keys()))
-    return sections
-
-
 async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
     """
-    Template-basierte Migration aller Konfigurationsabschnitte.
-    
-    Returns:
-        bool: True wenn Migration durchgeführt wurde, False sonst
+    Delegation an migration.py: Template-basierte Migration der lambda_wp_config.yaml
+    (fehlende Abschnitte an richtiger Stelle einfügen, bestehende erhalten).
     """
-    config_dir = hass.config.config_dir
-    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
-
-    if not os.path.exists(lambda_config_path):
-        _LOGGER.debug("No existing lambda_wp_config.yaml found, no migration needed")
-        return False
-
-    try:
-        # Lade aktuelle Konfiguration (Rohtext + geparst)
-        content = await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "r").read()
-        )
-        current_config = yaml.safe_load(content)
-
-        if not current_config:
-            _LOGGER.debug("Empty config file, no migration needed")
-            return False
-
-        # Extrahiere alle Abschnitte aus dem Template
-        template_sections = _extract_config_sections()
-        
-        # Prüfe welche Abschnitte fehlen
-        missing_sections = []
-        for section_name, section_content in template_sections.items():
-            # Prüfe ob der vollständige Abschnitt bereits im Rohtext vorhanden ist
-            # (nicht nur der Header, sondern der komplette Abschnitt)
-            if section_content.strip() not in content:
-                # Prüfe auch ob Key im Dictionary vorhanden ist
-                if section_name not in current_config:
-                    missing_sections.append((section_name, section_content))
-                    _LOGGER.debug("Missing section: %s", section_name)
-                else:
-                    _LOGGER.debug("Section %s exists in dictionary but not as comment", section_name)
-            else:
-                _LOGGER.debug("Section %s already exists as complete comment", section_name)
-
-        if not missing_sections:
-            _LOGGER.info("All config sections already present - no migration needed")
-            return False
-
-        _LOGGER.info("Migrating lambda_wp_config.yaml - adding %d missing sections", len(missing_sections))
-
-        # Erstelle Backup
-        backup_path = lambda_config_path + ".backup"
-        await hass.async_add_executor_job(lambda: open(backup_path, "w").write(content))
-        _LOGGER.info("Created backup at %s", backup_path)
-
-        # Füge fehlende Abschnitte hinzu
-        updated_content = content.rstrip() + "\n\n"
-        for section_name, section_content in missing_sections:
-            updated_content += section_content + "\n\n"
-            _LOGGER.info("Added section: %s", section_name)
-
-        # Schreibe aktualisierte Konfiguration
-        await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "w").write(updated_content)
-        )
-
-        _LOGGER.info(
-            "Successfully migrated lambda_wp_config.yaml - added %d sections. Backup created at %s",
-            len(missing_sections), backup_path
-        )
-        return True
-
-    except Exception as e:
-        _LOGGER.error("Error during config migration: %s", e)
-        return False
+    from .migration import migrate_lambda_config_sections as _migrate_sections
+    return await _migrate_sections(hass)
 
 
 async def ensure_lambda_config(hass: HomeAssistant) -> bool:
@@ -1715,9 +1601,18 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
                 f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Zero-Value Protection wird automatisch "
                 f"aktiviert bis Sensor verfügbar ist (wie bei _energy_first_value_seen)"
             )
-            
-            # Sensor ist gültig (existiert in Registry)
-            validated_configs[hp_key] = sensor_config
+            # Sensor ist gültig (existiert in Registry) – thermal_sensor_entity_id optional validieren
+            out_config = dict(sensor_config)
+            thermal_id = sensor_config.get("thermal_sensor_entity_id")
+            if thermal_id:
+                thermal_entry = entity_registry.async_get(thermal_id)
+                if thermal_entry is None:
+                    _LOGGER.warning(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - thermal_sensor_entity_id '%s' nicht gefunden, verwende internen Thermik-Sensor",
+                        hp_key, thermal_id,
+                    )
+                    out_config["thermal_sensor_entity_id"] = None
+            validated_configs[hp_key] = out_config
             continue
         
         # Prüfe ob Sensor verfügbar ist
@@ -1725,8 +1620,32 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
             _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist nicht verfügbar (State: {sensor_state.state})")
             _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert")
         
-        # Sensor ist gültig
-        validated_configs[hp_key] = sensor_config
+        # Sensor ist gültig – Eintrag übernehmen und optional thermal_sensor_entity_id validieren
+        out_config = dict(sensor_config)
+        thermal_id = sensor_config.get("thermal_sensor_entity_id")
+        if thermal_id:
+            thermal_state = hass.states.get(thermal_id)
+            if thermal_state is None:
+                entity_registry = async_get_entity_registry(hass)
+                thermal_entry = entity_registry.async_get(thermal_id)
+                if thermal_entry is None:
+                    _LOGGER.warning(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - thermal_sensor_entity_id '%s' nicht gefunden, verwende internen Thermik-Sensor",
+                        hp_key, thermal_id,
+                    )
+                    out_config["thermal_sensor_entity_id"] = None
+                else:
+                    _LOGGER.info(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - Thermik-Sensor '%s' in Registry gefunden (ggf. noch nicht im State)",
+                        hp_key, thermal_id,
+                    )
+            else:
+                if thermal_state.state in ("unknown", "unavailable", None):
+                    _LOGGER.info(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - Thermik-Sensor '%s' noch nicht verfügbar, Zero-Value Protection",
+                        hp_key, thermal_id,
+                    )
+        validated_configs[hp_key] = out_config
         _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet")
     
     if fallback_used:
@@ -2231,6 +2150,40 @@ def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
     persist_data["sensor_ids"][hp_key] = normalized_sensor_id
     
     _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{normalized_sensor_id}'")
+
+
+def get_stored_thermal_sensor_id(persist_data: dict, hp_idx: int) -> str:
+    """Hole die gespeicherte Thermik-Sensor-ID für eine Wärmepumpe aus den persistierten Daten.
+
+    Args:
+        persist_data: Die persistierten Daten (z. B. aus cycle_energy_persist.json)
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+
+    Returns:
+        str: Die gespeicherte Sensor-ID oder None wenn nicht vorhanden
+    """
+    hp_key = f"hp{hp_idx}"
+    thermal_sensor_ids = persist_data.get("thermal_sensor_ids", {})
+    stored_id = thermal_sensor_ids.get(hp_key)
+    _LOGGER.debug("SENSOR-CHANGE-DETECTION: Gespeicherte Thermik-Sensor-ID für %s: %s", hp_key, stored_id)
+    return stored_id
+
+
+def store_thermal_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
+    """Speichere die Thermik-Sensor-ID für eine Wärmepumpe in den persistierten Daten.
+
+    Args:
+        persist_data: Die persistierten Daten (wird modifiziert)
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+        sensor_id: Die Sensor-ID die gespeichert werden soll
+    """
+    hp_key = f"hp{hp_idx}"
+    normalized_sensor_id = str(sensor_id).strip().strip("'\"") if sensor_id else None
+    if "thermal_sensor_ids" not in persist_data:
+        persist_data["thermal_sensor_ids"] = {}
+    old_id = persist_data["thermal_sensor_ids"].get(hp_key)
+    persist_data["thermal_sensor_ids"][hp_key] = normalized_sensor_id
+    _LOGGER.debug("SENSOR-CHANGE-DETECTION: Thermik-Sensor-ID für %s gespeichert: %s -> %s", hp_key, old_id, normalized_sensor_id)
 
 
 async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> None:

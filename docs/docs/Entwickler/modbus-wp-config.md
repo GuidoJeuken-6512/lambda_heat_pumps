@@ -297,15 +297,20 @@ cycling_offsets:
 
 ## energy_consumption_sensors
 
-Definiert, welcher Sensor die Basis‑Energieverbrauchsdaten liefert (Standard: Lambda‑eigene Sensoren). Externe Zähler (z. B. Shelly) können hier eingebunden werden.
+Definiert pro HP die Quellsensoren für **elektrische** und **thermische** Energieverbrauchsdaten. Standard sind die Lambda-eigenen Modbus-Sensoren; externe Zähler (z. B. Shelly) können getrennt für Strom und Wärme eingebunden werden.
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # externer Sensor
+    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"   # elektrischer Quellsensor
+    thermal_sensor_entity_id: "sensor.waermemesser_hp1"       # optional, thermischer Quellsensor
   hp2:
     sensor_entity_id: "sensor.eu08l_hp2_compressor_power_consumption_accumulated"
+    # thermal_sensor_entity_id weglassen = Default compressor_thermal_energy_output_accumulated
 ```
+
+- **`sensor_entity_id`**: Quellsensor für elektrische Energie (Stromverbrauch). Fehlt → Default: `sensor.{name}_hp{n}_compressor_power_consumption_accumulated`.
+- **`thermal_sensor_entity_id`** (optional): Quellsensor für thermische Energie (Wärmeabgabe). Fehlt oder ungültig → Default: `sensor.{name}_hp{n}_compressor_thermal_energy_output_accumulated`.
 
 **Technische Verarbeitung:**
 
@@ -338,9 +343,9 @@ energy_consumption_sensors:
 ```
 
 **Hinweise:**
-- Sensor muss Energie in Wh oder kWh liefern; Konvertierung nach kWh erfolgt automatisch.
-- Je Heat Pump (`hp1`, `hp2`, …) genau ein Sensor.
-- Falls kein Sensor konfiguriert, wird der Standard-Modbus-Sensor verwendet.
+- Quellsensoren müssen kumulative Energie in Wh oder kWh liefern; Konvertierung zu kWh erfolgt automatisch.
+- Je HP optional ein **elektrischer** und ein **thermischer** Quellsensor; fehlt einer, wird der jeweilige Lambda-Standard-Sensor verwendet.
+- Für thermische Quellsensoren gilt dieselbe Resilienz wie für elektrische (Sensor-Wechsel-Erkennung, Zweitwert abwarten, Persistierung von `thermal_sensor_ids` und `last_thermal_energy_readings`).
 
 ## energy_consumption_offsets
 

@@ -2579,12 +2579,15 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 # Energy consumption sensor configuration (Quellsensoren für den Energieverbrauch)
 # Diese Sensoren müssen den Gesamtverbrauch in Wh oder kWh anzeigen
 # Das System konvertiert automatisch zu kWh für die Berechnungen
+# sensor_entity_id = elektrisch, thermal_sensor_entity_id = thermisch (optional)
 # Beispiel:
 #energy_consumption_sensors:
 #  hp1:
-#    sensor_entity_id: "sensor.lambda_wp_verbrauch"  # Beispiel: Externer Verbrauchssensor
+#    sensor_entity_id: "sensor.lambda_wp_verbrauch"  # elektrischer Quellsensor
+#    thermal_sensor_entity_id: "sensor.lambda_wp_waerme"  # optional, thermischer Quellsensor
 #  hp2:
-#    sensor_entity_id: "sensor.lambda_wp_verbrauch2" # Beispiel: Zweiter Verbrauchssensor
+#    sensor_entity_id: "sensor.lambda_wp_verbrauch2"
+#    thermal_sensor_entity_id: "sensor.lambda_wp_waerme2"  # optional
 
 # Energy consumption offsets for total sensors (WICHTIG: Alle Werte müssen in kWh angegeben werden!)
 # Diese Offsets werden nur auf die TOTAL-Sensoren angewendet, nicht auf Daily/Monthly/Yearly

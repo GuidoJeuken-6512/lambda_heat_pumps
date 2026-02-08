@@ -15,12 +15,15 @@ from custom_components.lambda_heat_pumps.utils import (
     generate_base_addresses,
     generate_sensor_names,
     get_compatible_sensors,
+    get_stored_thermal_sensor_id,
     is_register_disabled,
     load_disabled_registers,
     load_sensor_translations,
     restore_energy_period_state,
+    store_thermal_sensor_id,
     to_signed_16bit,
     to_signed_32bit,
+    validate_external_sensors,
     _get_coordinator,
 )
 
@@ -770,3 +773,49 @@ def test_restore_energy_period_state_unknown_period_no_op():
 
     assert sensor._yesterday_value == 10.0
     assert sensor._energy_value == 50.0
+
+
+def test_get_stored_thermal_sensor_id():
+    """get_stored_thermal_sensor_id liest aus persist_data['thermal_sensor_ids']."""
+    persist_data = {"thermal_sensor_ids": {"hp1": "sensor.thermal_hp1"}}
+    assert get_stored_thermal_sensor_id(persist_data, 1) == "sensor.thermal_hp1"
+    assert get_stored_thermal_sensor_id(persist_data, 2) is None
+    assert get_stored_thermal_sensor_id({}, 1) is None
+
+
+def test_store_thermal_sensor_id():
+    """store_thermal_sensor_id schreibt in persist_data['thermal_sensor_ids']."""
+    persist_data = {}
+    store_thermal_sensor_id(persist_data, 1, "sensor.thermal_hp1")
+    assert "thermal_sensor_ids" in persist_data
+    assert persist_data["thermal_sensor_ids"]["hp1"] == "sensor.thermal_hp1"
+    store_thermal_sensor_id(persist_data, 2, "sensor.thermal_hp2")
+    assert persist_data["thermal_sensor_ids"]["hp2"] == "sensor.thermal_hp2"
+
+
+def test_validate_external_sensors_with_thermal_sensor_entity_id():
+    """validate_external_sensors akzeptiert optional thermal_sensor_entity_id pro HP."""
+    from unittest.mock import MagicMock
+
+    def _mock_state(eid):
+        if not eid:
+            return None
+        s = MagicMock()
+        s.state = "100.0"
+        return s
+
+    hass = MagicMock()
+    hass.states.get = MagicMock(side_effect=_mock_state)
+    registry = MagicMock()
+    registry.async_get = MagicMock(return_value=MagicMock())
+    with patch("custom_components.lambda_heat_pumps.utils.async_get_entity_registry", return_value=registry):
+        config = {
+            "hp1": {
+                "sensor_entity_id": "sensor.electrical_hp1",
+                "thermal_sensor_entity_id": "sensor.thermal_hp1",
+            },
+        }
+        result = validate_external_sensors(hass, config)
+    assert "hp1" in result
+    assert result["hp1"]["sensor_entity_id"] == "sensor.electrical_hp1"
+    assert result["hp1"].get("thermal_sensor_entity_id") == "sensor.thermal_hp1"

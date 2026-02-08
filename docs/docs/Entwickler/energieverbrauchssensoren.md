@@ -56,9 +56,9 @@ Beide Typen werden nach Betriebsart (heating, hot_water, cooling, defrost) und Z
 
 ### Datenfluss
 
-1. **Quellsensoren** liefern kumulative Werte:
-   - Elektrisch: `compressor_power_consumption_accumulated` (Register 1021)
-   - Thermisch: `compressor_thermal_energy_output_accumulated` (Register 1022)
+1. **Quellsensoren** liefern kumulative Werte. Pro HP können jeweils ein elektrischer und ein thermischer Quellsensor konfiguriert werden (oder die Lambda-Standard-Sensoren):
+   - **Elektrisch:** Config `sensor_entity_id` oder Default `compressor_power_consumption_accumulated` (Register 1021)
+   - **Thermisch:** Config `thermal_sensor_entity_id` oder Default `compressor_thermal_energy_output_accumulated` (Register 1022)
 
 2. **Coordinator** berechnet Deltas:
    - Liest Quellsensor-Werte
@@ -312,17 +312,21 @@ def _convert_energy_to_kwh_cached(self, value, unit):
 
 ## Konfiguration
 
-### Externe Sensoren
+### Externe Quellsensoren
 
-Elektrische Sensoren können extern konfiguriert werden:
+Pro HP können **elektrischer** und **thermischer** Quellsensor getrennt konfiguriert werden:
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    electrical_sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"
+    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"   # elektrisch
+    thermal_sensor_entity_id: "sensor.waermemesser_hp1"        # optional, thermisch
 ```
 
-**Hinweis**: Thermische Sensoren verwenden immer die internen Modbus-Sensoren.
+- **`sensor_entity_id`**: Quellsensor für elektrische Energie. Fehlt er (oder ist ungültig), wird `sensor.{name}_hp{n}_compressor_power_consumption_accumulated` verwendet.
+- **`thermal_sensor_entity_id`** (optional): Quellsensor für thermische Energie. Fehlt er (oder ist ungültig), wird `sensor.{name}_hp{n}_compressor_thermal_energy_output_accumulated` verwendet.
+
+Validierung in `utils.validate_external_sensors`: Beide Sensoren werden bei Angabe (State oder Entity Registry) geprüft. Ist nur der thermische ungültig, wird er verworfen und der thermische Default genutzt; der elektrische Eintrag bleibt erhalten.
 
 ### Offsets
 
@@ -340,9 +344,8 @@ energy_consumption_offsets:
 
 ### Sensor-Wechsel-Erkennung
 
-- Automatische Erkennung von Sensorwechseln
-- Nullwert-Schutz beim ersten Start
-- Rückwärtssprung-Schutz (Sensor-Reset)
+- **Elektrisch:** Automatische Erkennung von Sensorwechseln (`sensor_ids`, `last_energy_readings`), Nullwert-Schutz, Rückwärtssprung-Schutz; bei Wechsel `_handle_sensor_change`.
+- **Thermisch:** Gleiche Resilienz wie elektrisch: `thermal_sensor_ids`, `last_thermal_energy_readings`, `_handle_thermal_sensor_change`; Persistierung in `cycle_energy_persist.json`.
 
 ### Zero-Value Protection
 

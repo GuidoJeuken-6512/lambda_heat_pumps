@@ -47,15 +47,17 @@ Standardmäßig verwendet die Integration die internen Modbus-Sensoren:
 
 ### Externe Sensoren konfigurieren
 
-Sie können externe Energiezähler (z.B. Shelly3EM) als Datenquelle für den Stromverbrauch nutzen:
+Sie können pro Wärmepumpe getrennt Quellsensoren für **Stromverbrauch** und **Wärmeabgabe** festlegen:
+
+- **`sensor_entity_id`**: Quellsensor für den elektrischen Verbrauch (z. B. Shelly3EM). Fehlt er, wird der Lambda-interne Sensor verwendet.
+- **`thermal_sensor_entity_id`** (optional): Quellsensor für die thermische Energie (Wärmeabgabe). Fehlt er, wird der Lambda-interne Thermik-Sensor verwendet.
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"
+    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"   # elektrisch
+    thermal_sensor_entity_id: "sensor.mein_waermemesser"       # optional, thermisch
 ```
-
-**Hinweis:** Für thermische Energie werden immer die internen Sensoren verwendet.
 
 ### Energieverbrauchs-Offsets
 > **⚠️ WARNUNG:** Diese Funktion ist zur Zeit fehlerhaft implementiert und sollte **nicht genutzt werden**! Bitte warten Sie auf eine Korrektur in einer zukünftigen Version, bevor Sie die Offsets verwenden.
@@ -98,6 +100,7 @@ Wenn ein externer Sensor für die Stromverbrauchsmessung eingesetzt wird, wird d
 energy_consumption_sensors:
   hp1:
     sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    # thermal_sensor_entity_id optional; weglassen = interner Thermik-Sensor
 energy_consumption_offsets:
   hp1:
     heating_energy_total: 0

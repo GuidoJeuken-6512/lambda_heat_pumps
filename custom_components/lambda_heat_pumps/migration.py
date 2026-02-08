@@ -3,6 +3,7 @@
 from __future__ import annotations
 import logging
 import os
+import re
 import shutil
 import yaml
 from datetime import datetime
@@ -13,7 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 
-from .const import DOMAIN
+from .const import DOMAIN, LAMBDA_WP_CONFIG_TEMPLATE
 from .const_migration import (
     MigrationVersion,
     MIGRATION_BACKUP_DIR,
@@ -30,7 +31,6 @@ from .const_migration import (
 from .utils import (
     analyze_file_ageing,
     delete_files,
-    migrate_lambda_config_sections
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -174,6 +174,236 @@ async def rollback_migration(
         
     except Exception as e:
         _LOGGER.error("Fehler beim Rollback der Migration %s: %s", migration_version.name, e)
+        return False
+
+
+# =============================================================================
+# LAMBDA CONFIG SECTIONS (lambda_wp_config.yaml)
+# Template-basierte Migration: fehlende Abschnitte an richtiger Stelle einfügen,
+# bestehende konfigurierte Abschnitte unverändert lassen.
+# =============================================================================
+
+# Eindeutige Header-Zeile pro Abschnitt (Reihenfolge = Template-Reihenfolge)
+_SECTION_HEADER_LINES = (
+    "# Override sensor names (only works if use_legacy_modbus_names is true)",
+    "# Cycling counter offsets for total sensors",
+    "# Energy consumption sensor configuration",
+    "# Energy consumption offsets for total sensors",
+    "# Modbus configuration",
+)
+_SECTION_HEADER_TO_NAME = {
+    "# Override sensor names (only works if use_legacy_modbus_names is true)": "sensors_names_override",
+    "# Cycling counter offsets for total sensors": "cycling_offsets",
+    "# Energy consumption sensor configuration": "energy_consumption_sensors",
+    "# Energy consumption offsets for total sensors": "energy_consumption_offsets",
+    "# Modbus configuration": "modbus",
+}
+
+
+def _find_section_ranges_in_content(content: str) -> Tuple[str, list]:
+    """
+    Findet die Zeichenbereiche (start, end) jedes vorhandenen Abschnitts in content.
+    Returns: (normalisierter content mit \\n), Liste (start, end, section_name) sortiert nach start.
+    """
+    content_n = content.replace("\r\n", "\n").replace("\r", "\n")
+    found: list = []  # (position, section_name)
+    for header_line in _SECTION_HEADER_LINES:
+        name = _SECTION_HEADER_TO_NAME[header_line]
+        pos = content_n.find(header_line)
+        if pos != -1:
+            found.append((pos, name))
+    found.sort(key=lambda x: x[0])
+    ranges: list = []
+    for i, (start, name) in enumerate(found):
+        end = found[i + 1][0] if i + 1 < len(found) else len(content_n)
+        ranges.append((start, end, name))
+    return content_n, ranges
+
+
+def _extract_config_sections() -> Dict[str, str]:
+    """
+    Extrahiert alle Konfigurationsabschnitte aus dem LAMBDA_WP_CONFIG_TEMPLATE.
+    """
+    sections = {}
+    lines = LAMBDA_WP_CONFIG_TEMPLATE.split("\n")
+    current_section = None
+    current_content = []
+    for line in lines:
+        if line.strip() in _SECTION_HEADER_TO_NAME:
+            if current_section and current_content:
+                sections[current_section] = "\n".join(current_content).strip()
+            current_section = _SECTION_HEADER_TO_NAME[line.strip()]
+            current_content = [line]
+        elif current_section:
+            current_content.append(line)
+        else:
+            continue
+    if current_section and current_content:
+        sections[current_section] = "\n".join(current_content).strip()
+    _LOGGER.debug("Extracted config sections: %s", list(sections.keys()))
+    return sections
+
+
+async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
+    """
+    Template-basierte Migration der lambda_wp_config.yaml:
+    - Upgrade energy_consumption_sensors auf neues Format (thermal_sensor_entity_id optional)
+    - Fehlende Abschnitte an der richtigen Stelle einfügen (Template-Reihenfolge),
+      bestehende Abschnitte unverändert übernehmen (kein Anhängen, keine Duplikate)
+
+    Returns:
+        bool: True wenn Migration durchgeführt wurde, False sonst
+    """
+    config_dir = hass.config.config_dir
+    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+
+    if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        _LOGGER.debug("No existing lambda_wp_config.yaml found, no migration needed")
+        return False
+
+    try:
+        content = await hass.async_add_executor_job(
+            lambda: open(lambda_config_path, "r", encoding="utf-8").read()
+        )
+        current_config = yaml.safe_load(content)
+        if not current_config:
+            _LOGGER.debug("Empty config file, no migration needed")
+            return False
+
+        content_modified = False
+        content_normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+        # Upgrade alter energy_consumption_sensors-Block (thermal_sensor_entity_id)
+        first_ecs = content_normalized.find("energy_consumption_sensors:")
+        if first_ecs != -1:
+            header_before_first = content_normalized[max(0, first_ecs - 400) : first_ecs]
+            has_new_format = "sensor_entity_id = elektrisch, thermal_sensor_entity_id = thermisch" in header_before_first
+            if not has_new_format:
+                old_header = (
+                    "# Das System konvertiert automatisch zu kWh für die Berechnungen\n"
+                    "# Beispiel:\nenergy_consumption_sensors:"
+                )
+                new_header = (
+                    "# Das System konvertiert automatisch zu kWh für die Berechnungen\n"
+                    "# sensor_entity_id = elektrisch, thermal_sensor_entity_id = thermisch (optional)\n"
+                    "# Beispiel:\nenergy_consumption_sensors:"
+                )
+                if old_header in content_normalized:
+                    content = content_normalized.replace(old_header, new_header, 1)
+                    content_modified = True
+                    _LOGGER.info(
+                        "Migrated energy_consumption_sensors to new format (thermal_sensor_entity_id optional)"
+                    )
+                else:
+                    _LOGGER.debug(
+                        "energy_consumption_sensors: first block header not matched"
+                    )
+        if content_modified:
+            current_config = yaml.safe_load(content)
+
+        content_n, ranges = _find_section_ranges_in_content(content)
+        section_ranges = {name: (s, e) for s, e, name in ranges}
+        # Fehlt bei einem hp-Eintrag die optionale Zeile thermal_sensor_entity_id? → bei jedem sensor_entity_id: prüfen und ggf. einfügen
+        # Prüfen auf Key "thermal_sensor_entity_id:" (Doppelpunkt), Einrückung/Kommentar (#  hp2) übernehmen
+        if "energy_consumption_sensors" in section_ranges:
+            s_ecs, e_ecs = section_ranges["energy_consumption_sensors"]
+            section_text = content_n[s_ecs:e_ecs]
+            # Alle Zeilen mit sensor_entity_id: (mit optionalem führendem # für auskommentierte hp2)
+            inserts = []  # (position in section_text, new_line)
+            for match in re.finditer(r"\n((?:\s+|#\s*))sensor_entity_id:[^\n]*", section_text):
+                line_end = section_text.find("\n", match.end())
+                if line_end == -1:
+                    line_end = len(section_text)
+                # Nächste Zeile bereits thermal_sensor_entity_id? → überspringen
+                next_start = line_end + 1
+                next_end = section_text.find("\n", next_start)
+                if next_end == -1:
+                    next_end = len(section_text)
+                next_line = section_text[next_start:next_end] if next_start < len(section_text) else ""
+                if "thermal_sensor_entity_id:" in next_line:
+                    continue
+                prefix = match.group(1)  # z. B. "    " oder "#    "
+                new_line = "\n" + prefix + "# thermal_sensor_entity_id: \"sensor.lambda_wp_waerme\"  # optional"
+                inserts.append((line_end, new_line))
+            # Von hinten nach vorne einfügen, damit Positionen stimmen
+            for pos, new_line in sorted(inserts, key=lambda x: -x[0]):
+                section_text = section_text[:pos] + new_line + section_text[pos:]
+            if inserts:
+                content_n = content_n[:s_ecs] + section_text + content_n[e_ecs:]
+                content = content_n
+                content_modified = True
+                _LOGGER.info(
+                    "Added optional thermal_sensor_entity_id line(s) to energy_consumption_sensors block (%d hp)",
+                    len(inserts),
+                )
+        if content_modified:
+            current_config = yaml.safe_load(content)
+            content_n, ranges = _find_section_ranges_in_content(content)
+            section_ranges = {name: (s, e) for s, e, name in ranges}
+
+        template_sections = _extract_config_sections()
+        template_order = list(template_sections.keys())
+        first_section_start = min(r[0] for r in ranges) if ranges else len(content_n)
+        part_before = content_n[:first_section_start].rstrip()
+
+        missing_sections = []
+        for section_name in template_order:
+            in_file = section_name in section_ranges
+            in_config = section_name in current_config
+            if not in_file and not in_config:
+                missing_sections.append(section_name)
+                _LOGGER.debug("Missing section: %s", section_name)
+            elif in_file:
+                _LOGGER.debug("Section %s already present in file", section_name)
+            else:
+                _LOGGER.debug("Section %s in config dict, preserved via part_before", section_name)
+
+        if not missing_sections and not content_modified:
+            _LOGGER.info("All config sections already present - no migration needed")
+            return False
+
+        backup_path = lambda_config_path + ".backup"
+        await hass.async_add_executor_job(
+            lambda: open(backup_path, "w", encoding="utf-8").write(content)
+        )
+        _LOGGER.info("Created backup at %s", backup_path)
+
+        if content_modified and not missing_sections:
+            await hass.async_add_executor_job(
+                lambda: open(lambda_config_path, "w", encoding="utf-8").write(content)
+            )
+            _LOGGER.info(
+                "Successfully migrated lambda_wp_config.yaml (energy_consumption_sensors format). Backup at %s",
+                backup_path,
+            )
+            return True
+
+        if missing_sections:
+            _LOGGER.info(
+                "Migrating lambda_wp_config.yaml - inserting %d missing sections at correct position",
+                len(missing_sections),
+            )
+            parts = [part_before]
+            for section_name in template_order:
+                if section_name in section_ranges:
+                    s, e = section_ranges[section_name]
+                    parts.append(content_n[s:e].rstrip())
+                elif section_name in current_config:
+                    continue
+                else:
+                    parts.append(template_sections[section_name].strip())
+                    _LOGGER.info("Inserted section: %s", section_name)
+            updated_content = "\n\n".join(parts) + "\n"
+            await hass.async_add_executor_job(
+                lambda: open(lambda_config_path, "w", encoding="utf-8").write(updated_content)
+            )
+            _LOGGER.info(
+                "Successfully migrated lambda_wp_config.yaml - inserted %d sections in place. Backup at %s",
+                len(missing_sections), backup_path,
+            )
+        return True
+
+    except Exception as e:
+        _LOGGER.error("Error during config section migration: %s", e)
         return False
 
 
