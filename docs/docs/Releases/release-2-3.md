@@ -6,6 +6,7 @@ Alle Commits des Branches Release2.3 (seit Release2.2). Oben Stichpunkte mit Ver
 
 ## Stichpunkte (Übersicht)
 
+- [Konfigurierbarer Quellsensor für thermische Energie](#thermik-quellsensor)
 - [docs: Lambda Heizkurven-Card (Vorlage)](#heizkurven-card)
 - [Merge branch 'Release2.3' (5b970a4)](#commit-1)
 - [feat: add German and English translations for compressor start cycling sensor (477b743)](#commit-2)
@@ -42,6 +43,15 @@ Alle Commits des Branches Release2.3 (seit Release2.2). Oben Stichpunkte mit Ver
 ---
 
 ## Commit-Details
+
+<a id="thermik-quellsensor"></a>
+### Konfigurierbarer Quellsensor für thermische Energie
+- Ab Release 2.3 kann pro Wärmepumpe ein **eigener Quellsensor für die thermische Energie** (Wärmeabgabe) konfiguriert werden. Bisher nutzte die Integration dafür ausschließlich den Lambda-internen Modbus-Sensor (`compressor_thermal_energy_output_accumulated`).
+- In der `lambda_wp_config.yaml` kann pro HP optional **`thermal_sensor_entity_id`** gesetzt werden. **Elektrischer** Verbrauch (Strom) und **thermischer** Verbrauch (Wärme) sind getrennt konfigurierbar: `sensor_entity_id` = elektrisch, `thermal_sensor_entity_id` = thermisch (optional). Ohne Angabe wird der Lambda-interne Thermik-Sensor verwendet. Geeignet z. B. für externe Wärmemengenzähler (Wh/kWh).
+- **Konfigurationsbeispiel:** `energy_consumption_sensors:` → `hp1:` → `sensor_entity_id: "sensor.…"` (elektrisch), `thermal_sensor_entity_id: "sensor.…"` (optional, thermisch).
+- **Weitere Informationen:** [lambda_wp_config.yaml – Energieverbrauchs-Sensoren](../Anwender/lambda-wp-config.md#4-energieverbrauchs-sensoren), [Energie- und Wärmeverbrauchsberechnung](../Anwender/Energieverbrauchsberechnung.md).
+
+---
 
 <a id="heizkurven-card"></a>
 ### Lambda Heizkurven-Card (Vorlage)
@@ -183,7 +193,8 @@ Arbeitszahlen für heizen / kühlen und Warmwasser eingeführt, als daily / mont
 
 <a id="commit-21"></a>
 ### 21 · 9dda198 – feat: add thermal energy consumption sensors and tracking logic
-Thermal energy consumption sensors and tracking logic for heat pumps added.
+- Thermische Energieverbrauchs-Sensoren (Wärmeabgabe) und zugehörige Tracking-Logik für alle Wärmepumpen ergänzt.
+- **Konfiguration:** Pro HP kann in `lambda_wp_config.yaml` optional **`thermal_sensor_entity_id`** gesetzt werden (Quellsensor für thermische Energie). Ohne Angabe wird der Lambda-interne Thermik-Sensor verwendet. Siehe [Konfigurierbarer Thermik-Quellsensor](#thermik-quellsensor).
 
 ---
 
