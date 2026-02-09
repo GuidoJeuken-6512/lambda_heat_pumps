@@ -248,4 +248,5 @@ views:
 
 - **panel: true** sorgt dafür, dass die View die volle Seitenbreite nutzt.
 - Die Entity-IDs basieren auf der Lambda Heat Pumps Integration; bei mehreren Wärmepumpen z. B. `hp2` verwenden und den Präfix anpassen.
+- Optional für Heizen (stündlich): `sensor.ENTITY_PREFIX_heating_energy_hourly`, `sensor.ENTITY_PREFIX_heating_thermal_energy_hourly`, `sensor.ENTITY_PREFIX_heating_cop_hourly`.
 

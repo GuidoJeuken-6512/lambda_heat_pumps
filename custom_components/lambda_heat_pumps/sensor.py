@@ -703,10 +703,12 @@ async def async_setup_entry(
 
     # COP sensors (per HP, per mode, per period)
     # COP_MODES: heating, hot_water, cooling (ohne defrost)
-    # COP_PERIODS: daily, monthly, yearly, total
+    # COP_PERIODS: daily, monthly, yearly, total, hourly (hourly nur für heating)
     for hp_idx in range(1, num_hps + 1):
         for mode in COP_MODES:
             for period in COP_PERIODS:
+                if period == "hourly" and mode != "heating":
+                    continue
                 # Generiere Sensor-ID und Namen
                 sensor_id = f"{mode}_cop_{period}"
                 
@@ -1905,10 +1907,10 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         # vor dem COP-Sensor korrigiert wurden und ihr State-Update vor dem Listener kam.
         self._update_cop()
 
-        # Daily/Monthly/Yearly: Periodisch (alle 5 Min) neu berechnen, damit COP nach Mitternacht-Reset
+        # Daily/Monthly/Yearly/Hourly: Periodisch (alle 5 Min) neu berechnen, damit COP nach Reset
         # wieder aktualisiert wird, falls State-Change-Events der Energy-Sensoren nicht ankommen.
         # State immer schreiben, damit "Zuletzt aktualisiert" auch bei unverändertem Wert (z.B. 0) aktualisiert wird.
-        if self._period in ("daily", "monthly", "yearly"):
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
             @callback
             def _periodic_refresh(_now):
                 self._update_cop()

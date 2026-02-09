@@ -1959,6 +1959,20 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
             "reset_interval": "yearly",
             "description": "Thermal output yearly for heating in kWh",
         },
+        "heating_thermal_energy_hourly": {
+            "name": "Heating Thermal Energy Hourly",
+            "unit": "kWh",
+            "precision": 6,
+            "data_type": "thermal_calculated",
+            "firmware_version": 1,
+            "device_type": "hp",
+            "writeable": False,
+            "state_class": "total",
+            "device_class": "energy",
+            "operating_state": "heating",
+            "reset_interval": "hourly",
+            "description": "Thermal output hourly for heating in kWh",
+        },
         # Hot Water
         "hot_water_thermal_energy_total": {
             "name": "Hot Water Thermal Energy Total",
@@ -2494,9 +2508,9 @@ ENERGY_REGISTRATION_ORDER = ("total", "yearly", "monthly", "daily", "hourly")
 RESET_VALID_PERIODS = ["daily", "2h", "4h"]
 RESET_VALID_SENSOR_TYPES = ["cycling", "energy", "general"]
 
-# COP-Sensoren: Modi und Perioden (ohne Defrost)
+# COP-Sensoren: Modi und Perioden (ohne Defrost). Hourly nur für Heizen.
 COP_MODES = ["heating", "hot_water", "cooling"]
-COP_PERIODS = ["daily", "monthly", "yearly", "total"]
+COP_PERIODS = ["daily", "monthly", "yearly", "total", "hourly"]
 
 # Energy Consumption Migration Version
 ENERGY_CONSUMPTION_MIGRATION_VERSION = 4

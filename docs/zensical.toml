@@ -58,6 +58,7 @@ nav = [
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
     { "PV Überschuss Steuerung" = "Anwender/pv_ueberschuss_steuerung.md" },
     { "Energieverbrauchsberechnung" = "Anwender/Energieverbrauchsberechnung.md" },
+#    { "Korrektur Verbrauchsberechnung" = "Anwender/energiesensoren-entwicklerwerkzeuge.md" },
     { "COP-Sensoren (Leistungszahl)" = "Anwender/cop-sensoren.md" },
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
