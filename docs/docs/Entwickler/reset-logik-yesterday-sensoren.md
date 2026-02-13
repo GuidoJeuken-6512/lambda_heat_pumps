@@ -80,30 +80,25 @@ Die Integration verwendet eine spezielle Reset-Logik für periodische Sensoren (
 
 **Zeitpunkt**: Jeden Tag um Mitternacht (00:00:00)
 
-**Ablauf**:
-1. Yesterday-Sensoren aktualisieren (nur für Cycling-Sensoren)
-2. Reset-Signal senden: `SIGNAL_RESET_DAILY`
-3. Alle Daily-Energy-Sensoren empfangen Signal
-4. `_handle_reset()` wird aufgerufen
-5. `_yesterday_value` wird auf aktuellen Total-Wert gesetzt
-6. `_energy_value` bleibt unverändert (wird weiterhin aktualisiert)
+**Ablauf** (Reihenfolge garantiert):
+1. **Zuerst** wird `_update_yesterday_sensors_async` ausgeführt und **abgewartet** (Yesterday-Sensoren erhalten die aktuellen Daily-Werte).
+2. **Danach** wird `SIGNAL_RESET_DAILY` gesendet.
+3. Alle Daily-Cycling- und Daily-Energy-Sensoren empfangen das Signal.
+4. Bei Energy: `_handle_reset()` ruft `apply_energy_period_reset()` auf, `_yesterday_value` wird auf den Total-Wert gesetzt; `_energy_value` bleibt unverändert.
+5. Bei Cycling: Daily-Zähler wird auf 0 gesetzt.
 
 **Code** (`reset_manager.py`):
 ```python
 @callback
 def reset_daily(now: datetime) -> None:
-    """Reset daily sensors at midnight and update yesterday sensors."""
+    """Reset daily sensors at midnight after updating yesterday sensors."""
     _LOGGER.info("Resetting daily sensors at midnight")
-    
-    # 1. Erst Yesterday-Sensoren auf aktuelle Daily-Werte setzen (asynchron)
-    self.hass.async_create_task(
-        _update_yesterday_sensors_async(self.hass, self._entry_id)
-    )
-    
-    # 2. Dann Daily-Sensoren auf 0 zurücksetzen (asynchron)
-    self.hass.async_create_task(
-        self._send_reset_signal_async(SIGNAL_RESET_DAILY)
-    )
+
+    async def _daily_reset_sequence() -> None:
+        await _update_yesterday_sensors_async(self.hass, self._entry_id)
+        await self._send_reset_signal_async(SIGNAL_RESET_DAILY)
+
+    self.hass.async_create_task(_daily_reset_sequence())
 ```
 
 ### Monthly Reset (Monatlich)
@@ -129,8 +124,6 @@ def reset_monthly(now: datetime) -> None:
         )
 ```
 
-**⚠️ Hinweis**: Monthly/Yearly Reset-Logik ist noch nicht vollständig implementiert in `_handle_reset()` (nur Daily ist implementiert).
-
 ### Yearly Reset (Jährlich)
 
 **Zeitpunkt**: 1. Januar um Mitternacht (00:00:00)
@@ -154,7 +147,11 @@ def reset_yearly(now: datetime) -> None:
         )
 ```
 
-**⚠️ Hinweis**: Yearly Reset-Logik ist noch nicht vollständig implementiert in `_handle_reset()`.
+Monthly- und Yearly-Reset sind in `_handle_reset()` über `apply_energy_period_reset(self, self._period)` (utils.py) implementiert; dabei werden `_previous_monthly_value` bzw. `_previous_yearly_value` aus dem Total-Sensor gesetzt.
+
+### Hourly Reset (Stündlich, nur Energy Debug)
+
+**Zeitpunkt**: Jede volle Stunde. Nur für Heating Energy Hourly (Debug-Sensor). Ablauf wie bei Daily/Monthly/Yearly: `apply_energy_period_reset(self, "hourly")` setzt `_last_hour_value` aus dem Total-Sensor.
 
 ## Implementierung
 
@@ -164,31 +161,14 @@ def reset_yearly(now: datetime) -> None:
 
 **Methode**: `LambdaEnergyConsumptionSensor._handle_reset()`
 
-**Ablauf für Daily-Sensoren**:
+**Ablauf** (aktueller Code):
+- Für **daily, hourly, monthly, yearly**: Aufruf von `apply_energy_period_reset(self, self._period)` (utils.py). Diese Funktion setzt den jeweiligen Basis-Wert (`_yesterday_value`, `_last_hour_value`, `_previous_monthly_value`, `_previous_yearly_value`) aus dem Total-Sensor und synchronisiert `_energy_value` mit dem Total-Wert. **`_energy_value` wird nicht auf 0 gesetzt**, sondern weiterhin von `increment_energy_consumption_counter` erhöht.
+- Für **2h, 4h**: `_energy_value` wird auf 0 gesetzt (eigenständige Zähler pro Fenster).
+- Total-Sensoren reagieren nicht auf Reset-Signale.
 
-```python
-async def _handle_reset(self, entry_id: str):
-    """Handle reset signal."""
-    if self._reset_interval == "daily" and self._period == "daily":
-        # Finde den entsprechenden Total-Sensor
-        total_entity_id = self.entity_id.replace("_daily", "_total")
-        total_state = self.hass.states.get(total_entity_id)
-        
-        if total_state:
-            total_value = float(total_state.state)
-            # Aktualisiere Yesterday-Wert mit aktuellem Total-Wert
-            self._yesterday_value = total_value
-        else:
-            # Fallback: Verwende aktuellen _energy_value
-            self._yesterday_value = self._energy_value
-        
-        # WICHTIG: _energy_value wird NICHT auf 0 gesetzt!
-        # Es wird weiterhin von increment_energy_consumption_counter aktualisiert
-```
-
-**Kritischer Punkt**:
-- `_energy_value` wird **NICHT** auf 0 gesetzt
-- Nur `_yesterday_value` wird aktualisiert
+**Kritischer Punkt** (Daily/Monthly/Yearly/Hourly):
+- `_energy_value` wird **nicht** auf 0 gesetzt
+- Nur der Basis-Wert (yesterday/previous_*) wird aktualisiert
 - `_energy_value` wird weiterhin von `increment_energy_consumption_counter` erhöht
 
 ### 2. Berechnung (`native_value`)

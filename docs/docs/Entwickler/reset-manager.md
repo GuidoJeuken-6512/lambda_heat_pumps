@@ -74,27 +74,23 @@ class ResetManager:
     
     def setup_reset_automations(self):
         """Richte Reset-Automatisierungen ein."""
-        # Daily Reset
+        # Daily Reset: Erst Yesterday mit aktuellem Daily-Wert füllen, danach Daily auf 0
         @callback
         def reset_daily(now: datetime) -> None:
-            """Reset daily sensors at midnight and update yesterday sensors."""
+            """Reset daily sensors at midnight after updating yesterday sensors."""
             _LOGGER.info("Resetting daily sensors at midnight")
-            
-            # 1. Erst Yesterday-Sensoren auf aktuelle Daily-Werte setzen
-            self.hass.async_create_task(
-                _update_yesterday_sensors_async(self.hass, self._entry_id)
-            )
-            
-            # 2. Dann Daily-Sensoren auf 0 zurücksetzen
-            self.hass.async_create_task(
-                self._send_reset_signal_async(SIGNAL_RESET_DAILY)
-            )
-        
+
+            async def _daily_reset_sequence() -> None:
+                await _update_yesterday_sensors_async(self.hass, self._entry_id)
+                await self._send_reset_signal_async(SIGNAL_RESET_DAILY)
+
+            self.hass.async_create_task(_daily_reset_sequence())
+
         self._unsub_timers["daily"] = async_track_time_change(
             self.hass, reset_daily, hour=0, minute=0, second=0
         )
         
-        # 2h, 4h, Monthly, Yearly ähnlich...
+        # 2h, 4h, Hourly, Monthly, Yearly ähnlich...
     
     def cleanup(self):
         """Cleanup Reset-Automatisierungen."""
@@ -144,9 +140,10 @@ if (
 
 Der ResetManager verwaltet folgende Reset-Intervalle:
 
-- **Daily**: Jeden Tag um Mitternacht (00:00:00)
+- **Daily**: Jeden Tag um Mitternacht (00:00:00). **Reihenfolge:** Zuerst wird `_update_yesterday_sensors_async` abgewartet, danach erst `SIGNAL_RESET_DAILY` gesendet (garantierte Reihenfolge).
 - **2h**: Alle 2 Stunden (0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22)
 - **4h**: Alle 4 Stunden (0, 4, 8, 12, 16, 20)
+- **Hourly**: Jede volle Stunde (nur für Energy Hourly Debug-Sensoren)
 - **Monthly**: 1. des Monats um Mitternacht (00:00:00)
 - **Yearly**: 1. Januar um Mitternacht (00:00:00)
 
@@ -154,6 +151,7 @@ Jedes Reset-Intervall sendet ein entsprechendes Dispatcher-Signal:
 - `SIGNAL_RESET_DAILY`
 - `SIGNAL_RESET_2H`
 - `SIGNAL_RESET_4H`
+- `SIGNAL_RESET_HOURLY`
 - `SIGNAL_RESET_MONTHLY`
 - `SIGNAL_RESET_YEARLY`
 
@@ -202,7 +200,7 @@ async def _handle_reset(self, entry_id: str):
 
 ## Signal-Registrierung
 
-Sensoren registrieren sich weiterhin direkt auf die Dispatcher-Signale:
+**Cycling-Sensoren** abonnieren **nur das zu ihrer Periode passende** Reset-Signal (nicht alle fünf). So wird verhindert, dass z. B. Daily-Sensoren fälschlich bei jedem 2h-Signal zurückgesetzt werden.
 
 ```python
 # In LambdaCyclingSensor.async_added_to_hass()
@@ -210,17 +208,20 @@ Sensoren registrieren sich weiterhin direkt auf die Dispatcher-Signale:
 def _wrap_reset(entry_id: str):
     self.hass.async_create_task(self._handle_reset(entry_id))
 
-# Registriere für alle Perioden (einheitlicher Wrapper)
-self._unsub_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_DAILY, _wrap_reset
-)
-self._unsub_2h_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_2H, _wrap_reset
-)
-# ... weitere Perioden
+# Nur ein Signal pro Sensor, abhängig von _reset_interval
+if self._reset_interval == "daily":
+    self._unsub_dispatcher = async_dispatcher_connect(
+        self.hass, SIGNAL_RESET_DAILY, _wrap_reset
+    )
+elif self._reset_interval == "2h":
+    self._unsub_2h_dispatcher = async_dispatcher_connect(
+        self.hass, SIGNAL_RESET_2H, _wrap_reset
+    )
+# ... 4h, monthly, yearly
+# total / yesterday: kein Reset-Signal abonnieren
 ```
 
-**Vorteil**: Statt 5 separater Wrapper-Funktionen gibt es jetzt nur noch 1 einheitliche Wrapper-Funktion.
+**Energy-Sensoren** registrieren sich je nach `_reset_interval` auf das passende Signal (daily, 2h, 4h, hourly, monthly, yearly).
 
 ## Code-Deduplizierung
 
