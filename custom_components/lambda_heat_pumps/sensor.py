@@ -926,29 +926,34 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         last_state = await self.async_get_last_state()
         await self.restore_state(last_state)
 
-        # Registriere Signal-Handler für Reset-Signale
+        # Nur das zu diesem Sensor passende Reset-Signal abonnieren (verhindert, dass Daily bei 2h-Signal resettet)
         from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
 
-        # Wrapper-Funktion für asynchrone Handler mit @callback (einheitlich für alle Perioden)
         @callback
         def _wrap_reset(entry_id: str):
             self.hass.async_create_task(self._handle_reset(entry_id))
 
-        self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_DAILY, _wrap_reset
-        )
-        self._unsub_2h_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_2H, _wrap_reset
-        )
-        self._unsub_4h_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_4H, _wrap_reset
-        )
-        self._unsub_monthly_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_MONTHLY, _wrap_reset
-        )
-        self._unsub_yearly_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
-        )
+        if self._reset_interval == "daily":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_DAILY, _wrap_reset
+            )
+        elif self._reset_interval == "2h":
+            self._unsub_2h_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_2H, _wrap_reset
+            )
+        elif self._reset_interval == "4h":
+            self._unsub_4h_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_4H, _wrap_reset
+            )
+        elif self._reset_interval == "monthly":
+            self._unsub_monthly_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_MONTHLY, _wrap_reset
+            )
+        elif self._reset_interval == "yearly":
+            self._unsub_yearly_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
+            )
+        # total / yesterday: kein Reset-Signal abonnieren
 
         # Schreibe den State sofort ins UI
         self.async_write_ha_state()
@@ -1083,27 +1088,45 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         if entry_id != self._entry.entry_id:
             return
 
+        old_value = self._cycling_value if self._cycling_value is not None else 0
+        new_value = 0
+
         # Prüfe Periode basierend auf sensor_id und reset_interval
         if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
-            self._cycling_value = 0
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
         elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
-            self._cycling_value = 0
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
         elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
-            self._cycling_value = 0
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
         elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
-            self._cycling_value = 0
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"Monthly sensor {self.entity_id} reset to 0")
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
         elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
-            self._cycling_value = 0
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"Yearly sensor {self.entity_id} reset to 0")
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
 
     @property
     def name(self):
@@ -1626,12 +1649,21 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         """Handle reset signal. Periodenbezogene Resets (daily/hourly/monthly/yearly) über utils."""
         if entry_id != self._entry.entry_id:
             return
+        old_value = self.native_value
         _LOGGER.debug("Resetting energy sensor %s (period: %s, reset_interval: %s)", self.entity_id, self._period, self._reset_interval)
         if self._reset_interval in ("daily", "hourly", "monthly", "yearly") and self._period == self._reset_interval:
             apply_energy_period_reset(self, self._period)
+            new_value = self.native_value
+            _LOGGER.info(
+                "Energy reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
         elif self._reset_interval in ("2h", "4h"):
             self._energy_value = 0.0
-            _LOGGER.debug("Sensor %s reset to 0.0 kWh.", self.entity_id)
+            _LOGGER.info(
+                "Energy reset: sensor=%s old_value=%s new_value=0.0 reset_interval=%s",
+                self.entity_id, old_value, self._reset_interval,
+            )
         else:
             _LOGGER.debug("Total sensor %s not reset.", self.entity_id)
         self.async_write_ha_state()

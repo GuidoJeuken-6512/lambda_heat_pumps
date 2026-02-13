@@ -37,21 +37,17 @@ class ResetManager:
         """Richte Reset-Automatisierungen ein."""
         _LOGGER.info("Setting up reset automations for entry %s", self._entry_id)
 
-        # Daily Reset
+        # Daily Reset: Erst Yesterday mit aktuellem Daily-Wert füllen, danach Daily auf 0
         @callback
         def reset_daily(now: datetime) -> None:
-            """Reset daily sensors at midnight and update yesterday sensors."""
+            """Reset daily sensors at midnight after updating yesterday sensors."""
             _LOGGER.info("Resetting daily sensors at midnight")
 
-            # 1. Erst Yesterday-Sensoren auf aktuelle Daily-Werte setzen (asynchron)
-            self.hass.async_create_task(
-                _update_yesterday_sensors_async(self.hass, self._entry_id)
-            )
+            async def _daily_reset_sequence() -> None:
+                await _update_yesterday_sensors_async(self.hass, self._entry_id)
+                await self._send_reset_signal_async(SIGNAL_RESET_DAILY)
 
-            # 2. Dann Daily-Sensoren auf 0 zurücksetzen (asynchron)
-            self.hass.async_create_task(
-                self._send_reset_signal_async(SIGNAL_RESET_DAILY)
-            )
+            self.hass.async_create_task(_daily_reset_sequence())
 
         self._unsub_timers["daily"] = async_track_time_change(
             self.hass, reset_daily, hour=0, minute=0, second=0
@@ -135,7 +131,10 @@ class ResetManager:
 
     async def _send_reset_signal_async(self, signal: str) -> None:
         """Send reset signal asynchronously."""
-        _LOGGER.debug(f"Sending reset signal {signal} for entry {self._entry_id}")
+        _LOGGER.info(
+            "Reset signal sent: signal=%s entry_id=%s",
+            signal, self._entry_id,
+        )
         async_dispatcher_send(self.hass, signal, self._entry_id)
 
     def cleanup(self):

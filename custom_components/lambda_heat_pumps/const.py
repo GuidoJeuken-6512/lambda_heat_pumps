@@ -1463,7 +1463,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "heating",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Heizen (CH) gewechselt wurde.",
     },
     "hot_water_cycling_total": {
@@ -1480,7 +1479,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "hot_water",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Warmwasser (DHW) gewechselt wurde.",
     },
     "cooling_cycling_total": {
@@ -1497,7 +1495,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "cooling",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Kühlen (CC) gewechselt wurde.",
     },
     "defrost_cycling_total": {
@@ -1514,7 +1511,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "defrost",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Zählt, wie oft in den Modus Abtauen (DEFROST) gewechselt wurde.",
     },
     "compressor_start_cycling_total": {
@@ -1531,7 +1527,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "compressor_start",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
         "description": "Zählt, wie oft der Kompressor gestartet wurde (HP_STATE = START COMPRESSOR).",
     },
@@ -1549,7 +1544,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "heating",
         "period": "yesterday",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "hot_water_cycling_yesterday": {
@@ -1565,7 +1559,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "hot_water",
         "period": "yesterday",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "cooling_cycling_yesterday": {
@@ -1581,7 +1574,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "cooling",
         "period": "yesterday",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "defrost_cycling_yesterday": {
@@ -1597,7 +1589,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "defrost",
         "period": "yesterday",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
     "compressor_start_cycling_yesterday": {
@@ -1613,7 +1604,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "operating_state": "compressor_start",
         "period": "yesterday",
         "reset_interval": None,
-        "reset_signal": None,
         "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
         "description": "Speichert die gestern erreichten Daily-Cycling-Werte.",
     },
@@ -1702,7 +1692,6 @@ CALCULATED_SENSOR_TEMPLATES = {
         "device_class": None,
         "operating_state": "compressor_start",
         "reset_interval": "monthly",
-        "reset_signal": "lambda_heat_pumps_reset_monthly",
         "state_source": "hp_state",  # WICHTIG: Verwendet HP_STATE statt HP_OPERATING_STATE
         "description": "Monatliche Cycling-Zähler für Kompressor-Starts, werden am 1. des Monats auf 0 gesetzt.",
     },
@@ -1914,7 +1903,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
             "operating_state": "heating",
             "period": "total",
             "reset_interval": None,
-            "reset_signal": None,
             "description": "Thermal output total for heating in kWh",
         },
         "heating_thermal_energy_daily": {
@@ -1987,7 +1975,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
             "operating_state": "hot_water",
             "period": "total",
             "reset_interval": None,
-            "reset_signal": None,
             "description": "Thermal output total for hot water in kWh",
         },
         "hot_water_thermal_energy_daily": {
@@ -2046,7 +2033,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
             "operating_state": "cooling",
             "period": "total",
             "reset_interval": None,
-            "reset_signal": None,
             "description": "Thermal output total for cooling in kWh",
         },
         "cooling_thermal_energy_daily": {
@@ -2105,7 +2091,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
             "operating_state": "defrost",
             "period": "total",
             "reset_interval": None,
-            "reset_signal": None,
             "description": "Thermal output total for defrost in kWh",
         },
         "defrost_thermal_energy_daily": {
@@ -2165,7 +2150,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "operating_state": "heating",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Gesamtverbrauch für Heizen in kWh",
     },
     "heating_energy_daily": {
@@ -2211,7 +2195,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "operating_state": "hot_water",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Gesamtverbrauch für Warmwasser in kWh",
     },
     "hot_water_energy_daily": {
@@ -2243,7 +2226,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "operating_state": "cooling",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Gesamtverbrauch für Kühlen in kWh",
     },
     "cooling_energy_daily": {
@@ -2275,7 +2257,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "operating_state": "defrost",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Gesamtverbrauch für Abtauen in kWh",
     },
     "defrost_energy_daily": {
@@ -2306,7 +2287,6 @@ ENERGY_CONSUMPTION_SENSOR_TEMPLATES = {
         "operating_state": "stby",
         "period": "total",
         "reset_interval": None,
-        "reset_signal": None,
         "description": "Gesamtverbrauch für Standby in kWh",
     },
     "stby_energy_daily": {
@@ -2504,7 +2484,7 @@ ENERGY_INCREMENT_PERIODS = ["total", "daily", "monthly", "yearly", "2h", "4h", "
 # Reihenfolge bei der Registrierung der Energy-Sensoren (Total zuerst, damit Daily-Init den Total-Sensor findet)
 ENERGY_REGISTRATION_ORDER = ("total", "yearly", "monthly", "daily", "hourly")
 
-# Gültige Werte für Reset-Signal-Helfer (utils.create_reset_signal, get_reset_signal_for_period)
+# Gültige Werte für reset_interval und für utils.create_reset_signal / get_reset_signal_for_period
 RESET_VALID_PERIODS = ["daily", "2h", "4h"]
 RESET_VALID_SENSOR_TYPES = ["cycling", "energy", "general"]
 
@@ -2528,8 +2508,7 @@ DEFAULT_ENERGY_CONSUMPTION_OFFSETS = {
 
 # Statusmapping für operating_state - DEPRECATED
 # Diese Map ist deprecated. Verwende stattdessen die operating_state Attribute
-# in den Sensor-Templates oder die Funktionen get_operating_state_from_template()
-# und get_reset_signal_from_template().
+# in den Sensor-Templates oder get_operating_state_from_template().
 #
 # Für Rückwärtskompatibilität bleibt diese Map bestehen, sollte aber nicht
 # mehr direkt verwendet werden.
