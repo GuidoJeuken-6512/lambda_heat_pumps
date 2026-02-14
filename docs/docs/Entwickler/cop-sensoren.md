@@ -224,21 +224,21 @@ def _update_cop(self):
 
 ## Quellsensoren
 
-Die COP-Sensoren verwenden folgende Quellsensoren:
+Die COP-Sensoren lesen ihre Werte aus den **Energy-Consumption-Sensoren** (thermal_energy_*, energy_*). Deren Daten stammen von den **konfigurierbaren** Quellsensoren: In der [lambda_wp_config.yaml](../Anwender/lambda-wp-config.md#4-energieverbrauchs-sensoren) (Abschnitt `energy_consumption_sensors`) können pro HP `sensor_entity_id` (elektrisch) und `thermal_sensor_entity_id` (thermisch, optional) gesetzt werden. Ohne Konfiguration werden die Lambda-Modbus-Sensoren verwendet.
 
-### Thermische Energie-Sensoren
+### Thermische Energie (Quellen der Energy-Sensoren)
 
 - **Entity-ID Pattern**: `sensor.{prefix}_hp{idx}_{mode}_thermal_energy_{period}`
 - **Beispiel**: `sensor.eu08l_hp1_heating_thermal_energy_daily`
 - **Typ**: `LambdaEnergyConsumptionSensor` mit `sensor_type="thermal"`
-- **Quelle**: `compressor_thermal_energy_output_accumulated` (Modbus Register 1022)
+- **Quelle**: In Config gesetzter `thermal_sensor_entity_id`, sonst Standard `compressor_thermal_energy_output_accumulated` (Modbus Register 1022). Siehe [Energieverbrauchssensoren – Quellsensoren](energieverbrauchssensoren.md#quellsensoren).
 
-### Elektrische Energie-Sensoren
+### Elektrische Energie (Quellen der Energy-Sensoren)
 
 - **Entity-ID Pattern**: `sensor.{prefix}_hp{idx}_{mode}_energy_{period}`
 - **Beispiel**: `sensor.eu08l_hp1_heating_energy_daily`
 - **Typ**: `LambdaEnergyConsumptionSensor` mit `sensor_type="electrical"`
-- **Quelle**: `compressor_power_consumption_accumulated` (Modbus Register 1021) oder externer Sensor
+- **Quelle**: In Config gesetzter `sensor_entity_id`, sonst Standard `compressor_power_consumption_accumulated` (Modbus Register 1021). Siehe [Energieverbrauchssensoren – Quellsensoren](energieverbrauchssensoren.md#quellsensoren).
 
 ## Sensoren pro Wärmepumpe
 

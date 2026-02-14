@@ -56,9 +56,9 @@ Beide Typen werden nach Betriebsart (heating, hot_water, cooling, defrost) und Z
 
 ### Datenfluss
 
-1. **Quellsensoren** liefern kumulative Werte. Pro HP können jeweils ein elektrischer und ein thermischer Quellsensor konfiguriert werden (oder die Lambda-Standard-Sensoren):
-   - **Elektrisch:** Config `sensor_entity_id` oder Default `compressor_power_consumption_accumulated` (Register 1021)
-   - **Thermisch:** Config `thermal_sensor_entity_id` oder Default `compressor_thermal_energy_output_accumulated` (Register 1022)
+1. **Quellsensoren** liefern kumulative Werte. Pro HP werden sie aus der **lambda_wp_config.yaml** (Abschnitt `energy_consumption_sensors`) gelesen; nur wenn nicht konfiguriert, gelten die Lambda-Standard-Sensoren:
+   - **Elektrisch:** `sensor_entity_id` aus Config oder Default `compressor_power_consumption_accumulated` (Modbus Register 1021)
+   - **Thermisch:** `thermal_sensor_entity_id` aus Config (optional) oder Default `compressor_thermal_energy_output_accumulated` (Modbus Register 1022)
 
 2. **Coordinator** berechnet Deltas:
    - Liest Quellsensor-Werte
@@ -245,14 +245,16 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 
 ## Quellsensoren
 
-### Elektrische Energie
+Die **tatsächlich verwendeten** Quellsensoren werden aus der **`lambda_wp_config.yaml`** ermittelt (Abschnitt [energy_consumption_sensors](../Anwender/lambda-wp-config.md#4-energieverbrauchs-sensoren): pro Wärmepumpe `sensor_entity_id` (elektrisch) und optional `thermal_sensor_entity_id` (thermisch). Nur wenn dort nichts konfiguriert ist oder ein Sensor ungültig, werden die folgenden **Standard-Quellsensoren** (Lambda-Modbus) verwendet.
+
+### Elektrische Energie (Standard bei fehlender Konfiguration)
 
 - **Sensor**: `compressor_power_consumption_accumulated`
 - **Register**: 1021 (HP1), 2021 (HP2), etc.
 - **Einheit**: Wh (wird zu kWh konvertiert)
 - **Typ**: int32, total_increasing
 
-### Thermische Energie
+### Thermische Energie (Standard bei fehlender Konfiguration)
 
 - **Sensor**: `compressor_thermal_energy_output_accumulated`
 - **Register**: 1022 (HP1), 2022 (HP2), etc.
@@ -314,9 +316,9 @@ def _convert_energy_to_kwh_cached(self, value, unit):
 
 ## Konfiguration
 
-### Externe Quellsensoren
+### Externe Quellsensoren (lambda_wp_config.yaml)
 
-Pro HP können **elektrischer** und **thermischer** Quellsensor getrennt konfiguriert werden:
+Die **tatsächlich verwendeten** Quellsensoren werden hier definiert. Pro HP können **elektrischer** und **thermischer** Quellsensor getrennt konfiguriert werden:
 
 ```yaml
 energy_consumption_sensors:
