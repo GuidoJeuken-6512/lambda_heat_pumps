@@ -13,7 +13,7 @@ Die Integration bietet zwei Arten von Energieverbrauchssensoren:
 1. **Elektrische Energieverbrauchssensoren**: Messen den Stromverbrauch (kWh)
 2. **Thermische Energieverbrauchssensoren**: Messen die Wärmeabgabe (kWh)
 
-Beide Typen werden nach Betriebsart (heating, hot_water, cooling, defrost) und Zeitraum (total, daily, monthly, yearly) aufgeteilt.
+Beide Typen werden nach Betriebsart (heating, hot_water, cooling, defrost) und Zeitraum (total, daily, monthly, yearly, hourly bei Heizen) aufgeteilt.
 
 ## Architektur
 
@@ -258,6 +258,8 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
 - **Register**: 1022 (HP1), 2022 (HP2), etc.
 - **Einheit**: Wh (wird zu kWh konvertiert)
 - **Typ**: int32, total_increasing
+
+Die **thermischen** Energy-Sensoren kommen mit diesem Release hinzu; die elektrischen gab es bereits. Weil die Quellsensoren der COP-Sensoren damit zu unterschiedlichen Zeitpunkten in der Integration vorhanden sind, nutzen die COP-Sensoren eine **Baseline** (Stichtag), damit die COP nur aus Deltas ab „beide Quellen vorhanden“ berechnet wird. Das gilt für **Total-** und für alle zyklischen COP-Sensoren (**täglich, monatlich, jährlich, stündlich**). Siehe [COP-Sensoren – Warum Baseline?](cop-sensoren.md#warum-baseline).
 
 ## Betriebsmodus-Mapping
 

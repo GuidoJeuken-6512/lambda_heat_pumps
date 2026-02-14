@@ -64,7 +64,14 @@ Die Sensoren werden als echte Python-Entities (`LambdaCOPSensor`) implementiert,
    - Division durch Null Schutz (COP = 0.0 wenn electrical <= 0)
    - Rundet auf 2 Dezimalstellen
 
-**Hinweis:** Periodische COP-Sensoren (daily, monthly, yearly) bauen sich erst im Lauf der Zeit auf; bis keine Berechnung stattgefunden hat, können sie `unknown` oder `0` anzeigen. Total-COP nutzt eine Baseline (Deltas seit Stichtag). Siehe [FAQ – COP-Sensoren](../FAQ/cop-sensoren.md).
+**Hinweis:** Periodische COP-Sensoren (daily, monthly, yearly, hourly) bauen sich erst im Lauf der Zeit auf; bis keine Berechnung stattgefunden hat, können sie `unknown` oder `0` anzeigen. Total-COP nutzt eine Baseline (Deltas seit Stichtag). Zyklische COP (inkl. stündlich) nutzen eigene Zyklus-Baselines aus den Quellsensoren. Siehe [FAQ – COP-Sensoren](../FAQ/cop-sensoren.md).
+
+### Warum Baseline?
+
+Die Baseline wird **nur** benötigt, weil **ein Quellsensor früher in der Integration vorhanden ist, der andere später angelegt wird.** Mit diesem Release kommen die **thermischen** Energy-Sensoren dazu; die **elektrischen** Energy-Sensoren gab es bereits. Ohne Baseline wäre `COP = Total_thermal / Total_electrical` verfälscht: Die elektrische Total-Summe umfasst einen längeren Zeitraum als die thermische (die erst ab Einführung der thermischen Sensoren zählt). Mit Baseline speichert man die Werte beider Quellen zu einem **Stichtag** (z. B. beim ersten Start, an dem beide vorhanden sind) und rechnet nur die **Deltas** seit diesem Stichtag: `COP = (Total_thermal − thermal_baseline) / (Total_electrical − electrical_baseline)`. So gilt die COP ausschließlich für den Zeitraum, in dem **beide** Quellsensoren aktiv sind.
+
+- **Total-COP:** Verwendet immer die Baseline (einmalig beim ersten Start bzw. aus Restore).
+- **Zyklische COP (daily, monthly, yearly, hourly):** Jeder hat **eigene** Zyklus-Baselines (Werte der Quellsensoren zu Zyklusstart). **Sind Baselines gesetzt, wird immer** `COP = (Quellsensor_thermal − thermal_baseline) / (Quellsensor_electrical − electrical_baseline)` **gerechnet.** Sind beide Quellsensoren 0 oder einer nicht verfügbar, dient Total − Baseline als Fallback. Ohne Baselines: direkte Division `period_thermal / period_electrical`.
 
 ## Implementierung
 
@@ -303,7 +310,7 @@ Bei Konvertierungsfehlern (ValueError, TypeError) wird ein Warning geloggt und `
 
 Damit gilt nach dem Restore stets: Baseline ≤ aktueller Quellwert; negative Deltas und daraus resultierende Fehlanzeigen werden vermieden. Die Prüfung erfolgt in `LambdaCOPSensor.restore_state()` (sensor.py).
 
-**Hinweis:** COP daily/monthly/yearly haben keine eigene Baseline; sie lesen nur die Quotienten aus den Energy-Sensoren. Ein Reset-Problem wie bei den Energy-Sensoren (yesterday &gt; energy_value) betrifft sie nicht direkt – sie profitieren von der dortigen Konsistenz-Korrektur.
+**Hinweis:** Zyklische COP (daily, monthly, yearly, hourly) haben **eigene** Zyklus-Baselines; sofern gesetzt, wird immer (Quellsensor − Baseline) gerechnet, sonst direkte Division (siehe Abschnitt „Warum Baseline?“).
 
 ## Performance
 

@@ -1379,13 +1379,10 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                             "energy_value=%.2f, yesterday_value=%.2f kWh (displayed=%.2f, from %s)",
                             self.entity_id, self._energy_value, self._yesterday_value, displayed_before, total_entity_id,
                         )
-                    else:
-                        self._yesterday_value = total_value
-                        _LOGGER.debug(
-                            "Initialized yesterday value for %s: 0.0 -> %.2f kWh (from %s, total=%.2f kWh)",
-                            self.entity_id, self._yesterday_value, total_entity_id, total_value,
-                        )
-                    self.async_write_ha_state()
+                        self.async_write_ha_state()
+                    # else: _energy_value >= total_value bei yesterday=0 (z.B. Restore/Persist überschrieben).
+                    # Nicht _yesterday_value = total_value setzen – sonst würde Daily auf 0 fallen.
+                    # Anzeige bleibt _energy_value - 0 = _energy_value (heutiger Kumulativ bis zum nächsten Reset).
                 # Wenn Daily-Wert negativ ist (Yesterday > Total), korrigiere Yesterday
                 elif current_daily < 0:
                     self._yesterday_value = self._energy_value
@@ -1777,9 +1774,17 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         self._cop_value = None  # Initialisiere mit None (unavailable)
         self._unsub_state_changes = None  # Unsubscribe-Funktion für State-Changes
         self._unsub_timer = None  # Periodisches Auffrischen (daily/monthly/yearly nach Reset)
-        # Baseline für Total-COP: elektrische Sensoren länger im System als thermische
+        self._unsub_reset_dispatcher = None  # Reset-Signal (daily/monthly/yearly) für "first reset"-Umschaltung
+        # Baseline nur, weil ein Quellsensor früher in der Integration vorhanden ist, der andere später
+        # angelegt wird (mit diesem Release kommen die thermischen Energy-Sensoren dazu; elektrisch war
+        # bereits da). COP = Delta_thermal/Delta_electrical ab dem Zeitpunkt, an dem beide existieren.
         self._thermal_baseline = None
         self._electrical_baseline = None
+        # Zyklische COP: Eigene Zyklus-Baselines; Baseline-Berechnung nur, wenn ein Quellsensor 0 ist
+        self._reset_occurred = False
+        # Total-Entity-IDs aus Perioden-IDs ableiten (für Vor-Reset-Berechnung)
+        self._thermal_total_entity_id = self._thermal_energy_entity_id.replace(f"_{self._period}", "_total")
+        self._electrical_total_entity_id = self._electrical_energy_entity_id.replace(f"_{self._period}", "_total")
 
         if state_class == "measurement":
             self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -1793,9 +1798,101 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
 
     def _calculate_cop(self) -> float | None:
         """Berechne COP aus thermal_energy und electrical_energy.
-        Für period=total: Deltas seit Baseline (thermische Sensoren kamen später)."""
+        Baseline-Konzept: Ein Quellsensor (elektrisch) war früher in der Integration, der andere
+        (thermisch) kommt mit diesem Release; Baseline = Werte zum Stichtag, damit nur Deltas
+        ab „beide vorhanden“ gezählt werden. Total: immer Baseline. Zyklisch: Wenn Baselines
+        gesetzt sind, immer (Quellsensor − Baseline) verwenden; sonst direkte Division."""
         thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
         electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
+
+        # Zyklische COP: Wenn Baselines gesetzt sind, immer mit Quellsensor-Werten − Baseline rechnen
+        if self._period in ("daily", "monthly", "yearly", "hourly") and self._thermal_baseline is not None and self._electrical_baseline is not None:
+            period_thermal_ok = thermal_state and thermal_state.state not in (None, "unknown", "unavailable")
+            period_electrical_ok = electrical_state and electrical_state.state not in (None, "unknown", "unavailable")
+            period_thermal_val = 0.0
+            period_electrical_val = 0.0
+            if period_thermal_ok:
+                try:
+                    period_thermal_val = float(str(thermal_state.state).replace(",", "."))
+                except (ValueError, TypeError):
+                    period_thermal_ok = False
+            if period_electrical_ok:
+                try:
+                    period_electrical_val = float(str(electrical_state.state).replace(",", "."))
+                except (ValueError, TypeError):
+                    period_electrical_ok = False
+            # Beide Quellsensoren verfügbar: COP = (period − baseline) / (period − baseline)
+            if period_thermal_ok and period_electrical_ok:
+                try:
+                    effective_thermal = period_thermal_val - self._thermal_baseline
+                    effective_electrical = period_electrical_val - self._electrical_baseline
+                    if effective_electrical <= 0:
+                        _LOGGER.debug(
+                            "COP %s %s: effective_electrical <= 0 (%.6f), returning unavailable",
+                            self._period,
+                            self.entity_id,
+                            effective_electrical,
+                        )
+                        return None
+                    if effective_thermal < 0:
+                        effective_thermal = 0.0
+                    cop_exact = effective_thermal / effective_electrical
+                    cop_rounded = round(cop_exact, self._precision)
+                    _LOGGER.debug(
+                        "COP %s (Baseline, Quellsensoren) for %s: effective_thermal=%.6f, effective_electrical=%.6f, cop=%.2f",
+                        self._period,
+                        self.entity_id,
+                        effective_thermal,
+                        effective_electrical,
+                        cop_rounded,
+                    )
+                    return cop_rounded
+                except (ValueError, TypeError):
+                    pass
+            # Ein Quellsensor 0 oder nicht verfügbar: Fallback auf Total − Baseline
+            else:
+                thermal_total_state = self.hass.states.get(self._thermal_total_entity_id)
+                electrical_total_state = self.hass.states.get(self._electrical_total_entity_id)
+                if (
+                    thermal_total_state
+                    and thermal_total_state.state not in (None, "unknown", "unavailable")
+                    and electrical_total_state
+                    and electrical_total_state.state not in (None, "unknown", "unavailable")
+                ):
+                    try:
+                        thermal_str_t = str(thermal_total_state.state).replace(",", ".")
+                        electrical_str_t = str(electrical_total_state.state).replace(",", ".")
+                        total_thermal = float(thermal_str_t)
+                        total_electrical = float(electrical_str_t)
+                        effective_thermal = total_thermal - self._thermal_baseline
+                        effective_electrical = total_electrical - self._electrical_baseline
+                        if effective_electrical <= 0:
+                            _LOGGER.debug(
+                                "COP %s %s: effective_electrical <= 0, returning unavailable",
+                                self._period,
+                                self.entity_id,
+                            )
+                            return None
+                        if effective_thermal < 0:
+                            effective_thermal = 0.0
+                        cop_exact = effective_thermal / effective_electrical
+                        cop_rounded = round(cop_exact, self._precision)
+                        _LOGGER.info(
+                            "COP %s %s: Baseline angewendet (Fallback Total, Quellsensor 0 oder nicht verfügbar)",
+                            self._period,
+                            self.entity_id,
+                        )
+                        _LOGGER.debug(
+                            "COP %s (Baseline, Total-Fallback) for %s: effective_thermal=%.6f, effective_electrical=%.6f, cop=%.2f",
+                            self._period,
+                            self.entity_id,
+                            effective_thermal,
+                            effective_electrical,
+                            cop_rounded,
+                        )
+                        return cop_rounded
+                    except (ValueError, TypeError):
+                        pass
 
         # Prüfe ob beide Sensoren verfügbar sind
         if not thermal_state or thermal_state.state in (None, "unknown", "unavailable"):
@@ -1822,7 +1919,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
             thermal_value = float(thermal_str)
             electrical_value = float(electrical_str)
 
-            # Total-COP: Deltas seit Baseline (elektrische Sensoren länger im System)
+            # Total-COP: Deltas seit Baseline (elektrisch war früher da, thermisch mit diesem Release)
             if self._period == "total" and self._thermal_baseline is not None and self._electrical_baseline is not None:
                 effective_thermal = thermal_value - self._thermal_baseline
                 effective_electrical = electrical_value - self._electrical_baseline
@@ -1847,6 +1944,12 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                 return cop_rounded
 
             # Daily/Monthly/Yearly oder Total ohne Baseline: direkte Division
+            if self._period in ("daily", "monthly", "yearly", "hourly") and thermal_value > 0 and electrical_value > 0:
+                _LOGGER.info(
+                    "COP %s %s: Baseline nicht notwendig (beide Quellsensoren > 0)",
+                    self._period,
+                    self.entity_id,
+                )
             if electrical_value <= 0:
                 _LOGGER.debug(
                     "Electrical energy is 0 or negative (%.6f) for COP sensor %s, returning 0",
@@ -1905,6 +2008,12 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
 
         # Registriere State-Change-Tracker für Quell-Sensoren
         track_entities = [self._thermal_energy_entity_id, self._electrical_energy_entity_id]
+        # Zyklische COP: Total-Entities tracken (Berechnung nutzt Total + eigene Zyklus-Baselines)
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            if self._thermal_total_entity_id not in track_entities:
+                track_entities.append(self._thermal_total_entity_id)
+            if self._electrical_total_entity_id not in track_entities:
+                track_entities.append(self._electrical_total_entity_id)
 
         @callback
         def _state_change_callback(event):
@@ -1951,7 +2060,90 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                 self.hass, _periodic_refresh, timedelta(minutes=5)
             )
 
-        # Total-COP: Baseline einmalig setzen, wenn noch keine vorhanden
+        # Zyklische COP: Reset-Signal abonnieren, um nach erstem Reset auf reale Perioden-Berechnung umzuschalten
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            from .automations import (
+                SIGNAL_RESET_DAILY,
+                SIGNAL_RESET_MONTHLY,
+                SIGNAL_RESET_YEARLY,
+                SIGNAL_RESET_HOURLY,
+            )
+
+            @callback
+            def _on_reset(_entry_id):
+                # Baselines = Werte der Quellsensoren (period) zum Zyklusstart, nicht Total
+                thermal_src_state = self.hass.states.get(self._thermal_energy_entity_id)
+                electrical_src_state = self.hass.states.get(self._electrical_energy_entity_id)
+                if (
+                    thermal_src_state
+                    and thermal_src_state.state not in (None, "unknown", "unavailable")
+                    and electrical_src_state
+                    and electrical_src_state.state not in (None, "unknown", "unavailable")
+                ):
+                    try:
+                        self._thermal_baseline = float(str(thermal_src_state.state).replace(",", "."))
+                        self._electrical_baseline = float(str(electrical_src_state.state).replace(",", "."))
+                        _LOGGER.info(
+                            "COP %s %s: Zyklus-Baselines gesetzt (Reset, Quellsensoren) thermal=%.2f kWh, electrical=%.2f kWh",
+                            self._period,
+                            self.entity_id,
+                            self._thermal_baseline,
+                            self._electrical_baseline,
+                        )
+                    except (ValueError, TypeError):
+                        pass
+                self._reset_occurred = True
+                self._update_cop()
+                self.async_write_ha_state()
+
+            if self._period == "daily":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_DAILY, _on_reset
+                )
+            elif self._period == "monthly":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_MONTHLY, _on_reset
+                )
+            elif self._period == "yearly":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_YEARLY, _on_reset
+                )
+            elif self._period == "hourly":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_HOURLY, _on_reset
+                )
+
+        # Zyklische COP: Eigene Initial-Baselines aus Quellsensoren (period), nicht aus Total
+        if self._period in ("daily", "monthly", "yearly", "hourly") and self._thermal_baseline is None and self._electrical_baseline is None:
+            thermal_src_state = self.hass.states.get(self._thermal_energy_entity_id)
+            electrical_src_state = self.hass.states.get(self._electrical_energy_entity_id)
+            if (
+                thermal_src_state
+                and thermal_src_state.state not in (None, "unknown", "unavailable")
+                and electrical_src_state
+                and electrical_src_state.state not in (None, "unknown", "unavailable")
+            ):
+                try:
+                    self._thermal_baseline = float(str(thermal_src_state.state).replace(",", "."))
+                    self._electrical_baseline = float(str(electrical_src_state.state).replace(",", "."))
+                    _LOGGER.info(
+                        "COP %s %s: Zyklus-Baselines initial (Quellsensoren) thermal=%.2f kWh, electrical=%.2f kWh",
+                        self._period,
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+                    self._update_cop()
+                    self.async_write_ha_state()
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(
+                        "Could not set COP %s initial baselines for %s: %s",
+                        self._period,
+                        self.entity_id,
+                        e,
+                    )
+
+        # Total-COP: Baseline einmalig setzen (Stichtag = beide Quellsensoren vorhanden)
         if self._period == "total" and self._thermal_baseline is None and self._electrical_baseline is None:
             thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
             electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
@@ -1962,7 +2154,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                     self._thermal_baseline = float(thermal_str)
                     self._electrical_baseline = float(electrical_str)
                     _LOGGER.info(
-                        "COP total %s: baseline set thermal=%.2f kWh, electrical=%.2f kWh (COP = delta since now)",
+                        "COP total %s: baseline set thermal=%.2f kWh, electrical=%.2f kWh (Stichtag: beide Quellen vorhanden)",
                         self.entity_id,
                         self._thermal_baseline,
                         self._electrical_baseline,
@@ -2053,6 +2245,38 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                     e,
                 )
 
+        # Zyklische COP: Eigene Baselines und reset_occurred aus Attributen wiederherstellen
+        if self._period in ("daily", "monthly", "yearly", "hourly") and last_state is not None and last_state.attributes is not None:
+            try:
+                tb = last_state.attributes.get("thermal_baseline")
+                eb = last_state.attributes.get("electrical_baseline")
+                if tb is not None and eb is not None:
+                    self._thermal_baseline = float(str(tb).replace(",", "."))
+                    self._electrical_baseline = float(str(eb).replace(",", "."))
+                    _LOGGER.debug(
+                        "COP %s %s: restored baselines thermal=%.2f, electrical=%.2f",
+                        self._period,
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    "Could not restore COP %s baselines for %s: %s",
+                    self._period,
+                    self.entity_id,
+                    e,
+                )
+            ro = last_state.attributes.get("reset_occurred")
+            if ro is not None:
+                self._reset_occurred = bool(ro)
+                _LOGGER.debug(
+                    "COP %s %s: restored reset_occurred=%s",
+                    self._period,
+                    self.entity_id,
+                    self._reset_occurred,
+                )
+
     async def async_will_remove_from_hass(self):
         """Clean up when entity is removed."""
         if self._unsub_state_changes:
@@ -2061,6 +2285,9 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         if self._unsub_timer:
             self._unsub_timer()
             self._unsub_timer = None
+        if self._unsub_reset_dispatcher:
+            self._unsub_reset_dispatcher()
+            self._unsub_reset_dispatcher = None
         await super().async_will_remove_from_hass()
 
     @property
@@ -2110,6 +2337,11 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         if self._period == "total" and self._thermal_baseline is not None and self._electrical_baseline is not None:
             attrs["thermal_baseline"] = round(self._thermal_baseline, 4)
             attrs["electrical_baseline"] = round(self._electrical_baseline, 4)
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            attrs["reset_occurred"] = self._reset_occurred
+            if self._thermal_baseline is not None and self._electrical_baseline is not None:
+                attrs["thermal_baseline"] = round(self._thermal_baseline, 4)
+                attrs["electrical_baseline"] = round(self._electrical_baseline, 4)
         return attrs
 
     @property
