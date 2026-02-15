@@ -408,6 +408,125 @@ async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
 
 
 # =============================================================================
+# CLEANUP: DUPLIKAT-ENTITIES (_2, _3, …)
+# =============================================================================
+
+# Regex für Entity-IDs, die mit _2, _3, … enden (Home Assistant Duplikat-Suffix)
+_ENTITY_ID_DUPLICATE_SUFFIX_RE = re.compile(r"_\d+$")
+
+
+def _entity_id_has_duplicate_suffix(entity_id: str) -> bool:
+    """Prüft, ob entity_id mit _2, _3, … endet."""
+    return bool(_ENTITY_ID_DUPLICATE_SUFFIX_RE.search(entity_id))
+
+
+def _is_our_platform(registry_entry: Any) -> bool:
+    """Prüft, ob die Entity zu unserer Integration gehört (Platform-Domain)."""
+    platform = getattr(registry_entry, "platform", None)
+    if platform is None:
+        return False
+    if isinstance(platform, (list, tuple)) and len(platform) >= 1:
+        return platform[0] == DOMAIN
+    if isinstance(platform, str):
+        return platform.startswith(DOMAIN + ".") or platform == DOMAIN
+    return False
+
+
+async def async_remove_duplicate_entity_suffixes(
+    hass: HomeAssistant, entry_id: str
+) -> int:
+    """
+    Entfernt Entities dieser Integration, deren entity_id mit _2, _3, … endet.
+
+    Zwei Durchläufe:
+    1) Entities dieses Config-Eintrags (entry_id) mit Suffix _2, _3, …
+    2) Verwaiste Duplikate: gleiches Suffix-Muster, config_entry_id existiert nicht mehr.
+
+    Benutzer-Anpassungen (z. B. umbenannte Entities ohne Suffix) werden nicht angetastet.
+
+    Args:
+        hass: Home Assistant Instanz
+        entry_id: Config-Entry-ID (entry.entry_id)
+
+    Returns:
+        Anzahl der entfernten Entities.
+    """
+    removed = 0
+    try:
+        _LOGGER.info(
+            "Cleanup: Prüfe auf Duplikat-Entities (_2, _3, …) für Entry %s …",
+            entry_id,
+        )
+        entity_registry = async_get_entity_registry(hass)
+
+        # 1) Entities dieses Config-Eintrags mit Suffix _2, _3, …
+        registry_entries = entity_registry.entities.get_entries_for_config_entry_id(
+            entry_id
+        )
+        for registry_entry in registry_entries:
+            eid = registry_entry.entity_id
+            if _entity_id_has_duplicate_suffix(eid):
+                try:
+                    entity_registry.async_remove(eid)
+                    hass.states.async_remove(eid)
+                    removed += 1
+                    _LOGGER.info(
+                        "Cleanup: Duplikat-Entity gelöscht (Suffix _2/_3/…): %s", eid
+                    )
+                except Exception as e:
+                    _LOGGER.warning(
+                        "Cleanup: Entity %s konnte nicht entfernt werden: %s", eid, e
+                    )
+
+        # 2) Verwaiste Duplikate (config_entry_id existiert nicht mehr)
+        current_entry_ids = {
+            e.entry_id for e in hass.config_entries.async_entries(DOMAIN)
+        }
+        if hasattr(entity_registry.entities, "values"):
+            all_entries = list(entity_registry.entities.values())
+        else:
+            all_entries = []
+        for registry_entry in all_entries:
+            eid = getattr(registry_entry, "entity_id", None)
+            config_eid = getattr(registry_entry, "config_entry_id", None)
+            if not eid or not _entity_id_has_duplicate_suffix(eid):
+                continue
+            if not _is_our_platform(registry_entry):
+                continue
+            if config_eid is not None and config_eid in current_entry_ids:
+                continue  # gehört zu aktuellem Eintrag, ggf. schon in 1) erledigt
+            try:
+                entity_registry.async_remove(eid)
+                hass.states.async_remove(eid)
+                removed += 1
+                _LOGGER.info(
+                    "Cleanup: Verwaiste Duplikat-Entity gelöscht (Suffix _2/_3/…): %s",
+                    eid,
+                )
+            except Exception as e:
+                _LOGGER.warning(
+                    "Cleanup: Entity %s konnte nicht entfernt werden: %s", eid, e
+                )
+
+        if removed:
+            _LOGGER.info(
+                "Cleanup: %d Duplikat-Entity/Entities für Entry %s gelöscht.",
+                removed,
+                entry_id,
+            )
+        else:
+            _LOGGER.info(
+                "Cleanup: Keine Duplikat-Entities (_2, _3, …) für Entry %s gefunden.",
+                entry_id,
+            )
+    except Exception as e:
+        _LOGGER.warning(
+            "Cleanup Duplikat-Entities für Entry %s fehlgeschlagen: %s", entry_id, e
+        )
+    return removed
+
+
+# =============================================================================
 # MIGRATIONSFUNKTIONEN FÜR JEDE VERSION
 # =============================================================================
 

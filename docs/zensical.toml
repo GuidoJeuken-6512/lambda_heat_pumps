@@ -87,6 +87,7 @@ nav = [
     { "COP-Sensoren" = "Entwickler/cop-sensoren.md" },
     { "Modbus-Serialisierung" = "Entwickler/modbus-serialisierung.md" },
     { "Register-Reihenfolge int32 (Issue #22)" = "Entwickler/register-reihenfolge-int32.md" },
+    { "Entity-Duplikate (_2, _3) – Cleanup" = "Entwickler/entity-duplikat-cleanup.md" },
   ] },
   { "FAQ" = [
     { "FAQ" = "FAQ/FAQ.md" },

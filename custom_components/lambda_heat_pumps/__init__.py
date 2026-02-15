@@ -22,7 +22,7 @@ from .coordinator import LambdaDataUpdateCoordinator
 from .services import async_setup_services, async_unload_services
 from .utils import generate_base_addresses, ensure_lambda_config
 from .reset_manager import ResetManager
-from .migration import async_migrate_entry
+from .migration import async_migrate_entry, async_remove_duplicate_entity_suffixes
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
 from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
 from .modbus_utils import wait_for_stable_connection
@@ -253,6 +253,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if DOMAIN not in hass.data:
             hass.data[DOMAIN] = {}
         hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
+
+        # Duplikat-Entities (_2, _3, …) aus der Registry entfernen (bei jedem Setup/Reload/Restart)
+        await async_remove_duplicate_entity_suffixes(hass, entry.entry_id)
 
         # Set up platforms with error handling
         try:
