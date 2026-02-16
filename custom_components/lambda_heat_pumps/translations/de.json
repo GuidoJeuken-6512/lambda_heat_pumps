@@ -148,6 +148,7 @@
       "room_device_temperature": { "name": "Raumtemperatur" },
       "set_flow_line_temperature": { "name": "Soll Vorlauf" },
       "operating_mode": { "name": "Betriebsmodus" },
+      "flow_line_temperature_setpoint": { "name": "Vorlauf Sollwert" },
       "set_flow_line_offset_temperature": { "name": "Vorlauf Offset" },
       "target_room_temperature": { "name": "Soll Raumtemperatur" },
       "set_cooling_mode_room_temperature": { "name": "Kühlung Raumtemperatur" },

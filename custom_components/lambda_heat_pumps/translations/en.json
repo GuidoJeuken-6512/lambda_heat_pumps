@@ -155,6 +155,7 @@
       "room_device_temperature": { "name": "Room Temperature" },
       "set_flow_line_temperature": { "name": "Set Flow Temperature" },
       "operating_mode": { "name": "Operating Mode" },
+      "flow_line_temperature_setpoint": { "name": "Flow Temperature Setpoint" },
       "set_flow_line_offset_temperature": { "name": "Flow Offset" },
       "target_room_temperature": { "name": "Target Room Temperature" },
       "set_cooling_mode_room_temperature": { "name": "Cooling Room Temperature" },

@@ -17,6 +17,7 @@ Nur **native Modbus-Register** des Heizkreises (HC), ohne Number- oder Template-
 | 4 | R5004 | room_device_temperature | Room Device Temperature | int16 | °C | 0.1 | ja |
 | 5 | R5005 | set_flow_line_temperature | Set Flow Line Temperature | int16 | °C | 0.1 | ja |
 | 6 | R5006 | operating_mode | Operating Mode | int16 | — | 1 | ja |
+| 7 | R5007 | flow_line_temperature_setpoint | Flow Line Temperature Setpoint | int16 | °C | 0.1 | **ja** |
 | 7 | R5007 | target_temp_flow_line | Target Flow Line Temperature | int16 | °C | 0.1 | nein |
 | 50 | R5050 | set_flow_line_offset_temperature | Set Flow Line Offset Temperature | int16 | °C | 0.1 | ja |
 | 51 | R5051 | target_room_temperature | Target Room Temperature | int16 | °C | 0.1 | ja |

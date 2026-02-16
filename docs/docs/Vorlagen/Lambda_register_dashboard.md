@@ -1,0 +1,177 @@
+---
+title: "Lambda Register-Dashboard"
+---
+
+# Lambda Register-Dashboard (Vorlage)
+
+Diese Vorlage erstellt ein Lovelace-Dashboard **„Lambda Register“** mit vier Reitern. In jeder Ansicht wird eine Tabelle angezeigt: **Register** (Modbus-Adresse), **Name** (Sensor) und **Wert**. Es werden nur **native Modbus-Sensoren** der Lambda-Integration einbezogen (keine berechneten oder Template-Sensoren).
+
+**Reiter:**
+
+1. **General (R0–R104)** – Ambient und E-Manager (feste Adressen 0–4, 100–104)
+2. **Wärmepumpe (HP1)** – Native HP-Sensoren (ab R1000)
+3. **Warmwasser (Boiler)** – Boiler-Sensoren (ab R2000)
+4. **Heizkreis (HC1)** – Heizkreis-Sensoren (ab R5000)
+
+Die Anzeige nutzt das von der Integration gesetzte Attribut **`register`** pro Sensor. Sensoren ohne dieses Attribut (z. B. nicht vorhanden oder andere FW-Version) werden automatisch ausgeblendet.
+
+## Einbindung in Home Assistant
+
+1. **Einstellungen** → **Dashboard** → **„+ Dashboard“** → **„Mit YAML konfigurieren“**  
+   oder ein bestehendes Dashboard bearbeiten und den Inhalt ersetzen bzw. einfügen.
+2. Den unten stehenden YAML-Code komplett kopieren und einfügen.
+3. **Präfix anpassen (falls nötig):** Wenn deine Sensor-IDs nicht mit `eu08l` beginnen, ersetze im YAML einmal **`eu08l`** durch deinen Präfix (z. B. `lambda`). Den Präfix siehst du unter **Einstellungen** → **Geräte & Dienste** → **Geräte** → deine Lambda-Integration (z. B. „EU08L“ → oft `eu08l` in Kleinbuchstaben).
+
+## YAML (Copy & Paste)
+
+```yaml
+# Lambda Register-Dashboard – nur native Modbus-Sensoren
+# Anzeige: Register | Name | Wert. Präfix "eu08l" ggf. durch deinen ersetzen.
+
+title: Lambda Register
+views:
+  - title: General (R0–R104)
+    path: general
+    icon: mdi:chip
+    cards:
+      - type: markdown
+        title: General / Ambient & E-Manager
+        content: |
+          {% set list = [
+            'sensor.eu08l_ambient_error_number',
+            'sensor.eu08l_ambient_operating_state',
+            'sensor.eu08l_ambient_temperature',
+            'sensor.eu08l_ambient_temperature_1h',
+            'sensor.eu08l_ambient_temperature_calculated',
+            'sensor.eu08l_emgr_error_number',
+            'sensor.eu08l_emgr_operating_state',
+            'sensor.eu08l_emgr_actual_power',
+            'sensor.eu08l_emgr_actual_power_consumption',
+            'sensor.eu08l_emgr_power_consumption_setpoint'
+          ] %}
+          | Register | Name | Wert |
+          |----------|------|------|
+          {% for e in list %}
+          {% if state_attr(e, 'register') is not none %}
+          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% endif %}
+          {% endfor %}
+
+  - title: Wärmepumpe (HP1)
+    path: hp1
+    icon: mdi:heat-pump
+    cards:
+      - type: markdown
+        title: HP1 – Native Register
+        content: |
+          {% set list = [
+            'sensor.eu08l_hp1_error_state',
+            'sensor.eu08l_hp1_error_number',
+            'sensor.eu08l_hp1_state',
+            'sensor.eu08l_hp1_operating_state',
+            'sensor.eu08l_hp1_flow_line_temperature',
+            'sensor.eu08l_hp1_return_line_temperature',
+            'sensor.eu08l_hp1_volume_flow_heat_sink',
+            'sensor.eu08l_hp1_energy_source_inlet_temperature',
+            'sensor.eu08l_hp1_energy_source_outlet_temperature',
+            'sensor.eu08l_hp1_volume_flow_energy_source',
+            'sensor.eu08l_hp1_compressor_unit_rating',
+            'sensor.eu08l_hp1_actual_heating_capacity',
+            'sensor.eu08l_hp1_inverter_power_consumption',
+            'sensor.eu08l_hp1_cop',
+            'sensor.eu08l_hp1_request_type',
+            'sensor.eu08l_hp1_requested_flow_line_temperature',
+            'sensor.eu08l_hp1_requested_return_line_temperature',
+            'sensor.eu08l_hp1_requested_flow_to_return_line_temperature_difference',
+            'sensor.eu08l_hp1_relais_state_2nd_heating_stage',
+            'sensor.eu08l_hp1_compressor_power_consumption_accumulated',
+            'sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated',
+            'sensor.eu08l_hp1_config_parameter_24',
+            'sensor.eu08l_hp1_vda_rating',
+            'sensor.eu08l_hp1_hot_gas_temperature',
+            'sensor.eu08l_hp1_subcooling_temperature',
+            'sensor.eu08l_hp1_suction_gas_temperature',
+            'sensor.eu08l_hp1_condensation_temperature',
+            'sensor.eu08l_hp1_evaporation_temperature',
+            'sensor.eu08l_hp1_eqm_rating',
+            'sensor.eu08l_hp1_expansion_valve_opening_angle',
+            'sensor.eu08l_hp1_config_parameter_33',
+            'sensor.eu08l_hp1_config_parameter_50',
+            'sensor.eu08l_hp1_dhw_output_power_15c',
+            'sensor.eu08l_hp1_heating_min_output_power_15c',
+            'sensor.eu08l_hp1_heating_max_output_power_15c',
+            'sensor.eu08l_hp1_heating_min_output_power_0c',
+            'sensor.eu08l_hp1_heating_max_output_power_0c',
+            'sensor.eu08l_hp1_heating_min_output_power_minus15c',
+            'sensor.eu08l_hp1_heating_max_output_power_minus15c',
+            'sensor.eu08l_hp1_cooling_min_output_power',
+            'sensor.eu08l_hp1_cooling_max_output_power',
+            'sensor.eu08l_hp1_config_parameter_60'
+          ] %}
+          | Register | Name | Wert |
+          |----------|------|------|
+          {% for e in list %}
+          {% if state_attr(e, 'register') is not none %}
+          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% endif %}
+          {% endfor %}
+
+  - title: Warmwasser (Boiler)
+    path: boil
+    icon: mdi:water-thermometer
+    cards:
+      - type: markdown
+        title: Boiler1 – Native Register
+        content: |
+          {% set list = [
+            'sensor.eu08l_boil1_error_number',
+            'sensor.eu08l_boil1_operating_state',
+            'sensor.eu08l_boil1_actual_high_temperature',
+            'sensor.eu08l_boil1_actual_low_temperature',
+            'sensor.eu08l_boil1_actual_circulation_temperature',
+            'sensor.eu08l_boil1_actual_circulation_pump_state',
+            'sensor.eu08l_boil1_target_high_temperature'
+          ] %}
+          | Register | Name | Wert |
+          |----------|------|------|
+          {% for e in list %}
+          {% if state_attr(e, 'register') is not none %}
+          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% endif %}
+          {% endfor %}
+
+  - title: Heizkreis (HC1)
+    path: hc1
+    icon: mdi:radiator
+    cards:
+      - type: markdown
+        title: HC1 – Native Register
+        content: |
+          {% set list = [
+            'sensor.eu08l_hc1_error_number',
+            'sensor.eu08l_hc1_operating_state',
+            'sensor.eu08l_hc1_flow_line_temperature',
+            'sensor.eu08l_hc1_return_line_temperature',
+            'sensor.eu08l_hc1_room_device_temperature',
+            'sensor.eu08l_hc1_set_flow_line_temperature',
+            'sensor.eu08l_hc1_operating_mode',
+            'sensor.eu08l_hc1_flow_line_temperature_setpoint',
+            'sensor.eu08l_hc1_target_temp_flow_line',
+            'sensor.eu08l_hc1_set_flow_line_offset_temperature',
+            'sensor.eu08l_hc1_target_room_temperature',
+            'sensor.eu08l_hc1_set_cooling_mode_room_temperature'
+          ] %}
+          | Register | Name | Wert |
+          |----------|------|------|
+          {% for e in list %}
+          {% if state_attr(e, 'register') is not none %}
+          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% endif %}
+          {% endfor %}
+```
+
+## Hinweise
+
+- **Fehlende Zeilen:** Sensoren, die bei deiner Firmware-Version oder Konfiguration nicht angelegt werden (z. B. manche HC-Sensoren erst ab FW 3), erscheinen nicht in der Tabelle – die Anzeige filtert sie automatisch.
+- **Puffer/Solar:** Wenn du Puffer- oder Solar-Module konfiguriert hast, können weitere Reiter mit den zugehörigen Entity-IDs ergänzt werden (Register ab R3000 bzw. R4000).
+- **Mehrere Wärmepumpen/Heizkreise:** Bei HP2, HC2 usw. die Entity-IDs im YAML anpassen (z. B. `hp2`, `hc2` statt `hp1`, `hc1`).
