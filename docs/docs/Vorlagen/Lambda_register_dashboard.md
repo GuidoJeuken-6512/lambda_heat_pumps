@@ -4,16 +4,24 @@ title: "Lambda Register-Dashboard"
 
 # Lambda Register-Dashboard (Vorlage)
 
-Diese Vorlage erstellt ein Lovelace-Dashboard **„Lambda Register“** mit vier Reitern. In jeder Ansicht wird eine Tabelle angezeigt: **Register** (Modbus-Adresse), **Name** (Sensor) und **Wert**. Es werden nur **native Modbus-Sensoren** der Lambda-Integration einbezogen (keine berechneten oder Template-Sensoren).
-
-**Reiter:**
-
-1. **General (R0–R104)** – Ambient und E-Manager (feste Adressen 0–4, 100–104)
-2. **Wärmepumpe (HP1)** – Native HP-Sensoren (ab R1000)
-3. **Warmwasser (Boiler)** – Boiler-Sensoren (ab R2000)
-4. **Heizkreis (HC1)** – Heizkreis-Sensoren (ab R5000)
-
-Die Anzeige nutzt das von der Integration gesetzte Attribut **`register`** pro Sensor. Sensoren ohne dieses Attribut (z. B. nicht vorhanden oder andere FW-Version) werden automatisch ausgeblendet.
+<div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
+  <div style="flex: 0 0 320px;">
+    <a href="../../assets/lambda-register-dashboard-general.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen">
+      <img src="../../assets/lambda-register-dashboard-general.png" alt="Lambda Register-Dashboard – General / Ambient & E-Manager" style="width: 100%; height: auto; border-radius: 8px;">
+    </a>
+  </div>
+  <div style="flex: 1; min-width: 280px;">
+    <p>Diese Vorlage erstellt ein Lovelace-Dashboard <strong>„Lambda Register“</strong> mit vier Reitern. In jeder Ansicht wird eine Tabelle angezeigt: <strong>Register</strong> (Modbus-Adresse), <strong>Name</strong> (Sensor) und <strong>Wert</strong>. Es werden nur <strong>native Modbus-Sensoren</strong> der Lambda-Integration einbezogen (keine berechneten oder Template-Sensoren).</p>
+    <p><strong>Reiter:</strong></p>
+    <ul>
+      <li><strong>General (R0–R104)</strong> – Ambient und E-Manager (feste Adressen 0–4, 100–104)</li>
+      <li><strong>Wärmepumpe (HP1)</strong> – Native HP-Sensoren (ab R1000)</li>
+      <li><strong>Warmwasser (Boiler)</strong> – Boiler-Sensoren (ab R2000)</li>
+      <li><strong>Heizkreis (HC1)</strong> – Heizkreis-Sensoren (ab R5000)</li>
+    </ul>
+    <p>Die Anzeige nutzt das von der Integration gesetzte Attribut <code>register</code> pro Sensor. Sensoren ohne dieses Attribut (z. B. nicht vorhanden oder andere FW-Version) werden automatisch ausgeblendet.</p>
+  </div>
+</div>
 
 ## Einbindung in Home Assistant
 
