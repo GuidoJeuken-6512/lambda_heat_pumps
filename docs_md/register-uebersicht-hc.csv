@@ -1,0 +1,12 @@
+relative_address,register_hc1,sensor_id,name,data_type,unit,scale,writeable,firmware_note
+0,R5000,error_number,Error Number,int16,,1,nein,
+1,R5001,operating_state,Operating State,uint16,,1,nein,
+2,R5002,flow_line_temperature,Flow Line Temperature,int16,°C,0.1,nein,
+3,R5003,return_line_temperature,Return Line Temperature,int16,°C,0.1,nein,
+4,R5004,room_device_temperature,Room Device Temperature,int16,°C,0.1,ja,
+5,R5005,set_flow_line_temperature,Set Flow Line Temperature,int16,°C,0.1,ja,
+6,R5006,operating_mode,Operating Mode,int16,,1,ja,
+7,R5007,target_temp_flow_line,Target Flow Line Temperature,int16,°C,0.1,nein,ab FW 3
+50,R5050,set_flow_line_offset_temperature,Set Flow Line Offset Temperature,int16,°C,0.1,ja,
+51,R5051,target_room_temperature,Target Room Temperature,int16,°C,0.1,ja,
+52,R5052,set_cooling_mode_room_temperature,Set Cooling Mode Room Temperature,int16,°C,0.1,ja,
