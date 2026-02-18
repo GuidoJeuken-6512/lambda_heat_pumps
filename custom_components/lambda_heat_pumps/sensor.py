@@ -53,6 +53,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     get_entity_icon,
+    normalize_name_prefix,
     restore_energy_period_state,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
@@ -101,7 +102,7 @@ async def async_setup_entry(
 
     # Hole den Legacy-Modbus-Namen-Switch aus der Config
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-    name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    name_prefix = normalize_name_prefix(entry.data.get("name", ""))
     sensor_translations = await load_sensor_translations(hass)
 
     # Get firmware version and filter compatible sensors

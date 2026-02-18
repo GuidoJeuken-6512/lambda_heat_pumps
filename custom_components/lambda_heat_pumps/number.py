@@ -22,6 +22,7 @@ from .utils import (
     generate_sensor_names,
     get_entity_icon,
     load_sensor_translations,
+    normalize_name_prefix,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ async def async_setup_entry(
 
     num_hc = entry.data.get("num_hc", 1)
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-    name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    name_prefix = normalize_name_prefix(entry.data.get("name", ""))
     room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
     sensor_translations = await load_sensor_translations(hass)
 

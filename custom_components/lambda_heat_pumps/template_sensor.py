@@ -36,6 +36,7 @@ from .utils import (
     load_lambda_config,
     get_firmware_version_int,
     get_compatible_sensors,
+    normalize_name_prefix,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -67,7 +68,7 @@ async def async_setup_entry(
 
     # Hole den Legacy-Modbus-Namen-Switch aus der Config
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-    name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    name_prefix = normalize_name_prefix(entry.data.get("name", ""))
     room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
     sensor_translations = await load_sensor_translations(hass)
 
@@ -576,7 +577,7 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         
         # Konstruiere Entity-IDs für operating_state und eco_temp_reduction
         use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-        name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+        name_prefix = normalize_name_prefix(entry.data.get("name", ""))
         device_prefix = f"{self._device_type}{self._device_index}" if self._device_index else ""
         
         if use_legacy_modbus_names and name_prefix:

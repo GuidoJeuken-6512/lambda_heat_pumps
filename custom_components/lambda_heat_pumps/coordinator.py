@@ -37,6 +37,7 @@ from .utils import (
     increment_cycling_counter,
     get_firmware_version_int,
     get_compatible_sensors,
+    normalize_name_prefix,
 )
 from .modbus_utils import async_read_holding_registers, combine_int32_registers, wait_for_stable_connection
 import time
@@ -147,7 +148,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             from .utils import increment_energy_consumption_counter
             hp_key = f"hp{hp_idx}"
             energy_offsets = self._energy_offsets.get(hp_key, {})
-            name_prefix = self.entry.data.get("name", "eu08l")
+            name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
             await increment_energy_consumption_counter(
                 hass=self.hass,
                 mode=mode,
@@ -522,7 +523,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if hp_key in self._energy_sensor_configs:
                 current_sensor_id = self._energy_sensor_configs[hp_key].get("sensor_entity_id")
             if not current_sensor_id:
-                name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
                 current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
             stored_sensor_id = get_stored_sensor_id(persist_data, hp_idx)
             if detect_sensor_change(stored_sensor_id, current_sensor_id):
@@ -546,7 +547,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if hp_key in self._energy_sensor_configs:
                 current_thermal_id = self._energy_sensor_configs[hp_key].get("thermal_sensor_entity_id")
             if not current_thermal_id:
-                name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
                 current_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
             stored_thermal_id = get_stored_thermal_sensor_id(persist_data, hp_idx)
             if detect_sensor_change(stored_thermal_id, current_thermal_id):
@@ -617,7 +618,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Falls kein Custom-Sensor, verwende Default-Sensor (lowercase wie entity_id)
                 if not current_sensor_id:
-                    name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+                    name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
                     current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
                     _LOGGER.info(f"SENSOR-CHANGE-DETECTION: {hp_key} - Default-Sensor: {current_sensor_id}")
                 
@@ -647,7 +648,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 if hp_key in self._energy_sensor_configs:
                     current_thermal_id = self._energy_sensor_configs[hp_key].get("thermal_sensor_entity_id")
                 if not current_thermal_id:
-                    name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+                    name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
                     current_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
                 stored_thermal_id = get_stored_thermal_sensor_id(persist_data, hp_idx)
                 if detect_sensor_change(stored_thermal_id, current_thermal_id):
@@ -683,7 +684,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         hp_key = f"hp{hp_idx}"
         
         # Prüfe ob es ein Default-Sensor ist (interner Modbus-Sensor)
-        name_prefix = self.entry.data.get("name", "eu08l")
+        name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
         default_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
         
         is_default_sensor = (new_sensor_id == default_sensor_id)
@@ -752,7 +753,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         """Behandle Thermik-Sensor-Wechsel (analog zu _handle_sensor_change)."""
         _LOGGER.info("SENSOR-CHANGE: === THERMIK-SENSOR-WECHSEL HP%s === Neuer Sensor: %s", hp_idx, new_sensor_id)
         hp_key = f"hp{hp_idx}"
-        name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+        name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
         default_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
         is_default = new_sensor_id == default_thermal_id
         if is_default:
@@ -1348,8 +1349,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         address = base_address + sensor_info["relative_address"]
 
                         # Create potential entity IDs (both legacy and new format)
-                        name_prefix = (
-                            self.entry.data.get("name", "").lower().replace(" ", "")
+                        name_prefix = normalize_name_prefix(
+                            self.entry.data.get("name", "")
                         )
                         potential_entity_ids = [
                             f"sensor.{name_prefix}_{prefix}{idx}_{sensor_id}",
@@ -1417,8 +1418,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             data = event.data
             entity_id = data.get("entity_id")
-            if entity_id and entity_id.startswith(
-                f"sensor.{self.entry.data.get('name', '').lower().replace(' ', '')}_"
+            _name_prefix = normalize_name_prefix(self.entry.data.get("name", ""))
+            if entity_id and _name_prefix and entity_id.startswith(
+                f"sensor.{_name_prefix}_"
             ):
                 # This is one of our entities
                 _LOGGER.debug("Entity registry change for %s: %s", entity_id, data)
@@ -2223,7 +2225,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             sensor_entity_id = sensor_config.get("sensor_entity_id")
         if not sensor_entity_id:
             # Entity-IDs der Sensoren werden in sensor.py mit kleingeschriebenem name_prefix erzeugt
-            name_prefix = (self.entry.data.get("name", "eu08l") or "").lower().replace(" ", "") or "eu08l"
+            name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
             sensor_entity_id = default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
             _LOGGER.info(
                 "[Energy] HP%s %s: Verwende Modbus-Sensor %s",
@@ -2323,8 +2325,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.debug(f"DEBUG-016: Type of energy_offsets: {type(energy_offsets)}")
             
             # Get name prefix from entry data
-            name_prefix = self.entry.data.get("name", "eu08l")
-            
+            name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
+
             # Increment both total and daily counters
             await increment_energy_consumption_counter(
                 hass=self.hass,

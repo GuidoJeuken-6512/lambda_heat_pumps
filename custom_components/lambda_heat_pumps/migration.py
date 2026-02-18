@@ -420,6 +420,12 @@ def _entity_id_has_duplicate_suffix(entity_id: str) -> bool:
     return bool(_ENTITY_ID_DUPLICATE_SUFFIX_RE.search(entity_id))
 
 
+def _extract_duplicate_suffix(entity_id: str) -> str | None:
+    """Gibt das Duplikat-Suffix (z. B. '_2', '_3') zurück oder None."""
+    match = _ENTITY_ID_DUPLICATE_SUFFIX_RE.search(entity_id)
+    return match.group(0) if match else None
+
+
 def _is_our_platform(registry_entry: Any) -> bool:
     """Prüft, ob die Entity zu unserer Integration gehört (Platform-Domain)."""
     platform = getattr(registry_entry, "platform", None)
@@ -438,50 +444,47 @@ async def async_remove_duplicate_entity_suffixes(
     """
     Entfernt Entities dieser Integration, deren entity_id mit _2, _3, … endet.
 
-    Zwei Durchläufe:
-    1) Entities dieses Config-Eintrags (entry_id) mit Suffix _2, _3, …
-    2) Verwaiste Duplikate: gleiches Suffix-Muster, config_entry_id existiert nicht mehr.
+    Ablauf: Eine Sammelphase (Kandidaten ermitteln), danach eine Löschphase.
+    - Kandidaten: Entities dieses Config-Eintrags (entry_id) mit Suffix ODER
+      verwaiste Duplikate (config_entry_id existiert nicht mehr, gleiche Platform).
 
     Benutzer-Anpassungen (z. B. umbenannte Entities ohne Suffix) werden nicht angetastet.
+
+    Hinweis: entity_registry.async_remove() und hass.states.async_remove() sind in
+    Home Assistant keine Coroutinen und werden bewusst nicht mit await aufgerufen.
 
     Args:
         hass: Home Assistant Instanz
         entry_id: Config-Entry-ID (entry.entry_id)
 
     Returns:
-        Anzahl der entfernten Entities.
+        Anzahl der entfernten Entities. Spätere Erweiterung auf Dict {removed, failed, skipped} denkbar.
     """
     removed = 0
+    failed = 0
     try:
         _LOGGER.info(
             "Cleanup: Prüfe auf Duplikat-Entities (_2, _3, …) für Entry %s …",
             entry_id,
         )
         entity_registry = async_get_entity_registry(hass)
+        current_entry_ids = {
+            e.entry_id for e in hass.config_entries.async_entries(DOMAIN)
+        }
 
-        # 1) Entities dieses Config-Eintrags mit Suffix _2, _3, …
+        # ----- Sammelphase: alle Kandidaten (entity_id, reason) sammeln -----
+        candidates: list[tuple[str, str]] = []  # (entity_id, reason)
+
+        # 1a) Entities dieses Config-Eintrags mit Suffix _2, _3, …
         registry_entries = entity_registry.entities.get_entries_for_config_entry_id(
             entry_id
         )
         for registry_entry in registry_entries:
             eid = registry_entry.entity_id
             if _entity_id_has_duplicate_suffix(eid):
-                try:
-                    entity_registry.async_remove(eid)
-                    hass.states.async_remove(eid)
-                    removed += 1
-                    _LOGGER.info(
-                        "Cleanup: Duplikat-Entity gelöscht (Suffix _2/_3/…): %s", eid
-                    )
-                except Exception as e:
-                    _LOGGER.warning(
-                        "Cleanup: Entity %s konnte nicht entfernt werden: %s", eid, e
-                    )
+                candidates.append((eid, "aktueller_eintrag"))
 
-        # 2) Verwaiste Duplikate (config_entry_id existiert nicht mehr)
-        current_entry_ids = {
-            e.entry_id for e in hass.config_entries.async_entries(DOMAIN)
-        }
+        # 1b) Verwaiste Duplikate (config_entry_id nicht mehr in current_entry_ids)
         if hasattr(entity_registry.entities, "values"):
             all_entries = list(entity_registry.entities.values())
         else:
@@ -494,27 +497,41 @@ async def async_remove_duplicate_entity_suffixes(
             if not _is_our_platform(registry_entry):
                 continue
             if config_eid is not None and config_eid in current_entry_ids:
-                continue  # gehört zu aktuellem Eintrag, ggf. schon in 1) erledigt
+                continue
+            # Verwaist: nur aufnehmen wenn noch nicht in candidates (z. B. aus 1a)
+            if eid not in [c[0] for c in candidates]:
+                candidates.append((eid, "verwaist"))
+
+        # ----- Löschphase: Kandidaten entfernen (keine Mutation während Iteration) -----
+        for eid, reason in candidates:
             try:
+                # Keine Coroutinen – bewusst ohne await (HA Entity Registry / State Machine)
                 entity_registry.async_remove(eid)
                 hass.states.async_remove(eid)
                 removed += 1
                 _LOGGER.info(
-                    "Cleanup: Verwaiste Duplikat-Entity gelöscht (Suffix _2/_3/…): %s",
+                    "Cleanup: Duplikat entfernt: %s (reason: %s)",
                     eid,
+                    reason,
                 )
             except Exception as e:
+                failed += 1
                 _LOGGER.warning(
-                    "Cleanup: Entity %s konnte nicht entfernt werden: %s", eid, e
+                    "Cleanup: Entity %s konnte nicht entfernt werden (reason: %s): %s",
+                    eid,
+                    reason,
+                    e,
                 )
 
-        if removed:
+        # Zusammenfassung
+        if removed or failed:
             _LOGGER.info(
-                "Cleanup: %d Duplikat-Entity/Entities für Entry %s gelöscht.",
+                "Cleanup abgeschlossen: %d Duplikat(e) entfernt, %d Fehler für Entry %s",
                 removed,
+                failed,
                 entry_id,
             )
-        else:
+        elif not candidates:
             _LOGGER.info(
                 "Cleanup: Keine Duplikat-Entities (_2, _3, …) für Entry %s gefunden.",
                 entry_id,
@@ -556,13 +573,13 @@ async def migrate_to_legacy_names(
         registry_entries = entity_registry.entities.get_entries_for_config_entry_id(entry_id)
 
         # Importiere aktuelle Namenslogik
-        from .utils import generate_sensor_names
+        from .utils import generate_sensor_names, normalize_name_prefix
         from .const import CLIMATE_TEMPLATES, HP_SENSOR_TEMPLATES, BOIL_SENSOR_TEMPLATES, HC_SENSOR_TEMPLATES, BUFF_SENSOR_TEMPLATES, SOL_SENSOR_TEMPLATES, SENSOR_TYPES
 
         # Hole aktuelle Namensschemata für alle Climate- und Sensor-Entitäten
         entry_data = config_entry.data
         use_legacy_modbus_names = entry_data.get("use_legacy_modbus_names", True)
-        name_prefix = entry_data.get("name", "").lower().replace(" ", "")
+        name_prefix = normalize_name_prefix(entry_data.get("name", ""))
         num_boil = entry_data.get("num_boil", 1)
         num_hc = entry_data.get("num_hc", 1)
         num_hps = entry_data.get("num_hps", 1)

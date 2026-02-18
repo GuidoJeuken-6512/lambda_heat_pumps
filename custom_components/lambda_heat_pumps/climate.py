@@ -30,6 +30,7 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     get_entity_icon,
+    normalize_name_prefix,
 )
 from .modbus_utils import async_write_registers
 
@@ -61,7 +62,7 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
 
         # Hole den Legacy-Modbus-Namen-Switch aus der Config
         use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-        name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+        name_prefix = normalize_name_prefix(entry.data.get("name", ""))
 
         # Verwende die Werte aus der CLIMATE_TEMPLATES Konfiguration
         device_type = self._device_type  # "boil" oder "hc"

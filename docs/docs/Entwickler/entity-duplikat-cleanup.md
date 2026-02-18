@@ -41,11 +41,10 @@ Damit werden auch beim Update entstandene Duplikate beim nächsten Reload oder N
 
 ### Ablauf
 
-1. Entity Registry laden.
-2. Alle Einträge für die aktuelle `config_entry_id` holen (`get_entries_for_config_entry_id`).
-3. Für jede Entity prüfen, ob die `entity_id` mit dem Muster `_\d+` endet (z. B. `_2`, `_3`, `_10`).
-4. Diese Duplikat-Entities mit `entity_registry.async_remove(entity_id)` entfernen.
-5. Es werden **nur** Entities dieses Config-Eintrags entfernt; andere Einträge bleiben unberührt.
+1. **Sammelphase:** Entity Registry laden und alle Kandidaten ermitteln (ohne die Registry während der Iteration zu verändern):
+   - Einträge für die aktuelle `config_entry_id` (`get_entries_for_config_entry_id(entry_id)`), deren `entity_id` mit `_\d+` endet (z. B. `_2`, `_3`) → Grund „aktueller Eintrag“.
+   - Verwaiste Duplikate: alle Entities unserer Platform mit Duplikat-Suffix, deren `config_entry_id` nicht mehr zu einer bestehenden Config-Entry gehört → Grund „verwaist“.
+2. **Löschphase:** Für jeden gesammelten Kandidaten nacheinander `entity_registry.async_remove(entity_id)` und `hass.states.async_remove(entity_id)` aufrufen. Es werden nur die in der Sammelphase ermittelten Duplikat-Entities entfernt; die „Haupt“-Entity (ohne Suffix) und andere Einträge bleiben unberührt.
 
 ### Code-Referenz
 
@@ -73,6 +72,26 @@ await async_remove_duplicate_entity_suffixes(hass, entry.entry_id)
 
 ## Logging
 
-- Bei jeder entfernten Entity: `Cleanup: Duplikat-Entity entfernt (Suffix _2/_3/…): <entity_id>`
-- Am Ende, falls mindestens eine entfernt wurde: `Cleanup: N Duplikat-Entity/Entities für Entry <entry_id> entfernt.`
-- Fehler beim Entfernen einer einzelnen Entity werden als Warning geloggt; ein Fehler der gesamten Cleanup-Funktion führt nicht zum Abbruch des Setups.
+- Bei jeder entfernten Entity: `Cleanup: Duplikat entfernt: <entity_id> (reason: aktueller_eintrag|verwaist)`.
+- Am Ende: `Cleanup abgeschlossen: N Duplikat(e) entfernt, M Fehler für Entry <entry_id>` (falls mindestens ein Entfernen oder ein Fehler); sonst bei keinem Fund: `Cleanup: Keine Duplikat-Entities (_2, _3, …) für Entry <entry_id> gefunden.`
+- Fehler beim Entfernen einer einzelnen Entity werden als Warning geloggt (`Entity … konnte nicht entfernt werden (reason: …)`); ein Fehler der gesamten Cleanup-Funktion führt nicht zum Abbruch des Setups.
+
+## Prüfliste: Log und Entity Registry
+
+### Im Log prüfen (nach Reload/Neustart der Integration)
+
+1. **Start des Cleanups:** Es erscheint `Cleanup: Prüfe auf Duplikat-Entities (_2, _3, …) für Entry <entry_id> …`.
+2. **Pro entfernte Entity:** `Cleanup: Duplikat entfernt: <entity_id> (reason: aktueller_eintrag|verwaist)`.
+3. **Am Ende:** Entweder `Cleanup abgeschlossen: N Duplikat(e) entfernt, M Fehler …` oder `Cleanup: Keine Duplikat-Entities … gefunden.`
+4. Bei Fehlern: `Cleanup: Entity … konnte nicht entfernt werden (reason: …)`.
+
+### Entity Registry prüfen
+
+- **Einstellungen → Geräte & Dienste → Entitäten** (oder Developer Tools → States): Nach `_2`, `_3` usw. in der Entity-ID suchen (z. B. Filter „lambda“ oder „eu08l“).
+- Erwartung: Nach einem erfolgreichen Cleanup und Reload sollten **keine** Entities mehr existieren, deren Entity-ID mit `_2`, `_3`, … endet (z. B. `sensor.eu08l_hp1_compressor_start_cycling_2h_3`).
+
+### Wenn Duplikate trotz Log-Meldung „Duplikat entfernt“ noch sichtbar sind
+
+- **Reload der Integration** auslösen (Einstellungen → Integrationen → Lambda Heat Pumps → Drei Punkte → Neu laden); die Registry wird beim Setup aktualisiert, die UI kann mit Verzögerung aktualisieren.
+- **Browser-Cache / UI:** Seite hart aktualisieren (Strg+F5) oder App neu öffnen.
+- **Mehrere Config-Einträge:** Der Cleanup läuft pro Config-Entry. Bei mehreren Lambda-Integrationen (z. B. zwei Wärmepumpen mit zwei Einträgen) wird für jeden Eintrag einmal bereinigt; verwaiste Duplikate ohne gültigen `config_entry_id` werden im zweiten Durchlauf („verwaist“) erfasst.

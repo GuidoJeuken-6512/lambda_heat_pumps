@@ -646,6 +646,19 @@ def _log_missing_translation(sensor_id: str) -> None:
     )
 
 
+def normalize_name_prefix(raw: str) -> str:
+    """
+    Einheitlicher name_prefix für entity_id/unique_id: lowercase, Leerzeichen entfernt.
+
+    WICHTIG: Diese Funktion verwendet die IDENTISCHE Logik wie bisher (.lower().replace(" ", "")).
+    Sie ändert KEINE bestehenden unique_id/entity_id, sondern stellt nur sicher, dass alle
+    Stellen dieselbe Normalisierung verwenden, um zukünftige Duplikate zu vermeiden.
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    return raw.lower().replace(" ", "")
+
+
 def generate_sensor_names(
     device_prefix: str,
     sensor_name: str,
