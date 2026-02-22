@@ -60,7 +60,8 @@ energy_consumption_sensors:
 ```
 
 ### Energieverbrauchs-Offsets
-> **⚠️ WARNUNG:** Diese Funktion ist zur Zeit fehlerhaft implementiert und sollte **nicht genutzt werden**! Bitte warten Sie auf eine Korrektur in einer zukünftigen Version, bevor Sie die Offsets verwenden.
+
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
 
 Offsets für historische Daten sind für alle Total-Sensoren möglich (siehe [Historische Daten übernehmen](historische-daten.md)):
 

@@ -183,8 +183,9 @@ severity:
 
 **Lösung**:
 - Prüfen Sie die Quellsensoren (thermal_energy und energy) auf realistische Werte
-- Prüfen Sie, ob die Offsets korrekt konfiguriert sind
 - Prüfen Sie die Einheiten (müssen beide in kWh sein)
+
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!** Offsets in der `lambda_wp_config.yaml` sollten derzeit nicht genutzt werden.
 
 ### COP-Sensor aktualisiert sich nicht
 
@@ -207,6 +208,6 @@ Für weitere Informationen zu den Energieverbrauchssensoren siehe [Energieverbra
 ## Nächste Schritte
 
 - [Energieverbrauchsberechnung](Energieverbrauchsberechnung.md) - Detaillierte Informationen zu den Quellsensoren
-- [Historische Daten übernehmen](historische-daten.md) - Offsets für historische Daten
+- [Historische Daten übernehmen](historische-daten.md) - Offsets für historische Daten (⚠️ derzeit fehlerhaft, nicht nutzen)
 - [Dashboard-Erstellung](features.md) - Weitere Dashboard-Beispiele
 
