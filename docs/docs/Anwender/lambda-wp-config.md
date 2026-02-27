@@ -65,6 +65,8 @@ disabled_registers:
   - 2005
 ```
 
+Die zugehörigen Entitäten werden von der Integration nicht mehr bereitgestellt und erscheinen in Home Assistant als „nicht verfügbar“. Um sie zu entfernen, siehe [Entitäten löschen](entitaeten_loeschen.md).
+
 ### 2. Sensor-Name-Überschreibungen
 
 Überschreibt Standard-Sensornamen für bessere Lesbarkeit oder Lokalisierung.
