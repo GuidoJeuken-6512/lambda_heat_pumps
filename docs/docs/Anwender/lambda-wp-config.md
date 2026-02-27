@@ -47,6 +47,8 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 
 Deaktiviert spezifische Modbus-Register, die nicht benötigt werden oder Probleme verursachen.
 
+Wie Sie die Register-Nummer eines Sensors herausfinden (Attribut „register“), beschreibt die Anleitung [Register eines Sensors herausfinden](attribute-sensoren-de.md).
+
 ```yaml
 disabled_registers:
   - 2004  # boil1_actual_circulation_temp
@@ -97,9 +99,8 @@ sensors_names_override:
 ```
 
 ### 3. Cycling-Zähler-Offsets
-> ⚠️ **Warnung:**  
-> Die Funktion *Offsets* ist zur Zeit fehlerhaft und sollte **nicht verwendet werden**!  
-> Bitte auf ein zukünftiges Update warten, bevor diese Option genutzt wird!
+
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
 
 Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
@@ -173,10 +174,9 @@ Weitere Informationen: [Energieverbrauchsberechnung](Energieverbrauchsberechnung
 
 ### 5. Energieverbrauchs-Offsets
 
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
+
 Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
-> ⚠️ **Warnung:**  
-> Die Funktion *Offsets* ist zur Zeit fehlerhaft und sollte **nicht verwendet werden**!  
-> Bitte auf ein zukünftiges Update warten, bevor diese Option genutzt wird!
 
 **⚠️ WICHTIG: Alle Werte müssen in kWh angegeben werden!**
 

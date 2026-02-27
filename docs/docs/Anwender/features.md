@@ -44,7 +44,7 @@ Umfassende Zähler für alle Betriebsmodi:
 - **Automatischer Reset**: Tägliche Sensoren werden automatisch um Mitternacht zurückgesetzt
 - **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel oder Zählerrücksetzungen 
 
-> ⚠️ **Warnung:** Die Offset-Funktion ist aktuell fehlerhaft implementiert und sollte **nicht genutzt werden**! Bitte warten Sie auf ein zukünftiges Release, bevor Sie Offsets verwenden.
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
 
 
 ## ⚡ Energieverbrauchssensoren
