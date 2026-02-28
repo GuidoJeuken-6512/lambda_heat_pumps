@@ -628,7 +628,7 @@ async def async_setup_entry(
                 sensor_id = f"{mode}_energy_{period}"
                 sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
                 if not sensor_template:
-                    _LOGGER.warning(f"Template not found for {sensor_id}")
+                    _LOGGER.warning("Template not found for %s", sensor_id)
                     continue
                 
                 device_prefix = f"hp{hp_idx}"
@@ -657,7 +657,7 @@ async def async_setup_entry(
                     period,
                 )
                 sensors.append(sensor)
-                _LOGGER.debug(f"Created energy consumption sensor: {names['entity_id']}")
+                _LOGGER.debug("Created energy consumption sensor: %s", names['entity_id'])
 
     for hp_idx in range(1, num_hps + 1):
         for mode in ENERGY_CONSUMPTION_MODES:
@@ -700,7 +700,7 @@ async def async_setup_entry(
                     period,
                 )
                 sensors.append(sensor)
-                _LOGGER.debug(f"Created thermal energy consumption sensor: {names['entity_id']}")
+                _LOGGER.debug("Created thermal energy consumption sensor: %s", names['entity_id'])
 
     # COP sensors (per HP, per mode, per period)
     # COP_MODES: heating, hot_water, cooling (ohne defrost)
@@ -771,7 +771,7 @@ async def async_setup_entry(
                     electrical_entity_id,
                 )
                 sensors.append(cop_sensor)
-                _LOGGER.debug(f"Created COP sensor: {cop_names['entity_id']} (thermal: {thermal_entity_id}, electrical: {electrical_entity_id})")
+                _LOGGER.debug("Created COP sensor: %s (thermal: %s, electrical: %s)", cop_names['entity_id'], thermal_entity_id, electrical_entity_id)
 
     _LOGGER.info(
         "Alle Sensoren (inkl. Cycling, Energy Consumption und COP) erzeugt: %d (davon %d General Sensors bereits registriert)",
@@ -792,7 +792,7 @@ async def async_setup_entry(
         coordinator_data["energy_entities"] = {}
     coordinator_data["energy_entities"].update(energy_entities)
     
-    _LOGGER.info(f"Registered {len(energy_entities)} energy consumption entities")
+    _LOGGER.info("Registered %s energy consumption entities", len(energy_entities))
 
     # Load template sensors from template_sensor.py (parallel, non-blocking)
     from .template_sensor import async_setup_entry as setup_template_sensors
@@ -804,12 +804,14 @@ async def async_setup_entry(
             _LOGGER.error("Error setting up template sensors: %s", e)
 
     # Starte Template Sensor Setup im Hintergrund (non-blocking)
-    hass.async_create_task(setup_templates())
-    _LOGGER.debug("Started template sensor setup in background")
+    # FIX K-01: Task-Referenz speichern, damit er beim Unload abgebrochen werden kann
+    template_setup_task = hass.async_create_task(setup_templates())
+    coordinator_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator_data["template_setup_task"] = template_setup_task
+    _LOGGER.debug("Started template sensor setup in background (task stored for cleanup)")
 
     # Markiere Coordinator-Initialisierung als abgeschlossen
     # Dies ermöglicht die Flankenerkennung nach der Entity-Registrierung
-    coordinator_data = hass.data[DOMAIN][entry.entry_id]
     if coordinator_data and "coordinator" in coordinator_data:
         coordinator = coordinator_data["coordinator"]
         coordinator.mark_initialization_complete()
@@ -838,7 +840,6 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -893,7 +894,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         self._cycling_value = int(value)  # Stelle sicher, dass es ein Integer ist
         # Stelle sicher, dass der State korrekt aktualisiert wird
         self.async_write_ha_state()
-        _LOGGER.debug(f"Cycling sensor {self.entity_id} value set to {value}")
+        _LOGGER.debug("Cycling sensor %s value set to %s", self.entity_id, value)
 
     def update_yesterday_value(self):
         """Update yesterday value with current total value (called at midnight)."""
@@ -919,7 +920,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             f"Last 4h value updated for {self.entity_id}: {old_4h} -> {self._last_4h_value}"
         )
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
@@ -959,7 +960,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         # Schreibe den State sofort ins UI
         self.async_write_ha_state()
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Clean up when entity is removed."""
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
@@ -1038,14 +1039,14 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             cycling_offsets = config.get("cycling_offsets", {})
             
             if not cycling_offsets:
-                _LOGGER.debug(f"No cycling offsets found for {self.entity_id}")
+                _LOGGER.debug("No cycling offsets found for %s", self.entity_id)
                 return
             
             # Bestimme den Device-Key (z.B. "hp1")
             device_key = f"hp{self._hp_index}"
             
             if device_key not in cycling_offsets:
-                _LOGGER.debug(f"No cycling offsets found for device {device_key}")
+                _LOGGER.debug("No cycling offsets found for device %s", device_key)
                 return
             
             # Hole den aktuellen Offset für diesen Sensor
@@ -1079,10 +1080,10 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
                 # Aktualisiere den State sofort
                 self.async_write_ha_state()
             else:
-                _LOGGER.debug(f"No offset change for {self.entity_id} (offset: {current_offset}, already applied: {applied_offset})")
+                _LOGGER.debug("No offset change for %s (offset: %s, already applied: %s)", self.entity_id, current_offset, applied_offset)
                 
         except Exception as e:
-            _LOGGER.error(f"Error applying cycling offset for {self.entity_id}: {e}")
+            _LOGGER.error("Error applying cycling offset for %s: %s", self.entity_id, e)
 
     async def _handle_reset(self, entry_id: str):
         """Handle reset signal for all periods (einheitlich, wie Energy)."""
@@ -1132,10 +1133,6 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
     @property
     def name(self):
         return self._name
-
-    @property
-    def unique_id(self):
-        return self._unique_id
 
     @property
     def native_unit_of_measurement(self):
@@ -1208,7 +1205,6 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -1270,7 +1266,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                     coord.set_energy_persist_dirty()
         except Exception:
             pass
-        _LOGGER.debug(f"Energy sensor {self.entity_id} value updated from {old_value:.2f} to {self._energy_value:.2f}")
+        _LOGGER.debug("Energy sensor %s value updated from %.2f to %.2f", self.entity_id, old_value, self._energy_value)
 
     def update_yesterday_value(self):
         """Update yesterday value with current total value (called at midnight)."""
@@ -1281,7 +1277,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             self.entity_id, old_yesterday, self._yesterday_value,
         )
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
@@ -1482,7 +1478,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         except (ValueError, TypeError) as e:
             _LOGGER.warning("Apply persisted energy state for %s: %s", self.entity_id, e)
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Clean up when entity is removed."""
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
@@ -1579,9 +1575,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                 else:
                     # Total und andere Perioden: state ist direkt _energy_value
                     self._energy_value = float(last_state.state)
-                    _LOGGER.debug(f"Restored energy value for {self.entity_id}: {self._energy_value:.2f} kWh")
+                    _LOGGER.debug("Restored energy value for %s: %.2f kWh", self.entity_id, self._energy_value)
             except ValueError as e:
-                _LOGGER.error(f"Failed to restore state for {self.entity_id}: {e}")
+                _LOGGER.error("Failed to restore state for %s: %s", self.entity_id, e)
                 self._energy_value = 0.0
         else:
             self._energy_value = 0.0
@@ -1600,14 +1596,14 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             energy_offsets = config.get("energy_consumption_offsets", {})
             
             if not energy_offsets:
-                _LOGGER.debug(f"No energy consumption offsets found for {self.entity_id}")
+                _LOGGER.debug("No energy consumption offsets found for %s", self.entity_id)
                 return
             
             # Bestimme den Device-Key (z.B. "hp1")
             device_key = f"hp{self._hp_index}"
             
             if device_key not in energy_offsets:
-                _LOGGER.debug(f"No energy consumption offsets found for device {device_key}")
+                _LOGGER.debug("No energy consumption offsets found for device %s", device_key)
                 return
             
             # Hole den aktuellen Offset für diesen Sensor
@@ -1639,9 +1635,9 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                     self.entity_id, offset_difference, self._energy_value,
                 )
             else:
-                _LOGGER.debug(f"No offset change for {self.entity_id}")
+                _LOGGER.debug("No offset change for %s", self.entity_id)
         except Exception as e:
-            _LOGGER.error(f"Error applying energy offset for {self.entity_id}: {e}")
+            _LOGGER.error("Error applying energy offset for %s: %s", self.entity_id, e)
 
     async def _handle_reset(self, entry_id: str):
         """Handle reset signal. Periodenbezogene Resets (daily/hourly/monthly/yearly) über utils."""
@@ -1755,7 +1751,6 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -1999,7 +1994,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
             )
             self.async_write_ha_state()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
@@ -2278,7 +2273,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
                     self._reset_occurred,
                 )
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Clean up when entity is removed."""
         if self._unsub_state_changes:
             self._unsub_state_changes()
@@ -2295,11 +2290,6 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
     def name(self) -> str:
         """Return the name of the sensor."""
         return self._name
-
-    @property
-    def unique_id(self) -> str:
-        """Return the unique ID of the sensor."""
-        return self._unique_id
 
     @property
     def native_unit_of_measurement(self) -> str | None:
@@ -2378,7 +2368,6 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -2412,7 +2401,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         )
         self.async_write_ha_state()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
@@ -2464,10 +2453,6 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
     @property
     def name(self):
         return self._name
-
-    @property
-    def unique_id(self):
-        return self._unique_id
 
     @property
     def native_unit_of_measurement(self):
@@ -2624,7 +2609,7 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
         """Only poll if the entity is enabled and added to HA."""
         return self._entity_enabled
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Setup polling when entity is enabled and added to HA."""
         await super().async_added_to_hass()
         self._entity_enabled = True
@@ -2642,7 +2627,7 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
             self._address,
         )
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Called when entity is removed/disabled - stop polling."""
         self._entity_enabled = False
 

@@ -482,7 +482,7 @@ class TestEnergyConsumptionConstants:
 
     def test_energy_consumption_periods(self):
         """Test energy consumption periods are defined."""
-        expected_periods = ["daily", "monthly", "total", "yearly"]
+        expected_periods = ["daily", "hourly", "monthly", "total", "yearly"]
         assert sorted(ENERGY_CONSUMPTION_PERIODS) == expected_periods
 
     def test_energy_consumption_sensor_templates(self):
@@ -563,6 +563,12 @@ class TestEnergyConsumptionIntegration:
         # Test sensor name generation for all modes and periods
         for mode in ENERGY_CONSUMPTION_MODES:
             for period in ENERGY_CONSUMPTION_PERIODS:
+                # Test template retrieval — some mode/period combinations have no template
+                template = get_energy_consumption_sensor_template(mode, period)
+                if template is None:
+                    # e.g. stby/hourly, cooling/hourly — skip combinations without a template
+                    continue
+
                 names = generate_energy_sensor_names(
                     device_prefix="hp1",
                     mode=mode,
@@ -570,14 +576,11 @@ class TestEnergyConsumptionIntegration:
                     name_prefix="eu08l",
                     use_legacy_modbus_names=True,
                 )
-                
+
                 assert names["name"] is not None
                 assert names["entity_id"].startswith("sensor.eu08l_hp1_")
                 assert names["unique_id"].startswith("eu08l_hp1_")
-                
-                # Test template retrieval
-                template = get_energy_consumption_sensor_template(mode, period)
-                assert template is not None
+
                 # Template name should match the mode and period
                 # Handle special case for STBY mode
                 mode_display = mode.replace('_', ' ').upper() if mode == 'stby' else mode.replace('_', ' ').title()

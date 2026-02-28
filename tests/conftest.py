@@ -17,6 +17,15 @@ class DummyLoop:
     def call_soon_threadsafe(self, callback):
         callback()
 
+    def call_at(self, when, callback, *args):
+        """Stub for loop.call_at — required by async_track_time_interval."""
+        from unittest.mock import Mock
+        return Mock()
+
+    def time(self):
+        """Stub for loop.time — required by async_track_time_interval."""
+        return 0.0
+
 
 class FrameHelperContext(SimpleNamespace):
     """Minimal object to satisfy frame helper expectations."""

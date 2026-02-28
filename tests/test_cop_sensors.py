@@ -68,7 +68,7 @@ class TestLambdaCOPSensor:
         assert cop_sensor._sensor_id == "heating_cop_daily"
         assert cop_sensor._name == "Heating COP Daily"
         assert cop_sensor.entity_id == "sensor.eu08l_hp1_heating_cop_daily"
-        assert cop_sensor._unique_id == "eu08l_hp1_heating_cop_daily"
+        assert cop_sensor._attr_unique_id == "eu08l_hp1_heating_cop_daily"
         assert cop_sensor._unit is None
         assert cop_sensor._hp_index == 1
         assert cop_sensor._mode == "heating"
@@ -396,9 +396,12 @@ class TestLambdaCOPSensor:
                 mock_track.assert_called_once()
                 call_args = mock_track.call_args
                 assert call_args[0][0] == mock_hass
-                assert len(call_args[0][1]) == 2  # Two source entities
-                assert "sensor.eu08l_hp1_heating_thermal_energy_daily" in call_args[0][1]
-                assert "sensor.eu08l_hp1_heating_energy_daily" in call_args[0][1]
+                # For daily sensors, 4 entities are tracked: the period entities plus
+                # the corresponding total entities (used for cyclic COP baseline)
+                tracked = call_args[0][1]
+                assert len(tracked) == 4
+                assert "sensor.eu08l_hp1_heating_thermal_energy_daily" in tracked
+                assert "sensor.eu08l_hp1_heating_energy_daily" in tracked
                 
                 # Verify _update_cop was called (since cop_value is None after restore_state)
                 # This happens in async_added_to_hass if _cop_value is None
@@ -730,7 +733,7 @@ class TestLambdaCOPSensor:
         
         # Verify entity ID format
         assert sensor.entity_id == "sensor.eu08l_hp1_heating_cop_daily"
-        assert sensor._unique_id == "eu08l_hp1_heating_cop_daily"
+        assert sensor._attr_unique_id == "eu08l_hp1_heating_cop_daily"
         assert sensor._thermal_energy_entity_id == "sensor.eu08l_hp1_heating_thermal_energy_daily"
         assert sensor._electrical_energy_entity_id == "sensor.eu08l_hp1_heating_energy_daily"
 

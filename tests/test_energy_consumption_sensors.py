@@ -63,11 +63,8 @@ class TestLambdaEnergyConsumptionSensor:
                 assert sensor.entity_id == f"sensor.eu08l_hp1_{sensor_id}"
                 assert sensor._sensor_id == sensor_id
                 
-                # Verify state_class based on period
-                if period == "total":
-                    assert sensor._attr_state_class == SensorStateClass.TOTAL_INCREASING
-                else:
-                    assert sensor._attr_state_class == SensorStateClass.TOTAL
+                # Thermal templates use state_class='total' for all periods
+                assert sensor._attr_state_class == SensorStateClass.TOTAL
                     
         # There should be as many sensors as there are thermal_calculated templates
         expected_count = len([t for t in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values() if t.get("data_type") == "thermal_calculated"])
@@ -123,7 +120,7 @@ class TestLambdaEnergyConsumptionSensor:
         assert energy_sensor._sensor_id == "heating_energy_total"
         assert energy_sensor._name == "Heating Energy Total"
         assert energy_sensor.entity_id == "sensor.eu08l_hp1_heating_energy_total"
-        assert energy_sensor._unique_id == "eu08l_hp1_heating_energy_total"
+        assert energy_sensor._attr_unique_id == "eu08l_hp1_heating_energy_total"
         assert energy_sensor._unit == "kWh"
         assert energy_sensor._hp_index == 1
         assert energy_sensor._mode == "heating"
@@ -520,14 +517,17 @@ class TestLambdaEnergyConsumptionSensor:
         assert len(result["identifiers"]) > 0
 
     def test_sensor_creation_for_all_modes_and_periods(self, mock_hass, mock_entry):
-        """Test sensor creation for all modes and periods."""
+        """Test sensor creation for all modes and periods (only existing templates)."""
         sensors = []
-        
+
         for mode in ENERGY_CONSUMPTION_MODES:
             for period in ENERGY_CONSUMPTION_PERIODS:
                 sensor_id = f"{mode}_energy_{period}"
+                # Not every mode/period combination has a template (e.g., cooling/hourly)
+                if sensor_id not in ENERGY_CONSUMPTION_SENSOR_TEMPLATES:
+                    continue
                 template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES[sensor_id]
-                
+
                 sensor = LambdaEnergyConsumptionSensor(
                     hass=mock_hass,
                     entry=mock_entry,
@@ -543,17 +543,21 @@ class TestLambdaEnergyConsumptionSensor:
                     mode=mode,
                     period=period,
                 )
-                
+
                 sensors.append(sensor)
-                
+
                 # Verify sensor properties
                 assert sensor._mode == mode
                 assert sensor._period == period
                 assert sensor._unit == "kWh"
                 assert sensor._device_class == SensorDeviceClass.ENERGY
-        
-        # Verify all sensors were created
-        assert len(sensors) == len(ENERGY_CONSUMPTION_MODES) * len(ENERGY_CONSUMPTION_PERIODS)
+
+        # Verify the count matches the number of existing templates (one per mode/period combo)
+        expected_count = sum(
+            1 for mode in ENERGY_CONSUMPTION_MODES for period in ENERGY_CONSUMPTION_PERIODS
+            if f"{mode}_energy_{period}" in ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        )
+        assert len(sensors) == expected_count
 
     def test_sensor_state_class_mapping(self, mock_hass, mock_entry):
         """Test sensor state class mapping."""

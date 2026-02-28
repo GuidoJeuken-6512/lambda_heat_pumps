@@ -1,12 +1,14 @@
 """Structured Migration System for Lambda Heat Pumps integration."""
 
 from __future__ import annotations
+import functools
 import logging
 import os
 import re
 import shutil
 import yaml
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from homeassistant.core import HomeAssistant
@@ -62,7 +64,7 @@ async def create_registry_backup(
         # Backup-Verzeichnis erstellen
         backup_dir = os.path.join(config_dir, MIGRATION_BACKUP_DIR)
         await hass.async_add_executor_job(
-            lambda: os.makedirs(backup_dir, exist_ok=True)
+            functools.partial(os.makedirs, backup_dir, exist_ok=True)
         )
         
         # Registry-Dateien definieren
@@ -80,10 +82,8 @@ async def create_registry_backup(
                 f"{registry_file}.{migration_name}_{timestamp}"
             )
             
-            if await hass.async_add_executor_job(lambda: os.path.exists(source_path)):
-                await hass.async_add_executor_job(
-                    lambda: shutil.copy2(source_path, dest_path)
-                )
+            if await hass.async_add_executor_job(os.path.exists, source_path):
+                await hass.async_add_executor_job(shutil.copy2, source_path, dest_path)
                 backup_paths.append(dest_path)
                 _LOGGER.info("Registry backup erstellt: %s", dest_path)
         
@@ -112,14 +112,14 @@ async def create_lambda_config_backup(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if not await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             _LOGGER.info("lambda_wp_config.yaml nicht gefunden, kein Backup erforderlich")
             return True, ""
         
         # Backup-Verzeichnis erstellen
         backup_dir = os.path.join(config_dir, MIGRATION_BACKUP_DIR)
         await hass.async_add_executor_job(
-            lambda: os.makedirs(backup_dir, exist_ok=True)
+            functools.partial(os.makedirs, backup_dir, exist_ok=True)
         )
         
         # Backup erstellen
@@ -130,9 +130,7 @@ async def create_lambda_config_backup(
             f"lambda_wp_config.{migration_name}_{timestamp}.yaml"
         )
         
-        await hass.async_add_executor_job(
-            lambda: shutil.copy2(lambda_config_path, backup_path)
-        )
+        await hass.async_add_executor_job(shutil.copy2, lambda_config_path, backup_path)
         
         _LOGGER.info("Lambda config backup erstellt: %s", backup_path)
         return True, backup_path
@@ -257,13 +255,13 @@ async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
     config_dir = hass.config.config_dir
     lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
 
-    if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+    if not await hass.async_add_executor_job(os.path.exists, lambda_config_path):
         _LOGGER.debug("No existing lambda_wp_config.yaml found, no migration needed")
         return False
 
     try:
         content = await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "r", encoding="utf-8").read()
+            functools.partial(Path(lambda_config_path).read_text, encoding="utf-8")
         )
         current_config = yaml.safe_load(content)
         if not current_config:
@@ -481,6 +479,8 @@ async def async_remove_duplicate_entity_suffixes(
         )
         for registry_entry in registry_entries:
             eid = registry_entry.entity_id
+            if "config_parameter_" in eid:
+                continue
             if _entity_id_has_duplicate_suffix(eid):
                 candidates.append((eid, "aktueller_eintrag"))
 
@@ -493,6 +493,8 @@ async def async_remove_duplicate_entity_suffixes(
             eid = getattr(registry_entry, "entity_id", None)
             config_eid = getattr(registry_entry, "config_entry_id", None)
             if not eid or not _entity_id_has_duplicate_suffix(eid):
+                continue
+            if "config_parameter_" in eid:
                 continue
             if not _is_our_platform(registry_entry):
                 continue
@@ -685,22 +687,23 @@ async def migrate_to_cycling_offsets(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             # Bestehende Config laden
             content = await hass.async_add_executor_job(
-                lambda: open(lambda_config_path, "r").read()
+                Path(lambda_config_path).read_text
             )
             config = yaml.safe_load(content) or {}
         else:
             config = {}
-        
+
         # Cycling-Offsets hinzufügen falls nicht vorhanden
         if "cycling_offsets" not in config:
             config["cycling_offsets"] = DEFAULT_CYCLING_OFFSETS
-            
+
             # Config speichern
+            yaml_content = yaml.dump(config, default_flow_style=False)
             await hass.async_add_executor_job(
-                lambda: open(lambda_config_path, "w").write(yaml.dump(config, default_flow_style=False))
+                Path(lambda_config_path).write_text, yaml_content
             )
             
             _LOGGER.info(
@@ -749,28 +752,29 @@ async def migrate_to_energy_consumption(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             # Bestehende Config laden
             content = await hass.async_add_executor_job(
-                lambda: open(lambda_config_path, "r").read()
+                Path(lambda_config_path).read_text
             )
             config = yaml.safe_load(content) or {}
         else:
             config = {}
-        
+
         # Energy Consumption Sensoren hinzufügen falls nicht vorhanden
         if "energy_consumption_sensors" not in config:
             config["energy_consumption_sensors"] = DEFAULT_ENERGY_CONSUMPTION_SENSORS
             _LOGGER.info("Energy Consumption Sensoren zu lambda_wp_config.yaml hinzugefügt")
-        
+
         # Energy Consumption Offsets hinzufügen falls nicht vorhanden
         if "energy_consumption_offsets" not in config:
             config["energy_consumption_offsets"] = DEFAULT_ENERGY_CONSUMPTION_OFFSETS
             _LOGGER.info("Energy Consumption Offsets zu lambda_wp_config.yaml hinzugefügt")
-        
+
         # Config speichern
+        yaml_content = yaml.dump(config, default_flow_style=False)
         await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "w").write(yaml.dump(config, default_flow_style=False))
+            Path(lambda_config_path).write_text, yaml_content
         )
         
         _LOGGER.info(
@@ -938,15 +942,15 @@ async def migrate_to_register_order_terminology(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if not await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             _LOGGER.info(
                 "lambda_wp_config.yaml nicht gefunden, keine Migration erforderlich"
             )
             return True
-        
+
         # Lade aktuelle Config
         content = await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "r", encoding="utf-8").read()
+            functools.partial(Path(lambda_config_path).read_text, encoding="utf-8")
         )
         config = yaml.safe_load(content) or {}
         
@@ -1220,7 +1224,7 @@ async def cleanup_old_backups(hass: HomeAssistant) -> None:
         config_dir = hass.config.config_dir
         backup_dir = os.path.join(config_dir, MIGRATION_BACKUP_DIR)
         
-        if not await hass.async_add_executor_job(lambda: os.path.exists(backup_dir)):
+        if not await hass.async_add_executor_job(os.path.exists, backup_dir):
             _LOGGER.info("Backup-Verzeichnis existiert nicht")
             return
         

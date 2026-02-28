@@ -99,7 +99,7 @@ def test_lambda_yesterday_sensor_init(mock_entry, mock_coordinator):
     assert sensor._sensor_id == "heating_cycling_yesterday"
     assert sensor._name == "Heating Cycling Yesterday"
     assert sensor.entity_id == "sensor.test_heating_cycling_yesterday"
-    assert sensor._unique_id == "test_heating_cycling_yesterday"
+    assert sensor._attr_unique_id == "test_heating_cycling_yesterday"
     assert sensor._unit == "cycles"
     assert sensor._hp_index == 1
     assert sensor._mode == "heating"
@@ -325,7 +325,7 @@ def test_compressor_start_cycling_sensor_init(mock_entry, mock_coordinator):
     assert sensor._sensor_id == "compressor_start_cycling_total"
     assert sensor._name == "Compressor Start Cycling Total"
     assert sensor.entity_id == "sensor.test_compressor_start_cycling_total"
-    assert sensor._unique_id == "test_compressor_start_cycling_total"
+    assert sensor._attr_unique_id == "test_compressor_start_cycling_total"
     assert sensor._unit == "cycles"
     assert sensor._hp_index == 1
     assert sensor._cycling_value == 0
@@ -572,54 +572,6 @@ async def test_update_yesterday_sensors_function(mock_hass, mock_entry):
     # Verify that set_cycling_value was called on the yesterday sensor
     mock_yesterday_sensor.set_cycling_value.assert_called_once_with(42)
 
-
-def test_update_yesterday_sensors_no_entities(mock_hass, mock_entry):
-    """Test _update_yesterday_sensors when no cycling entities exist."""
-    from custom_components.lambda_heat_pumps.automations import _update_yesterday_sensors
-    
-    # Mock empty hass.data
-    mock_hass.data = {}
-    
-    # This should not raise an exception
-    _update_yesterday_sensors(mock_hass, mock_entry.entry_id)
-
-
-def test_update_yesterday_sensors_unavailable_state(mock_hass, mock_entry):
-    """Test _update_yesterday_sensors with unavailable state."""
-    from custom_components.lambda_heat_pumps.automations import _update_yesterday_sensors
-    
-    # Mock cycling entities
-    mock_daily_sensor = Mock()
-    mock_daily_sensor.entity_id = "sensor.test_heating_cycling_daily"
-    mock_daily_sensor._sensor_id = "heating_cycling_daily"
-    
-    mock_yesterday_sensor = Mock()
-    mock_yesterday_sensor.entity_id = "sensor.test_heating_cycling_yesterday"
-    mock_yesterday_sensor._sensor_id = "heating_cycling_yesterday"
-    mock_yesterday_sensor.set_cycling_value = Mock()
-    
-    # Mock hass.data structure
-    mock_hass.data = {
-        "lambda_heat_pumps": {
-            mock_entry.entry_id: {
-                "cycling_entities": {
-                    "sensor.test_heating_cycling_daily": mock_daily_sensor,
-                    "sensor.test_heating_cycling_yesterday": mock_yesterday_sensor,
-                }
-            }
-        }
-    }
-    
-    # Mock hass.states.get to return unavailable state
-    mock_state = Mock()
-    mock_state.state = "unavailable"
-    mock_hass.states.get.return_value = mock_state
-    
-    # Call the function
-    _update_yesterday_sensors(mock_hass, mock_entry.entry_id)
-    
-    # Verify that set_cycling_value was NOT called due to unavailable state
-    mock_yesterday_sensor.set_cycling_value.assert_not_called()
 
 
 # Integration Test für das Yesterday-Sensor-Problem

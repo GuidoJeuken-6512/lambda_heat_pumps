@@ -152,9 +152,9 @@ async def _process_room_temperature_entry(
         return
     
     # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor Service-Operationen
-    _LOGGER.info("🔍 SERVICE: Checking connection stability before room temperature update...")
+    _LOGGER.info("SERVICE: Checking connection stability before room temperature update...")
     await wait_for_stable_connection(coordinator)
-    _LOGGER.info("✅ SERVICE: Connection stable, proceeding with room temperature update")
+    _LOGGER.info("SERVICE: Connection stable, proceeding with room temperature update")
 
     # Für jeden Heizkreis prüfen und aktualisieren
     for hc_idx in range(1, num_hc + 1):
@@ -397,9 +397,9 @@ async def _write_room_and_pv_for_entry(
         return
     
     # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor Service-Operationen
-    _LOGGER.info("🔍 SERVICE: Checking connection stability before PV surplus update...")
+    _LOGGER.info("SERVICE: Checking connection stability before PV surplus update...")
     await wait_for_stable_connection(coordinator)
-    _LOGGER.info("✅ SERVICE: Connection stable, proceeding with PV surplus update")
+    _LOGGER.info("SERVICE: Connection stable, proceeding with PV surplus update")
 
     # Debug: Log current options
     room_thermostat_control = config_entry.options.get("room_thermostat_control", False)
@@ -511,9 +511,9 @@ async def _write_pv_surplus(
         )
 
         # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor PV Surplus Write
-        _LOGGER.info("🔍 SERVICE: Checking connection stability before PV surplus write...")
+        _LOGGER.info("SERVICE: Checking connection stability before PV surplus write...")
         await wait_for_stable_connection(coordinator)
-        _LOGGER.info("✅ SERVICE: Connection stable, proceeding with PV surplus write")
+        _LOGGER.info("SERVICE: Connection stable, proceeding with PV surplus write")
 
         result = await async_write_registers(
             coordinator.client,
@@ -603,27 +603,27 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                     break
             
             if not coordinator:
-                _LOGGER.error("❌ SERVICES: No coordinator found, cannot start services")
+                _LOGGER.error("SERVICES: No coordinator found, cannot start services")
                 return
             
             # Warte auf erfolgreichen Read (mit Timeout)
             import asyncio
             try:
                 await asyncio.wait_for(coordinator.async_refresh(), timeout=60)
-                _LOGGER.info("✅ SERVICES: Coordinator read successful")
+                _LOGGER.info("SERVICES: Coordinator read successful")
             except asyncio.TimeoutError:
-                _LOGGER.warning("⚠️ SERVICES: Coordinator read timeout, continuing anyway")
+                _LOGGER.warning("SERVICES: Coordinator read timeout, continuing anyway")
             except Exception as e:
-                _LOGGER.warning("⚠️ SERVICES: Coordinator read failed (%s), continuing anyway", e)
+                _LOGGER.warning("SERVICES: Coordinator read failed (%s), continuing anyway", e)
             
             # 🎯 NEUE LOGIK: Warte zusätzlich auf Auto-Detection-Abschluss
             _LOGGER.info("⏳ SERVICES: Waiting for background auto-detection to complete...")
             await wait_for_auto_detection_completion()
-            _LOGGER.info("✅ SERVICES: Auto-detection completed, starting services with 41s interval")
+            _LOGGER.info("SERVICES: Auto-detection completed, starting services with 41s interval")
             
             # Starte Services mit 41s Intervall (ungerade Zahl > 30)
             update_interval = timedelta(seconds=DEFAULT_WRITE_INTERVAL)
-            _LOGGER.info("🚀 SERVICES: Starting scheduled updates with interval: %s seconds", DEFAULT_WRITE_INTERVAL)
+            _LOGGER.info("SERVICES: Starting scheduled updates with interval: %s seconds", DEFAULT_WRITE_INTERVAL)
 
             async def scheduled_update_callback(_):
                 _LOGGER.info("Scheduled update callback triggered")
@@ -635,10 +635,10 @@ async def async_setup_services(hass: HomeAssistant) -> None:
                 update_interval,
             )
             unsub_update_callbacks["write_room_and_pv"] = unsub
-            _LOGGER.info("✅ SERVICES: Scheduled updates setup completed with collision-free timing")
+            _LOGGER.info("SERVICES: Scheduled updates setup completed with collision-free timing")
             
         except Exception as e:
-            _LOGGER.error("❌ SERVICES: Failed to setup services: %s", e, exc_info=True)
+            _LOGGER.error("SERVICES: Failed to setup services: %s", e, exc_info=True)
 
     async def wait_for_auto_detection_completion() -> None:
         """Wait for background auto-detection to complete (max 20 seconds)."""
@@ -656,11 +656,11 @@ async def async_setup_services(hass: HomeAssistant) -> None:
             
             # Nach 3 Sekunden ist Auto-Detection normalerweise abgeschlossen
             if time.time() - start_time >= 3:
-                _LOGGER.info("✅ SERVICES: Auto-detection wait completed (3+ seconds)")
+                _LOGGER.info("SERVICES: Auto-detection wait completed (3+ seconds)")
                 break
         
         if time.time() - start_time >= max_wait_time:
-            _LOGGER.warning("⚠️ SERVICES: Auto-detection wait timeout, starting services anyway")
+            _LOGGER.warning("SERVICES: Auto-detection wait timeout, starting services anyway")
 
     # Bei Änderungen in der Konfiguration die Timers neu einrichten
     @callback
@@ -739,7 +739,7 @@ async def setup_scheduled_timer(hass: HomeAssistant) -> None:
     
     if setup_func:
         # 🎯 NEUE LOGIK: Bei Reloads auch auf Auto-Detection warten
-        _LOGGER.info("🔄 RELOAD: Restarting services with auto-detection wait...")
+        _LOGGER.info("RELOAD: Restarting services with auto-detection wait...")
         hass.async_create_task(wait_for_successful_read_then_start_services())
         _LOGGER.info("Scheduled timer restart initiated with collision-free timing")
     else:

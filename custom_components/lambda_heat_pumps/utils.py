@@ -7,6 +7,7 @@ import logging
 import os
 import yaml
 from datetime import datetime
+from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 from homeassistant.core import HomeAssistant
@@ -240,7 +241,7 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
 
         # Create backup
         backup_path = lambda_config_path + ".backup"
-        await hass.async_add_executor_job(lambda: open(backup_path, "w").write(content))
+        await hass.async_add_executor_job(Path(backup_path).write_text, content)
         _LOGGER.info("Created backup at %s", backup_path)
 
         # Add cycling_offsets section
@@ -896,7 +897,7 @@ async def increment_cycling_counter(
                     if cycling_entity:
                         break
         except Exception as e:
-            _LOGGER.debug(f"Error searching for entity {entity_id}: {e}")
+            _LOGGER.debug("Error searching for entity %s: %s", entity_id, e)
 
         final_value = int(new_value + offset)
         if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
@@ -920,7 +921,7 @@ async def increment_cycling_counter(
         try:
             await async_update_entity(hass, entity_id)
         except Exception as e:
-            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+            _LOGGER.debug("Could not force update for %s: %s", entity_id, e)
 
 
 # =============================================================================
@@ -1403,7 +1404,7 @@ async def increment_energy_consumption_counter(
                     if energy_entity:
                         break
         except Exception as e:
-            _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
+            _LOGGER.debug("Error searching for energy entity %s: %s", entity_id, e)
 
         # Hole aktuellen Wert des Sensors
         # WICHTIG: Für Daily/Monthly/Yearly-Sensoren muss _energy_value direkt gelesen werden,
@@ -1449,7 +1450,7 @@ async def increment_energy_consumption_counter(
                         if energy_entity._applied_offset != offset:
                             new_value += offset - energy_entity._applied_offset
                             energy_entity._applied_offset = offset
-                            _LOGGER.info(f"Applied offset {offset:.2f} kWh to {entity_id}")
+                            _LOGGER.info("Applied offset %.2f kWh to %s", offset, entity_id)
 
         # Setze neuen Wert
         if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
@@ -1478,7 +1479,7 @@ async def increment_energy_consumption_counter(
         try:
             await async_update_entity(hass, entity_id)
         except Exception as e:
-            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+            _LOGGER.debug("Could not force update for %s: %s", entity_id, e)
 
     # Zentrale Logging-Meldung nur bei tatsächlichen Änderungen
     if changes_summary:
@@ -1566,7 +1567,7 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
         sensor_id = sensor_config.get("sensor_entity_id")
         
         if not sensor_id:
-            _LOGGER.warning(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Keine sensor_entity_id konfiguriert")
+            _LOGGER.warning("EXTERNAL-SENSOR-VALIDATION: %s - Keine sensor_entity_id konfiguriert", hp_key)
             continue
         
         # Prüfe ob Sensor existiert
@@ -1630,8 +1631,8 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
         
         # Prüfe ob Sensor verfügbar ist
         if sensor_state.state in ("unknown", "unavailable", None):
-            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist nicht verfügbar (State: {sensor_state.state})")
-            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert")
+            _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: %s - Sensor '%s' ist nicht verfügbar (State: %s)", hp_key, sensor_id, sensor_state.state)
+            _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: %s - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert", hp_key)
         
         # Sensor ist gültig – Eintrag übernehmen und optional thermal_sensor_entity_id validieren
         out_config = dict(sensor_config)
@@ -1659,7 +1660,7 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
                         hp_key, thermal_id,
                     )
         validated_configs[hp_key] = out_config
-        _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet")
+        _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: %s - Sensor '%s' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet", hp_key, sensor_id)
     
     if fallback_used:
         _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: Einige externe Sensoren sind fehlerhaft - verwende interne Modbus-Sensoren als Fallback")
@@ -2105,19 +2106,19 @@ def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
     stored_normalized = str(stored_sensor_id).strip().strip("'\"") if stored_sensor_id else None
     current_normalized = str(current_sensor_id).strip().strip("'\"") if current_sensor_id else None
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '{stored_normalized}', aktuell: '{current_normalized}'")
+    _LOGGER.info("SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '%s', aktuell: '%s'", stored_normalized, current_normalized)
     
     # Wenn kein gespeicherter Sensor vorhanden ist, ist es kein Wechsel
     if not stored_normalized:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
         return False
     
     # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
     is_change = stored_normalized != current_normalized
     if is_change:
-        _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Sensor wurde gewechselt - '{stored_normalized}' -> '{current_normalized}'. {current_normalized} wird zur Verbrauchsberechnung verwendet")
+        _LOGGER.warning("SENSOR-CHANGE-DETECTION: Sensor wurde gewechselt - '%s' -> '%s'. %s wird zur Verbrauchsberechnung verwendet", stored_normalized, current_normalized, current_normalized)
     else:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
     
     return is_change
 
@@ -2136,7 +2137,7 @@ def get_stored_sensor_id(persist_data: dict, hp_idx: int) -> str:
     sensor_ids = persist_data.get("sensor_ids", {})
     stored_id = sensor_ids.get(hp_key)
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Gespeicherte Sensor-ID für {hp_key}: '{stored_id}'")
+    _LOGGER.info("SENSOR-CHANGE-DETECTION: Gespeicherte Sensor-ID für %s: '%s'", hp_key, stored_id)
     return stored_id
 
 
@@ -2156,13 +2157,13 @@ def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
     # Stelle sicher, dass sensor_ids existiert
     if "sensor_ids" not in persist_data:
         persist_data["sensor_ids"] = {}
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
     
     # Speichere die normalisierte Sensor-ID
     old_id = persist_data["sensor_ids"].get(hp_key)
     persist_data["sensor_ids"][hp_key] = normalized_sensor_id
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{normalized_sensor_id}'")
+    _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-ID für %s gespeichert: '%s' -> '%s'", hp_key, old_id, normalized_sensor_id)
 
 
 def get_stored_thermal_sensor_id(persist_data: dict, hp_idx: int) -> str:
@@ -2217,9 +2218,9 @@ async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> No
                 _LOGGER.info("🧹 CLEANUP: Shutting down coordinator (coordinator_id=%s)", id(coordinator))
                 try:
                     await coordinator.async_shutdown()
-                    _LOGGER.info("✅ CLEANUP: Coordinator shutdown completed")
+                    _LOGGER.info("CLEANUP: Coordinator shutdown completed")
                 except Exception as coord_ex:
-                    _LOGGER.error("❌ CLEANUP: Error during coordinator shutdown: %s", coord_ex)
+                    _LOGGER.error("CLEANUP: Error during coordinator shutdown: %s", coord_ex)
                 finally:
                     # Entferne Coordinator aus hass.data
                     coordinator_data.pop("coordinator", None)
@@ -2229,9 +2230,9 @@ async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> No
             from .services import async_unload_services
             _LOGGER.info("🧹 CLEANUP: Unloading services...")
             await async_unload_services(hass)
-            _LOGGER.info("✅ CLEANUP: Services unloaded")
+            _LOGGER.info("CLEANUP: Services unloaded")
         except Exception as service_ex:
-            _LOGGER.error("❌ CLEANUP: Error during services cleanup: %s", service_ex)
+            _LOGGER.error("CLEANUP: Error during services cleanup: %s", service_ex)
         
         # 3. Cleanup Reset Manager
         try:
@@ -2244,23 +2245,23 @@ async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> No
                 reset_manager = hass.data["lambda_heat_pumps"][entry_id]["reset_manager"]
                 reset_manager.cleanup()
                 del hass.data["lambda_heat_pumps"][entry_id]["reset_manager"]
-                _LOGGER.info("✅ CLEANUP: Reset manager cleaned up")
+                _LOGGER.info("CLEANUP: Reset manager cleaned up")
         except Exception as auto_ex:
-            _LOGGER.error("❌ CLEANUP: Error during reset manager cleanup: %s", auto_ex)
+            _LOGGER.error("CLEANUP: Error during reset manager cleanup: %s", auto_ex)
         
         # 4. Remove entry from hass.data
         if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
             hass.data[DOMAIN].pop(entry_id, None)
-            _LOGGER.info("✅ CLEANUP: Entry removed from hass.data")
+            _LOGGER.info("CLEANUP: Entry removed from hass.data")
         
         # 5. Final cleanup check
         if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
-            _LOGGER.warning("⚠️ CLEANUP: Entry still exists in hass.data after cleanup")
+            _LOGGER.warning("CLEANUP: Entry still exists in hass.data after cleanup")
         else:
-            _LOGGER.info("✅ CLEANUP: Entry successfully removed from hass.data")
+            _LOGGER.info("CLEANUP: Entry successfully removed from hass.data")
             
     except Exception as ex:
-        _LOGGER.error("❌ CLEANUP: Error during centralized cleanup: %s", ex)
+        _LOGGER.error("CLEANUP: Error during centralized cleanup: %s", ex)
         raise
     
     _LOGGER.info("🎉 CLEANUP: Centralized cleanup completed for entry: %s", entry_id)

@@ -113,8 +113,11 @@ async def test_load_disabled_registers_file_not_exists():
     mock_hass.config.config_dir = "/tmp/test_config"
     mock_hass.data = {}
 
+    # load_disabled_registers now delegates to load_lambda_config — mock that directly
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=False
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value={"disabled_registers": set()},
     ):
         result = await load_disabled_registers(mock_hass)
 
@@ -128,23 +131,15 @@ async def test_load_disabled_registers_no_disabled_registers():
     mock_hass.config.config_dir = "/tmp/test_config"
     mock_hass.data = {}
 
-    mock_yaml_content = """
-other_config:
-  - value1
-  - value2
-"""
-
+    # load_disabled_registers now delegates to load_lambda_config — mock that directly
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=True
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value={"disabled_registers": set()},
     ):
-        with patch("builtins.open", mock_open(read_data=mock_yaml_content)):
-            with patch(
-                "custom_components.lambda_heat_pumps.utils.yaml.safe_load",
-                return_value=yaml.safe_load(mock_yaml_content),
-            ):
-                result = await load_disabled_registers(mock_hass)
+        result = await load_disabled_registers(mock_hass)
 
-                assert result == set()
+        assert result == set()
 
 
 @pytest.mark.asyncio
@@ -154,17 +149,15 @@ async def test_load_disabled_registers_yaml_error():
     mock_hass.config.config_dir = "/tmp/test_config"
     mock_hass.data = {}
 
+    # load_disabled_registers now delegates to load_lambda_config — mock that directly
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=True
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value={"disabled_registers": set()},
     ):
-        with patch("builtins.open", mock_open(read_data="invalid yaml")):
-            with patch(
-                "custom_components.lambda_heat_pumps.utils.yaml.safe_load",
-                side_effect=yaml.YAMLError,
-            ):
-                result = await load_disabled_registers(mock_hass)
+        result = await load_disabled_registers(mock_hass)
 
-                assert result == set()
+        assert result == set()
 
 
 def test_is_register_disabled_true():
