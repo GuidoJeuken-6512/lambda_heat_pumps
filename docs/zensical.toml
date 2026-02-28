@@ -69,6 +69,7 @@ nav = [
     { "Debug Logs erzeugen" = "Anwender/debug-logs-erzeugen.md" },
     { "Attribute eines Sensors anzeigen" = "Anwender/attribute-sensoren-de.md" },
     { "Konfiguration löschen" = "Anwender/konfiguration_loeschen.md" },
+    { "Entitäten löschen" = "Anwender/entitaeten_loeschen.md" },
   ] },
   { "Vorlagen Templates" = [
     { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
