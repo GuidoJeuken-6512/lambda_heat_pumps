@@ -1,5 +1,7 @@
 # Release 2.3
 
+> ⚠️ **Vor dem Update**: Erstelle ein Backup deiner Home Assistant Konfiguration (Verzeichnis `config/`) sowie der `lambda_wp_config.yaml`. Dieses Release enthält einen Breaking Change, der Entity-IDs verändern kann.
+
 ---
 
 ## Breaking Changes
@@ -81,6 +83,56 @@ Die Reset-Reihenfolge wurde korrigiert: `yesterday`-Sensoren werden jetzt **vor*
 ### Energieberechnung korrigiert (`d5c8d4e`)
 
 Die Berechnung der täglichen, monatlichen und jährlichen Energiedifferenzen liest Ausgangswerte jetzt direkt aus den registrierten HA-Entities statt aus internen Hilfsvariablen. Dadurch werden Inkonsistenzen nach Reloads vermieden.
+
+---
+
+## Interne Refactorings
+
+### `const.py` aufgeteilt in drei Dateien
+
+Die 2.600-Zeilen-Datei `const.py` wurde in drei eigenständige Module aufgeteilt:
+
+| Datei | Inhalt |
+|---|---|
+| `const_base.py` | Grundkonstanten, Retry-Parameter, Zustandstabellen |
+| `const_sensor.py` | Alle Sensor-Templates (Modbus-Sensoren) |
+| `const_calculated_sensors.py` | Templates für berechnete Sensoren (Energie, COP, Zyklen) |
+
+`const.py` importiert jetzt nur noch aus diesen drei Dateien und re-exportiert alles – keine Änderung an der öffentlichen API.
+
+### `cycling_sensor.py` entfernt
+
+Die Datei war bereits leer und wurde aus dem Repository entfernt.
+
+### Per-Entry-Reload-Locks (K-02)
+
+Der globale `_reload_lock` und das globale `_reload_in_progress`-Flag wurden durch **pro-Entry-Locks** (`_entry_reload_locks`, `_entry_reload_flags`) ersetzt. Dadurch blockiert ein laufender Reload von Entry A nicht mehr den Reload von Entry B.
+
+### Template-Setup-Task gespeichert (K-01)
+
+Der Hintergrund-Task für das Setup von Template-Sensoren (`hass.async_create_task(setup_templates())`) wird jetzt in `coordinator_data["template_setup_task"]` gespeichert, damit er beim Unload sauber abgebrochen werden kann.
+
+### Flankenerkennung `compressor_start_cycling`: RESTART-BLOCK statt START COMPRESSOR
+
+Der Zähler `compressor_start_cycling` reagiert jetzt auf den Übergang in HP-State `2` (**RESTART-BLOCK**) statt in State `5` (START COMPRESSOR).
+
+RESTART-BLOCK ist der Sperrzeit-Zustand nach einem abgeschlossenen Kompressorlauf (Mindestpause zwischen zwei Starts). Damit wird ein **abgeschlossener Zyklus** gezählt, nicht ein gestarteter – robuster und semantisch korrekter.
+
+```
+… → 5: START COMPRESSOR → (Betrieb) → 20: STOPPING → 2: RESTART-BLOCK ← Zähler hier
+```
+
+### Entity-Cleaner überspringt `config_parameter_`-Sensoren
+
+Der Duplikat-Cleanup (`async_remove_duplicate_entity_suffixes` in `migration.py`) erkannte Sensoren wie `sensor.eu08l_hp1_config_parameter_24` fälschlicherweise als HA-Duplikate (Regex `_\d+$` matched das Suffix `_24`). Sensoren mit `config_parameter_` im Namen werden jetzt in beiden Sammel-Phasen übersprungen.
+
+### Logging: f-Strings durch `%s`-Format ersetzt (M-02)
+
+Über 130 `_LOGGER.xxx(f"…")` Aufrufe in `coordinator.py`, `sensor.py` und `utils.py` wurden auf die HA-konforme `%s`-Schreibweise umgestellt. Das ermöglicht lazy evaluation (String wird nur formatiert, wenn der Log-Level aktiv ist).
+
+### Redundante `_unique_id`-Attribute entfernt (M-03)
+
+In `LambdaCyclingSensor`, `LambdaEnergyConsumptionSensor` und `LambdaThermalEnergySensor` wurden die redundant doppelt gesetzten Attribute `self._unique_id` und die überschreibende `unique_id`-Property entfernt. `self._attr_unique_id` (HA-Standard) ist jetzt die einzige Quelle.
 
 ---
 

@@ -9,6 +9,34 @@
  
 
 
+### [2.3] - 2026-XX-XX
+
+> ⚠️ **Before upgrading**: Create a backup of your Home Assistant configuration (`config/` directory) and your `lambda_wp_config.yaml`. This release contains a breaking change that may alter entity IDs.
+
+#### Breaking Changes
+- **Name Prefix Normalization**: The configured `name_prefix` is now automatically converted to lowercase with spaces removed. If your prefix contained uppercase letters or spaces (e.g. `"EU08L"` or `"Lambda WP"`), entity IDs will change — update any automations, dashboards or template sensors that reference the old IDs.
+
+#### New Features
+- **COP Sensors** (Heating / Cooling / Hot Water): New sensors for the Coefficient of Performance — hourly, daily, monthly, and total periods. Calculated from thermal energy output and electrical consumption.
+- **Thermal Energy Consumption Sensors**: Tracks heat output per heat pump — daily, monthly, total, and yesterday. Can optionally use an external heat meter as source sensor via `lambda_wp_config.yaml` (`thermal_sensor_entity_id`).
+- **Flow Line Temperature Setpoint Sensor**: New sensor `hp_flow_line_temperature_setpoint` for the calculated flow temperature target value.
+- **Compressor Start Cycling Yesterday**: New sensor `compressor_start_cycling_yesterday` for yesterday's compressor start count.
+
+#### Fixed
+- **Compressor Start Cycle Counter**: Counter now triggers on HP-State `2` (RESTART-BLOCK) instead of `5` (START COMPRESSOR). RESTART-BLOCK is the lockout state entered after a completed compressor run — counting here means counting completed cycles, not started ones.
+- **Entity Duplicate Cleanup**: Sensors with `config_parameter_` in their name were falsely detected as HA duplicates by the `_\d+$` regex (e.g. `config_parameter_24` ends in `_24`). These sensors are now skipped in both cleanup passes.
+- **Energy Consistency**: Daily, monthly, and yearly energy values are now validated on restore and reset — a previous-period value can never exceed the current total, preventing negative consumption differences.
+- **Reset Sequence**: Yesterday sensors are now updated before the daily counter reset, ensuring `_yesterday` always reflects the actual prior-day value.
+- **Energy Calculation**: Daily/monthly/yearly deltas now read baseline values directly from registered HA entities instead of internal variables, avoiding inconsistencies after reloads.
+- **Modbus int16 Conversion**: Fixed signed-to-unsigned conversion for 16-bit registers (Two's Complement). New helper `clamp_to_int16` prevents overflow.
+- **Room Thermostat Offset**: Corrected configurable offset range and Modbus conversion for signed values.
+- **Maximum Boiler Temperature**: Removed from sensor templates — it reads the same Modbus register as `target_high_temperature`.
+
+#### Improvements
+- **Internal Refactoring**: `const.py` split into three focused modules (`const_base.py`, `const_sensor.py`, `const_calculated_sensors.py`); per-entry reload locks replacing a single global lock; f-string logging replaced with HA-compliant `%s` format; redundant `_unique_id` attributes removed from sensor classes.
+
+---
+
 ### [2.1] - 2025-12-20
 
 #### New Features
@@ -271,6 +299,34 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
 
+
+### [2.3] - 2026-XX-XX
+
+> ⚠️ **Vor dem Update**: Erstelle ein Backup deiner Home Assistant Konfiguration (Verzeichnis `config/`) sowie der `lambda_wp_config.yaml`. Dieses Release enthält einen Breaking Change, der Entity-IDs verändern kann.
+
+#### Breaking Changes
+- **Name-Prefix-Normalisierung**: Der konfigurierte `name_prefix` wird ab sofort automatisch in Kleinbuchstaben umgewandelt und Leerzeichen werden entfernt. Wer einen Prefix mit Großbuchstaben oder Leerzeichen verwendet hatte (z. B. `"EU08L"` oder `"Lambda WP"`), bekommt geänderte Entity-IDs — bestehende Automationen, Dashboards und Template-Sensoren müssen angepasst werden.
+
+#### Neue Funktionen
+- **COP-Sensoren** (Heizen / Kühlen / Warmwasser): Neue Sensoren für die Arbeitszahl — stündlich, täglich, monatlich und gesamt. Berechnung aus thermischem Energieertrag und elektrischem Verbrauch.
+- **Thermische Energieverbrauchs-Sensoren**: Tracking der Wärmeabgabe pro Wärmepumpe — täglich, monatlich, gesamt und gestern. Optional kann ein externer Wärmemengenzähler als Quellsensor konfiguriert werden (`thermal_sensor_entity_id` in `lambda_wp_config.yaml`).
+- **Vorlauftemperatur-Sollwert-Sensor**: Neuer Sensor `hp_flow_line_temperature_setpoint` für den berechneten Vorlauf-Sollwert.
+- **Kompressorstarts Gestern**: Neuer Sensor `compressor_start_cycling_yesterday` für die Kompressorstarts des Vortags.
+
+#### Behoben
+- **Kompressorstart-Zähler**: Der Zähler löst jetzt bei HP-State `2` (RESTART-BLOCK) statt bei `5` (START COMPRESSOR) aus. RESTART-BLOCK ist der Sperrzeit-Zustand nach einem abgeschlossenen Kompressorlauf — damit werden abgeschlossene Zyklen gezählt, nicht gestartete.
+- **Duplikat-Cleanup**: Sensoren mit `config_parameter_` im Namen wurden vom Regex `_\d+$` fälschlicherweise als HA-Duplikate erkannt (z. B. endet `config_parameter_24` auf `_24`). Diese Sensoren werden jetzt in beiden Cleanup-Phasen übersprungen.
+- **Energie-Konsistenz**: Tages-, Monats- und Jahreswerte werden beim Restore und Reset geprüft — ein Vorperiodenwert kann den aktuellen Gesamtwert nicht übersteigen, damit keine negativen Differenzen entstehen.
+- **Reset-Reihenfolge**: Gestern-Sensoren werden jetzt vor dem täglichen Reset aktualisiert, sodass `_yesterday` immer dem tatsächlichen Vortageswert entspricht.
+- **Energieberechnung**: Differenzwerte werden jetzt direkt aus den HA-Entities gelesen statt aus internen Variablen — verhindert Inkonsistenzen nach Reloads.
+- **Modbus int16-Konvertierung**: Korrektur der Vorzeichen-Konvertierung für 16-Bit-Register (Two's Complement). Neue Hilfsfunktion `clamp_to_int16` verhindert Überlauf.
+- **Raumthermostat-Offset**: Offset-Bereich und Modbus-Konvertierung für vorzeichenbehaftete Werte korrigiert.
+- **Maximum Boiler Temperature**: Aus den Sensor-Templates entfernt — liest dasselbe Modbus-Register wie `target_high_temperature`.
+
+#### Verbesserungen
+- **Internes Refactoring**: `const.py` in drei Module aufgeteilt (`const_base.py`, `const_sensor.py`, `const_calculated_sensors.py`); pro-Entry-Reload-Locks ersetzen eine globale Sperre; f-String-Logging durch HA-konformes `%s`-Format ersetzt; redundante `_unique_id`-Attribute aus Sensor-Klassen entfernt.
+
+---
 
 ### [2.0.1] - 2025-01-XX
 
