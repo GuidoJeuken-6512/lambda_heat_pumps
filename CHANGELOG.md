@@ -9,7 +9,7 @@
  
 
 
-### [2.3] - 2026-XX-XX
+### [2.3] - 2026-03-01
 
 > ⚠️ **Before upgrading**: Create a backup of your Home Assistant configuration (`config/` directory) and your `lambda_wp_config.yaml`. This release contains a breaking change that may alter entity IDs.
 
