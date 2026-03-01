@@ -459,6 +459,7 @@ async def async_remove_duplicate_entity_suffixes(
         Anzahl der entfernten Entities. Spätere Erweiterung auf Dict {removed, failed, skipped} denkbar.
     """
     removed = 0
+    renamed = 0
     failed = 0
     try:
         _LOGGER.info(
@@ -504,31 +505,65 @@ async def async_remove_duplicate_entity_suffixes(
             if eid not in [c[0] for c in candidates]:
                 candidates.append((eid, "verwaist"))
 
-        # ----- Löschphase: Kandidaten entfernen (keine Mutation während Iteration) -----
+        # ----- Löschphase: Kandidaten umbenennen oder entfernen -----
+        # Strategie: Wenn die Ziel-entity_id (ohne _2-Suffix) noch nicht vergeben ist,
+        # wird die _2-Entity umbenannt statt gelöscht. Dadurch wird kein deleted_entities-
+        # Eintrag mit _2-entity_id erzeugt, den HA beim nächsten Start wiederherstellen würde.
         for eid, reason in candidates:
             try:
-                # Keine Coroutinen – bewusst ohne await (HA Entity Registry / State Machine)
-                entity_registry.async_remove(eid)
-                hass.states.async_remove(eid)
-                removed += 1
-                _LOGGER.info(
-                    "Cleanup: Duplikat entfernt: %s (reason: %s)",
-                    eid,
-                    reason,
-                )
+                base_eid = _ENTITY_ID_DUPLICATE_SUFFIX_RE.sub("", eid)
+                if entity_registry.async_get(base_eid) is None:
+                    # Umbenennen: _2-Entity erhält die korrekte entity_id.
+                    # Kein deleted_entities-Eintrag → kein _2-Restore beim nächsten Start.
+                    entity_registry.async_update_entity(eid, new_entity_id=base_eid)
+                    renamed += 1
+                    _LOGGER.info(
+                        "Cleanup: Duplikat umbenannt: %s -> %s (reason: %s)",
+                        eid,
+                        base_eid,
+                        reason,
+                    )
+                else:
+                    existing_base = entity_registry.async_get(base_eid)
+                    _2_entry = entity_registry.async_get(eid)
+                    if _2_entry and existing_base and existing_base.unique_id == _2_entry.unique_id:
+                        # Gleiche unique_id: veralteter base_eid-Eintrag blockiert das Umbenennen.
+                        # Alten Eintrag zuerst entfernen (erzeugt deleted_entities für base_eid,
+                        # nicht für _2), dann _2 auf den korrekten Namen umbenennen.
+                        entity_registry.async_remove(base_eid)
+                        hass.states.async_remove(base_eid)
+                        entity_registry.async_update_entity(eid, new_entity_id=base_eid)
+                        renamed += 1
+                        _LOGGER.info(
+                            "Cleanup: Veralteten Eintrag ersetzt und umbenannt: %s -> %s (reason: %s)",
+                            eid,
+                            base_eid,
+                            reason,
+                        )
+                    else:
+                        # Echtes Duplikat mit anderer unique_id → löschen
+                        entity_registry.async_remove(eid)
+                        hass.states.async_remove(eid)
+                        removed += 1
+                        _LOGGER.info(
+                            "Cleanup: Duplikat entfernt: %s (reason: %s)",
+                            eid,
+                            reason,
+                        )
             except Exception as e:
                 failed += 1
                 _LOGGER.warning(
-                    "Cleanup: Entity %s konnte nicht entfernt werden (reason: %s): %s",
+                    "Cleanup: Entity %s konnte nicht verarbeitet werden (reason: %s): %s",
                     eid,
                     reason,
                     e,
                 )
 
         # Zusammenfassung
-        if removed or failed:
+        if removed or renamed or failed:
             _LOGGER.info(
-                "Cleanup abgeschlossen: %d Duplikat(e) entfernt, %d Fehler für Entry %s",
+                "Cleanup abgeschlossen: %d umbenannt, %d entfernt, %d Fehler für Entry %s",
+                renamed,
                 removed,
                 failed,
                 entry_id,
@@ -542,7 +577,7 @@ async def async_remove_duplicate_entity_suffixes(
         _LOGGER.warning(
             "Cleanup Duplikat-Entities für Entry %s fehlgeschlagen: %s", entry_id, e
         )
-    return removed
+    return removed + renamed
 
 
 # =============================================================================
