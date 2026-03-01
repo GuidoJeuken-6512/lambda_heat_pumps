@@ -1,0 +1,74 @@
+# Register-Übersicht: HP (Wärmepumpe) Subdevice
+
+Nur **native Modbus-Register** der Wärmepumpe (HP), ohne Template-, COP- oder andere berechnete Sensoren. Basis: `HP_SENSOR_TEMPLATES` in `const.py`, Basisadresse HP1 = **1000** (HP2 = 1100, HP3 = 1200).
+
+**Hinweis:** `relative_address` bezieht sich auf das jeweilige HP-Subdevice; die absolute Modbus-Registeradresse für HP1 ist `1000 + relative_address`. Bei **int32** belegen zwei aufeinanderfolgende Register (z. B. R1020+R1021) einen Wert.
+
+---
+
+## HP1 – Absolute Register (Beispiel)
+
+| Rel. | Register (HP1 abs.) | Sensor-ID | Name | Typ | Einheit | Skalierung | Schreibbar |
+|------|---------------------|------------|------|-----|---------|------------|------------|
+| 0 | R1000 | error_state | Error State | uint16 | — | 1 | nein |
+| 1 | R1001 | error_number | Error Number | int16 | — | 1 | nein |
+| 2 | R1002 | state | State | uint16 | — | 1 | nein |
+| 3 | R1003 | operating_state | Operating State | uint16 | — | 1 | nein |
+| 4 | R1004 | flow_line_temperature | Flow Line Temperature | int16 | °C | 0.01 | nein |
+| 5 | R1005 | return_line_temperature | Return Line Temperature | int16 | °C | 0.01 | nein |
+| 6 | R1006 | volume_flow_heat_sink | Volume Flow Heat Sink | int16 | l/h | 1 | nein |
+| 7 | R1007 | energy_source_inlet_temperature | Energy Source Inlet Temperature | int16 | °C | 0.01 | nein |
+| 8 | R1008 | energy_source_outlet_temperature | Energy Source Outlet Temperature | int16 | °C | 0.01 | nein |
+| 9 | R1009 | volume_flow_energy_source | Volume Flow Energy Source | int16 | l/min | 0.01 | nein |
+| 10 | R1010 | compressor_unit_rating | Compressor Unit Rating | uint16 | % | 0.01 | nein |
+| 11 | R1011 | actual_heating_capacity | Actual Heating Capacity | int16 | kW | 0.1 | nein |
+| 12 | R1012 | inverter_power_consumption | Inverter Power Consumption | int16 | W | 1 | nein |
+| 13 | R1013 | cop | COP | int16 | — | 0.01 | nein |
+| 15 | R1015 | request_type | Request-Type | int16 | — | 1 | ja |
+| 16 | R1016 | requested_flow_line_temperature | Requested Flow Line Temperature | int16 | °C | 0.1 | ja |
+| 17 | R1017 | requested_return_line_temperature | Requested Return Line Temperature | int16 | °C | 0.1 | ja |
+| 18 | R1018 | requested_flow_to_return_line_temperature_difference | Requested Flow to Return Line Temperature Difference | int16 | °C | 0.1 | ja |
+| 19 | R1019 | relais_state_2nd_heating_stage | Relais State 2nd Heating Stage | int16 | — | 1 | nein |
+| 20–21 | R1020, R1021 | compressor_power_consumption_accumulated | Compressor Power Consumption Accumulated | **int32** | Wh | 1 | nein |
+| 22–23 | R1022, R1023 | compressor_thermal_energy_output_accumulated | Compressor Thermal Energy Output Accumulated | **int32** | Wh | 1 | nein |
+| 24 | R1024 | config_parameter_24 | Unknown Parameter (R1024) | uint16 | — | 1 | nein |
+| 25 | R1025 | vda_rating | VdA Rating | uint16 | % | 0.01 | nein |
+| 26 | R1026 | hot_gas_temperature | Hot Gas Temperature | int16 | °C | 0.01 | nein |
+| 27 | R1027 | subcooling_temperature | Subcooling Temperature | int16 | °C | 0.01 | nein |
+| 28 | R1028 | suction_gas_temperature | Suction Gas Temperature | int16 | °C | 0.01 | nein |
+| 29 | R1029 | condensation_temperature | Condensation Temperature | int16 | °C | 0.01 | nein |
+| 30 | R1030 | evaporation_temperature | Evaporation Temperature | int16 | °C | 0.01 | nein |
+| 31 | R1031 | eqm_rating | EqM Rating | uint16 | % | 0.01 | nein |
+| 32 | R1032 | expansion_valve_opening_angle | Expansion Valve Opening Angle | uint16 | % | 0.01 | nein |
+| 33 | R1033 | config_parameter_33 | Unknown Parameter (R1033) | uint16 | — | 1 | nein |
+| 50 | R1050 | config_parameter_50 | Unknown Parameter (R1050) | uint16 | — | 1 | nein |
+| 51 | R1051 | dhw_output_power_15c | DHW Output Power at 15°C | uint16 | kW | 0.1 | ja |
+| 52 | R1052 | heating_min_output_power_15c | Heating Min Output Power at 15°C | uint16 | kW | 0.1 | ja |
+| 53 | R1053 | heating_max_output_power_15c | Heating Max Output Power at 15°C | uint16 | kW | 0.1 | ja |
+| 54 | R1054 | heating_min_output_power_0c | Heating Min Output Power at 0°C | uint16 | kW | 0.1 | ja |
+| 55 | R1055 | heating_max_output_power_0c | Heating Max Output Power at 0°C | uint16 | kW | 0.1 | ja |
+| 56 | R1056 | heating_min_output_power_minus15c | Heating Min Output Power at -15°C | uint16 | kW | 0.1 | ja |
+| 57 | R1057 | heating_max_output_power_minus15c | Heating Max Output Power at -15°C | uint16 | kW | 0.1 | ja |
+| 58 | R1058 | cooling_min_output_power | Cooling Min Output Power | uint16 | kW | 0.1 | ja |
+| 59 | R1059 | cooling_max_output_power | Cooling Max Output Power | uint16 | kW | 0.1 | ja |
+| 60 | R1060 | config_parameter_60 | Unknown Parameter (R1060) | uint16 | — | 1 | nein |
+
+---
+
+## HP2 / HP3
+
+- **HP2:** Basisadresse **1100** → absolute Register R1100, R1101, …
+- **HP3:** Basisadresse **1200** → absolute Register R1200, R1201, …
+
+Formel: **absolute Adresse = 1000 + (HP-Index − 1) × 100 + relative_address**.
+
+---
+
+## Nicht enthalten (keine nativen HP-Register)
+
+- COP-Sensoren (berechnet)
+- Energy-Consumption-Sensoren (berechnet / externe Quellen)
+- Cycling-Sensoren (Reset-Logik, aus anderen Sensoren abgeleitet)
+- Template-Sensoren aus der Konfiguration
+
+Quelle: `custom_components/lambda_heat_pumps/const.py` – `HP_SENSOR_TEMPLATES`, `BASE_ADDRESSES["hp"] = 1000`.

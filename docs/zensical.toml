@@ -34,7 +34,7 @@ site_author = "Guido"
 #
 # Read more: https://zensical.org/docs/setup/basics/#copyright
 copyright = """
-Copyright &copy; 2025 Guido Jeuken | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps" target="_blank" rel="noopener noreferrer">GitHub</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues" target="_blank" rel="noopener noreferrer">Issues</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+Copyright &copy; 2025 Guido Jeuken | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps" target="_blank" rel="noopener noreferrer">GitHub</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues" target="_blank" rel="noopener noreferrer">Issues</a> | <a href="https://github.com/GuidoJeuken-6512/lambda_heat_pumps/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a> | <a href="https://lambda-wp.at/tutorials/" target="_blank" rel="noopener noreferrer">Lambda Anleitungen</a>
 """
 
 # Das Verzeichnis mit den Markdown-Dateien (relativ zur zensical.toml)
@@ -50,23 +50,61 @@ docs_dir = "docs"
 nav = [
   { "Home" = "" },
   { "Anwender" = [
+    { "Features" = "Anwender/features.md" },
     { "Installation" = "Anwender/installation.md" },
     { "Initiale Konfiguration" = "Anwender/initiale-konfiguration.md" },
-    { "Optionen zum Config Flow" = "Anwender/optionen-config-flow.md" },
+    { "Optionen des Config Flow" = "Anwender/optionen-config-flow.md" },
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
-    { "Stromverbrauchsberechnung" = "Anwender/stromverbrauchsberechnung.md" },
+    { "PV Überschuss Steuerung" = "Anwender/pv_ueberschuss_steuerung.md" },
+    { "Energieverbrauchsberechnung" = "Anwender/Energieverbrauchsberechnung.md" },
+#    { "Korrektur Verbrauchsberechnung" = "Anwender/energiesensoren-entwicklerwerkzeuge.md" },
+    { "COP-Sensoren (Leistungszahl)" = "Anwender/cop-sensoren.md" },
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
+    { "Historische Daten löschen" = "Anwender/historische_daten_loeschen.md" },    
     { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
+    { "Debug Logs erzeugen" = "Anwender/debug-logs-erzeugen.md" },
+    { "Attribute eines Sensors anzeigen" = "Anwender/attribute-sensoren-de.md" },
+    { "Konfiguration löschen" = "Anwender/konfiguration_loeschen.md" },
+    { "Entitäten löschen" = "Anwender/entitaeten_loeschen.md" },
+  ] },
+  { "Vorlagen Templates" = [
+    { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
+    { "Lambda Heizkurven Card" = "Vorlagen/Lambda_heizkurve_card.md" },
+    { "Lambda Register-Dashboard" = "Vorlagen/Lambda_register_dashboard.md" },
   ] },
   { "Entwickler" = [
+    { "Features (Technische Übersicht)" = "Entwickler/features.md" },
     { "Installation" = "Entwickler/installation.md" },
     { "Ablaufdiagramm" = "Entwickler/Ablaufdiagramm.md" },
     { "Heizkurve" = "Entwickler/heizkurve.md" },
+    { "modbus_wp_config.yaml" = "Entwickler/modbus-wp-config.md" },
+    { "Energieverbrauchsberechnung" = "Entwickler/energieverbrauchssensoren.md" },
+    { "Cycling-Sensoren" = "Entwickler/cycling-sensoren.md" },
+    { "Reset-Logik und Yesterday-Sensoren" = "Entwickler/reset-logik-yesterday-sensoren.md" },
+    { "Reset-Manager" = "Entwickler/reset-manager.md" },
+    { "Sensoren-Übersicht" = "Entwickler/sensoren-uebersicht.md" },
+    { "COP-Sensoren" = "Entwickler/cop-sensoren.md" },
+    { "Modbus-Serialisierung" = "Entwickler/modbus-serialisierung.md" },
+    { "Register-Reihenfolge int32 (Issue #22)" = "Entwickler/register-reihenfolge-int32.md" },
+    { "Entity-Duplikate (_2, _3) – Cleanup" = "Entwickler/entity-duplikat-cleanup.md" },
+    { "Firmware-Einstellung – Auswirkungen" = "Entwickler/firmware-einstellung-auswirkungen.md" },
   ] },
+  { "FAQ" = [
+    { "FAQ" = "FAQ/FAQ.md" },
+    { "COP-Sensoren" = "FAQ/cop-sensoren.md" },
+    { "Falsche / keine Sensorwerte" = "FAQ/falsche-keine-sensorwerte.md" },
+  ] },
+
+  { "Releases" = [
+      { "Releases" = "Releases/releases.md" },
+      { "Release 2.3 noch nicht veröffentlicht" = "Releases/release-2-3.md" },
+      { "Release 2.2 Aktuell" = "Releases/release-2-2.md" },
+      { "Release 2.0" = "Releases/release-2-0.md" },
+    ] }, 
 ]
 
 # With the "extra_css" option you can add your own CSS styling to customize
@@ -77,7 +115,7 @@ nav = [
 #
 # Read more: https://zensical.org/docs/customization/#additional-css
 #
-#extra_css = ["stylesheets/extra.css"]
+extra_css = ["stylesheets/extra.css"]
 
 # With the `extra_javascript` option you can add your own JavaScript to your
 # project to customize the behavior according to your needs.

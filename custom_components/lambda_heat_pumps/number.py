@@ -22,6 +22,7 @@ from .utils import (
     generate_sensor_names,
     get_entity_icon,
     load_sensor_translations,
+    normalize_name_prefix,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,7 +41,7 @@ async def async_setup_entry(
 
     num_hc = entry.data.get("num_hc", 1)
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-    name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    name_prefix = normalize_name_prefix(entry.data.get("name", ""))
     room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
     sensor_translations = await load_sensor_translations(hass)
 
@@ -385,8 +386,19 @@ class LambdaFlowLineOffsetNumber(CoordinatorEntity, RestoreNumber, NumberEntity)
 
         # 3. Konvertiere zu Modbus-Format
         raw_value = int(round(value / self._scale))  # z.B. 2.5°C -> 25
+        
+        # Konvertiere signed int16 zu unsigned für Modbus (Two's Complement)
+        # Das Register ist als int16 definiert, daher müssen
+        # negative Werte als Two's Complement kodiert werden
+        # Modbus-Register sind physisch unsigned (0-65535), aber das Gerät interpretiert
+        # sie als signed int16 (-32768 bis 32767)
+        from .utils import clamp_to_int16
+        
+        # Clamp auf int16-Bereich und konvertiere zu unsigned mit Two's Complement
+        raw_value = clamp_to_int16(raw_value, context="Flow Line Offset") & 0xFFFF
+        
         _LOGGER.debug(
-            "🔄 FLOW_LINE_OFFSET: Converted %.1f°C to raw value %d (scale=%.1f)",
+            "🔄 FLOW_LINE_OFFSET: Converted %.1f°C to raw value %d (scale=%.1f, signed->unsigned)",
             value,
             raw_value,
             self._scale,

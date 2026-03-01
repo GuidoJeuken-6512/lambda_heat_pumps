@@ -7,6 +7,7 @@ import logging
 import os
 import yaml
 from datetime import datetime
+from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
 from homeassistant.core import HomeAssistant
@@ -21,7 +22,11 @@ from .const import (
     DOMAIN,
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
     ENERGY_CONSUMPTION_MODES,
+    ENERGY_INCREMENT_PERIODS,
+    ENERGY_PERIOD_CONFIG,
     LAMBDA_WP_CONFIG_TEMPLATE,
+    RESET_VALID_PERIODS,
+    RESET_VALID_SENSOR_TYPES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -236,7 +241,7 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
 
         # Create backup
         backup_path = lambda_config_path + ".backup"
-        await hass.async_add_executor_job(lambda: open(backup_path, "w").write(content))
+        await hass.async_add_executor_job(Path(backup_path).write_text, content)
         _LOGGER.info("Created backup at %s", backup_path)
 
         # Add cycling_offsets section
@@ -296,127 +301,13 @@ async def migrate_lambda_config(hass: HomeAssistant) -> bool:
         return False
 
 
-def _extract_config_sections() -> dict[str, str]:
-    """
-    Extrahiert alle Konfigurationsabschnitte aus dem LAMBDA_WP_CONFIG_TEMPLATE.
-    
-    Returns:
-        dict: Dictionary mit Abschnittsnamen als Keys und vollständigen Abschnitten als Values
-    """
-    sections = {}
-    lines = LAMBDA_WP_CONFIG_TEMPLATE.split('\n')
-    
-    # Definiere die Abschnitts-Header und ihre Namen
-    section_headers = {
-        "# Override sensor names (only works if use_legacy_modbus_names is true)": "sensors_names_override",
-        "# Cycling counter offsets for total sensors": "cycling_offsets",
-        "# Energy consumption sensor configuration": "energy_consumption_sensors", 
-        "# Energy consumption offsets for total sensors": "energy_consumption_offsets",
-        "# Modbus configuration": "modbus"
-    }
-    
-    current_section = None
-    current_content = []
-    
-    for line in lines:
-        # Prüfe ob dies ein neuer Abschnitts-Header ist
-        if line.strip() in section_headers:
-            # Speichere vorherigen Abschnitt falls vorhanden
-            if current_section and current_content:
-                sections[current_section] = '\n'.join(current_content).strip()
-            
-            # Starte neuen Abschnitt
-            current_section = section_headers[line.strip()]
-            current_content = [line]
-        elif current_section:
-            # Füge Zeile zum aktuellen Abschnitt hinzu
-            current_content.append(line)
-        else:
-            # Wir sind noch nicht in einem relevanten Abschnitt
-            continue
-    
-    # Speichere den letzten Abschnitt
-    if current_section and current_content:
-        sections[current_section] = '\n'.join(current_content).strip()
-    
-    _LOGGER.debug("Extracted config sections: %s", list(sections.keys()))
-    return sections
-
-
 async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
     """
-    Template-basierte Migration aller Konfigurationsabschnitte.
-    
-    Returns:
-        bool: True wenn Migration durchgeführt wurde, False sonst
+    Delegation an migration.py: Template-basierte Migration der lambda_wp_config.yaml
+    (fehlende Abschnitte an richtiger Stelle einfügen, bestehende erhalten).
     """
-    config_dir = hass.config.config_dir
-    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
-
-    if not os.path.exists(lambda_config_path):
-        _LOGGER.debug("No existing lambda_wp_config.yaml found, no migration needed")
-        return False
-
-    try:
-        # Lade aktuelle Konfiguration (Rohtext + geparst)
-        content = await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "r").read()
-        )
-        current_config = yaml.safe_load(content)
-
-        if not current_config:
-            _LOGGER.debug("Empty config file, no migration needed")
-            return False
-
-        # Extrahiere alle Abschnitte aus dem Template
-        template_sections = _extract_config_sections()
-        
-        # Prüfe welche Abschnitte fehlen
-        missing_sections = []
-        for section_name, section_content in template_sections.items():
-            # Prüfe ob der vollständige Abschnitt bereits im Rohtext vorhanden ist
-            # (nicht nur der Header, sondern der komplette Abschnitt)
-            if section_content.strip() not in content:
-                # Prüfe auch ob Key im Dictionary vorhanden ist
-                if section_name not in current_config:
-                    missing_sections.append((section_name, section_content))
-                    _LOGGER.debug("Missing section: %s", section_name)
-                else:
-                    _LOGGER.debug("Section %s exists in dictionary but not as comment", section_name)
-            else:
-                _LOGGER.debug("Section %s already exists as complete comment", section_name)
-
-        if not missing_sections:
-            _LOGGER.info("All config sections already present - no migration needed")
-            return False
-
-        _LOGGER.info("Migrating lambda_wp_config.yaml - adding %d missing sections", len(missing_sections))
-
-        # Erstelle Backup
-        backup_path = lambda_config_path + ".backup"
-        await hass.async_add_executor_job(lambda: open(backup_path, "w").write(content))
-        _LOGGER.info("Created backup at %s", backup_path)
-
-        # Füge fehlende Abschnitte hinzu
-        updated_content = content.rstrip() + "\n\n"
-        for section_name, section_content in missing_sections:
-            updated_content += section_content + "\n\n"
-            _LOGGER.info("Added section: %s", section_name)
-
-        # Schreibe aktualisierte Konfiguration
-        await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "w").write(updated_content)
-        )
-
-        _LOGGER.info(
-            "Successfully migrated lambda_wp_config.yaml - added %d sections. Backup created at %s",
-            len(missing_sections), backup_path
-        )
-        return True
-
-    except Exception as e:
-        _LOGGER.error("Error during config migration: %s", e)
-        return False
+    from .migration import migrate_lambda_config_sections as _migrate_sections
+    return await _migrate_sections(hass)
 
 
 async def ensure_lambda_config(hass: HomeAssistant) -> bool:
@@ -756,6 +647,19 @@ def _log_missing_translation(sensor_id: str) -> None:
     )
 
 
+def normalize_name_prefix(raw: str) -> str:
+    """
+    Einheitlicher name_prefix für entity_id/unique_id: lowercase, Leerzeichen entfernt.
+
+    WICHTIG: Diese Funktion verwendet die IDENTISCHE Logik wie bisher (.lower().replace(" ", "")).
+    Sie ändert KEINE bestehenden unique_id/entity_id, sondern stellt nur sicher, dass alle
+    Stellen dieselbe Normalisierung verwenden, um zukünftige Duplikate zu vermeiden.
+    """
+    if not raw or not isinstance(raw, str):
+        return ""
+    return raw.lower().replace(" ", "")
+
+
 def generate_sensor_names(
     device_prefix: str,
     sensor_name: str,
@@ -993,7 +897,7 @@ async def increment_cycling_counter(
                     if cycling_entity:
                         break
         except Exception as e:
-            _LOGGER.debug(f"Error searching for entity {entity_id}: {e}")
+            _LOGGER.debug("Error searching for entity %s: %s", entity_id, e)
 
         final_value = int(new_value + offset)
         if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
@@ -1017,7 +921,7 @@ async def increment_cycling_counter(
         try:
             await async_update_entity(hass, entity_id)
         except Exception as e:
-            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+            _LOGGER.debug("Could not force update for %s: %s", entity_id, e)
 
 
 # =============================================================================
@@ -1311,6 +1215,101 @@ def generate_energy_sensor_names(
     )
 
 
+def apply_energy_period_reset(sensor_entity, period: str) -> None:
+    """
+    Setzt für einen Energy-Sensor mit periodenbezogenem Wert (daily/hourly/monthly/yearly)
+    den Basis-Wert und _energy_value aus dem zugehörigen Total-Sensor.
+    period: "daily" | "hourly" | "monthly" | "yearly"
+    """
+    if period not in ENERGY_PERIOD_CONFIG:
+        return
+    cfg = ENERGY_PERIOD_CONFIG[period]
+    suffix = cfg["suffix"]
+    baseline_attr = cfg["baseline_attr"]
+    label = cfg["attr_name"]
+    total_entity_id = sensor_entity.entity_id.replace(suffix, "_total")
+    total_state = sensor_entity.hass.states.get(total_entity_id)
+
+    if total_state and total_state.state not in (None, "unknown", "unavailable"):
+        try:
+            total_value = float(total_state.state)
+            old_baseline = getattr(sensor_entity, baseline_attr, 0.0)
+            setattr(sensor_entity, baseline_attr, total_value)
+            old_energy = sensor_entity._energy_value
+            sensor_entity._energy_value = total_value
+            _LOGGER.debug(
+                "Updated %s for %s: %.2f -> %.2f kWh (from %s); energy_value %.2f -> %.2f (sync)",
+                label, sensor_entity.entity_id, old_baseline, total_value, total_entity_id, old_energy, sensor_entity._energy_value,
+            )
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning("Could not get total from %s for %s: %s", total_entity_id, sensor_entity.entity_id, e)
+            setattr(sensor_entity, baseline_attr, sensor_entity._energy_value)
+            _LOGGER.debug("Updated %s for %s (fallback): -> %.2f kWh", label, sensor_entity.entity_id, getattr(sensor_entity, baseline_attr))
+    else:
+        setattr(sensor_entity, baseline_attr, sensor_entity._energy_value)
+        _LOGGER.debug(
+            "Updated %s for %s (fallback, total not found): -> %.2f kWh",
+            label, sensor_entity.entity_id, getattr(sensor_entity, baseline_attr),
+        )
+    _LOGGER.debug(
+        "%s sensor %s reset complete: %s = %.2f kWh",
+        period.title(), sensor_entity.entity_id, label, getattr(sensor_entity, baseline_attr),
+    )
+
+
+def restore_energy_period_state(sensor_entity, period: str, attrs: dict, last_state) -> None:
+    """
+    Stellt den State eines periodenbezogenen Energy-Sensors aus Restore-Attributen wieder her.
+    Nutzt ENERGY_PERIOD_CONFIG für baseline_attr und suffix.
+    period: "monthly" | "yearly" | "hourly"
+    """
+    if period not in ENERGY_PERIOD_CONFIG:
+        return
+    cfg = ENERGY_PERIOD_CONFIG[period]
+    baseline_attr = cfg["baseline_attr"]
+    suffix = cfg["suffix"]
+    attr_name = cfg["attr_name"]
+    baseline_val = attrs.get(attr_name)
+    if baseline_val is not None:
+        try:
+            setattr(sensor_entity, baseline_attr, float(baseline_val))
+        except (ValueError, TypeError):
+            pass
+    displayed = float(last_state.state)
+    persisted_total = attrs.get("energy_value")
+    if persisted_total is not None:
+        try:
+            sensor_entity._energy_value = float(persisted_total)
+        except (ValueError, TypeError):
+            setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+    else:
+        total_entity_id = sensor_entity.entity_id.replace(suffix, "_total")
+        if "_thermal_energy_" not in sensor_entity.entity_id:
+            total_state = sensor_entity.hass.states.get(total_entity_id)
+            if total_state and total_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    total_value = float(total_state.state)
+                    sensor_entity._energy_value = total_value
+                    setattr(sensor_entity, baseline_attr, total_value - displayed)
+                    _LOGGER.debug(
+                        "Restore %s %s from %s: energy_value=%.2f, %s=%.2f kWh",
+                        period, sensor_entity.entity_id, total_entity_id, sensor_entity._energy_value, attr_name, getattr(sensor_entity, baseline_attr),
+                    )
+                except (ValueError, TypeError):
+                    setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+            else:
+                setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+        else:
+            setattr(sensor_entity, "_energy_value", getattr(sensor_entity, baseline_attr) + displayed)
+    baseline = getattr(sensor_entity, baseline_attr)
+    if baseline > sensor_entity._energy_value:
+        _LOGGER.warning(
+            "Restore %s %s: %s (%.2f) > energy_value (%.2f), correct to energy_value",
+            period, sensor_entity.entity_id, attr_name, baseline, sensor_entity._energy_value,
+        )
+        setattr(sensor_entity, baseline_attr, sensor_entity._energy_value)
+
+
 async def increment_energy_consumption_counter(
     hass: HomeAssistant,
     mode: str,
@@ -1319,6 +1318,7 @@ async def increment_energy_consumption_counter(
     name_prefix: str,
     use_legacy_modbus_names: bool = True,
     energy_offsets: dict = None,
+    sensor_type: str = "electrical",
 ):
     """
     Increment energy consumption counters for a given mode and heat pump.
@@ -1334,6 +1334,7 @@ async def increment_energy_consumption_counter(
         name_prefix: Name prefix (e.g. "eu08l")
         use_legacy_modbus_names: Use legacy entity naming
         energy_offsets: Optional dict with energy offsets from config
+        sensor_type: "electrical" (default) or "thermal"
     """
     if mode not in ENERGY_CONSUMPTION_MODES:
         _LOGGER.error("Invalid energy consumption mode: %s", mode)
@@ -1350,13 +1351,21 @@ async def increment_energy_consumption_counter(
     device_prefix = f"hp{hp_index}"
     
     # Alle Sensor-Perioden, die aktualisiert werden sollen
-    sensor_periods = ["total", "daily", "monthly", "yearly", "2h", "4h"]
     changes_summary = []
     
-    for period in sensor_periods:
-        # Generiere Entity-ID für diesen Sensor
-        names = generate_energy_sensor_names(
-            device_prefix, mode, period, name_prefix, use_legacy_modbus_names
+    # Format mode name: "hot_water" -> "Hot_Water", "heating" -> "Heating"
+    mode_display = mode.replace("_", " ").title().replace(" ", "_")
+    
+    for period in ENERGY_INCREMENT_PERIODS:
+        # Bestimme sensor_id und sensor_name basierend auf sensor_type
+        if sensor_type == "thermal":
+            sensor_id = f"{mode}_thermal_energy_{period}"
+            sensor_name = f"{mode_display} Thermal Energy {period.title()}"
+        else:
+            sensor_id = f"{mode}_energy_{period}"
+            sensor_name = f"{mode_display} Energy {period.title()}"
+        names = generate_sensor_names(
+            device_prefix, sensor_name, sensor_id, name_prefix, use_legacy_modbus_names
         )
         entity_id = names["entity_id"]
 
@@ -1369,15 +1378,16 @@ async def increment_energy_consumption_counter(
                 warning_count = coordinator._energy_warnings.get(entity_id, 0)
                 coordinator._energy_warnings[entity_id] = warning_count + 1
                 if warning_count < coordinator._max_energy_warnings:
-                    _LOGGER.debug(
-                        f"Energy entity {entity_id} not yet registered "
-                        f"(attempt {warning_count + 1}/{coordinator._max_energy_warnings})"
+                    _LOGGER.info(
+                        "[Energy] Entity %s nicht registriert (Versuch %s/%s) – Inkrement für %s HP%s %s wird übersprungen",
+                        entity_id, warning_count + 1, coordinator._max_energy_warnings, mode, hp_index, period,
                     )
             continue
 
         # Prüfe ob State verfügbar ist
         state_obj = hass.states.get(entity_id)
         if state_obj is None:
+            _LOGGER.info("[Energy] Entity %s hat keinen State – Inkrement für %s HP%s %s übersprungen", entity_id, mode, hp_index, period)
             continue
 
         # Reset Warning Counter bei erfolgreicher Registrierung
@@ -1385,16 +1395,7 @@ async def increment_energy_consumption_counter(
         if coordinator and entity_id in coordinator._energy_warnings:
             del coordinator._energy_warnings[entity_id]
 
-        # Hole aktuellen Wert des Sensors
-        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
-            current_value = 0.0
-        else:
-            try:
-                current_value = float(state_obj.state)
-            except Exception:
-                current_value = 0.0
-
-        # Finde die Entity-Instanz
+        # Finde die Entity-Instanz ZUERST (vor der current_value Berechnung)
         energy_entity = None
         try:
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
@@ -1403,7 +1404,32 @@ async def increment_energy_consumption_counter(
                     if energy_entity:
                         break
         except Exception as e:
-            _LOGGER.debug(f"Error searching for energy entity {entity_id}: {e}")
+            _LOGGER.debug("Error searching for energy entity %s: %s", entity_id, e)
+
+        # Hole aktuellen Wert des Sensors
+        # WICHTIG: Für Daily/Monthly/Yearly-Sensoren muss _energy_value direkt gelesen werden,
+        # nicht der berechnete native_value (State), da native_value = _energy_value - _yesterday_value
+        # Nach Mitternacht-Reset wäre native_value = 0, aber _energy_value bleibt bei 100 kWh!
+        if energy_entity is not None and hasattr(energy_entity, "_energy_value"):
+            # Verwende _energy_value direkt (korrekt für alle Perioden)
+            current_value = energy_entity._energy_value
+            _LOGGER.debug(
+                "[Energy] Lesen _energy_value von %s: %.6f kWh (period=%s)",
+                entity_id, current_value, period,
+            )
+        else:
+            # Fallback: Verwende State (nur wenn Entity nicht gefunden wurde)
+            # Für Total-Sensoren ist das OK, da native_value = _energy_value
+            if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
+                current_value = 0.0
+            else:
+                try:
+                    current_value = float(state_obj.state)
+                    _LOGGER.debug(
+                        f"Reading value from state for {entity_id}: {current_value:.6f} kWh (fallback, entity not found)"
+                    )
+                except Exception:
+                    current_value = 0.0
 
         # Berechne neuen Wert: Einfache Delta-Addition
         new_value = current_value + energy_delta
@@ -1414,14 +1440,17 @@ async def increment_energy_consumption_counter(
             if device_key in energy_offsets:
                 device_offsets = energy_offsets[device_key]
                 if isinstance(device_offsets, dict):
-                    sensor_id = f"{mode}_energy_total"
+                    if sensor_type == "thermal":
+                        sensor_id = f"{mode}_thermal_energy_total"
+                    else:
+                        sensor_id = f"{mode}_energy_total"
                     offset = float(device_offsets.get(sensor_id, 0.0))
                     # Prüfe ob Offset bereits angewendet wurde
                     if hasattr(energy_entity, "_applied_offset"):
                         if energy_entity._applied_offset != offset:
                             new_value += offset - energy_entity._applied_offset
                             energy_entity._applied_offset = offset
-                            _LOGGER.info(f"Applied offset {offset:.2f} kWh to {entity_id}")
+                            _LOGGER.info("Applied offset %.2f kWh to %s", offset, entity_id)
 
         # Setze neuen Wert
         if energy_entity is not None and hasattr(energy_entity, "set_energy_value"):
@@ -1430,27 +1459,33 @@ async def increment_energy_consumption_counter(
                 changes_summary.append(
                     f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
                 )
-        else:
-            # Fallback: State setzen
-            _LOGGER.debug(f"Using fallback state update for {entity_id}")
-            hass.states.async_set(
-                entity_id, new_value, state_obj.attributes if state_obj else {}
-            )
-            if abs(new_value - current_value) > 0.001:
-                changes_summary.append(
-                    f"{entity_id} = {new_value:.2f} kWh (was {current_value:.2f})"
+                _LOGGER.debug(
+                    "[Energy] Update %s: %.2f -> %.2f kWh (delta %.2f, period=%s)",
+                    entity_id, current_value, new_value, energy_delta, period,
                 )
-
+                if period == "hourly":
+                    _LOGGER.debug(
+                        "[Energy] Hourly aktualisiert: %s = %.2f kWh (vorher %.2f, delta %.2f)",
+                        entity_id, new_value, current_value, energy_delta,
+                    )
+        else:
+            # Ohne Entity-Referenz kein async_set: state_obj liefert oft alten Wert nach Neustart
+            # (z. B. Total 220,25 statt 220,84) und würde Restore-Wert überschreiben.
+            _LOGGER.debug(
+                "[Energy] Keine Entity-Referenz für %s (period=%s) – Update übersprungen, Restore-Wert bleibt",
+                entity_id, period,
+            )
         # Optional: Entity zum Update zwingen
         try:
             await async_update_entity(hass, entity_id)
         except Exception as e:
-            _LOGGER.debug(f"Could not force update for {entity_id}: {e}")
+            _LOGGER.debug("Could not force update for %s: %s", entity_id, e)
 
     # Zentrale Logging-Meldung nur bei tatsächlichen Änderungen
     if changes_summary:
+        energy_type = "thermal" if sensor_type == "thermal" else "electrical"
         _LOGGER.info(
-            f"Energy counters updated for {mode} HP{hp_index}: {', '.join(changes_summary)} (delta {energy_delta:.2f} kWh)"
+            f"{energy_type.capitalize()} energy counters updated for {mode} HP{hp_index}: {', '.join(changes_summary)} (delta {energy_delta:.2f} kWh)"
         )
 
 
@@ -1532,7 +1567,7 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
         sensor_id = sensor_config.get("sensor_entity_id")
         
         if not sensor_id:
-            _LOGGER.warning(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Keine sensor_entity_id konfiguriert")
+            _LOGGER.warning("EXTERNAL-SENSOR-VALIDATION: %s - Keine sensor_entity_id konfiguriert", hp_key)
             continue
         
         # Prüfe ob Sensor existiert
@@ -1580,19 +1615,52 @@ def validate_external_sensors(hass: HomeAssistant, energy_sensor_configs: dict) 
                 f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Zero-Value Protection wird automatisch "
                 f"aktiviert bis Sensor verfügbar ist (wie bei _energy_first_value_seen)"
             )
-            
-            # Sensor ist gültig (existiert in Registry)
-            validated_configs[hp_key] = sensor_config
+            # Sensor ist gültig (existiert in Registry) – thermal_sensor_entity_id optional validieren
+            out_config = dict(sensor_config)
+            thermal_id = sensor_config.get("thermal_sensor_entity_id")
+            if thermal_id:
+                thermal_entry = entity_registry.async_get(thermal_id)
+                if thermal_entry is None:
+                    _LOGGER.warning(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - thermal_sensor_entity_id '%s' nicht gefunden, verwende internen Thermik-Sensor",
+                        hp_key, thermal_id,
+                    )
+                    out_config["thermal_sensor_entity_id"] = None
+            validated_configs[hp_key] = out_config
             continue
         
         # Prüfe ob Sensor verfügbar ist
         if sensor_state.state in ("unknown", "unavailable", None):
-            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist nicht verfügbar (State: {sensor_state.state})")
-            _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert")
+            _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: %s - Sensor '%s' ist nicht verfügbar (State: %s)", hp_key, sensor_id, sensor_state.state)
+            _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: %s - Sensor wird trotzdem verwendet, aber Zero-Value Protection aktiviert", hp_key)
         
-        # Sensor ist gültig
-        validated_configs[hp_key] = sensor_config
-        _LOGGER.info(f"EXTERNAL-SENSOR-VALIDATION: {hp_key} - Sensor '{sensor_id}' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet")
+        # Sensor ist gültig – Eintrag übernehmen und optional thermal_sensor_entity_id validieren
+        out_config = dict(sensor_config)
+        thermal_id = sensor_config.get("thermal_sensor_entity_id")
+        if thermal_id:
+            thermal_state = hass.states.get(thermal_id)
+            if thermal_state is None:
+                entity_registry = async_get_entity_registry(hass)
+                thermal_entry = entity_registry.async_get(thermal_id)
+                if thermal_entry is None:
+                    _LOGGER.warning(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - thermal_sensor_entity_id '%s' nicht gefunden, verwende internen Thermik-Sensor",
+                        hp_key, thermal_id,
+                    )
+                    out_config["thermal_sensor_entity_id"] = None
+                else:
+                    _LOGGER.info(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - Thermik-Sensor '%s' in Registry gefunden (ggf. noch nicht im State)",
+                        hp_key, thermal_id,
+                    )
+            else:
+                if thermal_state.state in ("unknown", "unavailable", None):
+                    _LOGGER.info(
+                        "EXTERNAL-SENSOR-VALIDATION: %s - Thermik-Sensor '%s' noch nicht verfügbar, Zero-Value Protection",
+                        hp_key, thermal_id,
+                    )
+        validated_configs[hp_key] = out_config
+        _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: %s - Sensor '%s' ist gültig und verfügbar - wird zur Verbrauchsberechnung verwendet", hp_key, sensor_id)
     
     if fallback_used:
         _LOGGER.info("EXTERNAL-SENSOR-VALIDATION: Einige externe Sensoren sind fehlerhaft - verwende interne Modbus-Sensoren als Fallback")
@@ -1618,15 +1686,10 @@ def create_reset_signal(sensor_type: str, period: str) -> str:
     Raises:
         ValueError: Wenn sensor_type oder period ungültig ist
     """
-    # Validiere sensor_type
-    valid_sensor_types = ['cycling', 'energy', 'general']
-    if sensor_type not in valid_sensor_types:
-        raise ValueError(f"Ungültiger sensor_type: {sensor_type}. Erlaubt: {valid_sensor_types}")
-    
-    # Validiere period
-    valid_periods = ['daily', '2h', '4h']
-    if period not in valid_periods:
-        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
+    if sensor_type not in RESET_VALID_SENSOR_TYPES:
+        raise ValueError(f"Ungültiger sensor_type: {sensor_type}. Erlaubt: {RESET_VALID_SENSOR_TYPES}")
+    if period not in RESET_VALID_PERIODS:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {RESET_VALID_PERIODS}")
     
     return f"lambda_heat_pumps_reset_{period}_{sensor_type}"
 
@@ -1644,11 +1707,8 @@ def get_reset_signal_for_period(period: str) -> str:
     Raises:
         ValueError: Wenn period ungültig ist
     """
-    # Validiere period
-    valid_periods = ['daily', '2h', '4h']
-    if period not in valid_periods:
-        raise ValueError(f"Ungültige period: {period}. Erlaubt: {valid_periods}")
-    
+    if period not in RESET_VALID_PERIODS:
+        raise ValueError(f"Ungültige period: {period}. Erlaubt: {RESET_VALID_PERIODS}")
     return f"lambda_heat_pumps_reset_{period}"
 
 
@@ -1659,13 +1719,10 @@ def get_all_reset_signals() -> dict:
     Returns:
         Dictionary mit allen Signal-Kombinationen
     """
-    sensor_types = ['cycling', 'energy', 'general']
-    periods = ['daily', '2h', '4h']
-    
     signals = {}
-    for sensor_type in sensor_types:
+    for sensor_type in RESET_VALID_SENSOR_TYPES:
         signals[sensor_type] = {}
-        for period in periods:
+        for period in RESET_VALID_PERIODS:
             signals[sensor_type][period] = create_reset_signal(sensor_type, period)
     
     return signals
@@ -1692,16 +1749,10 @@ def validate_reset_signal(signal: str) -> bool:
     if parts[0] != 'lambda' or parts[1] != 'heat' or parts[2] != 'pumps' or parts[3] != 'reset':
         return False
     
-    # Prüfe ob es ein spezifisches Signal ist (mit sensor_type)
     if len(parts) == 6:  # lambda_heat_pumps_reset_{period}_{sensor_type}
-        period = parts[4]
-        sensor_type = parts[5]
-        return period in ['daily', '2h', '4h'] and sensor_type in ['cycling', 'energy', 'general']
-    
-    # Prüfe ob es ein allgemeines Signal ist (ohne sensor_type)
-    elif len(parts) == 5:  # lambda_heat_pumps_reset_{period}
-        period = parts[4]
-        return period in ['daily', '2h', '4h']
+        return parts[4] in RESET_VALID_PERIODS and parts[5] in RESET_VALID_SENSOR_TYPES
+    if len(parts) == 5:  # lambda_heat_pumps_reset_{period}
+        return parts[4] in RESET_VALID_PERIODS
     
     return False
 
@@ -2055,19 +2106,19 @@ def detect_sensor_change(stored_sensor_id: str, current_sensor_id: str) -> bool:
     stored_normalized = str(stored_sensor_id).strip().strip("'\"") if stored_sensor_id else None
     current_normalized = str(current_sensor_id).strip().strip("'\"") if current_sensor_id else None
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '{stored_normalized}', aktuell: '{current_normalized}'")
+    _LOGGER.info("SENSOR-CHANGE-DETECTION: Prüfe Sensor-Wechsel - gespeichert: '%s', aktuell: '%s'", stored_normalized, current_normalized)
     
     # Wenn kein gespeicherter Sensor vorhanden ist, ist es kein Wechsel
     if not stored_normalized:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Kein gespeicherter Sensor für Vergleich vorhanden")
         return False
     
     # Wenn die IDs unterschiedlich sind, ist es ein Wechsel
     is_change = stored_normalized != current_normalized
     if is_change:
-        _LOGGER.warning(f"SENSOR-CHANGE-DETECTION: Sensor wurde gewechselt - '{stored_normalized}' -> '{current_normalized}'. {current_normalized} wird zur Verbrauchsberechnung verwendet")
+        _LOGGER.warning("SENSOR-CHANGE-DETECTION: Sensor wurde gewechselt - '%s' -> '%s'. %s wird zur Verbrauchsberechnung verwendet", stored_normalized, current_normalized, current_normalized)
     else:
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Kein Sensor-Wechsel - IDs identisch")
     
     return is_change
 
@@ -2086,7 +2137,7 @@ def get_stored_sensor_id(persist_data: dict, hp_idx: int) -> str:
     sensor_ids = persist_data.get("sensor_ids", {})
     stored_id = sensor_ids.get(hp_key)
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Gespeicherte Sensor-ID für {hp_key}: '{stored_id}'")
+    _LOGGER.info("SENSOR-CHANGE-DETECTION: Gespeicherte Sensor-ID für %s: '%s'", hp_key, stored_id)
     return stored_id
 
 
@@ -2106,13 +2157,47 @@ def store_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
     # Stelle sicher, dass sensor_ids existiert
     if "sensor_ids" not in persist_data:
         persist_data["sensor_ids"] = {}
-        _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
+        _LOGGER.info("SENSOR-CHANGE-DETECTION: Erstelle neue sensor_ids Sektion in persistierten Daten")
     
     # Speichere die normalisierte Sensor-ID
     old_id = persist_data["sensor_ids"].get(hp_key)
     persist_data["sensor_ids"][hp_key] = normalized_sensor_id
     
-    _LOGGER.info(f"SENSOR-CHANGE-DETECTION: Sensor-ID für {hp_key} gespeichert: '{old_id}' -> '{normalized_sensor_id}'")
+    _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-ID für %s gespeichert: '%s' -> '%s'", hp_key, old_id, normalized_sensor_id)
+
+
+def get_stored_thermal_sensor_id(persist_data: dict, hp_idx: int) -> str:
+    """Hole die gespeicherte Thermik-Sensor-ID für eine Wärmepumpe aus den persistierten Daten.
+
+    Args:
+        persist_data: Die persistierten Daten (z. B. aus cycle_energy_persist.json)
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+
+    Returns:
+        str: Die gespeicherte Sensor-ID oder None wenn nicht vorhanden
+    """
+    hp_key = f"hp{hp_idx}"
+    thermal_sensor_ids = persist_data.get("thermal_sensor_ids", {})
+    stored_id = thermal_sensor_ids.get(hp_key)
+    _LOGGER.debug("SENSOR-CHANGE-DETECTION: Gespeicherte Thermik-Sensor-ID für %s: %s", hp_key, stored_id)
+    return stored_id
+
+
+def store_thermal_sensor_id(persist_data: dict, hp_idx: int, sensor_id: str) -> None:
+    """Speichere die Thermik-Sensor-ID für eine Wärmepumpe in den persistierten Daten.
+
+    Args:
+        persist_data: Die persistierten Daten (wird modifiziert)
+        hp_idx: Der Index der Wärmepumpe (1, 2, 3, ...)
+        sensor_id: Die Sensor-ID die gespeichert werden soll
+    """
+    hp_key = f"hp{hp_idx}"
+    normalized_sensor_id = str(sensor_id).strip().strip("'\"") if sensor_id else None
+    if "thermal_sensor_ids" not in persist_data:
+        persist_data["thermal_sensor_ids"] = {}
+    old_id = persist_data["thermal_sensor_ids"].get(hp_key)
+    persist_data["thermal_sensor_ids"][hp_key] = normalized_sensor_id
+    _LOGGER.debug("SENSOR-CHANGE-DETECTION: Thermik-Sensor-ID für %s gespeichert: %s -> %s", hp_key, old_id, normalized_sensor_id)
 
 
 async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> None:
@@ -2133,9 +2218,9 @@ async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> No
                 _LOGGER.info("🧹 CLEANUP: Shutting down coordinator (coordinator_id=%s)", id(coordinator))
                 try:
                     await coordinator.async_shutdown()
-                    _LOGGER.info("✅ CLEANUP: Coordinator shutdown completed")
+                    _LOGGER.info("CLEANUP: Coordinator shutdown completed")
                 except Exception as coord_ex:
-                    _LOGGER.error("❌ CLEANUP: Error during coordinator shutdown: %s", coord_ex)
+                    _LOGGER.error("CLEANUP: Error during coordinator shutdown: %s", coord_ex)
                 finally:
                     # Entferne Coordinator aus hass.data
                     coordinator_data.pop("coordinator", None)
@@ -2145,32 +2230,38 @@ async def async_cleanup_all_components(hass: HomeAssistant, entry_id: str) -> No
             from .services import async_unload_services
             _LOGGER.info("🧹 CLEANUP: Unloading services...")
             await async_unload_services(hass)
-            _LOGGER.info("✅ CLEANUP: Services unloaded")
+            _LOGGER.info("CLEANUP: Services unloaded")
         except Exception as service_ex:
-            _LOGGER.error("❌ CLEANUP: Error during services cleanup: %s", service_ex)
+            _LOGGER.error("CLEANUP: Error during services cleanup: %s", service_ex)
         
-        # 3. Cleanup Automations
+        # 3. Cleanup Reset Manager
         try:
-            from .automations import cleanup_cycling_automations
-            _LOGGER.info("🧹 CLEANUP: Cleaning up automations...")
-            cleanup_cycling_automations(hass, entry_id)
-            _LOGGER.info("✅ CLEANUP: Automations cleaned up")
+            if (
+                "lambda_heat_pumps" in hass.data
+                and entry_id in hass.data["lambda_heat_pumps"]
+                and "reset_manager" in hass.data["lambda_heat_pumps"][entry_id]
+            ):
+                _LOGGER.info("🧹 CLEANUP: Cleaning up reset manager...")
+                reset_manager = hass.data["lambda_heat_pumps"][entry_id]["reset_manager"]
+                reset_manager.cleanup()
+                del hass.data["lambda_heat_pumps"][entry_id]["reset_manager"]
+                _LOGGER.info("CLEANUP: Reset manager cleaned up")
         except Exception as auto_ex:
-            _LOGGER.error("❌ CLEANUP: Error during automations cleanup: %s", auto_ex)
+            _LOGGER.error("CLEANUP: Error during reset manager cleanup: %s", auto_ex)
         
         # 4. Remove entry from hass.data
         if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
             hass.data[DOMAIN].pop(entry_id, None)
-            _LOGGER.info("✅ CLEANUP: Entry removed from hass.data")
+            _LOGGER.info("CLEANUP: Entry removed from hass.data")
         
         # 5. Final cleanup check
         if DOMAIN in hass.data and entry_id in hass.data[DOMAIN]:
-            _LOGGER.warning("⚠️ CLEANUP: Entry still exists in hass.data after cleanup")
+            _LOGGER.warning("CLEANUP: Entry still exists in hass.data after cleanup")
         else:
-            _LOGGER.info("✅ CLEANUP: Entry successfully removed from hass.data")
+            _LOGGER.info("CLEANUP: Entry successfully removed from hass.data")
             
     except Exception as ex:
-        _LOGGER.error("❌ CLEANUP: Error during centralized cleanup: %s", ex)
+        _LOGGER.error("CLEANUP: Error during centralized cleanup: %s", ex)
         raise
     
     _LOGGER.info("🎉 CLEANUP: Centralized cleanup completed for entry: %s", entry_id)

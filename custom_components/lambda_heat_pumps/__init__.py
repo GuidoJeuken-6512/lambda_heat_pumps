@@ -1,7 +1,6 @@
 """The Lambda Heat Pumps integration."""
 
 from __future__ import annotations
-from datetime import timedelta
 
 import logging
 import asyncio
@@ -21,24 +20,29 @@ from .const import (
 from .coordinator import LambdaDataUpdateCoordinator
 from .services import async_setup_services, async_unload_services
 from .utils import generate_base_addresses, ensure_lambda_config
-from .automations import setup_cycling_automations, cleanup_cycling_automations
-from .migration import async_migrate_entry
+from .reset_manager import ResetManager
+from .migration import async_migrate_entry, async_remove_duplicate_entity_suffixes
 from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
 from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
 from .modbus_utils import wait_for_stable_connection
 
 _LOGGER = logging.getLogger(__name__)
-SCAN_INTERVAL = timedelta(seconds=30)
-
 
 
 # Diese Konstante teilt Home Assistant mit, dass die Integration
 # Übersetzungen hat
 TRANSLATION_SOURCES = {DOMAIN: "translations"}
 
-# Lock für das Reloading - verhindert mehrere gleichzeitige Reloads
-_reload_lock = asyncio.Lock()
-_reload_in_progress = False
+# Per-Entry Reload-State: eigener Lock + Flag pro entry_id.
+# Verhindert, dass ein Reload von Entry A den Reload von Entry B blockiert
+# und eliminiert Race-Conditions bei parallelen Reload-Triggern.
+_entry_reload_locks: dict[str, asyncio.Lock] = {}
+_entry_reload_flags: dict[str, bool] = {}
+
+# Tracks which entries have been set up at least once in this HA session.
+# Used to distinguish a first-time setup from a reload (H-04):
+# after async_unload_entry clears hass.data, checking hass.data is unreliable.
+_previously_setup_entries: set[str] = set()
 
 PLATFORMS = [
     Platform.SENSOR,
@@ -73,59 +77,63 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Reload config entry."""
-    global _reload_in_progress
-    
-    # Prüfe ob bereits ein Reload läuft
-    if _reload_in_progress:
-        _LOGGER.warning("🔄 RELOAD: Another reload is already in progress, skipping this reload request")
-        return True  # Return True da der andere Reload das übernimmt
-    
-    _LOGGER.info("🔄 RELOAD: Starting reload for entry: %s", entry.entry_id)
+    # FIX K-02: Pro Entry eigener Lock und Flag – keine modul-globale Sperre mehr.
+    entry_id = entry.entry_id
 
-    async with _reload_lock:
-        if _reload_in_progress:
-            _LOGGER.warning("🔄 RELOAD: Reload already in progress, skipping")
+    if _entry_reload_flags.get(entry_id, False):
+        _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
+        return True
+
+    reload_lock = _entry_reload_locks.setdefault(entry_id, asyncio.Lock())
+    _LOGGER.info("RELOAD: Starting reload for entry: %s", entry_id)
+
+    async with reload_lock:
+        if _entry_reload_flags.get(entry_id, False):
+            _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
             return True
-            
-        _reload_in_progress = True
-        _LOGGER.info("🔄 RELOAD: Reload lock acquired, proceeding with reload")
-        
+
+        _entry_reload_flags[entry_id] = True
+        _LOGGER.info("RELOAD: Reload lock acquired for entry %s, proceeding", entry_id)
+
         try:
-            # Unload the current entry
-            _LOGGER.info("🔄 RELOAD: Unloading current entry...")
+            _LOGGER.info("RELOAD: Unloading current entry...")
             unload_ok = await async_unload_entry(hass, entry)
             if not unload_ok:
-                _LOGGER.error("❌ RELOAD: Failed to unload entry during reload")
+                _LOGGER.error("RELOAD: Failed to unload entry during reload")
                 return False
 
-            # Set up the entry again
-            _LOGGER.info("🔄 RELOAD: Setting up entry again...")
+            _LOGGER.info("RELOAD: Setting up entry again...")
             setup_ok = await async_setup_entry(hass, entry)
             if not setup_ok:
-                _LOGGER.error("❌ RELOAD: Failed to setup entry during reload")
+                _LOGGER.error("RELOAD: Failed to setup entry during reload")
                 return False
 
-            _LOGGER.info("✅ RELOAD: Successfully reloaded Lambda Heat Pumps integration")
+            _LOGGER.info("RELOAD: Successfully reloaded Lambda Heat Pumps integration")
             return True
 
         except Exception as ex:
-            _LOGGER.error("❌ RELOAD: Error during reload: %s", ex, exc_info=True)
+            _LOGGER.error("RELOAD: Error during reload: %s", ex, exc_info=True)
             return False
         finally:
-            _reload_in_progress = False
-            _LOGGER.info("🔄 RELOAD: Reload lock released")
+            _entry_reload_flags[entry_id] = False
+            _LOGGER.info("RELOAD: Reload lock released for entry %s", entry_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Lambda Heat Pumps from a config entry."""
-    _LOGGER.info("🔧 SETUP: Setting up Lambda Heat Pumps integration for entry: %s", entry.entry_id)
+    _LOGGER.info("SETUP: Setting up Lambda Heat Pumps integration for entry: %s", entry.entry_id)
 
     # Check if entry is already loaded
     if DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]:
-        _LOGGER.warning("🔧 SETUP: Entry %s already loaded, skipping setup", entry.entry_id)
+        _LOGGER.warning("SETUP: Entry %s already loaded, skipping setup", entry.entry_id)
         return True
 
     _LOGGER.debug("Setting up Lambda integration with config: %s", entry.data)
+
+    # Config-Cache invalidieren (M-07): Bei jedem Setup/Reload die gecachte
+    # lambda_wp_config.yaml verwerfen, damit Änderungen sofort wirksam werden.
+    hass.data.pop("_lambda_config_cache", None)
+    hass.data.pop("_lambda_migration_done", None)
 
     # Ensure lambda_wp_config.yaml exists (create from template if missing)
     await ensure_lambda_config(hass)
@@ -145,39 +153,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Bestehende Config: Auto-Detection im Hintergrund (non-blocking)
         _LOGGER.info("Using existing module counts, starting background auto-detection")
         
-        # 🎯 NEUE LOGIK: Unterscheidung zwischen erstem Start und Reload
-        is_reload = hass.data.get(DOMAIN, {}).get(entry.entry_id) is not None
+        # Zuverlässige Reload-Erkennung: hass.data wird beim Unload geleert,
+        # daher ist es keine brauchbare Quelle für diese Information (H-04).
+        is_reload = entry.entry_id in _previously_setup_entries
         
         async def background_auto_detect():
             try:
-                _LOGGER.info("🔍 AUTO-DETECT: Background auto-detection started (coordinator_id=%s)", id(coordinator))
+                _LOGGER.info("AUTO-DETECT: Background auto-detection started (coordinator_id=%s)", id(coordinator))
                 
                 if is_reload:
-                    # 🎯 RELOAD: 38 Sekunden Verzögerung für stabile Verbindung
-                    _LOGGER.info("⏳ AUTO-DETECT: Reload detected - waiting 38 seconds for coordinator to complete initial read cycles...")
+                    # RELOAD: 38 Sekunden Verzögerung für stabile Verbindung
+                    _LOGGER.info("AUTO-DETECT: Reload detected - waiting 38 seconds for coordinator to complete initial read cycles...")
                     await asyncio.sleep(38)  # 38 Sekunden warten
-                    _LOGGER.info("✅ AUTO-DETECT: 38 seconds elapsed, starting auto-detection...")
+                    _LOGGER.info("AUTO-DETECT: 38 seconds elapsed, starting auto-detection...")
                 else:
-                    # 🎯 ERSTER START: Sofort starten (Config Flow)
-                    _LOGGER.info("✅ AUTO-DETECT: First startup detected - starting auto-detection immediately...")
+                    # ERSTER START: Sofort starten (Config Flow)
+                    _LOGGER.info("AUTO-DETECT: First startup detected - starting auto-detection immediately...")
                 
                 # Zusätzlich: Warte auf stabile Verbindung vor Auto-Detection
-                _LOGGER.info("🔍 AUTO-DETECT: Waiting for stable connection before starting...")
+                _LOGGER.info("AUTO-DETECT: Waiting for stable connection before starting...")
                 await wait_for_stable_connection(coordinator)
-                _LOGGER.info("✅ AUTO-DETECT: Connection stable, starting module detection...")
+                _LOGGER.info("AUTO-DETECT: Connection stable, starting module detection...")
                 
                 detected = await auto_detect_modules(coordinator.client, coordinator.slave_id)
                 updated = await update_entry_with_detected_modules(hass, entry, detected)
                 if updated:
-                    _LOGGER.info("🔍 AUTO-DETECT: Background auto-detection updated module counts: %s (coordinator_id=%s)", detected, id(coordinator))
+                    _LOGGER.info("AUTO-DETECT: Background auto-detection updated module counts: %s (coordinator_id=%s)", detected, id(coordinator))
                 else:
-                    _LOGGER.info("🔍 AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
+                    _LOGGER.info("AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
             except Exception as ex:
-                _LOGGER.info("❌ AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
+                _LOGGER.info("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
         
-        # Starte Auto-Detection im Hintergrund (non-blocking)
-        hass.async_create_task(background_auto_detect())
-        _LOGGER.info("🔍 AUTO-DETECT: Started background auto-detection (non-blocking) (coordinator_id=%s)", id(coordinator))
+        # FIX K-02: Task-Referenz speichern – wird beim Unload abgebrochen,
+        # sodass kein verwaister Task nach einem Reload einen weiteren Reload triggert.
+        _auto_detect_task = hass.async_create_task(background_auto_detect())
+        # Temporäre Zwischenspeicherung; endgültige Speicherung erfolgt nach
+        # hass.data-Initialisierung weiter unten.
+        hass.data.setdefault(DOMAIN, {}).setdefault(
+            entry.entry_id, {}
+        )["auto_detect_task"] = _auto_detect_task
+        _LOGGER.info("AUTO-DETECT: Started background auto-detection (non-blocking) (coordinator_id=%s)", id(coordinator))
         
         # Verwende vorhandene Module Counts
         num_hps = entry.data.get("num_hps", 1)
@@ -187,33 +202,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         num_hc = entry.data.get("num_hc", 1)
     else:
         # Neue Config: Auto-Detection mit Retry (blocking für Setup)
-        _LOGGER.info("🔍 AUTO-DETECT: New configuration detected, performing auto-detection (coordinator_id=%s)", id(coordinator))
+        _LOGGER.info("AUTO-DETECT: New configuration detected, performing auto-detection (coordinator_id=%s)", id(coordinator))
         detected_counts = None
         for attempt in range(AUTO_DETECT_RETRIES):
             try:
-                _LOGGER.info("🔍 AUTO-DETECT: Attempt %d/%d (coordinator_id=%s)", attempt + 1, AUTO_DETECT_RETRIES, id(coordinator))
+                _LOGGER.info("AUTO-DETECT: Attempt %d/%d (coordinator_id=%s)", attempt + 1, AUTO_DETECT_RETRIES, id(coordinator))
                 if await coordinator.client.connect():
-                    _LOGGER.info("🔍 AUTO-DETECT: Connected, starting module detection (coordinator_id=%s)", id(coordinator))
+                    _LOGGER.info("AUTO-DETECT: Connected, starting module detection (coordinator_id=%s)", id(coordinator))
                     detected_counts = await auto_detect_modules(coordinator.client, coordinator.slave_id)
                     updated = await update_entry_with_detected_modules(hass, entry, detected_counts)
                     if updated:
-                        _LOGGER.info("🔍 AUTO-DETECT: Config entry updated with detected module counts: %s (coordinator_id=%s)", detected_counts, id(coordinator))
+                        _LOGGER.info("AUTO-DETECT: Config entry updated with detected module counts: %s (coordinator_id=%s)", detected_counts, id(coordinator))
                     else:
-                        _LOGGER.info("🔍 AUTO-DETECT: No module count changes needed (coordinator_id=%s)", id(coordinator))
+                        _LOGGER.info("AUTO-DETECT: No module count changes needed (coordinator_id=%s)", id(coordinator))
                     break
                 else:
                     _LOGGER.info(
-                        "❌ AUTO-DETECT: Could not connect to Modbus device for auto-detection (attempt %d/%d) (coordinator_id=%s)",
+                        "AUTO-DETECT: Could not connect to Modbus device for auto-detection (attempt %d/%d) (coordinator_id=%s)",
                         attempt + 1, AUTO_DETECT_RETRIES, id(coordinator)
                     )
             except Exception as ex:
                 _LOGGER.info(
-                    "❌ AUTO-DETECT: Module auto-detection failed (attempt %d/%d): %s (coordinator_id=%s)",
+                    "AUTO-DETECT: Module auto-detection failed (attempt %d/%d): %s (coordinator_id=%s)",
                     attempt + 1, AUTO_DETECT_RETRIES, ex, id(coordinator)
                 )
             finally:
                 if detected_counts is None and attempt < AUTO_DETECT_RETRIES - 1:
-                    _LOGGER.info("🔍 AUTO-DETECT: Retrying in %d seconds (coordinator_id=%s)", AUTO_DETECT_RETRY_DELAY, id(coordinator))
+                    _LOGGER.info("AUTO-DETECT: Retrying in %d seconds (coordinator_id=%s)", AUTO_DETECT_RETRY_DELAY, id(coordinator))
                     await asyncio.sleep(AUTO_DETECT_RETRY_DELAY)
         
         # Use detected counts if available, else fallback to config
@@ -249,10 +264,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Setze die generierten Base Addresses
         coordinator.base_addresses = base_addresses
 
-        # Store coordinator in hass.data VOR Platform-Setup (wird von sensor.py benötigt)
+        # Store coordinator in hass.data VOR Platform-Setup (wird von sensor.py benötigt).
+        # Bereits vorhandene Einträge (z.B. auto_detect_task) werden beibehalten.
         if DOMAIN not in hass.data:
             hass.data[DOMAIN] = {}
-        hass.data[DOMAIN][entry.entry_id] = {"coordinator": coordinator}
+        existing = hass.data[DOMAIN].get(entry.entry_id, {})
+        existing["coordinator"] = coordinator
+        hass.data[DOMAIN][entry.entry_id] = existing
+
+        # Duplikat-Entities (_2, _3, …) aus der Registry entfernen –
+        # VOR dem Platform-Setup (bereinigt Überreste vorheriger Sessions).
+        await async_remove_duplicate_entity_suffixes(hass, entry.entry_id)
 
         # Set up platforms with error handling
         try:
@@ -268,20 +290,37 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
             return False
 
+        # FIX K-03: Zweite Bereinigung NACH dem Platform-Setup.
+        # Fängt Duplikate ab, die durch nicht-abgebrochene Hintergrund-Tasks
+        # innerhalb dieses Setup-Laufs entstanden sind.
+        await async_remove_duplicate_entity_suffixes(hass, entry.entry_id)
+
         # Starte den ersten Datenupdate NACH Platform-Setup (damit Entitäten bereits registriert sind)
-        _LOGGER.info("🔄 PRODUCTION: Starting first data update (coordinator_id=%s)", id(coordinator))
+        _LOGGER.info("PRODUCTION: Starting first data update (coordinator_id=%s)", id(coordinator))
         await coordinator.async_refresh()
-        _LOGGER.info("✅ PRODUCTION: First data update completed (coordinator_id=%s)", id(coordinator))
+        _LOGGER.info("PRODUCTION: First data update completed (coordinator_id=%s)", id(coordinator))
 
         # Set up services (only once, regardless of number of entries)
         if not hass.services.has_service(DOMAIN, "read_modbus_register"):
             await async_setup_services(hass)
 
-        # Set up cycling automations
-        setup_cycling_automations(hass, entry.entry_id)
+        # Set up reset automations using ResetManager
+        reset_manager = ResetManager(hass, entry.entry_id)
+        reset_manager.setup_reset_automations()
+
+        # Store reset_manager for cleanup
+        if "lambda_heat_pumps" not in hass.data:
+            hass.data["lambda_heat_pumps"] = {}
+        if entry.entry_id not in hass.data["lambda_heat_pumps"]:
+            hass.data["lambda_heat_pumps"][entry.entry_id] = {}
+        hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"] = reset_manager
 
         # Add update listener
         entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+
+        # Nach erfolgreichem Setup als "bereits eingerichtet" markieren
+        # (für is_reload-Erkennung bei zukünftigen Reloads).
+        _previously_setup_entries.add(entry.entry_id)
 
         _LOGGER.info("Lambda Heat Pumps integration setup completed")
         return True
@@ -308,8 +347,29 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = True
 
     try:
-        # Clean up cycling automations first
-        cleanup_cycling_automations(hass, entry.entry_id)
+        # FIX K-01 + K-02: Hintergrund-Tasks abbrechen, BEVOR Platforms entladen werden.
+        # Verhindert, dass verwaiste Tasks nach dem Reload async_add_entities erneut
+        # aufrufen (→ _2-Duplikate) oder einen weiteren Reload auslösen.
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+        for task_key in ("template_setup_task", "auto_detect_task"):
+            task = entry_data.get(task_key)
+            if task is not None and not task.done():
+                _LOGGER.debug("🧹 UNLOAD: Cancelling background task '%s'", task_key)
+                task.cancel()
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+                except (asyncio.CancelledError, asyncio.TimeoutError):
+                    pass
+
+        # Clean up reset automations using ResetManager
+        if (
+            "lambda_heat_pumps" in hass.data
+            and entry.entry_id in hass.data["lambda_heat_pumps"]
+            and "reset_manager" in hass.data["lambda_heat_pumps"][entry.entry_id]
+        ):
+            reset_manager = hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"]
+            reset_manager.cleanup()
+            del hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"]
 
         # Try to unload platforms - handle gracefully if they weren't loaded
         try:

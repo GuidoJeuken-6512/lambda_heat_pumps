@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from homeassistant.components.sensor import (
@@ -18,6 +19,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.helpers.template import Template
 from homeassistant.exceptions import TemplateError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from datetime import timedelta
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 
 from .const import (
@@ -32,9 +36,14 @@ from .const import (
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
     ENERGY_CONSUMPTION_MODES,
     ENERGY_CONSUMPTION_PERIODS,
+    ENERGY_PERIOD_CONFIG,
+    ENERGY_REGISTRATION_ORDER,
+    COP_MODES,
+    COP_PERIODS,
 )
 from .coordinator import LambdaDataUpdateCoordinator
 from .utils import (
+    apply_energy_period_reset,
     build_device_info,
     build_subdevice_info,
     extract_device_info_from_sensor_id,
@@ -44,6 +53,8 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     get_entity_icon,
+    normalize_name_prefix,
+    restore_energy_period_state,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
 from .const_mapping import HP_STATE  # noqa: F401
@@ -91,7 +102,7 @@ async def async_setup_entry(
 
     # Hole den Legacy-Modbus-Namen-Switch aus der Config
     use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-    name_prefix = entry.data.get("name", "").lower().replace(" ", "")
+    name_prefix = normalize_name_prefix(entry.data.get("name", ""))
     sensor_translations = await load_sensor_translations(hass)
 
     # Get firmware version and filter compatible sensors
@@ -103,7 +114,100 @@ async def async_setup_entry(
 
     # Create sensors for each device type using a generic loop
     sensors = []
+    general_sensors = []  # General Sensors separat sammeln für frühe Registrierung
 
+    # WICHTIG: General Sensors ZUERST erstellen und registrieren, um das Haupt-Device zu erstellen,
+    # bevor Sub-Devices darauf verweisen (via_device). Dies verhindert Warnungen
+    # über nicht existierende via_device Referenzen in Home Assistant 2025.12.0+.
+    # General Sensors (SENSOR_TYPES) - erstellen das Haupt-Device
+    for sensor_id, sensor_info in SENSOR_TYPES.items():
+        address = sensor_info["address"]
+        if coordinator.is_register_disabled(address):
+            _LOGGER.debug(
+                "Skipping general sensor %s (address %d) because register is disabled",
+                sensor_id,
+                address,
+            )
+            continue
+        device_class = sensor_info.get("device_class")
+        if not device_class and sensor_info.get("unit") == "°C":
+            device_class = SensorDeviceClass.TEMPERATURE
+        elif not device_class and sensor_info.get("unit") == "W":
+            device_class = SensorDeviceClass.POWER
+        elif not device_class and sensor_info.get("unit") == "Wh":
+            device_class = SensorDeviceClass.ENERGY
+        elif not device_class and sensor_info.get("unit") == "kWh":
+            device_class = SensorDeviceClass.ENERGY
+
+        # Name und Entity-ID für General Sensors
+        if use_legacy_modbus_names and "override_name" in sensor_info:
+            override_name = sensor_info["override_name"]
+            sensor_id_final = sensor_info["override_name"]
+            _LOGGER.info(
+                f"Override name for sensor '{sensor_id}': '{override_name}' "
+                f"wird als Name und sensor_id verwendet."
+            )
+        else:
+            override_name = None
+            sensor_id_final = sensor_id
+
+        # Verwende die zentrale Namensgenerierung für General Sensors
+        # Für General Sensors ist der sensor_id der device_prefix
+        names = generate_sensor_names(
+            sensor_id,  # device_prefix für General Sensors ist der sensor_id
+            sensor_info["name"],
+            sensor_id_final,  # sensor_id für die Namensgenerierung
+            name_prefix,
+            use_legacy_modbus_names,
+            translations=sensor_translations,
+        )
+
+        entity_id = names["entity_id"]
+        unique_id = names["unique_id"]
+        
+        # Wenn override_name verwendet wird, nutze diesen; sonst den übersetzten Namen
+        final_name = override_name if override_name else names["name"]
+
+        general_sensors.append(
+            LambdaSensor(
+                coordinator=coordinator,
+                entry=entry,
+                sensor_id=sensor_id_final,
+                name=final_name,  # Verwende override_name oder den übersetzten Namen
+                unit=sensor_info.get("unit", ""),
+                address=address,
+                scale=sensor_info.get("scale", 1.0),
+                state_class=sensor_info.get("state_class", ""),
+                device_class=device_class,
+                relative_address=sensor_info.get("address", 0),
+                data_type=sensor_info.get("data_type", ""),
+                device_type=sensor_info.get("device_type", "main"),
+                txt_mapping=sensor_info.get("txt_mapping", False),
+                precision=sensor_info.get("precision", None),
+                entity_id=entity_id,
+                unique_id=unique_id,
+                options=sensor_info.get("options", None),
+                sensor_info=sensor_info,
+            )
+        )
+
+    # WICHTIG: General Sensors ZUERST registrieren, um das Haupt-Device zu erstellen,
+    # bevor Sub-Devices darauf verweisen (via_device). Dies verhindert Warnungen
+    # über nicht existierende via_device Referenzen in Home Assistant 2025.12.0+.
+    # Home Assistant registriert Entities in der Reihenfolge, in der sie hinzugefügt werden,
+    # daher wird das Haupt-Device erstellt, bevor Sub-Devices registriert werden.
+    if general_sensors:
+        _LOGGER.info("Registriere %d General Sensors zuerst (erstellt Haupt-Device)...", len(general_sensors))
+        async_add_entities(general_sensors, update_before_add=False)
+        # Kurze Pause, um sicherzustellen, dass das Haupt-Device in der Device Registry registriert ist
+        # bevor Sub-Devices darauf verweisen
+        await asyncio.sleep(0.05)
+    else:
+        # Falls keine General Sensors vorhanden sind, erstelle zumindest ein Dummy-Device
+        # durch Erstellen eines temporären General Sensors
+        _LOGGER.warning("Keine General Sensors vorhanden, Haupt-Device wird möglicherweise nicht erstellt")
+
+    # Sub-Device Sensoren (HP/Boil/HC/Buff/Sol) - verwenden via_device auf das Haupt-Device
     TEMPLATES = [
         ("hp", num_hps, get_compatible_sensors(HP_SENSOR_TEMPLATES, fw_version)),
         ("boil", num_boil, get_compatible_sensors(BOIL_SENSOR_TEMPLATES, fw_version)),
@@ -203,78 +307,6 @@ async def async_setup_entry(
                     )
                 )
 
-    # General Sensors (SENSOR_TYPES)
-    for sensor_id, sensor_info in SENSOR_TYPES.items():
-        address = sensor_info["address"]
-        if coordinator.is_register_disabled(address):
-            _LOGGER.debug(
-                "Skipping general sensor %s (address %d) because register is disabled",
-                sensor_id,
-                address,
-            )
-            continue
-        device_class = sensor_info.get("device_class")
-        if not device_class and sensor_info.get("unit") == "°C":
-            device_class = SensorDeviceClass.TEMPERATURE
-        elif not device_class and sensor_info.get("unit") == "W":
-            device_class = SensorDeviceClass.POWER
-        elif not device_class and sensor_info.get("unit") == "Wh":
-            device_class = SensorDeviceClass.ENERGY
-        elif not device_class and sensor_info.get("unit") == "kWh":
-            device_class = SensorDeviceClass.ENERGY
-
-        # Name und Entity-ID für General Sensors
-        if use_legacy_modbus_names and "override_name" in sensor_info:
-            override_name = sensor_info["override_name"]
-            sensor_id_final = sensor_info["override_name"]
-            _LOGGER.info(
-                f"Override name for sensor '{sensor_id}': '{override_name}' "
-                f"wird als Name und sensor_id verwendet."
-            )
-        else:
-            override_name = None
-            sensor_id_final = sensor_id
-
-        # Verwende die zentrale Namensgenerierung für General Sensors
-        # Für General Sensors ist der sensor_id der device_prefix
-        names = generate_sensor_names(
-            sensor_id,  # device_prefix für General Sensors ist der sensor_id
-            sensor_info["name"],
-            sensor_id_final,  # sensor_id für die Namensgenerierung
-            name_prefix,
-            use_legacy_modbus_names,
-            translations=sensor_translations,
-        )
-
-        entity_id = names["entity_id"]
-        unique_id = names["unique_id"]
-        
-        # Wenn override_name verwendet wird, nutze diesen; sonst den übersetzten Namen
-        final_name = override_name if override_name else names["name"]
-
-        sensors.append(
-            LambdaSensor(
-                coordinator=coordinator,
-                entry=entry,
-                sensor_id=sensor_id_final,
-                name=final_name,  # Verwende override_name oder den übersetzten Namen
-                unit=sensor_info.get("unit", ""),
-                address=address,
-                scale=sensor_info.get("scale", 1.0),
-                state_class=sensor_info.get("state_class", ""),
-                device_class=device_class,
-                relative_address=sensor_info.get("address", 0),
-                data_type=sensor_info.get("data_type", ""),
-                device_type=sensor_info.get("device_type", "main"),
-                txt_mapping=sensor_info.get("txt_mapping", False),
-                precision=sensor_info.get("precision", None),
-                entity_id=entity_id,
-                unique_id=unique_id,
-                options=sensor_info.get("options", None),
-                sensor_info=sensor_info,
-            )
-        )
-
     # Extended/undocumented sensors sind jetzt direkt in HP_SENSOR_TEMPLATES integriert
     # --- Cycling Total Sensors (echte Entities, keine Templates) ---
     cycling_modes = [
@@ -327,6 +359,7 @@ async def async_setup_entry(
         ("hot_water", "hot_water_cycling_yesterday"),
         ("cooling", "cooling_cycling_yesterday"),
         ("defrost", "defrost_cycling_yesterday"),
+        ("compressor_start", "compressor_start_cycling_yesterday"),
     ]
     yesterday_sensor_count = 0
     yesterday_sensor_ids = []
@@ -494,7 +527,6 @@ async def async_setup_entry(
     monthly_modes = [
         ("compressor_start", "compressor_start_cycling_monthly"),
     ]
-    monthly_sensor_count = 0
     monthly_sensor_ids = []
 
     for hp_idx in range(1, num_hps + 1):
@@ -526,7 +558,6 @@ async def async_setup_entry(
             )
 
             sensors.append(monthly_sensor)
-            monthly_sensor_count += 1
 
     # Speichere die Cycling-Entities für schnellen Zugriff
     if "lambda_heat_pumps" not in hass.data:
@@ -589,14 +620,15 @@ async def async_setup_entry(
         four_hour_sensor_ids,
     )
 
-    # Energy consumption sensors (nur total und daily)
     for hp_idx in range(1, num_hps + 1):
         for mode in ENERGY_CONSUMPTION_MODES:
-            for period in ENERGY_CONSUMPTION_PERIODS:
+            for period in ENERGY_REGISTRATION_ORDER:
+                if period not in ENERGY_CONSUMPTION_PERIODS:
+                    continue
                 sensor_id = f"{mode}_energy_{period}"
                 sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
                 if not sensor_template:
-                    _LOGGER.warning(f"Template not found for {sensor_id}")
+                    _LOGGER.warning("Template not found for %s", sensor_id)
                     continue
                 
                 device_prefix = f"hp{hp_idx}"
@@ -625,13 +657,129 @@ async def async_setup_entry(
                     period,
                 )
                 sensors.append(sensor)
-                _LOGGER.debug(f"Created energy consumption sensor: {names['entity_id']}")
+                _LOGGER.debug("Created energy consumption sensor: %s", names['entity_id'])
+
+    for hp_idx in range(1, num_hps + 1):
+        for mode in ENERGY_CONSUMPTION_MODES:
+            for period in ENERGY_REGISTRATION_ORDER:
+                if period not in ENERGY_CONSUMPTION_PERIODS:
+                    continue
+                sensor_id = f"{mode}_thermal_energy_{period}"
+                sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
+                if not sensor_template:
+                    # Thermal energy sensors sind optional, kein Warning
+                    continue
+                
+                # Prüfe ob es ein thermal_calculated Sensor ist
+                if sensor_template.get("data_type") != "thermal_calculated":
+                    continue
+                
+                device_prefix = f"hp{hp_idx}"
+                names = generate_sensor_names(
+                    device_prefix,
+                    sensor_template["name"],
+                    sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                    translations=sensor_translations,
+                )
+                
+                sensor = LambdaEnergyConsumptionSensor(
+                    hass,
+                    entry,
+                    sensor_id,
+                    names["name"],
+                    names["entity_id"],
+                    names["unique_id"],
+                    sensor_template["unit"],
+                    sensor_template["state_class"],
+                    sensor_template.get("device_class"),
+                    sensor_template["device_type"],
+                    hp_idx,
+                    mode,
+                    period,
+                )
+                sensors.append(sensor)
+                _LOGGER.debug("Created thermal energy consumption sensor: %s", names['entity_id'])
+
+    # COP sensors (per HP, per mode, per period)
+    # COP_MODES: heating, hot_water, cooling (ohne defrost)
+    # COP_PERIODS: daily, monthly, yearly, total, hourly (hourly nur für heating)
+    for hp_idx in range(1, num_hps + 1):
+        for mode in COP_MODES:
+            for period in COP_PERIODS:
+                if period == "hourly" and mode != "heating":
+                    continue
+                # Generiere Sensor-ID und Namen
+                sensor_id = f"{mode}_cop_{period}"
+                
+                # Generiere Names für COP-Sensor
+                mode_display = mode.replace("_", " ").title()
+                sensor_name = f"{mode_display} COP {period.title()}"
+                
+                device_prefix = f"hp{hp_idx}"
+                cop_names = generate_sensor_names(
+                    device_prefix,
+                    sensor_name,
+                    sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                    translations=sensor_translations,
+                )
+                
+                # Generiere Entity-IDs für Quell-Sensoren
+                thermal_sensor_id = f"{mode}_thermal_energy_{period}"
+                electrical_sensor_id = f"{mode}_energy_{period}"
+                
+                thermal_names = generate_sensor_names(
+                    device_prefix,
+                    ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(thermal_sensor_id, {}).get("name", f"{mode_display} Thermal Energy {period.title()}"),
+                    thermal_sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                    translations=sensor_translations,
+                )
+                
+                electrical_names = generate_sensor_names(
+                    device_prefix,
+                    ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(electrical_sensor_id, {}).get("name", f"{mode_display} Energy {period.title()}"),
+                    electrical_sensor_id,
+                    name_prefix,
+                    use_legacy_modbus_names,
+                    translations=sensor_translations,
+                )
+                
+                thermal_entity_id = thermal_names["entity_id"]
+                electrical_entity_id = electrical_names["entity_id"]
+                
+                # Erstelle COP-Sensor
+                cop_sensor = LambdaCOPSensor(
+                    hass,
+                    entry,
+                    sensor_id,
+                    cop_names["name"],
+                    cop_names["entity_id"],
+                    cop_names["unique_id"],
+                    None,  # Keine Einheit (COP ist dimensionslos)
+                    "measurement",
+                    None,  # Keine device_class
+                    "hp",
+                    hp_idx,
+                    mode,
+                    period,
+                    thermal_entity_id,
+                    electrical_entity_id,
+                )
+                sensors.append(cop_sensor)
+                _LOGGER.debug("Created COP sensor: %s (thermal: %s, electrical: %s)", cop_names['entity_id'], thermal_entity_id, electrical_entity_id)
 
     _LOGGER.info(
-        "Alle Sensoren (inkl. Cycling und Energy Consumption) erzeugt: %d",
-        len(sensors),
+        "Alle Sensoren (inkl. Cycling, Energy Consumption und COP) erzeugt: %d (davon %d General Sensors bereits registriert)",
+        len(sensors) + len(general_sensors),
+        len(general_sensors),
     )
-    async_add_entities(sensors)
+    # Füge alle anderen Sensoren hinzu (General Sensors wurden bereits hinzugefügt)
+    async_add_entities(sensors, update_before_add=False)
     
     # Registriere Energy Consumption Entities in hass.data für direkten Zugriff
     energy_entities = {}
@@ -644,7 +792,7 @@ async def async_setup_entry(
         coordinator_data["energy_entities"] = {}
     coordinator_data["energy_entities"].update(energy_entities)
     
-    _LOGGER.info(f"Registered {len(energy_entities)} energy consumption entities")
+    _LOGGER.info("Registered %s energy consumption entities", len(energy_entities))
 
     # Load template sensors from template_sensor.py (parallel, non-blocking)
     from .template_sensor import async_setup_entry as setup_template_sensors
@@ -656,12 +804,14 @@ async def async_setup_entry(
             _LOGGER.error("Error setting up template sensors: %s", e)
 
     # Starte Template Sensor Setup im Hintergrund (non-blocking)
-    hass.async_create_task(setup_templates())
-    _LOGGER.debug("Started template sensor setup in background")
+    # FIX K-01: Task-Referenz speichern, damit er beim Unload abgebrochen werden kann
+    template_setup_task = hass.async_create_task(setup_templates())
+    coordinator_data = hass.data[DOMAIN][entry.entry_id]
+    coordinator_data["template_setup_task"] = template_setup_task
+    _LOGGER.debug("Started template sensor setup in background (task stored for cleanup)")
 
     # Markiere Coordinator-Initialisierung als abgeschlossen
     # Dies ermöglicht die Flankenerkennung nach der Entity-Registrierung
-    coordinator_data = hass.data[DOMAIN][entry.entry_id]
     if coordinator_data and "coordinator" in coordinator_data:
         coordinator = coordinator_data["coordinator"]
         coordinator.mark_initialization_complete()
@@ -690,7 +840,6 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -723,13 +872,29 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         else:
             self._attr_state_class = None
         self._attr_device_class = device_class
+        # Setze reset_interval basierend auf sensor_id (wird aus Template gelesen)
+        # Extrahiere reset_interval aus sensor_id (z.B. "heating_cycling_daily" -> "daily")
+        if self._sensor_id.endswith("_daily"):
+            self._reset_interval = "daily"
+        elif self._sensor_id.endswith("_2h"):
+            self._reset_interval = "2h"
+        elif self._sensor_id.endswith("_4h"):
+            self._reset_interval = "4h"
+        elif self._sensor_id.endswith("_monthly"):
+            self._reset_interval = "monthly"
+        elif self._sensor_id.endswith("_yearly"):
+            self._reset_interval = "yearly"
+        elif self._sensor_id.endswith("_total") or self._sensor_id.endswith("_yesterday"):
+            self._reset_interval = "total"
+        else:
+            self._reset_interval = "total"  # Default
 
     def set_cycling_value(self, value):
         """Set the cycling value and update state."""
         self._cycling_value = int(value)  # Stelle sicher, dass es ein Integer ist
         # Stelle sicher, dass der State korrekt aktualisiert wird
         self.async_write_ha_state()
-        _LOGGER.debug(f"Cycling sensor {self.entity_id} value set to {value}")
+        _LOGGER.debug("Cycling sensor %s value set to %s", self.entity_id, value)
 
     def update_yesterday_value(self):
         """Update yesterday value with current total value (called at midnight)."""
@@ -755,7 +920,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             f"Last 4h value updated for {self.entity_id}: {old_4h} -> {self._last_4h_value}"
         )
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
@@ -763,50 +928,39 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         last_state = await self.async_get_last_state()
         await self.restore_state(last_state)
 
-        # Registriere Signal-Handler für Reset-Signale
+        # Nur das zu diesem Sensor passende Reset-Signal abonnieren (verhindert, dass Daily bei 2h-Signal resettet)
         from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
 
-        # Wrapper-Funktionen für asynchrone Handler mit @callback
         @callback
-        def _wrap_daily_reset(entry_id: str):
-            self.hass.async_create_task(self._handle_daily_reset(entry_id))
-        
-        @callback
-        def _wrap_2h_reset(entry_id: str):
-            self.hass.async_create_task(self._handle_2h_reset(entry_id))
-        
-        @callback
-        def _wrap_4h_reset(entry_id: str):
-            self.hass.async_create_task(self._handle_4h_reset(entry_id))
-        
-        @callback
-        def _wrap_monthly_reset(entry_id: str):
-            self.hass.async_create_task(self._handle_monthly_reset(entry_id))
-        
-        @callback
-        def _wrap_yearly_reset(entry_id: str):
-            self.hass.async_create_task(self._handle_yearly_reset(entry_id))
+        def _wrap_reset(entry_id: str):
+            self.hass.async_create_task(self._handle_reset(entry_id))
 
-        self._unsub_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_DAILY, _wrap_daily_reset
-        )
-        self._unsub_2h_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_2H, _wrap_2h_reset
-        )
-        self._unsub_4h_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_4H, _wrap_4h_reset
-        )
-        self._unsub_monthly_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_MONTHLY, _wrap_monthly_reset
-        )
-        self._unsub_yearly_dispatcher = async_dispatcher_connect(
-            self.hass, SIGNAL_RESET_YEARLY, _wrap_yearly_reset
-        )
+        if self._reset_interval == "daily":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_DAILY, _wrap_reset
+            )
+        elif self._reset_interval == "2h":
+            self._unsub_2h_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_2H, _wrap_reset
+            )
+        elif self._reset_interval == "4h":
+            self._unsub_4h_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_4H, _wrap_reset
+            )
+        elif self._reset_interval == "monthly":
+            self._unsub_monthly_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_MONTHLY, _wrap_reset
+            )
+        elif self._reset_interval == "yearly":
+            self._unsub_yearly_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
+            )
+        # total / yesterday: kein Reset-Signal abonnieren
 
         # Schreibe den State sofort ins UI
         self.async_write_ha_state()
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Clean up when entity is removed."""
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
@@ -885,14 +1039,14 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
             cycling_offsets = config.get("cycling_offsets", {})
             
             if not cycling_offsets:
-                _LOGGER.debug(f"No cycling offsets found for {self.entity_id}")
+                _LOGGER.debug("No cycling offsets found for %s", self.entity_id)
                 return
             
             # Bestimme den Device-Key (z.B. "hp1")
             device_key = f"hp{self._hp_index}"
             
             if device_key not in cycling_offsets:
-                _LOGGER.debug(f"No cycling offsets found for device {device_key}")
+                _LOGGER.debug("No cycling offsets found for device %s", device_key)
                 return
             
             # Hole den aktuellen Offset für diesen Sensor
@@ -926,58 +1080,59 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
                 # Aktualisiere den State sofort
                 self.async_write_ha_state()
             else:
-                _LOGGER.debug(f"No offset change for {self.entity_id} (offset: {current_offset}, already applied: {applied_offset})")
+                _LOGGER.debug("No offset change for %s (offset: %s, already applied: %s)", self.entity_id, current_offset, applied_offset)
                 
         except Exception as e:
-            _LOGGER.error(f"Error applying cycling offset for {self.entity_id}: {e}")
+            _LOGGER.error("Error applying cycling offset for %s: %s", self.entity_id, e)
 
-    async def _handle_daily_reset(self, entry_id: str):
-        """Handle daily reset signal."""
-        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_daily"):
-            # Daily-Sensoren auf 0 zurücksetzen
-            self._cycling_value = 0
-            self.async_write_ha_state()
-            _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
+    async def _handle_reset(self, entry_id: str):
+        """Handle reset signal for all periods (einheitlich, wie Energy)."""
+        if entry_id != self._entry.entry_id:
+            return
 
-    async def _handle_2h_reset(self, entry_id: str):
-        """Handle 2h reset signal."""
-        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_2h"):
-            # 2H-Sensoren auf 0 zurücksetzen
-            self._cycling_value = 0
-            self.async_write_ha_state()
-            _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
+        old_value = self._cycling_value if self._cycling_value is not None else 0
+        new_value = 0
 
-    async def _handle_4h_reset(self, entry_id: str):
-        """Handle 4h reset signal."""
-        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_4h"):
-            # 4H-Sensoren auf 0 zurücksetzen
-            self._cycling_value = 0
+        # Prüfe Periode basierend auf sensor_id und reset_interval
+        if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
-
-    async def _handle_monthly_reset(self, entry_id: str):
-        """Handle monthly reset signal."""
-        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_monthly"):
-            # Monthly-Sensoren auf 0 zurücksetzen
-            self._cycling_value = 0
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
+        elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"Monthly sensor {self.entity_id} reset to 0")
-
-    async def _handle_yearly_reset(self, entry_id: str):
-        """Handle yearly reset signal."""
-        if entry_id == self._entry.entry_id and self._sensor_id.endswith("_yearly"):
-            # Yearly-Sensoren auf 0 zurücksetzen
-            self._cycling_value = 0
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
+        elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
+            self._cycling_value = new_value
             self.async_write_ha_state()
-            _LOGGER.info(f"Yearly sensor {self.entity_id} reset to 0")
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
+        elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
+            self._cycling_value = new_value
+            self.async_write_ha_state()
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
+        elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
+            self._cycling_value = new_value
+            self.async_write_ha_state()
+            _LOGGER.info(
+                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
 
     @property
     def name(self):
         return self._name
-
-    @property
-    def unique_id(self):
-        return self._unique_id
 
     @property
     def native_unit_of_measurement(self):
@@ -1050,7 +1205,6 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -1068,6 +1222,8 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         self._energy_value = 0.0
         # Yesterday-Wert für Daily-Berechnung
         self._yesterday_value = 0.0
+        # Last-Hour-Wert für Hourly-Berechnung (Debug)
+        self._last_hour_value = 0.0
         # Previous Period-Werte für Monthly/Yearly-Berechnung
         self._previous_monthly_value = 0.0
         self._previous_yearly_value = 0.0
@@ -1089,29 +1245,71 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
     def set_energy_value(self, value):
         """Set the energy value and update state."""
         old_value = self._energy_value
-        self._energy_value = float(value)
+        new_value = float(value)
+        # _energy_value nie verringern (Total-increase; Restore-Wert sonst nach Neustart überschrieben)
+        if new_value < old_value:
+            _LOGGER.debug(
+                f"Energy sensor {self.entity_id}: Wert nicht verringert {old_value:.2f} -> {new_value:.2f} kWh "
+                f"(period={self._period})"
+            )
+            new_value = old_value
+        self._energy_value = new_value
         self.async_write_ha_state()
-        _LOGGER.debug(f"Energy sensor {self.entity_id} value updated from {old_value:.2f} to {self._energy_value:.2f}")
+        # Coordinator bitten, Energy-States beim nächsten Persist-Zyklus in cycle_energy_persist zu speichern
+        try:
+            reg = async_get_entity_registry(self.hass)
+            entry = reg.async_get(self.entity_id)
+            if entry and entry.config_entry_id:
+                comp = self.hass.data.get(DOMAIN, {}).get(entry.config_entry_id, {})
+                coord = comp.get("coordinator")
+                if coord and hasattr(coord, "set_energy_persist_dirty"):
+                    coord.set_energy_persist_dirty()
+        except Exception:
+            pass
+        _LOGGER.debug("Energy sensor %s value updated from %.2f to %.2f", self.entity_id, old_value, self._energy_value)
 
     def update_yesterday_value(self):
         """Update yesterday value with current total value (called at midnight)."""
         old_yesterday = self._yesterday_value
         self._yesterday_value = self._energy_value
-        _LOGGER.info(
-            f"Yesterday value updated for {self.entity_id}: {old_yesterday:.2f} -> {self._yesterday_value:.2f}"
+        _LOGGER.debug(
+            "Yesterday value updated for %s: %.2f -> %.2f",
+            self.entity_id, old_yesterday, self._yesterday_value,
         )
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
         # RestoreEntity provides async_get_last_state() method
         last_state = await self.async_get_last_state()
         await self.restore_state(last_state)
+        # State aus cycle_energy_persist bevorzugen (electrical + thermal), falls vorhanden
+        our_state = self._get_energy_sensor_persisted_state_from_coordinator()
+        if our_state:
+            self._apply_persisted_energy_state(our_state)
+            self.async_write_ha_state()
+
+        # Für Daily-Sensoren: Initialisiere Yesterday-Wert beim Start, falls notwendig
+        # Total-Sensoren werden oft erst nach Daily-Sensoren registriert → 100ms + ggf. verzögerter Zweitlauf
+        if self._period == "daily" and self._reset_interval == "daily":
+            import asyncio
+            await asyncio.sleep(0.1)  # 100ms Verzögerung für Total-Sensor-Laden
+            total_was_unavailable = await self._initialize_daily_yesterday_value()
+            if total_was_unavailable:
+                # Total-Sensor war beim ersten Lauf nicht verfügbar → nach 5s erneut prüfen
+                async def _delayed_daily_init():
+                    await asyncio.sleep(5.0)
+                    await self._initialize_daily_yesterday_value()
+                self.hass.async_create_task(_delayed_daily_init())
+                _LOGGER.debug(
+                    "Daily sensor %s: Total-Sensor beim Start nicht verfügbar, verzögerter Zweitlauf in 5s geplant",
+                    self.entity_id,
+                )
 
         # Registriere Signal-Handler für Reset-Signale
         # Verwende zentrale Signale wie Cycling Sensoren
-        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
+        from .automations import SIGNAL_RESET_DAILY, SIGNAL_RESET_2H, SIGNAL_RESET_4H, SIGNAL_RESET_HOURLY, SIGNAL_RESET_MONTHLY, SIGNAL_RESET_YEARLY  # noqa: F401
         
         # Wrapper-Funktion für asynchronen Handler mit @callback
         @callback
@@ -1138,28 +1336,255 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             self._unsub_dispatcher = async_dispatcher_connect(
                 self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
             )
+        elif self._reset_interval == "hourly":
+            self._unsub_dispatcher = async_dispatcher_connect(
+                self.hass, SIGNAL_RESET_HOURLY, _wrap_reset
+            )
 
-    async def async_will_remove_from_hass(self):
+    async def _initialize_daily_yesterday_value(self):
+        """Initialisiere Yesterday-Wert für Daily-Sensoren beim Start.
+
+        Dies ist wichtig für Dev-Instanzen, die nicht 24h durchlaufen.
+        Prüft, ob die Yesterday-Werte korrekt sind und korrigiert sie bei Bedarf.
+        Returns: True wenn Total-Sensor nicht verfügbar war (für verzögerten Zweitlauf).
+        """
+        total_entity_id = self.entity_id.replace("_daily", "_total")
+        current_daily_before = self._energy_value - self._yesterday_value
+        _LOGGER.debug(
+            "Daily init %s: vor Prüfung energy_value=%.2f, yesterday_value=%.2f, current_daily=%.2f kWh",
+            self.entity_id, self._energy_value, self._yesterday_value, current_daily_before,
+        )
+        total_state = self.hass.states.get(total_entity_id)
+
+        if total_state and total_state.state not in (None, "unknown", "unavailable"):
+            try:
+                total_value = float(total_state.state)
+                # Berechne aktuellen Daily-Wert
+                current_daily = self._energy_value - self._yesterday_value
+                
+                # Wenn Yesterday-Wert noch 0 ist, aber Total-Wert vorhanden ist:
+                # Wenn _energy_value < total_value, wurde vermutlich nur der Tageswert restored
+                # (ohne energy_value). Dann Baseline aus Total setzen und angezeigten Wert erhalten.
+                if self._yesterday_value == 0.0 and total_value > 0:
+                    if self._energy_value < total_value:
+                        # Erhalte angezeigten Tageswert, verhindere Abfall auf 0 nach Neustart
+                        displayed_before = self._energy_value
+                        self._energy_value = total_value
+                        self._yesterday_value = total_value - displayed_before
+                        _LOGGER.debug(
+                            "Daily sensor %s: Baseline aus Total gesetzt (angezeigter Wert erhalten): "
+                            "energy_value=%.2f, yesterday_value=%.2f kWh (displayed=%.2f, from %s)",
+                            self.entity_id, self._energy_value, self._yesterday_value, displayed_before, total_entity_id,
+                        )
+                        self.async_write_ha_state()
+                    # else: _energy_value >= total_value bei yesterday=0 (z.B. Restore/Persist überschrieben).
+                    # Nicht _yesterday_value = total_value setzen – sonst würde Daily auf 0 fallen.
+                    # Anzeige bleibt _energy_value - 0 = _energy_value (heutiger Kumulativ bis zum nächsten Reset).
+                # Wenn Daily-Wert negativ ist (Yesterday > Total), korrigiere Yesterday
+                elif current_daily < 0:
+                    self._yesterday_value = self._energy_value
+                    _LOGGER.warning(
+                        f"Corrected invalid yesterday value for {self.entity_id}: "
+                        f"yesterday was too high (daily would be negative). "
+                        f"Set yesterday = energy_value = {self._yesterday_value:.2f} kWh"
+                    )
+                    # Wichtig: Total-Sensor kann höher sein (Restore hatte veralteten energy_value).
+                    # Daily mit Total synchronisieren, damit increment_energy_consumption_counter nicht hinterherhinkt.
+                    if total_value > self._energy_value:
+                        self._energy_value = total_value
+                        self._yesterday_value = total_value
+                        _LOGGER.debug(
+                            "Daily sensor %s: mit Total synchronisiert (energy_value=yesterday_value=%.2f kWh, daily=0)",
+                            self.entity_id, total_value,
+                        )
+                    try:
+                        reg = async_get_entity_registry(self.hass)
+                        entry = reg.async_get(self.entity_id)
+                        if entry and entry.config_entry_id:
+                            comp = self.hass.data.get(DOMAIN, {}).get(entry.config_entry_id, {})
+                            coord = comp.get("coordinator")
+                            if coord and hasattr(coord, "set_energy_persist_dirty"):
+                                coord.set_energy_persist_dirty()
+                    except Exception:
+                        pass
+                    self.async_write_ha_state()
+                # Wenn Daily-Wert größer als Total-Wert ist (unmöglich), korrigiere Yesterday
+                elif current_daily > total_value * 1.1:  # 10% Toleranz
+                    self._yesterday_value = self._energy_value - total_value
+                    _LOGGER.warning(
+                        f"Corrected invalid yesterday value for {self.entity_id}: "
+                        f"daily value ({current_daily:.2f} kWh) was larger than total ({total_value:.2f} kWh). "
+                        f"Set yesterday = {self._yesterday_value:.2f} kWh"
+                    )
+                    self.async_write_ha_state()
+                else:
+                    _LOGGER.debug(
+                        "Daily init %s: Werte gültig, keine Änderung: energy=%.2f, yesterday=%.2f, daily=%.2f, total=%.2f kWh",
+                        self.entity_id, self._energy_value, self._yesterday_value, current_daily, total_value,
+                    )
+                    # Trotzdem State schreiben, damit Recorder/HIST nach Restart sofort den Wert hat
+                    self.async_write_ha_state()
+                return False  # Total war verfügbar, Verarbeitung erfolgt
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    f"Could not initialize yesterday value for {self.entity_id} from {total_entity_id}: {e}"
+                )
+                return False
+        else:
+            _LOGGER.debug(
+                "Daily init %s: Total-Sensor %s nicht verfügbar, energy_value=%.2f, yesterday_value=%.2f kWh",
+                self.entity_id, total_entity_id, self._energy_value, self._yesterday_value,
+            )
+            return True  # Total war nicht verfügbar → Zweitlauf sinnvoll
+
+    def _get_energy_sensor_persisted_state_from_coordinator(self):
+        """Liefert den aus cycle_energy_persist geladenen State für diese Entity (oder None)."""
+        try:
+            reg = async_get_entity_registry(self.hass)
+            entry = reg.async_get(self.entity_id)
+            if not entry or not entry.config_entry_id:
+                return None
+            comp = self.hass.data.get(DOMAIN, {}).get(entry.config_entry_id, {})
+            coord = comp.get("coordinator")
+            if coord and hasattr(coord, "get_energy_sensor_persisted_state"):
+                return coord.get_energy_sensor_persisted_state(self.entity_id)
+        except Exception:
+            pass
+        return None
+
+    def _apply_persisted_energy_state(self, data):
+        """Wendet einen aus cycle_energy_persist geladenen State auf diese Entity an (electrical + thermal)."""
+        try:
+            attrs = data.get("attributes") or {}
+            self._energy_value = float(attrs.get("energy_value", self._energy_value))
+            for period, cfg in ENERGY_PERIOD_CONFIG.items():
+                val = attrs.get(cfg["attr_name"])
+                if val is not None:
+                    setattr(self, cfg["baseline_attr"], float(val))
+            for period, cfg in ENERGY_PERIOD_CONFIG.items():
+                if self._period == period:
+                    baseline = getattr(self, cfg["baseline_attr"])
+                    if baseline > self._energy_value:
+                        _LOGGER.warning(
+                            "Energy sensor %s: Persist %s (%.2f) > energy_value (%.2f), correct to energy_value",
+                            self.entity_id, cfg["attr_name"], baseline, self._energy_value,
+                        )
+                        setattr(self, cfg["baseline_attr"], self._energy_value)
+                    break
+            _LOGGER.debug(
+                "Energy sensor %s: State aus cycle_energy_persist übernommen (state=%s, energy_value=%s)",
+                self.entity_id, data.get("state"), self._energy_value,
+            )
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning("Apply persisted energy state for %s: %s", self.entity_id, e)
+
+    async def async_will_remove_from_hass(self) -> None:
         """Clean up when entity is removed."""
         if self._unsub_dispatcher:
             self._unsub_dispatcher()
         await super().async_will_remove_from_hass()
 
     async def restore_state(self, last_state):
-        """Restore the state from the last state."""
+        """Restore the state from the last state.
+
+        WICHTIG: Bei Daily/Monthly/Yearly-Sensoren ist last_state.state der angezeigte
+        Wert (native_value = _energy_value - _yesterday_value), NICHT der kumulative
+        Total. Wir müssen _energy_value aus dem Total rekonstruieren, sonst entstehen
+        negative current_daily_value nach Neustart.
+        """
         if last_state is not None and last_state.state != STATE_UNKNOWN:
             try:
-                self._energy_value = float(last_state.state)
-                _LOGGER.debug(f"Restored energy value for {self.entity_id}: {self._energy_value:.2f}")
-                # Restore applied_offset if it exists (for total sensors)
-                if hasattr(last_state, 'attributes') and last_state.attributes:
-                    self._applied_offset = last_state.attributes.get("applied_offset", 0.0)
+                attrs = getattr(last_state, "attributes", None) or {}
+                self._applied_offset = float(attrs.get("applied_offset", 0.0))
+
+                if self._period == "daily":
+                    restored_yesterday = attrs.get("yesterday_value")
+                    if restored_yesterday is not None:
+                        try:
+                            self._yesterday_value = float(restored_yesterday)
+                        except (ValueError, TypeError):
+                            pass
+                    # Angezeigten Tageswert: current_daily_value (2 Dez.) hat Vorrang vor state
+                    # (state kann z. B. als "0.4" statt "0.44" gespeichert werden → Abfall nach Neustart)
+                    displayed_from_attr = attrs.get("current_daily_value")
+                    if displayed_from_attr is not None:
+                        try:
+                            displayed = float(displayed_from_attr)
+                        except (ValueError, TypeError):
+                            displayed = float(last_state.state)
+                    else:
+                        displayed = float(last_state.state)
+                    persisted_total = attrs.get("energy_value")
+                    if persisted_total is not None:
+                        try:
+                            self._energy_value = float(persisted_total)
+                            # Immer aus displayed rekonstruieren, damit 0,44 nicht zu 0,4 wird – aber nur wenn konsistent (yesterday <= energy)
+                            displayed_from_calc = self._energy_value - self._yesterday_value
+                            if abs(displayed_from_calc - displayed) > 0.001 and self._yesterday_value <= self._energy_value:
+                                self._energy_value = self._yesterday_value + displayed
+                                _LOGGER.debug(
+                                    "Restore daily %s: current_daily_value erhalten (displayed=%.2f), "
+                                    "energy_value=%.2f, yesterday_value=%.2f kWh",
+                                    self.entity_id, displayed, self._energy_value, self._yesterday_value,
+                                )
+                            else:
+                                _LOGGER.debug(
+                                    "Restore daily %s: energy_value=%.2f, yesterday_value=%.2f kWh (from attributes)",
+                                    self.entity_id, self._energy_value, self._yesterday_value,
+                                )
+                        except (ValueError, TypeError):
+                            self._energy_value = self._yesterday_value + displayed
+                    else:
+                        # Kein energy_value persistiert: Werte aus Total-Sensor (Electrical + Thermal)
+                        total_entity_id = self.entity_id.replace("_daily", "_total")
+                        total_state = self.hass.states.get(total_entity_id)
+                        if total_state and total_state.state not in (None, "unknown", "unavailable"):
+                            try:
+                                total_value = float(total_state.state)
+                                self._energy_value = total_value
+                                self._yesterday_value = total_value - displayed
+                                _LOGGER.debug(
+                                    "Restore daily %s (from Total): energy_value=%.2f, yesterday_value=%.2f kWh, displayed=%.2f (from %s)",
+                                    self.entity_id, self._energy_value, self._yesterday_value, displayed, total_entity_id,
+                                )
+                            except (ValueError, TypeError):
+                                self._energy_value = self._yesterday_value + displayed
+                                _LOGGER.debug(
+                                    "Restore daily %s (reconstructed): energy_value=%.2f, yesterday_value=%.2f, displayed=%.2f kWh",
+                                    self.entity_id, self._energy_value, self._yesterday_value, displayed,
+                                )
+                        else:
+                            self._energy_value = self._yesterday_value + displayed
+                            _LOGGER.debug(
+                                "Restore daily %s (reconstructed, Total not ready): energy_value=%.2f, yesterday_value=%.2f, displayed=%.2f kWh",
+                                self.entity_id, self._energy_value, self._yesterday_value, displayed,
+                            )
+                    # Konsistenz: yesterday_value darf nicht größer als energy_value sein (daily wäre sonst negativ)
+                    if self._yesterday_value > self._energy_value:
+                        _LOGGER.warning(
+                            f"Restore daily {self.entity_id}: yesterday_value ({self._yesterday_value:.2f}) > energy_value ({self._energy_value:.2f}), "
+                            f"korrigiere yesterday_value = energy_value"
+                        )
+                        self._yesterday_value = self._energy_value
+                elif self._period in ("monthly", "yearly", "hourly"):
+                    restore_energy_period_state(self, self._period, attrs, last_state)
+                    _LOGGER.debug(
+                        "Restored energy value for %s (%s): energy_value=%.2f kWh",
+                        self.entity_id, self._period, self._energy_value,
+                    )
+                else:
+                    # Total und andere Perioden: state ist direkt _energy_value
+                    self._energy_value = float(last_state.state)
+                    _LOGGER.debug("Restored energy value for %s: %.2f kWh", self.entity_id, self._energy_value)
             except ValueError as e:
-                _LOGGER.error(f"Failed to restore state for {self.entity_id}: {e}")
+                _LOGGER.error("Failed to restore state for %s: %s", self.entity_id, e)
                 self._energy_value = 0.0
         else:
             self._energy_value = 0.0
-            _LOGGER.debug(f"No state to restore for {self.entity_id}, initializing to 0.0")
+            _LOGGER.debug(
+                "Restore %s: kein State vorhanden, initialisiert mit 0.0 kWh",
+                self.entity_id,
+            )
         self.async_write_ha_state()
 
     async def _apply_energy_offset(self):
@@ -1171,14 +1596,14 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             energy_offsets = config.get("energy_consumption_offsets", {})
             
             if not energy_offsets:
-                _LOGGER.debug(f"No energy consumption offsets found for {self.entity_id}")
+                _LOGGER.debug("No energy consumption offsets found for %s", self.entity_id)
                 return
             
             # Bestimme den Device-Key (z.B. "hp1")
             device_key = f"hp{self._hp_index}"
             
             if device_key not in energy_offsets:
-                _LOGGER.debug(f"No energy consumption offsets found for device {device_key}")
+                _LOGGER.debug("No energy consumption offsets found for device %s", device_key)
                 return
             
             # Hole den aktuellen Offset für diesen Sensor
@@ -1196,58 +1621,82 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                 self._energy_value += float(offset_difference)
                 self._applied_offset = current_offset  # Update applied offset
                 self.async_write_ha_state()
-                _LOGGER.info(
-                    f"Applied energy offset for {self.entity_id}: +{offset_difference:.2f} kWh (new total: {self._energy_value:.2f} kWh)"
+                _LOGGER.debug(
+                    "Applied energy offset for %s: +%.2f kWh (new total: %.2f kWh)",
+                    self.entity_id, offset_difference, self._energy_value,
                 )
             elif offset_difference < 0:
                 # Offset was reduced, subtract the difference
                 self._energy_value += float(offset_difference)  # offset_difference is negative
                 self._applied_offset = current_offset
                 self.async_write_ha_state()
-                _LOGGER.info(
-                    f"Reduced energy offset for {self.entity_id}: {offset_difference:.2f} kWh (new total: {self._energy_value:.2f} kWh)"
+                _LOGGER.debug(
+                    "Reduced energy offset for %s: %.2f kWh (new total: %.2f kWh)",
+                    self.entity_id, offset_difference, self._energy_value,
                 )
             else:
-                _LOGGER.debug(f"No offset change for {self.entity_id}")
+                _LOGGER.debug("No offset change for %s", self.entity_id)
         except Exception as e:
-            _LOGGER.error(f"Error applying energy offset for {self.entity_id}: {e}")
+            _LOGGER.error("Error applying energy offset for %s: %s", self.entity_id, e)
 
     async def _handle_reset(self, entry_id: str):
-        """Handle reset signal."""
-        _LOGGER.info(f"Resetting energy sensor {self.entity_id}")
-        
-        # Einfache Reset-Logik: Alle außer Total werden auf 0 gesetzt
-        if self._reset_interval != "total":
+        """Handle reset signal. Periodenbezogene Resets (daily/hourly/monthly/yearly) über utils."""
+        if entry_id != self._entry.entry_id:
+            return
+        old_value = self.native_value
+        _LOGGER.debug("Resetting energy sensor %s (period: %s, reset_interval: %s)", self.entity_id, self._period, self._reset_interval)
+        if self._reset_interval in ("daily", "hourly", "monthly", "yearly") and self._period == self._reset_interval:
+            apply_energy_period_reset(self, self._period)
+            new_value = self.native_value
+            _LOGGER.info(
+                "Energy reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+                self.entity_id, old_value, new_value, self._reset_interval,
+            )
+        elif self._reset_interval in ("2h", "4h"):
             self._energy_value = 0.0
-            _LOGGER.info(f"Sensor {self.entity_id} reset to 0.0 kWh.")
+            _LOGGER.info(
+                "Energy reset: sensor=%s old_value=%s new_value=0.0 reset_interval=%s",
+                self.entity_id, old_value, self._reset_interval,
+            )
         else:
-            _LOGGER.debug(f"Total sensor {self.entity_id} not reset.")
-        
+            _LOGGER.debug("Total sensor %s not reset.", self.entity_id)
         self.async_write_ha_state()
+
+    def _get_total_entity_id(self) -> str | None:
+        """Entity-ID des zugehörigen Total-Sensors (für Daily/Hourly/Monthly/Yearly)."""
+        cfg = ENERGY_PERIOD_CONFIG.get(self._period)
+        if cfg:
+            return self.entity_id.replace(cfg["suffix"], "_total")
+        return None
+
+    def _total_sensor_has_value(self) -> bool:
+        """True, wenn der Total-Sensor einen gültigen Wert hat (Quellsensor-Daten angekommen)."""
+        total_id = self._get_total_entity_id()
+        if not total_id:
+            return True  # Total-Sensor selbst
+        state = self.hass.states.get(total_id)
+        if not state or state.state in (None, "unknown", "unavailable"):
+            return False
+        try:
+            float(state.state)
+            return True
+        except (ValueError, TypeError):
+            return False
 
     @property
     def native_value(self) -> float:
-        """Return the current value based on period."""
+        """Return the current value based on period. Periodenbezogen: energy_value - baseline (aus ENERGY_PERIOD_CONFIG)."""
         if self._period == "total":
-            return self._energy_value
-        elif self._period == "daily":
-            # Daily = Total - Yesterday
-            daily_value = self._energy_value - self._yesterday_value
-            return max(0.0, daily_value)  # Clamp to 0
-        elif self._period == "monthly":
-            # Monthly = Total - Previous Monthly
-            monthly_value = self._energy_value - self._previous_monthly_value
-            return max(0.0, monthly_value)  # Clamp to 0
-        elif self._period == "yearly":
-            # Yearly = Total - Previous Yearly
-            yearly_value = self._energy_value - self._previous_yearly_value
-            return max(0.0, yearly_value)  # Clamp to 0
-        else:
-            return self._energy_value
+            return round(self._energy_value, 2)
+        cfg = ENERGY_PERIOD_CONFIG.get(self._period)
+        if cfg:
+            baseline = getattr(self, cfg["baseline_attr"], 0.0)
+            return round(max(0.0, self._energy_value - baseline), 2)
+        return round(self._energy_value, 2)
 
     @property
     def extra_state_attributes(self):
-        """Return extra state attributes."""
+        """Return extra state attributes. Periodenbezogene Werte aus ENERGY_PERIOD_CONFIG."""
         attrs = {
             "sensor_type": "energy_consumption",
             "mode": self._mode,
@@ -1256,6 +1705,634 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             "hp_index": self._hp_index,
             "applied_offset": self._applied_offset,
         }
+        cfg = ENERGY_PERIOD_CONFIG.get(self._period)
+        if cfg:
+            baseline = getattr(self, cfg["baseline_attr"], 0.0)
+            attrs[cfg["attr_name"]] = round(baseline, 2)
+            attrs["energy_value"] = round(self._energy_value, 2)
+            if self._period in ("daily", "hourly"):
+                attrs[f"current_{self._period}_value"] = round(self._energy_value - baseline, 2)
+        return attrs
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        if self._device_type and self._hp_index:
+            return build_subdevice_info(
+                self._entry, self._device_type, self._hp_index
+            )
+        return build_device_info(self._entry)
+
+
+# --- Entity-Klasse für COP Sensoren ---
+class LambdaCOPSensor(RestoreEntity, SensorEntity):
+    """COP (Coefficient of Performance) sensor - berechnet COP = thermal_energy / electrical_energy."""
+
+    def __init__(
+        self,
+        hass,
+        entry,
+        sensor_id,
+        name,
+        entity_id,
+        unique_id,
+        unit,
+        state_class,
+        device_class,
+        device_type,
+        hp_index,
+        mode,
+        period,
+        thermal_energy_entity_id,
+        electrical_energy_entity_id,
+    ):
+        self.hass = hass
+        self._entry = entry
+        self._sensor_id = sensor_id
+        self._name = name
+        self.entity_id = entity_id
+        self._unit = unit
+        self._state_class = state_class
+        self._device_class = device_class
+        self._device_type = device_type
+        self._hp_index = hp_index
+        self._mode = mode
+        self._period = period
+        self._thermal_energy_entity_id = thermal_energy_entity_id
+        self._electrical_energy_entity_id = electrical_energy_entity_id
+        self._attr_has_entity_name = True
+        self._attr_should_poll = False
+        self._attr_native_unit_of_measurement = unit
+        self._attr_name = name
+        self._attr_unique_id = unique_id
+        self._precision = 2  # 2 Dezimalstellen für COP
+        self._attr_suggested_display_precision = 2  # Zeige 2 Dezimalstellen in der UI
+        self._cop_value = None  # Initialisiere mit None (unavailable)
+        self._unsub_state_changes = None  # Unsubscribe-Funktion für State-Changes
+        self._unsub_timer = None  # Periodisches Auffrischen (daily/monthly/yearly nach Reset)
+        self._unsub_reset_dispatcher = None  # Reset-Signal (daily/monthly/yearly) für "first reset"-Umschaltung
+        # Baseline nur, weil ein Quellsensor früher in der Integration vorhanden ist, der andere später
+        # angelegt wird (mit diesem Release kommen die thermischen Energy-Sensoren dazu; elektrisch war
+        # bereits da). COP = Delta_thermal/Delta_electrical ab dem Zeitpunkt, an dem beide existieren.
+        self._thermal_baseline = None
+        self._electrical_baseline = None
+        # Zyklische COP: Eigene Zyklus-Baselines; Baseline-Berechnung nur, wenn ein Quellsensor 0 ist
+        self._reset_occurred = False
+        # Total-Entity-IDs aus Perioden-IDs ableiten (für Vor-Reset-Berechnung)
+        self._thermal_total_entity_id = self._thermal_energy_entity_id.replace(f"_{self._period}", "_total")
+        self._electrical_total_entity_id = self._electrical_energy_entity_id.replace(f"_{self._period}", "_total")
+
+        if state_class == "measurement":
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif state_class == "total":
+            self._attr_state_class = SensorStateClass.TOTAL
+        elif state_class == "total_increasing":
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
+        else:
+            self._attr_state_class = None
+        self._attr_device_class = device_class
+
+    def _calculate_cop(self) -> float | None:
+        """Berechne COP aus thermal_energy und electrical_energy.
+        Baseline-Konzept: Ein Quellsensor (elektrisch) war früher in der Integration, der andere
+        (thermisch) kommt mit diesem Release; Baseline = Werte zum Stichtag, damit nur Deltas
+        ab „beide vorhanden“ gezählt werden. Total: immer Baseline. Zyklisch: Wenn Baselines
+        gesetzt sind, immer (Quellsensor − Baseline) verwenden; sonst direkte Division."""
+        thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
+        electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
+
+        # Zyklische COP: Wenn Baselines gesetzt sind, immer mit Quellsensor-Werten − Baseline rechnen
+        if self._period in ("daily", "monthly", "yearly", "hourly") and self._thermal_baseline is not None and self._electrical_baseline is not None:
+            period_thermal_ok = thermal_state and thermal_state.state not in (None, "unknown", "unavailable")
+            period_electrical_ok = electrical_state and electrical_state.state not in (None, "unknown", "unavailable")
+            period_thermal_val = 0.0
+            period_electrical_val = 0.0
+            if period_thermal_ok:
+                try:
+                    period_thermal_val = float(str(thermal_state.state).replace(",", "."))
+                except (ValueError, TypeError):
+                    period_thermal_ok = False
+            if period_electrical_ok:
+                try:
+                    period_electrical_val = float(str(electrical_state.state).replace(",", "."))
+                except (ValueError, TypeError):
+                    period_electrical_ok = False
+            # Beide Quellsensoren verfügbar: COP = (period − baseline) / (period − baseline)
+            if period_thermal_ok and period_electrical_ok:
+                try:
+                    effective_thermal = period_thermal_val - self._thermal_baseline
+                    effective_electrical = period_electrical_val - self._electrical_baseline
+                    if effective_electrical <= 0:
+                        _LOGGER.debug(
+                            "COP %s %s: effective_electrical <= 0 (%.6f), returning unavailable",
+                            self._period,
+                            self.entity_id,
+                            effective_electrical,
+                        )
+                        return None
+                    if effective_thermal < 0:
+                        effective_thermal = 0.0
+                    cop_exact = effective_thermal / effective_electrical
+                    cop_rounded = round(cop_exact, self._precision)
+                    _LOGGER.debug(
+                        "COP %s (Baseline, Quellsensoren) for %s: effective_thermal=%.6f, effective_electrical=%.6f, cop=%.2f",
+                        self._period,
+                        self.entity_id,
+                        effective_thermal,
+                        effective_electrical,
+                        cop_rounded,
+                    )
+                    return cop_rounded
+                except (ValueError, TypeError):
+                    pass
+            # Ein Quellsensor 0 oder nicht verfügbar: Fallback auf Total − Baseline
+            else:
+                thermal_total_state = self.hass.states.get(self._thermal_total_entity_id)
+                electrical_total_state = self.hass.states.get(self._electrical_total_entity_id)
+                if (
+                    thermal_total_state
+                    and thermal_total_state.state not in (None, "unknown", "unavailable")
+                    and electrical_total_state
+                    and electrical_total_state.state not in (None, "unknown", "unavailable")
+                ):
+                    try:
+                        thermal_str_t = str(thermal_total_state.state).replace(",", ".")
+                        electrical_str_t = str(electrical_total_state.state).replace(",", ".")
+                        total_thermal = float(thermal_str_t)
+                        total_electrical = float(electrical_str_t)
+                        effective_thermal = total_thermal - self._thermal_baseline
+                        effective_electrical = total_electrical - self._electrical_baseline
+                        if effective_electrical <= 0:
+                            _LOGGER.debug(
+                                "COP %s %s: effective_electrical <= 0, returning unavailable",
+                                self._period,
+                                self.entity_id,
+                            )
+                            return None
+                        if effective_thermal < 0:
+                            effective_thermal = 0.0
+                        cop_exact = effective_thermal / effective_electrical
+                        cop_rounded = round(cop_exact, self._precision)
+                        _LOGGER.info(
+                            "COP %s %s: Baseline angewendet (Fallback Total, Quellsensor 0 oder nicht verfügbar)",
+                            self._period,
+                            self.entity_id,
+                        )
+                        _LOGGER.debug(
+                            "COP %s (Baseline, Total-Fallback) for %s: effective_thermal=%.6f, effective_electrical=%.6f, cop=%.2f",
+                            self._period,
+                            self.entity_id,
+                            effective_thermal,
+                            effective_electrical,
+                            cop_rounded,
+                        )
+                        return cop_rounded
+                    except (ValueError, TypeError):
+                        pass
+
+        # Prüfe ob beide Sensoren verfügbar sind
+        if not thermal_state or thermal_state.state in (None, "unknown", "unavailable"):
+            _LOGGER.debug(
+                "Thermal energy sensor %s not available for COP sensor %s",
+                self._thermal_energy_entity_id,
+                self.entity_id,
+            )
+            return None
+
+        if not electrical_state or electrical_state.state in (None, "unknown", "unavailable"):
+            _LOGGER.debug(
+                "Electrical energy sensor %s not available for COP sensor %s",
+                self._electrical_energy_entity_id,
+                self.entity_id,
+            )
+            return None
+
+        try:
+            # Konvertiere zu float (behandelt auch Komma-Dezimaltrennzeichen aus HA-UI)
+            thermal_str = str(thermal_state.state).replace(",", ".")
+            electrical_str = str(electrical_state.state).replace(",", ".")
+            
+            thermal_value = float(thermal_str)
+            electrical_value = float(electrical_str)
+
+            # Total-COP: Deltas seit Baseline (elektrisch war früher da, thermisch mit diesem Release)
+            if self._period == "total" and self._thermal_baseline is not None and self._electrical_baseline is not None:
+                effective_thermal = thermal_value - self._thermal_baseline
+                effective_electrical = electrical_value - self._electrical_baseline
+                if effective_electrical <= 0:
+                    _LOGGER.debug(
+                        "COP total %s: effective_electrical <= 0 (%.6f), returning unavailable",
+                        self.entity_id,
+                        effective_electrical,
+                    )
+                    return None
+                if effective_thermal < 0:
+                    effective_thermal = 0.0
+                cop_exact = effective_thermal / effective_electrical
+                cop_rounded = round(cop_exact, self._precision)
+                _LOGGER.debug(
+                    "COP total (baseline) for %s: effective_thermal=%.6f, effective_electrical=%.6f, cop=%.2f",
+                    self.entity_id,
+                    effective_thermal,
+                    effective_electrical,
+                    cop_rounded,
+                )
+                return cop_rounded
+
+            # Daily/Monthly/Yearly oder Total ohne Baseline: direkte Division
+            if self._period in ("daily", "monthly", "yearly", "hourly") and thermal_value > 0 and electrical_value > 0:
+                _LOGGER.info(
+                    "COP %s %s: Baseline nicht notwendig (beide Quellsensoren > 0)",
+                    self._period,
+                    self.entity_id,
+                )
+            if electrical_value <= 0:
+                _LOGGER.debug(
+                    "Electrical energy is 0 or negative (%.6f) for COP sensor %s, returning 0",
+                    electrical_value,
+                    self.entity_id,
+                )
+                return 0.0
+
+            cop_exact = thermal_value / electrical_value
+            cop_rounded = round(cop_exact, self._precision)
+
+            _LOGGER.debug(
+                "COP calculation for %s: thermal=%.6f kWh, electrical=%.6f kWh, cop_exact=%.10f, cop_rounded=%.2f",
+                self.entity_id,
+                thermal_value,
+                electrical_value,
+                cop_exact,
+                cop_rounded,
+            )
+
+            return cop_rounded
+
+        except (ValueError, TypeError) as e:
+            _LOGGER.warning(
+                "Could not calculate COP for %s: thermal=%s, electrical=%s, error=%s",
+                self.entity_id,
+                thermal_state.state if thermal_state else None,
+                electrical_state.state if electrical_state else None,
+                e,
+            )
+            return None
+
+    @callback
+    def _update_cop(self):
+        """Update COP value when source sensors change."""
+        old_cop = self._cop_value
+        new_cop = self._calculate_cop()
+
+        if new_cop != old_cop:
+            self._cop_value = new_cop
+            _LOGGER.debug(
+                "COP sensor %s updated: %.2f -> %s",
+                self.entity_id,
+                old_cop if old_cop is not None else "None",
+                new_cop if new_cop is not None else "None",
+            )
+            self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        """Initialize the sensor when added to Home Assistant."""
+        await super().async_added_to_hass()
+
+        # RestoreEntity provides async_get_last_state() method
+        last_state = await self.async_get_last_state()
+        await self.restore_state(last_state)
+
+        # Registriere State-Change-Tracker für Quell-Sensoren
+        track_entities = [self._thermal_energy_entity_id, self._electrical_energy_entity_id]
+        # Zyklische COP: Total-Entities tracken (Berechnung nutzt Total + eigene Zyklus-Baselines)
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            if self._thermal_total_entity_id not in track_entities:
+                track_entities.append(self._thermal_total_entity_id)
+            if self._electrical_total_entity_id not in track_entities:
+                track_entities.append(self._electrical_total_entity_id)
+
+        @callback
+        def _state_change_callback(event):
+            """Callback when tracked entity state changes."""
+            new_state = event.data.get("new_state")
+            old_state = event.data.get("old_state")
+            entity_id = event.data.get("entity_id")
+
+            if new_state is None:
+                return
+
+            # Nur aktualisieren, wenn sich der State wirklich geändert hat
+            if old_state is None or old_state.state != new_state.state:
+                _LOGGER.debug(
+                    "Tracked entity %s changed from %s to %s, updating COP sensor %s",
+                    entity_id,
+                    old_state.state if old_state else None,
+                    new_state.state,
+                    self.entity_id,
+                )
+                self._update_cop()
+
+        # Tracke State-Änderungen für beide Quell-Sensoren
+        self._unsub_state_changes = async_track_state_change_event(
+            self.hass,
+            track_entities,
+            _state_change_callback,
+        )
+
+        # Nach Listener-Registrierung einmal mit aktuellen Quell-Sensoren synchronisieren.
+        # Verhindert, dass COP nach Restart veralteten DB-State zeigt, wenn Energy-Sensoren
+        # vor dem COP-Sensor korrigiert wurden und ihr State-Update vor dem Listener kam.
+        self._update_cop()
+
+        # Daily/Monthly/Yearly/Hourly: Periodisch (alle 5 Min) neu berechnen, damit COP nach Reset
+        # wieder aktualisiert wird, falls State-Change-Events der Energy-Sensoren nicht ankommen.
+        # State immer schreiben, damit "Zuletzt aktualisiert" auch bei unverändertem Wert (z.B. 0) aktualisiert wird.
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            @callback
+            def _periodic_refresh(_now):
+                self._update_cop()
+                self.async_write_ha_state()
+            self._unsub_timer = async_track_time_interval(
+                self.hass, _periodic_refresh, timedelta(minutes=5)
+            )
+
+        # Zyklische COP: Reset-Signal abonnieren, um nach erstem Reset auf reale Perioden-Berechnung umzuschalten
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            from .automations import (
+                SIGNAL_RESET_DAILY,
+                SIGNAL_RESET_MONTHLY,
+                SIGNAL_RESET_YEARLY,
+                SIGNAL_RESET_HOURLY,
+            )
+
+            @callback
+            def _on_reset(_entry_id):
+                # Baselines = Werte der Quellsensoren (period) zum Zyklusstart, nicht Total
+                thermal_src_state = self.hass.states.get(self._thermal_energy_entity_id)
+                electrical_src_state = self.hass.states.get(self._electrical_energy_entity_id)
+                if (
+                    thermal_src_state
+                    and thermal_src_state.state not in (None, "unknown", "unavailable")
+                    and electrical_src_state
+                    and electrical_src_state.state not in (None, "unknown", "unavailable")
+                ):
+                    try:
+                        self._thermal_baseline = float(str(thermal_src_state.state).replace(",", "."))
+                        self._electrical_baseline = float(str(electrical_src_state.state).replace(",", "."))
+                        _LOGGER.info(
+                            "COP %s %s: Zyklus-Baselines gesetzt (Reset, Quellsensoren) thermal=%.2f kWh, electrical=%.2f kWh",
+                            self._period,
+                            self.entity_id,
+                            self._thermal_baseline,
+                            self._electrical_baseline,
+                        )
+                    except (ValueError, TypeError):
+                        pass
+                self._reset_occurred = True
+                self._update_cop()
+                self.async_write_ha_state()
+
+            if self._period == "daily":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_DAILY, _on_reset
+                )
+            elif self._period == "monthly":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_MONTHLY, _on_reset
+                )
+            elif self._period == "yearly":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_YEARLY, _on_reset
+                )
+            elif self._period == "hourly":
+                self._unsub_reset_dispatcher = async_dispatcher_connect(
+                    self.hass, SIGNAL_RESET_HOURLY, _on_reset
+                )
+
+        # Zyklische COP: Eigene Initial-Baselines aus Quellsensoren (period), nicht aus Total
+        if self._period in ("daily", "monthly", "yearly", "hourly") and self._thermal_baseline is None and self._electrical_baseline is None:
+            thermal_src_state = self.hass.states.get(self._thermal_energy_entity_id)
+            electrical_src_state = self.hass.states.get(self._electrical_energy_entity_id)
+            if (
+                thermal_src_state
+                and thermal_src_state.state not in (None, "unknown", "unavailable")
+                and electrical_src_state
+                and electrical_src_state.state not in (None, "unknown", "unavailable")
+            ):
+                try:
+                    self._thermal_baseline = float(str(thermal_src_state.state).replace(",", "."))
+                    self._electrical_baseline = float(str(electrical_src_state.state).replace(",", "."))
+                    _LOGGER.info(
+                        "COP %s %s: Zyklus-Baselines initial (Quellsensoren) thermal=%.2f kWh, electrical=%.2f kWh",
+                        self._period,
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+                    self._update_cop()
+                    self.async_write_ha_state()
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(
+                        "Could not set COP %s initial baselines for %s: %s",
+                        self._period,
+                        self.entity_id,
+                        e,
+                    )
+
+        # Total-COP: Baseline einmalig setzen (Stichtag = beide Quellsensoren vorhanden)
+        if self._period == "total" and self._thermal_baseline is None and self._electrical_baseline is None:
+            thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
+            electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
+            if thermal_state and thermal_state.state not in (None, "unknown", "unavailable") and electrical_state and electrical_state.state not in (None, "unknown", "unavailable"):
+                try:
+                    thermal_str = str(thermal_state.state).replace(",", ".")
+                    electrical_str = str(electrical_state.state).replace(",", ".")
+                    self._thermal_baseline = float(thermal_str)
+                    self._electrical_baseline = float(electrical_str)
+                    _LOGGER.info(
+                        "COP total %s: baseline set thermal=%.2f kWh, electrical=%.2f kWh (Stichtag: beide Quellen vorhanden)",
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+                    self._update_cop()
+                    self.async_write_ha_state()
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(
+                        "Could not set COP total baseline for %s: %s",
+                        self.entity_id,
+                        e,
+                    )
+
+        # Initialisiere den State (berechnet oder restored)
+        if self._cop_value is None:
+            self._update_cop()
+        elif self._period != "total" or (self._thermal_baseline is not None and self._electrical_baseline is not None):
+            # State wurde restauriert oder Baseline war schon gesetzt, schreibe ins UI
+            self.async_write_ha_state()
+
+    async def restore_state(self, last_state):
+        """Restore state and Total-COP baselines from database to prevent reset on reload."""
+        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
+            try:
+                self._cop_value = round(float(last_state.state), self._precision)
+                _LOGGER.debug(
+                    "COP sensor %s restored from database: %.2f",
+                    self.entity_id,
+                    self._cop_value,
+                )
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    "Could not restore state for COP sensor %s: %s, will calculate on first update",
+                    self.entity_id,
+                    e,
+                )
+                self._cop_value = None
+        else:
+            self._cop_value = None
+            _LOGGER.debug(
+                "No previous state for COP sensor %s, will calculate on first update",
+                self.entity_id,
+            )
+
+        # Total-COP: Baselines aus Attributen wiederherstellen
+        if self._period == "total" and last_state is not None and last_state.attributes:
+            try:
+                tb = last_state.attributes.get("thermal_baseline")
+                eb = last_state.attributes.get("electrical_baseline")
+                if tb is not None and eb is not None:
+                    self._thermal_baseline = float(str(tb).replace(",", "."))
+                    self._electrical_baseline = float(str(eb).replace(",", "."))
+                    # Konsistenz: Baseline darf nicht größer als aktueller Wert sein (nach Neustart/Reset)
+                    thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
+                    electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
+                    if thermal_state and thermal_state.state not in (None, "unknown", "unavailable"):
+                        try:
+                            current_thermal = float(str(thermal_state.state).replace(",", "."))
+                            if self._thermal_baseline > current_thermal:
+                                _LOGGER.warning(
+                                    "COP total %s: thermal_baseline (%.2f) > current (%.2f), korrigiere baseline = current",
+                                    self.entity_id, self._thermal_baseline, current_thermal,
+                                )
+                                self._thermal_baseline = current_thermal
+                        except (ValueError, TypeError):
+                            pass
+                    if electrical_state and electrical_state.state not in (None, "unknown", "unavailable"):
+                        try:
+                            current_electrical = float(str(electrical_state.state).replace(",", "."))
+                            if self._electrical_baseline > current_electrical:
+                                _LOGGER.warning(
+                                    "COP total %s: electrical_baseline (%.2f) > current (%.2f), korrigiere baseline = current",
+                                    self.entity_id, self._electrical_baseline, current_electrical,
+                                )
+                                self._electrical_baseline = current_electrical
+                        except (ValueError, TypeError):
+                            pass
+                    _LOGGER.debug(
+                        "COP total %s: restored baselines thermal=%.2f, electrical=%.2f",
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    "Could not restore COP total baselines for %s: %s",
+                    self.entity_id,
+                    e,
+                )
+
+        # Zyklische COP: Eigene Baselines und reset_occurred aus Attributen wiederherstellen
+        if self._period in ("daily", "monthly", "yearly", "hourly") and last_state is not None and last_state.attributes is not None:
+            try:
+                tb = last_state.attributes.get("thermal_baseline")
+                eb = last_state.attributes.get("electrical_baseline")
+                if tb is not None and eb is not None:
+                    self._thermal_baseline = float(str(tb).replace(",", "."))
+                    self._electrical_baseline = float(str(eb).replace(",", "."))
+                    _LOGGER.debug(
+                        "COP %s %s: restored baselines thermal=%.2f, electrical=%.2f",
+                        self._period,
+                        self.entity_id,
+                        self._thermal_baseline,
+                        self._electrical_baseline,
+                    )
+            except (ValueError, TypeError) as e:
+                _LOGGER.warning(
+                    "Could not restore COP %s baselines for %s: %s",
+                    self._period,
+                    self.entity_id,
+                    e,
+                )
+            ro = last_state.attributes.get("reset_occurred")
+            if ro is not None:
+                self._reset_occurred = bool(ro)
+                _LOGGER.debug(
+                    "COP %s %s: restored reset_occurred=%s",
+                    self._period,
+                    self.entity_id,
+                    self._reset_occurred,
+                )
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Clean up when entity is removed."""
+        if self._unsub_state_changes:
+            self._unsub_state_changes()
+            self._unsub_state_changes = None
+        if self._unsub_timer:
+            self._unsub_timer()
+            self._unsub_timer = None
+        if self._unsub_reset_dispatcher:
+            self._unsub_reset_dispatcher()
+            self._unsub_reset_dispatcher = None
+        await super().async_will_remove_from_hass()
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return self._name
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        """Return the unit of measurement of the sensor."""
+        return self._unit
+
+    @property
+    def state_class(self) -> SensorStateClass | None:
+        """Return the state class of the sensor."""
+        return self._attr_state_class
+
+    @property
+    def device_class(self) -> SensorDeviceClass | None:
+        """Return the device class of the sensor."""
+        return self._attr_device_class
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the current COP value (gerundet auf 2 Dezimalstellen)."""
+        if self._cop_value is None:
+            return None
+        # Stelle sicher, dass der Wert immer auf 2 Dezimalstellen gerundet ist
+        return round(float(self._cop_value), self._precision)
+
+    @property
+    def extra_state_attributes(self):
+        """Return extra state attributes."""
+        attrs = {
+            "sensor_type": "cop",
+            "mode": self._mode,
+            "period": self._period,
+            "hp_index": self._hp_index,
+            "thermal_energy_entity": self._thermal_energy_entity_id,
+            "electrical_energy_entity": self._electrical_energy_entity_id,
+        }
+        if self._period == "total" and self._thermal_baseline is not None and self._electrical_baseline is not None:
+            attrs["thermal_baseline"] = round(self._thermal_baseline, 4)
+            attrs["electrical_baseline"] = round(self._electrical_baseline, 4)
+        if self._period in ("daily", "monthly", "yearly", "hourly"):
+            attrs["reset_occurred"] = self._reset_occurred
+            if self._thermal_baseline is not None and self._electrical_baseline is not None:
+                attrs["thermal_baseline"] = round(self._thermal_baseline, 4)
+                attrs["electrical_baseline"] = round(self._electrical_baseline, 4)
         return attrs
 
     @property
@@ -1291,7 +2368,6 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         self._sensor_id = sensor_id
         self._name = name
         self.entity_id = entity_id
-        self._unique_id = unique_id
         self._unit = unit
         self._state_class = state_class
         self._device_class = device_class
@@ -1325,7 +2401,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         )
         self.async_write_ha_state()
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Initialize the sensor when added to Home Assistant."""
         await super().async_added_to_hass()
 
@@ -1377,10 +2453,6 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
     @property
     def name(self):
         return self._name
-
-    @property
-    def unique_id(self):
-        return self._unique_id
 
     @property
     def native_unit_of_measurement(self):
@@ -1537,7 +2609,7 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
         """Only poll if the entity is enabled and added to HA."""
         return self._entity_enabled
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         """Setup polling when entity is enabled and added to HA."""
         await super().async_added_to_hass()
         self._entity_enabled = True
@@ -1555,7 +2627,7 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
             self._address,
         )
 
-    async def async_will_remove_from_hass(self):
+    async def async_will_remove_from_hass(self) -> None:
         """Called when entity is removed/disabled - stop polling."""
         self._entity_enabled = False
 

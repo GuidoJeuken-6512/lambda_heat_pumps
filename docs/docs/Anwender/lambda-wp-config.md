@@ -21,7 +21,7 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 ### Über Home Assistant
 
 1. **Datei-Editor verwenden:**
-   - Installieren Sie das "File editor" Add-on in Home Assistant
+   - Installieren Sie das "File editor" oder "Studio Code Server" Add-on in Home Assistant
    - Öffnen Sie die Datei `/config/lambda_wp_config.yaml`
    - Bearbeiten Sie die Datei
    - Speichern Sie die Änderungen
@@ -40,13 +40,14 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 - **Bindestriche**: Für Listen verwenden Sie Bindestriche (`-`)
 - **Anführungszeichen**: Verwenden Sie Anführungszeichen für Strings mit Sonderzeichen
 
-**Tipp**: Verwenden Sie einen YAML-Validator, um Syntaxfehler zu vermeiden.
 
 ## Konfigurationsoptionen
 
 ### 1. Deaktivierte Register
 
 Deaktiviert spezifische Modbus-Register, die nicht benötigt werden oder Probleme verursachen.
+
+Wie Sie die Register-Nummer eines Sensors herausfinden (Attribut „register“), beschreibt die Anleitung [Register eines Sensors herausfinden](attribute-sensoren-de.md).
 
 ```yaml
 disabled_registers:
@@ -57,17 +58,22 @@ disabled_registers:
 **Wann verwenden?**
 - Register verursacht Fehler im Log
 - Register wird von Ihrer Firmware-Version nicht unterstützt
-- Register wird nicht benötigt und reduziert Modbus-Traffic
+- Register wird nicht benötigt und reduziert Modbus-Traffic z.B. nicht vorhandene Zirkulationspumpe
 
 **Beispiel:**
 ```yaml
 disabled_registers:
   - 2004  # Kessel-Zirkulationstemperatur (nicht verfügbar)
+  - 2005
 ```
+
+Die zugehörigen Entitäten werden von der Integration nicht mehr bereitgestellt und erscheinen in Home Assistant als „nicht verfügbar“. Um sie zu entfernen, siehe [Entitäten löschen](entitaeten_loeschen.md).
 
 ### 2. Sensor-Name-Überschreibungen
 
 Überschreibt Standard-Sensornamen für bessere Lesbarkeit oder Lokalisierung.
+**Bitte sehr vorsichtig mit dieser Option sein und auf jeden Fall vorher ein Backup von Home Assistant  machen** 
+Um hsitorische Daten anderer Sensoren zu übernehmen ist dieser Schritt besser geeignet:  [Historische Daten übernehmen](historische-daten.md)
 
 ```yaml
 sensors_names_override:
@@ -78,9 +84,8 @@ sensors_names_override:
 ```
 
 **Wann verwenden?**
-- Sensornamen anpassen für bessere Lesbarkeit
-- Lokalisierung der Sensornamen
-- Anpassung an persönliche Präferenzen
+- bei Migration von einer anderen Lösung zu dieser Integration um historische Daten der alten Sensoren zu erhalten
+
 
 **Beispiel:**
 ```yaml
@@ -94,6 +99,8 @@ sensors_names_override:
 ```
 
 ### 3. Cycling-Zähler-Offsets
+
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
 
 Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
@@ -132,33 +139,42 @@ Weitere Informationen: [Historische Daten übernehmen](historische-daten.md)
 
 ### 4. Energieverbrauchs-Sensoren
 
-Definiert welche Sensoren Basis-Energieverbrauchsdaten liefern. Standardmäßig verwendet die Integration die Lambda-eigenen Sensoren, aber Sie können externe Energiezähler (z.B. Shelly3EM) verwenden.
+Definiert, welche Sensoren die Basis-Energieverbrauchsdaten liefern. Pro Wärmepumpe können Sie **elektrischen** und **thermischen** Verbrauch getrennt konfigurieren.
+
+- **`sensor_entity_id`**: Quellsensor für **Stromverbrauch** (elektrisch). Wenn nicht gesetzt, wird der Lambda-interne Sensor verwendet.
+- **`thermal_sensor_entity_id`** (optional): Quellsensor für **Wärmeabgabe** (thermisch). Wenn nicht gesetzt, wird der Lambda-interne Thermik-Sensor verwendet.
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Externer Verbrauchssensor
+    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"   # elektrisch (Strom)
+    thermal_sensor_entity_id: "sensor.lambda_wp_waerme"       # optional, thermisch (Wärme)
   hp2:
-    sensor_entity_id: "sensor.lambda_wp_verbrauch2"  # Zweiter Verbrauchssensor
+    sensor_entity_id: "sensor.lambda_wp_verbrauch2"
+    # thermal_sensor_entity_id weglassen = interner Thermik-Sensor
 ```
 
-**Standard-Sensoren:**
-- **HP1**: `sensor.eu08l_hp1_compressor_power_consumption_accumulated`
-- **HP2**: `sensor.eu08l_hp2_compressor_power_consumption_accumulated`
-- **HP3**: `sensor.eu08l_hp3_compressor_power_consumption_accumulated`
+**Standard-Sensoren (wenn nichts konfiguriert):**
 
-**Hinweis**: Diese Sensoren müssen Energieverbrauchsdaten in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh für die Berechnungen.
+| Typ      | HP1 | HP2 | HP3 |
+|----------|-----|-----|-----|
+| Elektrisch | `sensor.eu08l_hp1_compressor_power_consumption_accumulated` | `sensor.eu08l_hp2_compressor_power_consumption_accumulated` | … |
+| Thermisch  | `sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated` | `sensor.eu08l_hp2_compressor_thermal_energy_output_accumulated` | … |
 
-**Beispiel: Externer Shelly3EM Sensor**
+**Hinweis:** Die Quellsensoren müssen kumulative Verbrauchswerte in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh.
+
+**Beispiel: Nur elektrischer externer Sensor (Shelly3EM), thermisch intern**
 ```yaml
 energy_consumption_sensors:
   hp1:
     sensor_entity_id: "sensor.shelly3em_channel_1_energy"  # Shelly3EM Kanal 1
 ```
 
-Weitere Informationen: [Stromverbrauchsberechnung](stromverbrauchsberechnung.md)
+Weitere Informationen: [Energieverbrauchsberechnung](Energieverbrauchsberechnung.md)
 
 ### 5. Energieverbrauchs-Offsets
+
+> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
 
 Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
@@ -263,10 +279,11 @@ cycling_offsets:
     defrost_cycling_total: 50
     compressor_start_cycling_total: 5000
 
-# Energieverbrauchs-Sensor-Konfiguration
+# Energieverbrauchs-Sensor-Konfiguration (elektrisch + optional thermisch)
 energy_consumption_sensors:
   hp1:
     sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+    # thermal_sensor_entity_id: "sensor.xyz"  # optional, sonst interner Thermik-Sensor
   hp2:
     sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Externer Sensor
 
@@ -326,76 +343,11 @@ modbus:
 **Ursache**: Syntaxfehler in der YAML-Datei
 
 **Lösung**:
-- Verwenden Sie einen YAML-Validator zur Syntaxprüfung
+- Verwenden Sie einen YAML-Validator zur Syntaxprüfung (chatgpt und co können das ganz gut)
 - Überprüfen Sie Einrückungen (nur Leerzeichen, keine Tabs)
 - Überprüfen Sie Doppelpunkte nach Schlüsseln
 - Überprüfen Sie Anführungszeichen für Strings
 
-**Beispiel-Fehler:**
-```yaml
-# FALSCH (Tab statt Leerzeichen)
-cycling_offsets:
-	hp1:  # Tab-Einrückung
-		heating_cycling_total: 0
-
-# RICHTIG (Leerzeichen)
-cycling_offsets:
-  hp1:  # Leerzeichen-Einrückung
-    heating_cycling_total: 0
-```
-
-### "Sensor nicht gefunden"
-
-**Ursache**: Der konfigurierte Sensor existiert nicht oder ist nicht verfügbar
-
-**Lösung**:
-- Überprüfen Sie, ob der Sensor in Home Assistant existiert
-- Überprüfen Sie die Entity-ID (Groß-/Kleinschreibung beachten)
-- Überprüfen Sie die Logs auf Fehlermeldungen
-
-**Beispiel:**
-```yaml
-# FALSCH (falsche Entity-ID)
-energy_consumption_sensors:
-  hp1:
-    sensor_entity_id: "sensor.HP1_ENERGY"  # Existiert nicht
-
-# RICHTIG (korrekte Entity-ID)
-energy_consumption_sensors:
-  hp1:
-    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
-```
-
-### "Offsets nicht angewendet"
-
-**Ursache**: Home Assistant wurde nicht neu gestartet oder YAML-Syntax-Fehler
-
-**Lösung**:
-- Starten Sie Home Assistant vollständig neu
-- Überprüfen Sie die YAML-Syntax
-- Überprüfen Sie die Logs auf Fehlermeldungen
-
-### "Falsche Energie-Werte"
-
-**Ursache**: Falsche Einheiten oder Register-Reihenfolge
-
-**Lösung**:
-- Überprüfen Sie die Einheiten (kWh für Energie-Offsets)
-- Überprüfen Sie die `int32_register_order` Einstellung
-- Überprüfen Sie die Logs auf Konvertierungsfehler
-
-**Beispiel:**
-```yaml
-# FALSCH (Wh statt kWh)
-energy_consumption_offsets:
-  hp1:
-    heating_energy_total: 5000  # Sollte kWh sein, nicht Wh
-
-# RICHTIG (kWh)
-energy_consumption_offsets:
-  hp1:
-    heating_energy_total: 5.0  # 5000 Wh = 5.0 kWh
-```
 
 ## Validierung
 
@@ -407,6 +359,8 @@ Die Integration validiert die Konfiguration automatisch beim Start:
 - **Log-Meldungen**: Alle Probleme werden in den Logs protokolliert
 
 **Tipp**: Überprüfen Sie die Home Assistant Logs nach jedem Neustart, um Konfigurationsfehler frühzeitig zu erkennen.
+
+**Tipp**: Sollten Sie zu viele Fehler haben nach der Änderung an der Datei, Sie können die Datei ganz löschen, sie wird beim Neustart der Integration neu angelegt. Damit sind alle Ihre Konfigurationen auf den Default zurück gesetzt.
 
 ## Nächste Schritte
 

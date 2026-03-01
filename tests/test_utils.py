@@ -9,16 +9,21 @@ import yaml
 
 import custom_components.lambda_heat_pumps.utils as utils_module
 from custom_components.lambda_heat_pumps.utils import (
+    apply_energy_period_reset,
     build_device_info,
     clamp_to_int16,
     generate_base_addresses,
     generate_sensor_names,
     get_compatible_sensors,
+    get_stored_thermal_sensor_id,
     is_register_disabled,
     load_disabled_registers,
     load_sensor_translations,
+    restore_energy_period_state,
+    store_thermal_sensor_id,
     to_signed_16bit,
     to_signed_32bit,
+    validate_external_sensors,
     _get_coordinator,
 )
 
@@ -108,8 +113,11 @@ async def test_load_disabled_registers_file_not_exists():
     mock_hass.config.config_dir = "/tmp/test_config"
     mock_hass.data = {}
 
+    # load_disabled_registers now delegates to load_lambda_config — mock that directly
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=False
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value={"disabled_registers": set()},
     ):
         result = await load_disabled_registers(mock_hass)
 
@@ -123,23 +131,15 @@ async def test_load_disabled_registers_no_disabled_registers():
     mock_hass.config.config_dir = "/tmp/test_config"
     mock_hass.data = {}
 
-    mock_yaml_content = """
-other_config:
-  - value1
-  - value2
-"""
-
+    # load_disabled_registers now delegates to load_lambda_config — mock that directly
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=True
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value={"disabled_registers": set()},
     ):
-        with patch("builtins.open", mock_open(read_data=mock_yaml_content)):
-            with patch(
-                "custom_components.lambda_heat_pumps.utils.yaml.safe_load",
-                return_value=yaml.safe_load(mock_yaml_content),
-            ):
-                result = await load_disabled_registers(mock_hass)
+        result = await load_disabled_registers(mock_hass)
 
-                assert result == set()
+        assert result == set()
 
 
 @pytest.mark.asyncio
@@ -149,17 +149,15 @@ async def test_load_disabled_registers_yaml_error():
     mock_hass.config.config_dir = "/tmp/test_config"
     mock_hass.data = {}
 
+    # load_disabled_registers now delegates to load_lambda_config — mock that directly
     with patch(
-        "custom_components.lambda_heat_pumps.utils.os.path.exists", return_value=True
+        "custom_components.lambda_heat_pumps.utils.load_lambda_config",
+        new_callable=AsyncMock,
+        return_value={"disabled_registers": set()},
     ):
-        with patch("builtins.open", mock_open(read_data="invalid yaml")):
-            with patch(
-                "custom_components.lambda_heat_pumps.utils.yaml.safe_load",
-                side_effect=yaml.YAMLError,
-            ):
-                result = await load_disabled_registers(mock_hass)
+        result = await load_disabled_registers(mock_hass)
 
-                assert result == set()
+        assert result == set()
 
 
 def test_is_register_disabled_true():
@@ -638,7 +636,8 @@ class TestGenerateSensorNames:
             translations=translations,
         )
         
-        assert result_compressor["name"] == "HP1 Kompressor Starts Gesamt"
+        # Mit has_entity_name wird der Gerätename nicht in name gepackt (Name = "Kompressor Starts Gesamt")
+        assert result_compressor["name"] == "Kompressor Starts Gesamt"
 
     def test_generate_sensor_names_missing_translation_warning(self, caplog):
         """Ensure missing translations trigger a one-time warning."""
@@ -694,3 +693,122 @@ def test_get_coordinator():
     mock_hass.data = {}
     coordinator = _get_coordinator(mock_hass)
     assert coordinator is None
+
+
+def test_apply_energy_period_reset_daily():
+    """apply_energy_period_reset setzt baseline und _energy_value aus Total-Sensor (daily)."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_daily"
+    sensor._energy_value = 50.0
+    sensor._yesterday_value = 10.0
+    total_state = MagicMock()
+    total_state.state = "100.0"
+    total_state.attributes = {}
+    sensor.hass = MagicMock()
+    sensor.hass.states.get = MagicMock(return_value=total_state)
+
+    apply_energy_period_reset(sensor, "daily")
+
+    assert sensor._yesterday_value == 100.0
+    assert sensor._energy_value == 100.0
+    sensor.hass.states.get.assert_called_once()
+    call_entity_id = sensor.hass.states.get.call_args[0][0]
+    assert call_entity_id == "sensor.eu08l_hp1_heating_energy_total"
+
+
+def test_apply_energy_period_reset_unknown_period_no_op():
+    """apply_energy_period_reset bei unbekannter Period ändert nichts."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_daily"
+    sensor._energy_value = 50.0
+    sensor._yesterday_value = 10.0
+    sensor.hass = MagicMock()
+
+    apply_energy_period_reset(sensor, "unknown_period")
+
+    assert sensor._yesterday_value == 10.0
+    assert sensor._energy_value == 50.0
+    sensor.hass.states.get.assert_not_called()
+
+
+def test_restore_energy_period_state_monthly_from_attrs():
+    """restore_energy_period_state setzt baseline und _energy_value aus attrs/last_state."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_monthly"
+    sensor._energy_value = 0.0
+    sensor._previous_monthly_value = 0.0
+    attrs = {"previous_monthly_value": 200.0, "energy_value": 250.0}
+    last_state = MagicMock()
+    last_state.state = "50.0"
+
+    restore_energy_period_state(sensor, "monthly", attrs, last_state)
+
+    assert sensor._previous_monthly_value == 200.0
+    assert sensor._energy_value == 250.0
+
+
+def test_restore_energy_period_state_unknown_period_no_op():
+    """restore_energy_period_state bei unbekannter Period ändert nichts."""
+    from unittest.mock import MagicMock
+
+    sensor = MagicMock()
+    sensor.entity_id = "sensor.eu08l_hp1_heating_energy_daily"
+    sensor._energy_value = 50.0
+    sensor._yesterday_value = 10.0
+
+    restore_energy_period_state(sensor, "unknown_period", {}, MagicMock(state="20.0"))
+
+    assert sensor._yesterday_value == 10.0
+    assert sensor._energy_value == 50.0
+
+
+def test_get_stored_thermal_sensor_id():
+    """get_stored_thermal_sensor_id liest aus persist_data['thermal_sensor_ids']."""
+    persist_data = {"thermal_sensor_ids": {"hp1": "sensor.thermal_hp1"}}
+    assert get_stored_thermal_sensor_id(persist_data, 1) == "sensor.thermal_hp1"
+    assert get_stored_thermal_sensor_id(persist_data, 2) is None
+    assert get_stored_thermal_sensor_id({}, 1) is None
+
+
+def test_store_thermal_sensor_id():
+    """store_thermal_sensor_id schreibt in persist_data['thermal_sensor_ids']."""
+    persist_data = {}
+    store_thermal_sensor_id(persist_data, 1, "sensor.thermal_hp1")
+    assert "thermal_sensor_ids" in persist_data
+    assert persist_data["thermal_sensor_ids"]["hp1"] == "sensor.thermal_hp1"
+    store_thermal_sensor_id(persist_data, 2, "sensor.thermal_hp2")
+    assert persist_data["thermal_sensor_ids"]["hp2"] == "sensor.thermal_hp2"
+
+
+def test_validate_external_sensors_with_thermal_sensor_entity_id():
+    """validate_external_sensors akzeptiert optional thermal_sensor_entity_id pro HP."""
+    from unittest.mock import MagicMock
+
+    def _mock_state(eid):
+        if not eid:
+            return None
+        s = MagicMock()
+        s.state = "100.0"
+        return s
+
+    hass = MagicMock()
+    hass.states.get = MagicMock(side_effect=_mock_state)
+    registry = MagicMock()
+    registry.async_get = MagicMock(return_value=MagicMock())
+    with patch("custom_components.lambda_heat_pumps.utils.async_get_entity_registry", return_value=registry):
+        config = {
+            "hp1": {
+                "sensor_entity_id": "sensor.electrical_hp1",
+                "thermal_sensor_entity_id": "sensor.thermal_hp1",
+            },
+        }
+        result = validate_external_sensors(hass, config)
+    assert "hp1" in result
+    assert result["hp1"]["sensor_entity_id"] == "sensor.electrical_hp1"
+    assert result["hp1"].get("thermal_sensor_entity_id") == "sensor.thermal_hp1"

@@ -7,7 +7,12 @@ from custom_components.lambda_heat_pumps.const import (
     CALCULATED_SENSOR_TEMPLATES,
     DEFAULT_NAME,
     DOMAIN,
+    ENERGY_INCREMENT_PERIODS,
+    ENERGY_PERIOD_CONFIG,
+    ENERGY_REGISTRATION_ORDER,
     HP_SENSOR_TEMPLATES,
+    RESET_VALID_PERIODS,
+    RESET_VALID_SENSOR_TYPES,
 )
 
 
@@ -128,3 +133,43 @@ class TestConst(unittest.TestCase):
             # Should be one of the valid device types
             valid_device_types = ["hp", "boil", "hc", "buff", "sol", "main"]
             self.assertIn(device_type, valid_device_types)
+
+    def test_energy_period_config_structure(self):
+        """ENERGY_PERIOD_CONFIG enthält für daily, hourly, monthly, yearly baseline_attr, attr_name, suffix."""
+        expected_periods = ["daily", "hourly", "monthly", "yearly"]
+        for period in expected_periods:
+            self.assertIn(period, ENERGY_PERIOD_CONFIG)
+            cfg = ENERGY_PERIOD_CONFIG[period]
+            self.assertIn("baseline_attr", cfg)
+            self.assertIn("attr_name", cfg)
+            self.assertIn("suffix", cfg)
+            self.assertTrue(cfg["baseline_attr"].startswith("_"))
+            self.assertIsInstance(cfg["suffix"], str)
+            self.assertIn(period, cfg["suffix"])
+
+    def test_energy_increment_periods_contains_all_expected(self):
+        """ENERGY_INCREMENT_PERIODS enthält total, daily, monthly, yearly, 2h, 4h, hourly."""
+        expected = ["total", "daily", "monthly", "yearly", "2h", "4h", "hourly"]
+        for p in expected:
+            self.assertIn(p, ENERGY_INCREMENT_PERIODS)
+        self.assertEqual(len(ENERGY_INCREMENT_PERIODS), len(expected))
+
+    def test_energy_registration_order_total_first(self):
+        """ENERGY_REGISTRATION_ORDER beginnt mit total (für Daily-Init)."""
+        self.assertEqual(ENERGY_REGISTRATION_ORDER[0], "total")
+        self.assertIn("yearly", ENERGY_REGISTRATION_ORDER)
+        self.assertIn("monthly", ENERGY_REGISTRATION_ORDER)
+        self.assertIn("daily", ENERGY_REGISTRATION_ORDER)
+        self.assertIn("hourly", ENERGY_REGISTRATION_ORDER)
+
+    def test_reset_valid_periods(self):
+        """RESET_VALID_PERIODS enthält daily, 2h, 4h."""
+        self.assertIn("daily", RESET_VALID_PERIODS)
+        self.assertIn("2h", RESET_VALID_PERIODS)
+        self.assertIn("4h", RESET_VALID_PERIODS)
+
+    def test_reset_valid_sensor_types(self):
+        """RESET_VALID_SENSOR_TYPES enthält cycling, energy, general."""
+        self.assertIn("cycling", RESET_VALID_SENSOR_TYPES)
+        self.assertIn("energy", RESET_VALID_SENSOR_TYPES)
+        self.assertIn("general", RESET_VALID_SENSOR_TYPES)

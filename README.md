@@ -2,7 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-2.1-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
+[![version](https://img.shields.io/badge/version-2.3-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 ---
@@ -83,8 +83,6 @@ After initial setup, you can modify additional settings in the integration optio
 
 **Documentation:**
 - [WebDocu](https://guidojeuken-6512.github.io/lambda_heat_pumps/)
-- [English Guide](docs/lambda_heat_pumps_en.md)
-- [Troubleshooting](docs/lambda_heat_pumps_troubleshooting.md)
 - 
 -
 **Support:**

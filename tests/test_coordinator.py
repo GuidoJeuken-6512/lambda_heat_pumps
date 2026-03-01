@@ -242,13 +242,15 @@ async def test_async_update_data_success(mock_hass, mock_entry):
 
 @pytest.mark.asyncio
 async def test_async_update_data_no_client(mock_hass, mock_entry):
-    """Test data update when no client is available."""
+    """Test data update when no client is available (Coordinator liefert weiterhin Data-Dict)."""
     coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
     coordinator.client = None
 
     result = await coordinator._async_update_data()
 
-    assert result is None
+    # Coordinator gibt bei fehlendem Client ein Data-Dict zurück (kein None)
+    assert result is not None
+    assert isinstance(result, dict)
 
 
 @pytest.mark.asyncio
@@ -331,7 +333,7 @@ async def test_dynamic_cycling_warnings(mock_hass, mock_entry):
 
 @pytest.mark.asyncio
 async def test_async_update_data_read_error(mock_hass, mock_entry):
-    """Test data update with read error."""
+    """Test data update with read error (Coordinator liefert weiterhin Data-Dict)."""
     mock_client = AsyncMock()
     mock_result = Mock()
     mock_result.isError.return_value = True
@@ -343,7 +345,9 @@ async def test_async_update_data_read_error(mock_hass, mock_entry):
 
     result = await coordinator._async_update_data()
 
-    assert result is None
+    # Coordinator gibt bei Read-Fehler ein Data-Dict zurück (kein None)
+    assert result is not None
+    assert isinstance(result, dict)
 
 
 @pytest.mark.asyncio
@@ -422,8 +426,11 @@ async def test_load_sensor_overrides_success(mock_hass, mock_entry):
         "sensors_names_override": [{"id": "test_sensor", "override_name": "new_name"}]
     }
 
-    def fake_read_config():
-        return config_data
+    async def run_sync(fn):
+        """Führt synchrone Funktion aus (Ersatz für async_add_executor_job)."""
+        return fn()
+
+    mock_hass.async_add_executor_job = run_sync
 
     with patch(
         "custom_components.lambda_heat_pumps.coordinator.os.path.exists",
@@ -537,3 +544,142 @@ async def test_coordinator_last_state_persistence(mock_hass, mock_entry):
     assert coordinator._last_state["2"] == "3"
     assert coordinator._last_operating_state["1"] == "1"
     assert coordinator._last_operating_state["2"] == "2"
+
+
+def test_collect_energy_sensor_states_corrects_invalid_daily_monthly_yearly(mock_hass, mock_entry):
+    """_collect_energy_sensor_states speichert nie yesterday/previous_* > energy_value (Konsistenz)."""
+    from custom_components.lambda_heat_pumps.const import DOMAIN
+
+    # Echte Dict-Struktur, damit coordinator._collect_energy_sensor_states() sie findet
+    entities = {}
+    mock_hass.data = {DOMAIN: {mock_entry.entry_id: {"energy_entities": entities}}}
+
+    # Daily: yesterday_value > energy_value (inkonsistent)
+    daily_ent = MagicMock()
+    daily_ent._energy_value = 1668.47
+    daily_ent._yesterday_value = 1969.46
+    daily_ent._previous_monthly_value = 0.0
+    daily_ent._previous_yearly_value = 0.0
+    daily_ent.native_value = 0.0
+    entities["sensor.eu08l_hp1_heating_energy_daily"] = daily_ent
+
+    # Monthly: previous_monthly_value > energy_value
+    monthly_ent = MagicMock()
+    monthly_ent._energy_value = 1668.47
+    monthly_ent._yesterday_value = 0.0
+    monthly_ent._previous_monthly_value = 1800.0
+    monthly_ent._previous_yearly_value = 1500.0
+    monthly_ent.native_value = 0.0
+    entities["sensor.eu08l_hp1_heating_energy_monthly"] = monthly_ent
+
+    # Yearly: previous_yearly_value > energy_value
+    yearly_ent = MagicMock()
+    yearly_ent._energy_value = 1668.47
+    yearly_ent._yesterday_value = 0.0
+    yearly_ent._previous_monthly_value = 1600.0
+    yearly_ent._previous_yearly_value = 2000.0
+    yearly_ent.native_value = 0.0
+    entities["sensor.eu08l_hp1_heating_energy_yearly"] = yearly_ent
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    out = coordinator._collect_energy_sensor_states()
+
+    assert out["sensor.eu08l_hp1_heating_energy_daily"]["attributes"]["yesterday_value"] == 1668.47
+    assert out["sensor.eu08l_hp1_heating_energy_monthly"]["attributes"]["previous_monthly_value"] == 1668.47
+    assert out["sensor.eu08l_hp1_heating_energy_yearly"]["attributes"]["previous_yearly_value"] == 1668.47
+
+
+# --- Tests für Daily-Reset / Energy-Consumption-Fixes (Entity-ID + use_legacy_modbus_names) ---
+
+
+@pytest.mark.asyncio
+async def test_coordinator_use_legacy_modbus_names_from_entry(mock_hass, mock_entry):
+    """Coordinator muss use_legacy_modbus_names aus Entry übergeben, nicht hardcoded True.
+    Verhindert, dass Daily-Sensoren nach Mitternachts-Reset nicht mehr aktualisiert werden.
+    """
+    mock_entry.data["use_legacy_modbus_names"] = False
+    mock_entry.data["name"] = "eu08l"
+
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.increment_energy_consumption_counter",
+        new_callable=AsyncMock,
+    ) as mock_increment:
+        coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+        await coordinator._increment_energy_consumption(1, "heating", 0.5)
+
+        mock_increment.assert_called_once()
+        call_kwargs = mock_increment.call_args[1]
+        assert call_kwargs["use_legacy_modbus_names"] is False, (
+            "Coordinator muss use_legacy_modbus_names aus Entry übergeben (False), "
+            "nicht hardcoded True – sonst werden Energy-Entities nicht gefunden."
+        )
+
+
+@pytest.mark.asyncio
+async def test_coordinator_use_legacy_modbus_names_true_from_entry(mock_hass, mock_entry):
+    """Bei use_legacy_modbus_names=True wird True an increment_energy_consumption_counter übergeben."""
+    mock_entry.data["use_legacy_modbus_names"] = True
+    mock_entry.data.setdefault("name", "eu08l")
+
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.increment_energy_consumption_counter",
+        new_callable=AsyncMock,
+    ) as mock_increment:
+        coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+        await coordinator._increment_energy_consumption(1, "heating", 0.5)
+
+        call_kwargs = mock_increment.call_args[1]
+        assert call_kwargs["use_legacy_modbus_names"] is True
+
+
+@pytest.mark.asyncio
+async def test_coordinator_energy_sensor_entity_id_uses_lowercase_name_prefix(mock_hass, mock_entry):
+    """Default-Energie-Sensor-Entity-ID muss kleingeschriebenen name_prefix verwenden.
+    Sensoren werden in sensor.py mit name_prefix.lower() erzeugt – sonst findet der
+    Coordinator den Sensor nicht und alle Daily-Werte bleiben 0.
+    """
+    mock_entry.data["name"] = "EU08L"
+    mock_entry.data.setdefault("num_hps", 1)
+
+    mock_state = Mock()
+    mock_state.state = "100.0"
+    mock_state.attributes = {"unit_of_measurement": "kWh"}
+    mock_hass.states.get = Mock(return_value=mock_state)
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    coordinator._energy_sensor_configs = {}
+    coordinator._energy_unit_cache_all = {"electrical_hp1": "kWh"}
+    coordinator._last_operating_state = {"1": 0}
+    coordinator._persist_counters = AsyncMock()
+
+    last_reading_dict = {"hp1": 99.0}
+    first_value_seen_dict = {"hp1": True}
+
+    def unit_ok(unit):
+        return unit == "kWh"
+
+    def convert_kwh(val, unit):
+        return float(val)
+
+    increment_fn = AsyncMock()
+
+    await coordinator._track_hp_energy_type_consumption(
+        1,
+        1,
+        {},
+        "electrical",
+        "sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated",
+        unit_ok,
+        convert_kwh,
+        last_reading_dict,
+        first_value_seen_dict,
+        increment_fn,
+    )
+
+    mock_hass.states.get.assert_called()
+    call_args = mock_hass.states.get.call_args[0]
+    entity_id_used = call_args[0]
+    assert entity_id_used == "sensor.eu08l_hp1_compressor_power_consumption_accumulated", (
+        "Entity-ID muss kleingeschriebenen name_prefix verwenden (eu08l), "
+        "nicht Konfigurationswert (EU08L) – sonst wird der Sensor nicht gefunden."
+    )

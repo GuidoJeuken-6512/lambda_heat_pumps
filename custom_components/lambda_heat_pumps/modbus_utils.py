@@ -9,6 +9,10 @@ _LOGGER = logging.getLogger(__name__)
 # Lock für Health-Checks, um Transaction ID Mismatches zu vermeiden
 _health_check_lock = asyncio.Lock()
 
+# Globaler Lock für alle Modbus-Read-Operationen, um Transaction ID Mismatches zu vermeiden
+# Verhindert parallele Modbus-Requests, die zu Transaction ID Konflikten führen können
+_modbus_read_lock = asyncio.Lock()
+
 # Import Lambda-specific constants
 try:
     from .const import (
@@ -62,70 +66,78 @@ def _detect_pymodbus_api(client, method_name: str) -> str:
 async def async_read_holding_registers(
     client, address: int, count: int, slave_id: int = LAMBDA_MODBUS_UNIT_ID
 ) -> Any:
-    """Read holding registers with Lambda-specific timeout and retry logic."""
+    """Read holding registers with Lambda-specific timeout and retry logic.
+    
+    Uses a global lock to prevent concurrent Modbus requests that could cause
+    Transaction ID mismatches.
+    """
     last_exception = None
     
     # Check if client exists and is connected
     if not client:
-        _LOGGER.info("❌ MODBUS READ: Connection not healthy for address %d", address)
+        _LOGGER.info("MODBUS READ: Connection not healthy for address %d", address)
         raise Exception("Modbus client is None - connection lost")
     
     if not hasattr(client, 'connected') or not client.connected:
-        _LOGGER.info("❌ MODBUS READ: Connection not healthy for address %d", address)
+        _LOGGER.info("MODBUS READ: Connection not healthy for address %d", address)
         raise Exception("Modbus client not connected")
     
-    for attempt in range(LAMBDA_MAX_RETRIES):
-        try:
-            # For pymodbus 3.11.1, use only address as positional, rest as kwargs
+    # Verwende globalen Lock, um parallele Modbus-Requests zu vermeiden
+    # Dies verhindert Transaction ID Mismatches, die auftreten können, wenn
+    # mehrere Requests gleichzeitig gesendet werden
+    async with _modbus_read_lock:
+        for attempt in range(LAMBDA_MAX_RETRIES):
             try:
-                # Try with slave parameter (most common in 3.x)
-                return await asyncio.wait_for(
-                    client.read_holding_registers(address, count=count, slave=slave_id),
-                    timeout=LAMBDA_MODBUS_TIMEOUT
-                )
-            except (TypeError, AttributeError):
+                # For pymodbus 3.11.1, use only address as positional, rest as kwargs
                 try:
-                    # Try with unit parameter
+                    # Try with slave parameter (most common in 3.x)
                     return await asyncio.wait_for(
-                        client.read_holding_registers(address, count=count, unit=slave_id),
+                        client.read_holding_registers(address, count=count, slave=slave_id),
                         timeout=LAMBDA_MODBUS_TIMEOUT
                     )
                 except (TypeError, AttributeError):
                     try:
-                        # Try without slave/unit parameter
+                        # Try with unit parameter
                         return await asyncio.wait_for(
-                            client.read_holding_registers(address, count=count),
+                            client.read_holding_registers(address, count=count, unit=slave_id),
                             timeout=LAMBDA_MODBUS_TIMEOUT
                         )
-                    except TypeError:
-                        # Last resort: only address and count as positional
-                        return await asyncio.wait_for(
-                            client.read_holding_registers(address, count),
-                            timeout=LAMBDA_MODBUS_TIMEOUT
-                        )
-        except asyncio.TimeoutError as e:
-            last_exception = e
-            if attempt < LAMBDA_MAX_RETRIES - 1:
-                _LOGGER.debug(
-                    "Modbus read timeout at address %d (attempt %d/%d), retrying in %ds",
-                    address, attempt + 1, LAMBDA_MAX_RETRIES, LAMBDA_RETRY_DELAY
-                )
-                await asyncio.sleep(LAMBDA_RETRY_DELAY)
-            else:
-                _LOGGER.warning(
-                    "Modbus read timeout at address %d after %d attempts",
-                    address, LAMBDA_MAX_RETRIES
-                )
-        except Exception as e:
-            last_exception = e
-            if attempt < LAMBDA_MAX_RETRIES - 1:
-                _LOGGER.debug(
-                    "Modbus read error at address %d (attempt %d/%d): %s, retrying in %ds",
-                    address, attempt + 1, LAMBDA_MAX_RETRIES, e, LAMBDA_RETRY_DELAY
-                )
-                await asyncio.sleep(LAMBDA_RETRY_DELAY)
-            else:
-                break
+                    except (TypeError, AttributeError):
+                        try:
+                            # Try without slave/unit parameter
+                            return await asyncio.wait_for(
+                                client.read_holding_registers(address, count=count),
+                                timeout=LAMBDA_MODBUS_TIMEOUT
+                            )
+                        except TypeError:
+                            # Last resort: only address and count as positional
+                            return await asyncio.wait_for(
+                                client.read_holding_registers(address, count),
+                                timeout=LAMBDA_MODBUS_TIMEOUT
+                            )
+            except asyncio.TimeoutError as e:
+                last_exception = e
+                if attempt < LAMBDA_MAX_RETRIES - 1:
+                    _LOGGER.debug(
+                        "Modbus read timeout at address %d (attempt %d/%d), retrying in %ds",
+                        address, attempt + 1, LAMBDA_MAX_RETRIES, LAMBDA_RETRY_DELAY
+                    )
+                    await asyncio.sleep(LAMBDA_RETRY_DELAY)
+                else:
+                    _LOGGER.warning(
+                        "Modbus read timeout at address %d after %d attempts",
+                        address, LAMBDA_MAX_RETRIES
+                    )
+            except Exception as e:
+                last_exception = e
+                if attempt < LAMBDA_MAX_RETRIES - 1:
+                    _LOGGER.debug(
+                        "Modbus read error at address %d (attempt %d/%d): %s, retrying in %ds",
+                        address, attempt + 1, LAMBDA_MAX_RETRIES, e, LAMBDA_RETRY_DELAY
+                    )
+                    await asyncio.sleep(LAMBDA_RETRY_DELAY)
+                else:
+                    break
     
     # If we get here, all retries failed
     if last_exception:
@@ -143,90 +155,142 @@ async def async_read_holding_registers(
 async def async_read_input_registers(
     client, address: int, count: int, slave_id: int = LAMBDA_MODBUS_UNIT_ID
 ) -> Any:
-    """Read input registers with full API compatibility."""
-    try:
-        # For pymodbus 3.11.1, use only address as positional, rest as kwargs
-        try:
-            # Try with slave parameter (most common in 3.x)
-            return await client.read_input_registers(
-                address, count=count, slave=slave_id
-            )
-        except (TypeError, AttributeError):
-            try:
-                # Try with unit parameter
-                return await client.read_input_registers(
-                    address, count=count, unit=slave_id
-                )
-            except (TypeError, AttributeError):
-                try:
-                    # Try without slave/unit parameter
-                    return await client.read_input_registers(address, count=count)
-                except TypeError:
-                    # Last resort: only address and count as positional
-                    return await client.read_input_registers(address, count)
+    """Read input registers with timeout, retry and global lock (M-09).
 
-    except Exception as e:
-        # Don't log as error if Home Assistant is stopping
-        if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
-            _LOGGER.debug("Modbus read cancelled at address %d (HA stopping): %s", address, e)
+    Mirrors async_read_holding_registers: uses _modbus_read_lock to prevent
+    parallel requests and retries up to LAMBDA_MAX_RETRIES times with timeout.
+    """
+    last_exception = None
+
+    if not client:
+        raise Exception("Modbus client is None - connection lost")
+
+    if not hasattr(client, "connected") or not client.connected:
+        raise Exception("Modbus client not connected")
+
+    async with _modbus_read_lock:
+        for attempt in range(LAMBDA_MAX_RETRIES):
+            try:
+                try:
+                    return await asyncio.wait_for(
+                        client.read_input_registers(address, count=count, slave=slave_id),
+                        timeout=LAMBDA_MODBUS_TIMEOUT,
+                    )
+                except (TypeError, AttributeError):
+                    try:
+                        return await asyncio.wait_for(
+                            client.read_input_registers(address, count=count, unit=slave_id),
+                            timeout=LAMBDA_MODBUS_TIMEOUT,
+                        )
+                    except (TypeError, AttributeError):
+                        try:
+                            return await asyncio.wait_for(
+                                client.read_input_registers(address, count=count),
+                                timeout=LAMBDA_MODBUS_TIMEOUT,
+                            )
+                        except TypeError:
+                            return await asyncio.wait_for(
+                                client.read_input_registers(address, count),
+                                timeout=LAMBDA_MODBUS_TIMEOUT,
+                            )
+            except asyncio.TimeoutError as e:
+                last_exception = e
+                if attempt < LAMBDA_MAX_RETRIES - 1:
+                    _LOGGER.debug(
+                        "Input register read timeout at address %d (attempt %d/%d), retrying in %ds",
+                        address, attempt + 1, LAMBDA_MAX_RETRIES, LAMBDA_RETRY_DELAY,
+                    )
+                    await asyncio.sleep(LAMBDA_RETRY_DELAY)
+                else:
+                    _LOGGER.warning(
+                        "Input register read timeout at address %d after %d attempts",
+                        address, LAMBDA_MAX_RETRIES,
+                    )
+            except Exception as e:
+                last_exception = e
+                if attempt < LAMBDA_MAX_RETRIES - 1:
+                    _LOGGER.debug(
+                        "Input register read error at address %d (attempt %d/%d): %s, retrying in %ds",
+                        address, attempt + 1, LAMBDA_MAX_RETRIES, e, LAMBDA_RETRY_DELAY,
+                    )
+                    await asyncio.sleep(LAMBDA_RETRY_DELAY)
+                else:
+                    break
+
+    if last_exception:
+        if "Home Assistant is stopping" in str(last_exception) or "CancelledError" in str(last_exception):
+            _LOGGER.debug("Input register read cancelled at address %d (HA stopping): %s", address, last_exception)
         else:
-            _LOGGER.exception("Modbus read error at address %d: %s", address, e)
-        raise
+            _LOGGER.info(
+                "❌ MODBUS READ FAILED: address=%d, retries=%d, error=%s, caller=async_read_input_registers",
+                address, LAMBDA_MAX_RETRIES, last_exception,
+            )
+        raise last_exception
 
 
 async def async_write_register(
     client, address: int, value: int, slave_id: int = LAMBDA_MODBUS_UNIT_ID
 ) -> Any:
-    """Write single register with full API compatibility."""
-    try:
-        # For pymodbus 3.11.1, use address as positional, rest as kwargs
+    """Write single register with full API compatibility.
+    
+    Uses a global lock to prevent concurrent Modbus requests that could cause
+    Transaction ID mismatches.
+    """
+    async with _modbus_read_lock:
         try:
-            # Try with slave parameter (most common in 3.x)
-            return await client.write_register(address, value, slave=slave_id)
-        except (TypeError, AttributeError):
+            # For pymodbus 3.11.1, use address as positional, rest as kwargs
             try:
-                # Try with unit parameter
-                return await client.write_register(address, value, unit=slave_id)
+                # Try with slave parameter (most common in 3.x)
+                return await client.write_register(address, value, slave=slave_id)
             except (TypeError, AttributeError):
-                # Try without slave/unit parameter
-                return await client.write_register(address, value)
+                try:
+                    # Try with unit parameter
+                    return await client.write_register(address, value, unit=slave_id)
+                except (TypeError, AttributeError):
+                    # Try without slave/unit parameter
+                    return await client.write_register(address, value)
 
-    except Exception as e:
-        # Don't log as error if Home Assistant is stopping
-        if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
-            _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
-        else:
-            _LOGGER.info(
-                "❌ MODBUS WRITE FAILED: address=%d, value=%d, error=%s, caller=async_write_register",
-                address, value, e
-            )
-        raise
+        except Exception as e:
+            # Don't log as error if Home Assistant is stopping
+            if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
+                _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
+            else:
+                _LOGGER.info(
+                    "❌ MODBUS WRITE FAILED: address=%d, value=%d, error=%s, caller=async_write_register",
+                    address, value, e
+                )
+            raise
 
 
 async def async_write_registers(
     client, address: int, values: list, slave_id: int = LAMBDA_MODBUS_UNIT_ID
 ) -> Any:
-    """Write multiple registers with full API compatibility."""
-    try:
-        api_type = _detect_pymodbus_api(client, "write_registers")
+    """Write multiple registers with full API compatibility.
+    
+    Uses a global lock to prevent concurrent Modbus requests that could cause
+    Transaction ID mismatches.
+    """
+    async with _modbus_read_lock:
+        try:
+            api_type = _detect_pymodbus_api(client, "write_registers")
 
-        if api_type == "slave":
-            return await client.write_registers(address, values, slave=slave_id)
-        elif api_type == "unit":
-            return await client.write_registers(address, values, unit=slave_id)
-        else:
-            return await client.write_registers(address, values)
+            if api_type == "slave":
+                return await client.write_registers(address, values, slave=slave_id)
+            elif api_type == "unit":
+                return await client.write_registers(address, values, unit=slave_id)
+            else:
+                return await client.write_registers(address, values)
 
-    except Exception as e:
-        # Don't log as error if Home Assistant is stopping
-        if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
-            _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
-        else:
-            _LOGGER.info(
-                "❌ MODBUS WRITE FAILED: address=%d, values=%s, error=%s, caller=async_write_registers",
-                address, values, e
-            )
-        raise
+        except Exception as e:
+            # Don't log as error if Home Assistant is stopping
+            if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
+                _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
+            else:
+                _LOGGER.info(
+                    "❌ MODBUS WRITE FAILED: address=%d, values=%s, error=%s, caller=async_write_registers",
+                    address, values, e
+                )
+            raise
 
 
 # Synchronous versions for backward compatibility
@@ -426,13 +490,13 @@ async def wait_for_stable_connection(coordinator) -> None:
     max_attempts = 10
     attempt = 0
     
-    _LOGGER.info("🔍 CONNECTION: Starting wait_for_stable_connection (coordinator_id=%s)", id(coordinator))
+    _LOGGER.info("CONNECTION: Starting wait_for_stable_connection (coordinator_id=%s)", id(coordinator))
     
     while attempt < max_attempts:
         try:
             # Teste Verbindung mit eigenständiger Health-Check
             if await _test_connection_health(coordinator):
-                _LOGGER.info("✅ CONNECTION: Connection stable after %d attempts", attempt + 1)
+                _LOGGER.info("CONNECTION: Connection stable after %d attempts", attempt + 1)
                 return
             
             attempt += 1
@@ -444,7 +508,7 @@ async def wait_for_stable_connection(coordinator) -> None:
             _LOGGER.info("⏳ CONNECTION: Connection test failed (attempt %d/%d): %s", attempt, max_attempts, e)
             await asyncio.sleep(1)
     
-    _LOGGER.warning("⚠️ CONNECTION: Connection not stable after %d attempts, proceeding anyway", max_attempts)
+    _LOGGER.warning("CONNECTION: Connection not stable after %d attempts, proceeding anyway", max_attempts)
 
 
 async def _test_connection_health(coordinator) -> bool:
@@ -454,13 +518,13 @@ async def _test_connection_health(coordinator) -> bool:
     Transaction ID mismatches.
     """
     if not coordinator.client:
-        _LOGGER.info("🔍 CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
+        _LOGGER.info("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
         return False
     
     # Verwende Lock, um parallele Health-Checks zu vermeiden
     async with _health_check_lock:
         try:
-            _LOGGER.info("🔍 CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
+            _LOGGER.info("CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
             # Try a simple read to test connection health using robust API compatibility
             # Use register 0 (General Error Number) as a health check
             result = await asyncio.wait_for(
@@ -468,13 +532,13 @@ async def _test_connection_health(coordinator) -> bool:
                 timeout=2  # 2 Sekunden Timeout für schnellen Health Check
             )
             if result is not None:
-                _LOGGER.info("✅ CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
+                _LOGGER.info("CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
                 return True
             else:
-                _LOGGER.info("❌ CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
+                _LOGGER.info("CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
                 return False
         except Exception as e:
-            _LOGGER.info("❌ CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
+            _LOGGER.info("CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
             return False
 
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-# Retry-Parameter für automatische Modulerkennung
-AUTO_DETECT_RETRIES = 3
-AUTO_DETECT_RETRY_DELAY = 5  # Sekunden
+"""Constants for Lambda Heat Pumps integration.
 
 # PV Surplus mode options
 PV_SURPLUS_MODE_OPTIONS = {
@@ -2254,3 +2252,6 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #  int32_register_order: "high_first"  # or "low_first"
 """
 
+from .const_base import *  # noqa: F401, F403
+from .const_sensor import *  # noqa: F401, F403
+from .const_calculated_sensors import *  # noqa: F401, F403

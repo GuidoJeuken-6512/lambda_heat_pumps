@@ -87,6 +87,8 @@ The Energy Consumption Sensors provide **detailed energy tracking by operating m
 
 ### 2. Energy Tracking
 
+**Unified delta procedure:** Electrical and thermal energy sensors use the **same calculation model** (delta procedure): Daily = Total - Yesterday, Monthly = Total - Previous Monthly, Yearly = Total - Previous Yearly. The same `LambdaEnergyConsumptionSensor` logic and `increment_energy_consumption_counter` apply to both.
+
 #### Flank Detection Logic
 1. **Monitor Operating State**: Track changes in heat pump operating mode
 2. **Calculate Energy Delta**: Measure energy consumption during each mode
@@ -150,6 +152,9 @@ The integration automatically migrates existing installations to include energy 
 4. **Backward Compatibility**: Maintains existing cycling sensor functionality
 
 **Note**: The `energy_consumption_sensors` and `energy_consumption_offsets` sections are optional. If not configured, the system uses default power consumption sensors and zero offsets.
+
+#### Migration Electrical (first release, delta procedure)
+On first start after an update, existing **electrical** Daily/Monthly/Yearly sensors (from an older release) are migrated once when switching to the delta procedure: if the persisted state has **no `energy_value` attribute**, values are derived from the corresponding Total sensor so the displayed day/month/year value is preserved and no negative values appear. Logic: `restore_state()` sees `energy_value` missing in attributes → it uses `last_state.state` as the displayed value and, if the Total sensor is available, sets `_energy_value = total_value` and `_yesterday_value` (or `_previous_monthly_value` / `_previous_yearly_value`) so that `native_value` equals the displayed value. After that, the normal restore logic (with `energy_value` persisted) is used. Thermal sensors do not need this migration (they were introduced with the delta procedure).
 
 ## Sensor Examples
 
@@ -366,7 +371,8 @@ Each energy consumption sensor includes helpful attributes:
 - **Offset Loading**: Offsets are loaded via `load_lambda_config()` function from `lambda_wp_config.yaml`
 - **Offset Application**: Applied in `_apply_energy_offset()` method during sensor initialization
 - **Entity Registration**: Energy consumption entities are registered in `hass.data["lambda_heat_pumps"][entry_id]["energy_entities"]`
-- **State Persistence**: Uses `RestoreEntity` for state persistence across restarts
+- **State Persistence**: Uses `RestoreEntity` for state persistence across restarts. In addition, energy sensor states (Total, Daily, Monthly, Yearly for electrical and thermal) are stored in `cycle_energy_persist.json` under the key `energy_sensor_states`; on restart, this source is preferred over Home Assistant's `core.restore_state` so displayed values do not drop (e.g. 0.44 → 0.4).
+- **Restart value preservation**: (1) `set_energy_value()` never decreases the stored value (avoids overwriting with stale coordinator/Total values after restart). (2) When the coordinator cannot resolve the entity reference, it does not call `async_set` with a possibly stale state (no fallback overwrite). (3) `native_value` is rounded to 2 decimal places to avoid float artefacts in persisted state. (4) After `restore_state(last_state)`, if the coordinator has a state from `cycle_energy_persist` for this entity, it is applied so the integration’s own persist file wins over HA restore.
 - **Unit Conversion**: Automatic conversion from Wh to kWh via `convert_energy_to_kwh()` function
 
 ---
@@ -440,6 +446,8 @@ Die Energieverbrauchs-Sensoren bieten **detailliertes Energietracking nach Betri
 
 ### 2. Energie-Tracking
 
+**Einheitliches Delta-Verfahren:** Elektrische und thermische Energieverbrauchs-Sensoren nutzen **dasselbe Berechnungsmodell** (Delta-Verfahren): Daily = Total - Yesterday, Monthly = Total - Previous Monthly, Yearly = Total - Previous Yearly. Dieselbe `LambdaEnergyConsumptionSensor`-Logik und `increment_energy_consumption_counter` gelten für beide.
+
 #### Flankenerkennungs-Logik
 1. **Betriebszustand überwachen**: Änderungen im Wärmepumpen-Betriebsmodus verfolgen
 2. **Energie-Delta berechnen**: Energieverbrauch während jedes Modus messen
@@ -503,6 +511,9 @@ Die Integration migriert automatisch bestehende Installationen, um Energieverbra
 4. **Rückwärtskompatibilität**: Behält bestehende Cycling-Sensor-Funktionalität bei
 
 **Hinweis**: Die Sektionen `energy_consumption_sensors` und `energy_consumption_offsets` sind optional. Wenn nicht konfiguriert, verwendet das System Standard-Stromverbrauchs-Sensoren und Null-Offsets.
+
+#### Migration Electrical (erstes Release, Delta-Verfahren)
+Beim ersten Start nach einem Update werden bestehende **elektrische** Daily-/Monthly-/Yearly-Sensoren (aus einem älteren Release) beim Umstieg auf das Delta-Verfahren einmalig migriert: Fehlt das Attribut **`energy_value`** im persistierten State, werden die Werte aus dem jeweiligen Total-Sensor abgeleitet, damit der angezeigte Tages-/Monats-/Jahreswert erhalten bleibt und keine negativen Werte entstehen. Logik: `restore_state()` erkennt fehlendes `energy_value` in den Attributen → verwendet `last_state.state` als Anzeigewert und setzt, falls der Total-Sensor verfügbar ist, `_energy_value` und `_yesterday_value` (bzw. `_previous_monthly_value` / `_previous_yearly_value`) so, dass `native_value` dem Anzeigewert entspricht. Danach gilt die normale Restore-Logik (mit persistiertem `energy_value`). Thermische Sensoren benötigen diese Migration nicht (sie wurden mit dem Delta-Verfahren eingeführt).
 
 ## Sensor-Beispiele
 
@@ -721,7 +732,8 @@ Jeder Energieverbrauchs-Sensor enthält hilfreiche Attribute:
 - **Offset-Laden**: Offsets werden über `load_lambda_config()` Funktion aus `lambda_wp_config.yaml` geladen
 - **Offset-Anwendung**: Angewendet in `_apply_energy_offset()` Methode während der Sensor-Initialisierung
 - **Entity-Registrierung**: Energieverbrauchs-Entities werden in `hass.data["lambda_heat_pumps"][entry_id]["energy_entities"]` registriert
-- **State-Persistierung**: Verwendet `RestoreEntity` für State-Persistierung über Neustarts
+- **State-Persistierung**: Verwendet `RestoreEntity` für State-Persistierung über Neustarts. Zusätzlich werden die Energy-Sensor-States (Total, Daily, Monthly, Yearly für elektrisch und thermisch) in `cycle_energy_persist.json` unter dem Schlüssel `energy_sensor_states` gespeichert; beim Neustart hat diese Quelle Vorrang vor dem HA-`core.restore_state`, damit Anzeigewerte nicht fallen (z. B. 0,44 → 0,4).
+- **Neustart-Werterhalt**: (1) `set_energy_value()` verringert den gespeicherten Wert nie (vermeidet Überschreiben durch veraltete Coordinator-/Total-Werte nach Neustart). (2) Kann der Coordinator die Entity-Referenz nicht auflösen, wird kein `async_set` mit möglicherweise veraltetem State ausgeführt (kein Fallback-Überschreiben). (3) `native_value` wird auf 2 Dezimalstellen gerundet, um Float-Artefakte im persistierten State zu vermeiden. (4) Nach `restore_state(last_state)` wird, falls der Coordinator einen State aus `cycle_energy_persist` für diese Entity hat, dieser angewendet – die eigene Persist-Datei hat Vorrang vor dem HA-Restore.
 - **Unit-Konvertierung**: Automatische Konvertierung von Wh zu kWh über `convert_energy_to_kwh()` Funktion
 
 

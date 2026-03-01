@@ -16,8 +16,59 @@ from custom_components.lambda_heat_pumps.const import (
 from tests.conftest import DummyLoop
 
 
+
 class TestLambdaEnergyConsumptionSensor:
-    """Test LambdaEnergyConsumptionSensor class."""
+    def test_thermal_sensor_creation_for_all_modes_and_periods(self, mock_hass, mock_entry):
+        """Test creation and properties of all thermal energy sensors (all modes/periods)."""
+        sensors = []
+        # Only test templates with data_type == 'thermal_calculated'
+        for sensor_id, template in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.items():
+            if template.get("data_type") == "thermal_calculated":
+                # Parse mode and period from sensor_id
+                # Thermal sensors have pattern: {mode}_thermal_energy_{period}
+                if "_thermal_energy_" in sensor_id:
+                    parts = sensor_id.split("_thermal_energy_")
+                    if len(parts) != 2:
+                        continue
+                    mode, period = parts[0], parts[1]
+                else:
+                    # Fallback: try regular pattern (should not happen for thermal)
+                    parts = sensor_id.split("_energy_")
+                    if len(parts) != 2:
+                        continue
+                    mode, period = parts[0], parts[1]
+                
+                sensor = LambdaEnergyConsumptionSensor(
+                    hass=mock_hass,
+                    entry=mock_entry,
+                    sensor_id=sensor_id,
+                    name=template["name"],
+                    entity_id=f"sensor.eu08l_hp1_{sensor_id}",
+                    unique_id=f"eu08l_hp1_{sensor_id}",
+                    unit=template["unit"],
+                    state_class=template["state_class"],
+                    device_class=template.get("device_class"),
+                    device_type=template["device_type"],
+                    hp_index=1,
+                    mode=mode,
+                    period=period,
+                )
+                sensors.append(sensor)
+                # Verify sensor properties
+                assert sensor._mode == mode
+                assert sensor._period == period
+                assert sensor._unit == "kWh"
+                # For thermal, device_class should be ENERGY
+                assert sensor._device_class == SensorDeviceClass.ENERGY
+                assert sensor.entity_id == f"sensor.eu08l_hp1_{sensor_id}"
+                assert sensor._sensor_id == sensor_id
+                
+                # Thermal templates use state_class='total' for all periods
+                assert sensor._attr_state_class == SensorStateClass.TOTAL
+                    
+        # There should be as many sensors as there are thermal_calculated templates
+        expected_count = len([t for t in ENERGY_CONSUMPTION_SENSOR_TEMPLATES.values() if t.get("data_type") == "thermal_calculated"])
+        assert len(sensors) == expected_count, f"Expected {expected_count} thermal sensors, but created {len(sensors)}"
 
     @pytest.fixture
     def mock_hass(self):
@@ -69,7 +120,7 @@ class TestLambdaEnergyConsumptionSensor:
         assert energy_sensor._sensor_id == "heating_energy_total"
         assert energy_sensor._name == "Heating Energy Total"
         assert energy_sensor.entity_id == "sensor.eu08l_hp1_heating_energy_total"
-        assert energy_sensor._unique_id == "eu08l_hp1_heating_energy_total"
+        assert energy_sensor._attr_unique_id == "eu08l_hp1_heating_energy_total"
         assert energy_sensor._unit == "kWh"
         assert energy_sensor._hp_index == 1
         assert energy_sensor._mode == "heating"
@@ -175,25 +226,46 @@ class TestLambdaEnergyConsumptionSensor:
         assert "applied_offset" in attrs  # Daily sensors also have offsets now
 
     @pytest.mark.asyncio
-    async def test_async_added_to_hass(self, energy_sensor):
+    async def test_async_added_to_hass(self, mock_hass, mock_entry):
         """Test async_added_to_hass method."""
         from unittest.mock import patch, MagicMock
-        # Mock last state
+        # Create a daily sensor (total sensors don't register dispatcher)
+        daily_sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        
+        # Mock last state (attributes als echtes Dict, sonst float(attrs.get(...)) → Mock)
         last_state = Mock()
         last_state.state = "50.0"
-        energy_sensor.async_get_last_state = AsyncMock(return_value=last_state)
-        
+        last_state.attributes = {"applied_offset": 0.0}
+        daily_sensor.async_get_last_state = AsyncMock(return_value=last_state)
+        # Total-Sensor nicht verfügbar → Restore rekonstruiert _energy_value = yesterday + 50 = 50
+        daily_sensor.hass.states.get = Mock(return_value=None)
+
         # Patch async_write_ha_state to avoid integration issues
-        with patch.object(energy_sensor, 'async_write_ha_state', new_callable=MagicMock):
-            # Mock dispatcher connect
+        with patch.object(daily_sensor, 'async_write_ha_state', new_callable=MagicMock):
+            # Mock dispatcher connect + Coordinator (kein Persist-State)
             with patch('custom_components.lambda_heat_pumps.sensor.async_dispatcher_connect') as mock_connect:
-                await energy_sensor.async_added_to_hass()
+                with patch.object(daily_sensor, '_get_energy_sensor_persisted_state_from_coordinator', return_value=None):
+                    await daily_sensor.async_added_to_hass()
             
-            # Verify dispatcher was connected
+            # Verify dispatcher was connected (daily sensors register for reset signals)
             mock_connect.assert_called_once()
             
-            # Verify restore_state was called
-            assert energy_sensor._energy_value == 50.0
+            # Verify restore_state: ohne Total → _energy_value = yesterday + displayed = 0 + 50
+            assert daily_sensor._energy_value == 50.0
 
     @pytest.mark.asyncio
     async def test_async_added_to_hass_no_last_state(self, energy_sensor):
@@ -215,6 +287,7 @@ class TestLambdaEnergyConsumptionSensor:
         from unittest.mock import patch, MagicMock
         last_state = Mock()
         last_state.state = "invalid"
+        last_state.attributes = {"applied_offset": 0.0}
         energy_sensor.async_get_last_state = AsyncMock(return_value=last_state)
         
         # Patch async_write_ha_state to avoid integration issues
@@ -246,38 +319,215 @@ class TestLambdaEnergyConsumptionSensor:
         await energy_sensor.async_will_remove_from_hass()
 
     @pytest.mark.asyncio
-    async def test_handle_reset(self, energy_sensor, mock_entry):
-        """Test handle reset method."""
+    async def test_handle_reset_total(self, energy_sensor, mock_entry):
+        """Total-Sensor: _handle_reset ändert _energy_value nicht."""
         energy_sensor._energy_value = 100.0
-        
         await energy_sensor._handle_reset(mock_entry.entry_id)
-        
-        # For total sensors, value should not be reset to 0
-        # For non-total sensors, value should be reset
-        if energy_sensor._reset_interval == "total":
-            assert energy_sensor._energy_value == 100.0  # Total sensors don't reset
-        else:
-            assert energy_sensor._energy_value == 0.0  # Other sensors reset
+        assert energy_sensor._energy_value == 100.0
+
+    @pytest.mark.asyncio
+    async def test_handle_reset_daily_updates_yesterday_not_energy(self, mock_hass, mock_entry):
+        """Daily-Sensor: Reset setzt yesterday_value = Total und synchronisiert _energy_value mit Total."""
+        from unittest.mock import MagicMock
+        sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        sensor._energy_value = 500.0
+        sensor._yesterday_value = 100.0
+        total_state = MagicMock()
+        total_state.state = "500.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+        with patch.object(sensor, "async_write_ha_state", MagicMock()):
+            await sensor._handle_reset(mock_entry.entry_id)
+        assert sensor._energy_value == 500.0, "Daily reset synchronisiert _energy_value mit Total"
+        assert sensor._yesterday_value == 500.0, "yesterday_value soll auf Total gesetzt werden"
+
+    @pytest.mark.asyncio
+    async def test_handle_reset_monthly_updates_previous_monthly_not_energy(self, mock_hass, mock_entry):
+        """Monthly-Sensor: Reset setzt previous_monthly_value = Total und synchronisiert _energy_value mit Total."""
+        from unittest.mock import MagicMock, patch
+        sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_monthly",
+            name="Heating Energy Monthly",
+            entity_id="sensor.eu08l_hp1_heating_energy_monthly",
+            unique_id="eu08l_hp1_heating_energy_monthly",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="monthly",
+        )
+        sensor._energy_value = 2000.0
+        sensor._previous_monthly_value = 500.0
+        total_state = MagicMock()
+        total_state.state = "2000.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+        with patch.object(sensor, "async_write_ha_state", MagicMock()):
+            await sensor._handle_reset(mock_entry.entry_id)
+        assert sensor._energy_value == 2000.0, "Monthly reset synchronisiert _energy_value mit Total"
+        assert sensor._previous_monthly_value == 2000.0, "previous_monthly_value soll auf Total gesetzt werden"
+
+    @pytest.mark.asyncio
+    async def test_handle_reset_yearly_updates_previous_yearly_not_energy(self, mock_hass, mock_entry):
+        """Yearly-Sensor: Reset setzt previous_yearly_value = Total und synchronisiert _energy_value mit Total."""
+        from unittest.mock import MagicMock, patch
+        sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_yearly",
+            name="Heating Energy Yearly",
+            entity_id="sensor.eu08l_hp1_heating_energy_yearly",
+            unique_id="eu08l_hp1_heating_energy_yearly",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="yearly",
+        )
+        sensor._energy_value = 10000.0
+        sensor._previous_yearly_value = 2000.0
+        total_state = MagicMock()
+        total_state.state = "10000.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+        with patch.object(sensor, "async_write_ha_state", MagicMock()):
+            await sensor._handle_reset(mock_entry.entry_id)
+        assert sensor._energy_value == 10000.0, "Yearly reset synchronisiert _energy_value mit Total"
+        assert sensor._previous_yearly_value == 10000.0, "previous_yearly_value soll auf Total gesetzt werden"
+
+    @pytest.mark.asyncio
+    async def test_day_change_simulation_daily_reset_then_increment(self, mock_hass, mock_entry):
+        """Tageswechsel simulieren: Vor Mitternacht → Reset → Nach Mitternacht Inkrement.
+        Stellt sicher, dass Daily-Sensoren nach dem Reset wieder korrekt aktualisiert werden
+        (yesterday_value = Total, Anzeige 0; danach Inkrement erhöht Tageswert).
+        """
+        from unittest.mock import MagicMock
+        # Daily-Sensor (Heizung, Tageswert)
+        daily_sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        # Total-Sensor-State mocken (wird bei Reset für yesterday_value gelesen)
+        total_state = MagicMock()
+        total_state.state = "100.0"
+        total_state.attributes = {}
+        mock_hass.states.get = MagicMock(return_value=total_state)
+
+        with patch.object(daily_sensor, "async_write_ha_state", MagicMock()):
+            # —— Vor Mitternacht: Tageswert 100 kWh (Total 100, yesterday 0)
+            daily_sensor._energy_value = 100.0
+            daily_sensor._yesterday_value = 0.0
+            assert daily_sensor.native_value == 100.0, "Vor Reset: Tageswert soll 100 kWh sein"
+
+            # —— Mitternacht: Daily-Reset (Signal würde _handle_reset auslösen)
+            await daily_sensor._handle_reset(mock_entry.entry_id)
+
+            # Nach Reset: yesterday_value = Total, Anzeige = 0
+            assert daily_sensor._yesterday_value == 100.0, (
+                "Nach Reset: yesterday_value muss auf Total (100) gesetzt werden"
+            )
+            assert daily_sensor._energy_value == 100.0, (
+                "Nach Reset: _energy_value wird mit Total synchronisiert (vom Coordinator weiter erhöht)"
+            )
+            assert daily_sensor.native_value == 0.0, (
+                "Nach Reset: Tagesanzeige muss 0 sein (daily = _energy_value - yesterday_value)"
+            )
+
+            # —— Nach Mitternacht: Erstes Inkrement (Coordinator liefert 100.5 kWh)
+            daily_sensor.set_energy_value(100.5)
+
+            # Tageswert muss 0,5 kWh sein (100.5 - 100)
+            assert daily_sensor._energy_value == 100.5
+            assert daily_sensor.native_value == 0.5, (
+                "Nach erstem Inkrement: Tageswert muss 0,5 kWh sein – "
+                "wenn 0 bleibt, werden Daily-Sensoren nach Reset nicht aktualisiert (Bug)"
+            )
+
+    @pytest.mark.asyncio
+    async def test_day_change_simulation_wrong_entry_id_ignored(self, mock_hass, mock_entry):
+        """Tageswechsel: _handle_reset mit falscher entry_id ändert nichts (anderer Config-Eintrag)."""
+        from unittest.mock import MagicMock
+        daily_sensor = LambdaEnergyConsumptionSensor(
+            hass=mock_hass,
+            entry=mock_entry,
+            sensor_id="heating_energy_daily",
+            name="Heating Energy Daily",
+            entity_id="sensor.eu08l_hp1_heating_energy_daily",
+            unique_id="eu08l_hp1_heating_energy_daily",
+            unit="kWh",
+            state_class="total",
+            device_class=SensorDeviceClass.ENERGY,
+            device_type="hp",
+            hp_index=1,
+            mode="heating",
+            period="daily",
+        )
+        daily_sensor._energy_value = 80.0
+        daily_sensor._yesterday_value = 20.0
+        with patch.object(daily_sensor, "async_write_ha_state", MagicMock()):
+            await daily_sensor._handle_reset("other_entry_id")
+        assert daily_sensor._yesterday_value == 20.0, "Falsche entry_id: yesterday_value unverändert"
+        assert daily_sensor._energy_value == 80.0
+        assert daily_sensor.native_value == 60.0
 
     def test_device_info(self, energy_sensor, mock_entry):
         """Test device info property."""
-        with patch('custom_components.lambda_heat_pumps.sensor.build_device_info') as mock_build:
-            mock_build.return_value = {"test": "device_info"}
-            
-            result = energy_sensor.device_info
-            
-            assert result == {"test": "device_info"}
-            mock_build.assert_called_once_with(mock_entry)
+        # device_info calls build_subdevice_info (since hp_index is set)
+        # or build_device_info (if no hp_index)
+        result = energy_sensor.device_info
+        
+        # Verify it's a dict with expected keys
+        assert isinstance(result, dict)
+        assert "identifiers" in result
+        assert "name" in result
+        # Verify it's a subdevice (has hp_index)
+        assert energy_sensor._hp_index == 1
+        # The result should contain device identifiers
+        assert len(result["identifiers"]) > 0
 
     def test_sensor_creation_for_all_modes_and_periods(self, mock_hass, mock_entry):
-        """Test sensor creation for all modes and periods."""
+        """Test sensor creation for all modes and periods (only existing templates)."""
         sensors = []
-        
+
         for mode in ENERGY_CONSUMPTION_MODES:
             for period in ENERGY_CONSUMPTION_PERIODS:
                 sensor_id = f"{mode}_energy_{period}"
+                # Not every mode/period combination has a template (e.g., cooling/hourly)
+                if sensor_id not in ENERGY_CONSUMPTION_SENSOR_TEMPLATES:
+                    continue
                 template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES[sensor_id]
-                
+
                 sensor = LambdaEnergyConsumptionSensor(
                     hass=mock_hass,
                     entry=mock_entry,
@@ -293,17 +543,21 @@ class TestLambdaEnergyConsumptionSensor:
                     mode=mode,
                     period=period,
                 )
-                
+
                 sensors.append(sensor)
-                
+
                 # Verify sensor properties
                 assert sensor._mode == mode
                 assert sensor._period == period
                 assert sensor._unit == "kWh"
                 assert sensor._device_class == SensorDeviceClass.ENERGY
-        
-        # Verify all sensors were created
-        assert len(sensors) == len(ENERGY_CONSUMPTION_MODES) * len(ENERGY_CONSUMPTION_PERIODS)
+
+        # Verify the count matches the number of existing templates (one per mode/period combo)
+        expected_count = sum(
+            1 for mode in ENERGY_CONSUMPTION_MODES for period in ENERGY_CONSUMPTION_PERIODS
+            if f"{mode}_energy_{period}" in ENERGY_CONSUMPTION_SENSOR_TEMPLATES
+        )
+        assert len(sensors) == expected_count
 
     def test_sensor_state_class_mapping(self, mock_hass, mock_entry):
         """Test sensor state class mapping."""

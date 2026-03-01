@@ -1,0 +1,26 @@
+# Vollständiges Dashboard "Heizkurve" – zum Importieren
+#
+# Einstellungen → Dashboard → "+ Dashboard" → "Importieren" → diesen Inhalt einfügen.
+#
+# Voraussetzung: Custom Card als Ressource eingebunden:
+#   URL: /local/lambda_heizkurve_card.js  (Datei unter config/www/)
+#
+# Entity-IDs ggf. anpassen (entity_x, entity_y).
+#
+title: Heizkurve
+views:
+  - title: Heizkurve
+    path: heizkurve
+    cards:
+      - type: custom:lambda-heizkurve-card
+        title: Heizkurve
+        entity_x: sensor.eu08l_ambient_temperature_calculated
+        entity_y: sensor.eu08l_hc1_heating_curve_flow_line_temperature_calc
+        curve_points:
+          - [22, "number.eu08l_hc1_heating_curve_warm_outside_temp"]
+          - [0, "number.eu08l_hc1_heating_curve_mid_outside_temp"]
+          - [-22, "number.eu08l_hc1_heating_curve_cold_outside_temp"]
+        x_range: [22, -22]
+        y_range: [10, 75]
+        x_label: Außentemperatur °C
+        y_label: Vorlauf °C

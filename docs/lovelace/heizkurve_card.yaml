@@ -1,0 +1,25 @@
+# Lambda Heizkurven-Card – NUR EINE KARTE (kein ganzes Dashboard)
+#
+# NICHT als Dashboard importieren! Sonst Fehler: "Expected an array value at views".
+#
+# So einbinden:
+# 1. Bestehendes Dashboard bearbeiten → Ansicht bearbeiten → "+ Karte hinzufügen"
+# 2. Unten "Code bearbeiten" (oder YAML) wählen und NUR den Block ab "type: custom:..."
+#    bis "y_label: ..." einfügen (ohne diese Kommentarzeilen).
+#
+# Oder: Vollständiges Dashboard importieren mit docs/lovelace/dashboard_heizkurve.yaml
+#
+# Voraussetzung: Ressource /local/lambda_heizkurve_card.js eingebunden.
+#
+type: custom:lambda-heizkurve-card
+title: Heizkurve
+entity_x: sensor.eu08l_ambient_temperature_calculated
+entity_y: sensor.eu08l_hc1_heating_curve_flow_line_temperature_calc
+curve_points:
+  - [22, "number.eu08l_hc1_heating_curve_warm_outside_temp"]   # X=22 °C, Y aus Sensor
+  - [0, "number.eu08l_hc1_heating_curve_mid_outside_temp"]    # X=0 °C, Y aus Sensor
+  - [-22, "number.eu08l_hc1_heating_curve_cold_outside_temp"] # X=-22 °C, Y aus Sensor
+x_range: [22, -22]   # X-Achse: 22 °C bis -22 °C
+y_range: [10, 75]   # Y-Achse: 10 °C bis 75 °C
+x_label: Außentemperatur °C
+y_label: Vorlauf °C

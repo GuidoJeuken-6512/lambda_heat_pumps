@@ -25,9 +25,8 @@ from custom_components.lambda_heat_pumps.utils import (
 from custom_components.lambda_heat_pumps.automations import (
     SIGNAL_RESET_MONTHLY,
     SIGNAL_RESET_YEARLY,
-    setup_cycling_automations,
-    cleanup_cycling_automations
 )
+from custom_components.lambda_heat_pumps.reset_manager import ResetManager
 
 
 class TestMonthlyYearlyEnergySensors(unittest.TestCase):
@@ -163,28 +162,24 @@ class TestMonthlyYearlyAutomations(unittest.TestCase):
             }
         }
     
-    def test_cleanup_cycling_automations_handles_monthly_yearly(self):
-        """Test: Cleanup behandelt Monthly und Yearly Listener."""
-        # Setup mit Mock-Listenern
+    def test_reset_manager_cleanup_handles_monthly_yearly(self):
+        """Test: ResetManager.cleanup() behandelt Monthly und Yearly Listener."""
+        # Setup ResetManager mit Mock-Listenern
+        reset_manager = ResetManager(self.hass, self.entry_id)
         mock_monthly_listener = Mock()
         mock_yearly_listener = Mock()
         
-        self.hass.data["lambda_heat_pumps"][self.entry_id] = {
-            "monthly_listener": mock_monthly_listener,
-            "yearly_listener": mock_yearly_listener
+        reset_manager._unsub_timers = {
+            "monthly": mock_monthly_listener,
+            "yearly": mock_yearly_listener,
         }
         
-        # Cleanup aufrufen
-        cleanup_cycling_automations(self.hass, self.entry_id)
+        reset_manager.cleanup()
         
         # Prüfen dass Listener aufgerufen wurden
         mock_monthly_listener.assert_called_once()
         mock_yearly_listener.assert_called_once()
-        
-        # Prüfen dass Listener aus hass.data entfernt wurden
-        entry_data = self.hass.data["lambda_heat_pumps"][self.entry_id]
-        self.assertNotIn("monthly_listener", entry_data)
-        self.assertNotIn("yearly_listener", entry_data)
+        assert reset_manager._unsub_timers == {}
 
 
 if __name__ == "__main__":

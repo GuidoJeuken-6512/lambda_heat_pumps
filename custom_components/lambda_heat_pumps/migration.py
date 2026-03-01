@@ -1,11 +1,14 @@
 """Structured Migration System for Lambda Heat Pumps integration."""
 
 from __future__ import annotations
+import functools
 import logging
 import os
+import re
 import shutil
 import yaml
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, Tuple
 
 from homeassistant.core import HomeAssistant
@@ -13,7 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 
-from .const import DOMAIN
+from .const import DOMAIN, LAMBDA_WP_CONFIG_TEMPLATE
 from .const_migration import (
     MigrationVersion,
     MIGRATION_BACKUP_DIR,
@@ -30,7 +33,6 @@ from .const_migration import (
 from .utils import (
     analyze_file_ageing,
     delete_files,
-    migrate_lambda_config_sections
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,7 +64,7 @@ async def create_registry_backup(
         # Backup-Verzeichnis erstellen
         backup_dir = os.path.join(config_dir, MIGRATION_BACKUP_DIR)
         await hass.async_add_executor_job(
-            lambda: os.makedirs(backup_dir, exist_ok=True)
+            functools.partial(os.makedirs, backup_dir, exist_ok=True)
         )
         
         # Registry-Dateien definieren
@@ -80,10 +82,8 @@ async def create_registry_backup(
                 f"{registry_file}.{migration_name}_{timestamp}"
             )
             
-            if await hass.async_add_executor_job(lambda: os.path.exists(source_path)):
-                await hass.async_add_executor_job(
-                    lambda: shutil.copy2(source_path, dest_path)
-                )
+            if await hass.async_add_executor_job(os.path.exists, source_path):
+                await hass.async_add_executor_job(shutil.copy2, source_path, dest_path)
                 backup_paths.append(dest_path)
                 _LOGGER.info("Registry backup erstellt: %s", dest_path)
         
@@ -112,14 +112,14 @@ async def create_lambda_config_backup(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if not await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             _LOGGER.info("lambda_wp_config.yaml nicht gefunden, kein Backup erforderlich")
             return True, ""
         
         # Backup-Verzeichnis erstellen
         backup_dir = os.path.join(config_dir, MIGRATION_BACKUP_DIR)
         await hass.async_add_executor_job(
-            lambda: os.makedirs(backup_dir, exist_ok=True)
+            functools.partial(os.makedirs, backup_dir, exist_ok=True)
         )
         
         # Backup erstellen
@@ -130,9 +130,7 @@ async def create_lambda_config_backup(
             f"lambda_wp_config.{migration_name}_{timestamp}.yaml"
         )
         
-        await hass.async_add_executor_job(
-            lambda: shutil.copy2(lambda_config_path, backup_path)
-        )
+        await hass.async_add_executor_job(shutil.copy2, lambda_config_path, backup_path)
         
         _LOGGER.info("Lambda config backup erstellt: %s", backup_path)
         return True, backup_path
@@ -178,6 +176,411 @@ async def rollback_migration(
 
 
 # =============================================================================
+# LAMBDA CONFIG SECTIONS (lambda_wp_config.yaml)
+# Template-basierte Migration: fehlende Abschnitte an richtiger Stelle einfügen,
+# bestehende konfigurierte Abschnitte unverändert lassen.
+# =============================================================================
+
+# Eindeutige Header-Zeile pro Abschnitt (Reihenfolge = Template-Reihenfolge)
+_SECTION_HEADER_LINES = (
+    "# Override sensor names (only works if use_legacy_modbus_names is true)",
+    "# Cycling counter offsets for total sensors",
+    "# Energy consumption sensor configuration",
+    "# Energy consumption offsets for total sensors",
+    "# Modbus configuration",
+)
+_SECTION_HEADER_TO_NAME = {
+    "# Override sensor names (only works if use_legacy_modbus_names is true)": "sensors_names_override",
+    "# Cycling counter offsets for total sensors": "cycling_offsets",
+    "# Energy consumption sensor configuration": "energy_consumption_sensors",
+    "# Energy consumption offsets for total sensors": "energy_consumption_offsets",
+    "# Modbus configuration": "modbus",
+}
+
+
+def _find_section_ranges_in_content(content: str) -> Tuple[str, list]:
+    """
+    Findet die Zeichenbereiche (start, end) jedes vorhandenen Abschnitts in content.
+    Returns: (normalisierter content mit \\n), Liste (start, end, section_name) sortiert nach start.
+    """
+    content_n = content.replace("\r\n", "\n").replace("\r", "\n")
+    found: list = []  # (position, section_name)
+    for header_line in _SECTION_HEADER_LINES:
+        name = _SECTION_HEADER_TO_NAME[header_line]
+        pos = content_n.find(header_line)
+        if pos != -1:
+            found.append((pos, name))
+    found.sort(key=lambda x: x[0])
+    ranges: list = []
+    for i, (start, name) in enumerate(found):
+        end = found[i + 1][0] if i + 1 < len(found) else len(content_n)
+        ranges.append((start, end, name))
+    return content_n, ranges
+
+
+def _extract_config_sections() -> Dict[str, str]:
+    """
+    Extrahiert alle Konfigurationsabschnitte aus dem LAMBDA_WP_CONFIG_TEMPLATE.
+    """
+    sections = {}
+    lines = LAMBDA_WP_CONFIG_TEMPLATE.split("\n")
+    current_section = None
+    current_content = []
+    for line in lines:
+        if line.strip() in _SECTION_HEADER_TO_NAME:
+            if current_section and current_content:
+                sections[current_section] = "\n".join(current_content).strip()
+            current_section = _SECTION_HEADER_TO_NAME[line.strip()]
+            current_content = [line]
+        elif current_section:
+            current_content.append(line)
+        else:
+            continue
+    if current_section and current_content:
+        sections[current_section] = "\n".join(current_content).strip()
+    _LOGGER.debug("Extracted config sections: %s", list(sections.keys()))
+    return sections
+
+
+async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
+    """
+    Template-basierte Migration der lambda_wp_config.yaml:
+    - Upgrade energy_consumption_sensors auf neues Format (thermal_sensor_entity_id optional)
+    - Fehlende Abschnitte an der richtigen Stelle einfügen (Template-Reihenfolge),
+      bestehende Abschnitte unverändert übernehmen (kein Anhängen, keine Duplikate)
+
+    Returns:
+        bool: True wenn Migration durchgeführt wurde, False sonst
+    """
+    config_dir = hass.config.config_dir
+    lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
+
+    if not await hass.async_add_executor_job(os.path.exists, lambda_config_path):
+        _LOGGER.debug("No existing lambda_wp_config.yaml found, no migration needed")
+        return False
+
+    try:
+        content = await hass.async_add_executor_job(
+            functools.partial(Path(lambda_config_path).read_text, encoding="utf-8")
+        )
+        current_config = yaml.safe_load(content)
+        if not current_config:
+            _LOGGER.debug("Empty config file, no migration needed")
+            return False
+
+        content_modified = False
+        content_normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+        # Upgrade alter energy_consumption_sensors-Block (thermal_sensor_entity_id)
+        first_ecs = content_normalized.find("energy_consumption_sensors:")
+        if first_ecs != -1:
+            header_before_first = content_normalized[max(0, first_ecs - 400) : first_ecs]
+            has_new_format = "sensor_entity_id = elektrisch, thermal_sensor_entity_id = thermisch" in header_before_first
+            if not has_new_format:
+                old_header = (
+                    "# Das System konvertiert automatisch zu kWh für die Berechnungen\n"
+                    "# Beispiel:\nenergy_consumption_sensors:"
+                )
+                new_header = (
+                    "# Das System konvertiert automatisch zu kWh für die Berechnungen\n"
+                    "# sensor_entity_id = elektrisch, thermal_sensor_entity_id = thermisch (optional)\n"
+                    "# Beispiel:\nenergy_consumption_sensors:"
+                )
+                if old_header in content_normalized:
+                    content = content_normalized.replace(old_header, new_header, 1)
+                    content_modified = True
+                    _LOGGER.info(
+                        "Migrated energy_consumption_sensors to new format (thermal_sensor_entity_id optional)"
+                    )
+                else:
+                    _LOGGER.debug(
+                        "energy_consumption_sensors: first block header not matched"
+                    )
+        if content_modified:
+            current_config = yaml.safe_load(content)
+
+        content_n, ranges = _find_section_ranges_in_content(content)
+        section_ranges = {name: (s, e) for s, e, name in ranges}
+        # Fehlt bei einem hp-Eintrag die optionale Zeile thermal_sensor_entity_id? → bei jedem sensor_entity_id: prüfen und ggf. einfügen
+        # Prüfen auf Key "thermal_sensor_entity_id:" (Doppelpunkt), Einrückung/Kommentar (#  hp2) übernehmen
+        if "energy_consumption_sensors" in section_ranges:
+            s_ecs, e_ecs = section_ranges["energy_consumption_sensors"]
+            section_text = content_n[s_ecs:e_ecs]
+            # Alle Zeilen mit sensor_entity_id: (mit optionalem führendem # für auskommentierte hp2)
+            inserts = []  # (position in section_text, new_line)
+            for match in re.finditer(r"\n((?:\s+|#\s*))sensor_entity_id:[^\n]*", section_text):
+                line_end = section_text.find("\n", match.end())
+                if line_end == -1:
+                    line_end = len(section_text)
+                # Nächste Zeile bereits thermal_sensor_entity_id? → überspringen
+                next_start = line_end + 1
+                next_end = section_text.find("\n", next_start)
+                if next_end == -1:
+                    next_end = len(section_text)
+                next_line = section_text[next_start:next_end] if next_start < len(section_text) else ""
+                if "thermal_sensor_entity_id:" in next_line:
+                    continue
+                prefix = match.group(1)  # z. B. "    " oder "#    "
+                new_line = "\n" + prefix + "# thermal_sensor_entity_id: \"sensor.lambda_wp_waerme\"  # optional"
+                inserts.append((line_end, new_line))
+            # Von hinten nach vorne einfügen, damit Positionen stimmen
+            for pos, new_line in sorted(inserts, key=lambda x: -x[0]):
+                section_text = section_text[:pos] + new_line + section_text[pos:]
+            if inserts:
+                content_n = content_n[:s_ecs] + section_text + content_n[e_ecs:]
+                content = content_n
+                content_modified = True
+                _LOGGER.info(
+                    "Added optional thermal_sensor_entity_id line(s) to energy_consumption_sensors block (%d hp)",
+                    len(inserts),
+                )
+        if content_modified:
+            current_config = yaml.safe_load(content)
+            content_n, ranges = _find_section_ranges_in_content(content)
+            section_ranges = {name: (s, e) for s, e, name in ranges}
+
+        template_sections = _extract_config_sections()
+        template_order = list(template_sections.keys())
+        first_section_start = min(r[0] for r in ranges) if ranges else len(content_n)
+        part_before = content_n[:first_section_start].rstrip()
+
+        missing_sections = []
+        for section_name in template_order:
+            in_file = section_name in section_ranges
+            in_config = section_name in current_config
+            if not in_file and not in_config:
+                missing_sections.append(section_name)
+                _LOGGER.debug("Missing section: %s", section_name)
+            elif in_file:
+                _LOGGER.debug("Section %s already present in file", section_name)
+            else:
+                _LOGGER.debug("Section %s in config dict, preserved via part_before", section_name)
+
+        if not missing_sections and not content_modified:
+            _LOGGER.info("All config sections already present - no migration needed")
+            return False
+
+        backup_path = lambda_config_path + ".backup"
+        await hass.async_add_executor_job(
+            lambda: open(backup_path, "w", encoding="utf-8").write(content)
+        )
+        _LOGGER.info("Created backup at %s", backup_path)
+
+        if content_modified and not missing_sections:
+            await hass.async_add_executor_job(
+                lambda: open(lambda_config_path, "w", encoding="utf-8").write(content)
+            )
+            _LOGGER.info(
+                "Successfully migrated lambda_wp_config.yaml (energy_consumption_sensors format). Backup at %s",
+                backup_path,
+            )
+            return True
+
+        if missing_sections:
+            _LOGGER.info(
+                "Migrating lambda_wp_config.yaml - inserting %d missing sections at correct position",
+                len(missing_sections),
+            )
+            parts = [part_before]
+            for section_name in template_order:
+                if section_name in section_ranges:
+                    s, e = section_ranges[section_name]
+                    parts.append(content_n[s:e].rstrip())
+                elif section_name in current_config:
+                    continue
+                else:
+                    parts.append(template_sections[section_name].strip())
+                    _LOGGER.info("Inserted section: %s", section_name)
+            updated_content = "\n\n".join(parts) + "\n"
+            await hass.async_add_executor_job(
+                lambda: open(lambda_config_path, "w", encoding="utf-8").write(updated_content)
+            )
+            _LOGGER.info(
+                "Successfully migrated lambda_wp_config.yaml - inserted %d sections in place. Backup at %s",
+                len(missing_sections), backup_path,
+            )
+        return True
+
+    except Exception as e:
+        _LOGGER.error("Error during config section migration: %s", e)
+        return False
+
+
+# =============================================================================
+# CLEANUP: DUPLIKAT-ENTITIES (_2, _3, …)
+# =============================================================================
+
+# Regex für Entity-IDs, die mit _2, _3, … enden (Home Assistant Duplikat-Suffix)
+_ENTITY_ID_DUPLICATE_SUFFIX_RE = re.compile(r"_\d+$")
+
+
+def _entity_id_has_duplicate_suffix(entity_id: str) -> bool:
+    """Prüft, ob entity_id mit _2, _3, … endet."""
+    return bool(_ENTITY_ID_DUPLICATE_SUFFIX_RE.search(entity_id))
+
+
+def _extract_duplicate_suffix(entity_id: str) -> str | None:
+    """Gibt das Duplikat-Suffix (z. B. '_2', '_3') zurück oder None."""
+    match = _ENTITY_ID_DUPLICATE_SUFFIX_RE.search(entity_id)
+    return match.group(0) if match else None
+
+
+def _is_our_platform(registry_entry: Any) -> bool:
+    """Prüft, ob die Entity zu unserer Integration gehört (Platform-Domain)."""
+    platform = getattr(registry_entry, "platform", None)
+    if platform is None:
+        return False
+    if isinstance(platform, (list, tuple)) and len(platform) >= 1:
+        return platform[0] == DOMAIN
+    if isinstance(platform, str):
+        return platform.startswith(DOMAIN + ".") or platform == DOMAIN
+    return False
+
+
+async def async_remove_duplicate_entity_suffixes(
+    hass: HomeAssistant, entry_id: str
+) -> int:
+    """
+    Entfernt Entities dieser Integration, deren entity_id mit _2, _3, … endet.
+
+    Ablauf: Eine Sammelphase (Kandidaten ermitteln), danach eine Löschphase.
+    - Kandidaten: Entities dieses Config-Eintrags (entry_id) mit Suffix ODER
+      verwaiste Duplikate (config_entry_id existiert nicht mehr, gleiche Platform).
+
+    Benutzer-Anpassungen (z. B. umbenannte Entities ohne Suffix) werden nicht angetastet.
+
+    Hinweis: entity_registry.async_remove() und hass.states.async_remove() sind in
+    Home Assistant keine Coroutinen und werden bewusst nicht mit await aufgerufen.
+
+    Args:
+        hass: Home Assistant Instanz
+        entry_id: Config-Entry-ID (entry.entry_id)
+
+    Returns:
+        Anzahl der entfernten Entities. Spätere Erweiterung auf Dict {removed, failed, skipped} denkbar.
+    """
+    removed = 0
+    renamed = 0
+    failed = 0
+    try:
+        _LOGGER.info(
+            "Cleanup: Prüfe auf Duplikat-Entities (_2, _3, …) für Entry %s …",
+            entry_id,
+        )
+        entity_registry = async_get_entity_registry(hass)
+        current_entry_ids = {
+            e.entry_id for e in hass.config_entries.async_entries(DOMAIN)
+        }
+
+        # ----- Sammelphase: alle Kandidaten (entity_id, reason) sammeln -----
+        candidates: list[tuple[str, str]] = []  # (entity_id, reason)
+
+        # 1a) Entities dieses Config-Eintrags mit Suffix _2, _3, …
+        registry_entries = entity_registry.entities.get_entries_for_config_entry_id(
+            entry_id
+        )
+        for registry_entry in registry_entries:
+            eid = registry_entry.entity_id
+            if "config_parameter_" in eid:
+                continue
+            if _entity_id_has_duplicate_suffix(eid):
+                candidates.append((eid, "aktueller_eintrag"))
+
+        # 1b) Verwaiste Duplikate (config_entry_id nicht mehr in current_entry_ids)
+        if hasattr(entity_registry.entities, "values"):
+            all_entries = list(entity_registry.entities.values())
+        else:
+            all_entries = []
+        for registry_entry in all_entries:
+            eid = getattr(registry_entry, "entity_id", None)
+            config_eid = getattr(registry_entry, "config_entry_id", None)
+            if not eid or not _entity_id_has_duplicate_suffix(eid):
+                continue
+            if "config_parameter_" in eid:
+                continue
+            if not _is_our_platform(registry_entry):
+                continue
+            if config_eid is not None and config_eid in current_entry_ids:
+                continue
+            # Verwaist: nur aufnehmen wenn noch nicht in candidates (z. B. aus 1a)
+            if eid not in [c[0] for c in candidates]:
+                candidates.append((eid, "verwaist"))
+
+        # ----- Löschphase: Kandidaten umbenennen oder entfernen -----
+        # Strategie: Wenn die Ziel-entity_id (ohne _2-Suffix) noch nicht vergeben ist,
+        # wird die _2-Entity umbenannt statt gelöscht. Dadurch wird kein deleted_entities-
+        # Eintrag mit _2-entity_id erzeugt, den HA beim nächsten Start wiederherstellen würde.
+        for eid, reason in candidates:
+            try:
+                base_eid = _ENTITY_ID_DUPLICATE_SUFFIX_RE.sub("", eid)
+                if entity_registry.async_get(base_eid) is None:
+                    # Umbenennen: _2-Entity erhält die korrekte entity_id.
+                    # Kein deleted_entities-Eintrag → kein _2-Restore beim nächsten Start.
+                    entity_registry.async_update_entity(eid, new_entity_id=base_eid)
+                    renamed += 1
+                    _LOGGER.info(
+                        "Cleanup: Duplikat umbenannt: %s -> %s (reason: %s)",
+                        eid,
+                        base_eid,
+                        reason,
+                    )
+                else:
+                    existing_base = entity_registry.async_get(base_eid)
+                    _2_entry = entity_registry.async_get(eid)
+                    if _2_entry and existing_base and existing_base.unique_id == _2_entry.unique_id:
+                        # Gleiche unique_id: veralteter base_eid-Eintrag blockiert das Umbenennen.
+                        # Alten Eintrag zuerst entfernen (erzeugt deleted_entities für base_eid,
+                        # nicht für _2), dann _2 auf den korrekten Namen umbenennen.
+                        entity_registry.async_remove(base_eid)
+                        hass.states.async_remove(base_eid)
+                        entity_registry.async_update_entity(eid, new_entity_id=base_eid)
+                        renamed += 1
+                        _LOGGER.info(
+                            "Cleanup: Veralteten Eintrag ersetzt und umbenannt: %s -> %s (reason: %s)",
+                            eid,
+                            base_eid,
+                            reason,
+                        )
+                    else:
+                        # Echtes Duplikat mit anderer unique_id → löschen
+                        entity_registry.async_remove(eid)
+                        hass.states.async_remove(eid)
+                        removed += 1
+                        _LOGGER.info(
+                            "Cleanup: Duplikat entfernt: %s (reason: %s)",
+                            eid,
+                            reason,
+                        )
+            except Exception as e:
+                failed += 1
+                _LOGGER.warning(
+                    "Cleanup: Entity %s konnte nicht verarbeitet werden (reason: %s): %s",
+                    eid,
+                    reason,
+                    e,
+                )
+
+        # Zusammenfassung
+        if removed or renamed or failed:
+            _LOGGER.info(
+                "Cleanup abgeschlossen: %d umbenannt, %d entfernt, %d Fehler für Entry %s",
+                renamed,
+                removed,
+                failed,
+                entry_id,
+            )
+        elif not candidates:
+            _LOGGER.info(
+                "Cleanup: Keine Duplikat-Entities (_2, _3, …) für Entry %s gefunden.",
+                entry_id,
+            )
+    except Exception as e:
+        _LOGGER.warning(
+            "Cleanup Duplikat-Entities für Entry %s fehlgeschlagen: %s", entry_id, e
+        )
+    return removed + renamed
+
+
+# =============================================================================
 # MIGRATIONSFUNKTIONEN FÜR JEDE VERSION
 # =============================================================================
 
@@ -207,13 +610,13 @@ async def migrate_to_legacy_names(
         registry_entries = entity_registry.entities.get_entries_for_config_entry_id(entry_id)
 
         # Importiere aktuelle Namenslogik
-        from .utils import generate_sensor_names
+        from .utils import generate_sensor_names, normalize_name_prefix
         from .const import CLIMATE_TEMPLATES, HP_SENSOR_TEMPLATES, BOIL_SENSOR_TEMPLATES, HC_SENSOR_TEMPLATES, BUFF_SENSOR_TEMPLATES, SOL_SENSOR_TEMPLATES, SENSOR_TYPES
 
         # Hole aktuelle Namensschemata für alle Climate- und Sensor-Entitäten
         entry_data = config_entry.data
         use_legacy_modbus_names = entry_data.get("use_legacy_modbus_names", True)
-        name_prefix = entry_data.get("name", "").lower().replace(" ", "")
+        name_prefix = normalize_name_prefix(entry_data.get("name", ""))
         num_boil = entry_data.get("num_boil", 1)
         num_hc = entry_data.get("num_hc", 1)
         num_hps = entry_data.get("num_hps", 1)
@@ -319,22 +722,23 @@ async def migrate_to_cycling_offsets(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             # Bestehende Config laden
             content = await hass.async_add_executor_job(
-                lambda: open(lambda_config_path, "r").read()
+                Path(lambda_config_path).read_text
             )
             config = yaml.safe_load(content) or {}
         else:
             config = {}
-        
+
         # Cycling-Offsets hinzufügen falls nicht vorhanden
         if "cycling_offsets" not in config:
             config["cycling_offsets"] = DEFAULT_CYCLING_OFFSETS
-            
+
             # Config speichern
+            yaml_content = yaml.dump(config, default_flow_style=False)
             await hass.async_add_executor_job(
-                lambda: open(lambda_config_path, "w").write(yaml.dump(config, default_flow_style=False))
+                Path(lambda_config_path).write_text, yaml_content
             )
             
             _LOGGER.info(
@@ -383,28 +787,29 @@ async def migrate_to_energy_consumption(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             # Bestehende Config laden
             content = await hass.async_add_executor_job(
-                lambda: open(lambda_config_path, "r").read()
+                Path(lambda_config_path).read_text
             )
             config = yaml.safe_load(content) or {}
         else:
             config = {}
-        
+
         # Energy Consumption Sensoren hinzufügen falls nicht vorhanden
         if "energy_consumption_sensors" not in config:
             config["energy_consumption_sensors"] = DEFAULT_ENERGY_CONSUMPTION_SENSORS
             _LOGGER.info("Energy Consumption Sensoren zu lambda_wp_config.yaml hinzugefügt")
-        
+
         # Energy Consumption Offsets hinzufügen falls nicht vorhanden
         if "energy_consumption_offsets" not in config:
             config["energy_consumption_offsets"] = DEFAULT_ENERGY_CONSUMPTION_OFFSETS
             _LOGGER.info("Energy Consumption Offsets zu lambda_wp_config.yaml hinzugefügt")
-        
+
         # Config speichern
+        yaml_content = yaml.dump(config, default_flow_style=False)
         await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "w").write(yaml.dump(config, default_flow_style=False))
+            Path(lambda_config_path).write_text, yaml_content
         )
         
         _LOGGER.info(
@@ -572,15 +977,15 @@ async def migrate_to_register_order_terminology(
         config_dir = hass.config.config_dir
         lambda_config_path = os.path.join(config_dir, "lambda_wp_config.yaml")
         
-        if not await hass.async_add_executor_job(lambda: os.path.exists(lambda_config_path)):
+        if not await hass.async_add_executor_job(os.path.exists, lambda_config_path):
             _LOGGER.info(
                 "lambda_wp_config.yaml nicht gefunden, keine Migration erforderlich"
             )
             return True
-        
+
         # Lade aktuelle Config
         content = await hass.async_add_executor_job(
-            lambda: open(lambda_config_path, "r", encoding="utf-8").read()
+            functools.partial(Path(lambda_config_path).read_text, encoding="utf-8")
         )
         config = yaml.safe_load(content) or {}
         
@@ -854,7 +1259,7 @@ async def cleanup_old_backups(hass: HomeAssistant) -> None:
         config_dir = hass.config.config_dir
         backup_dir = os.path.join(config_dir, MIGRATION_BACKUP_DIR)
         
-        if not await hass.async_add_executor_job(lambda: os.path.exists(backup_dir)):
+        if not await hass.async_add_executor_job(os.path.exists, backup_dir):
             _LOGGER.info("Backup-Verzeichnis existiert nicht")
             return
         
