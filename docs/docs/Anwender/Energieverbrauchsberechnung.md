@@ -6,6 +6,10 @@ title: "Energie- und Wärmeverbrauchsberechnung"
 
 Die Lambda Heat Pumps Integration bietet umfassende Sensoren für **Stromverbrauch** (elektrische Energie) und **Wärmeabgabe** (thermische Energie) – jeweils nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) und Zeitraum (Total, Täglich, Monatlich, Jährlich). Damit ist eine vollständige Analyse des Energie- und Wärmeflusses Ihrer Wärmepumpe möglich.
 
+⚠️ **Die Daten der Sensoren werden in der Integration berechnet, sie können nicht aus der Lambda ausgelesen werden. Daher können sie von der Werten in der Lambda abweichen. Zudem müssen sich die Tages- Monats- & Jahres-Werte erst aufbauen.**
+
+Um die total Werte denen in der Anzeige der Lambda anzugleichen, wird es in einem der nächsten Releases eine Möglichkeit geben, diese mit einem Offset anzugleichen.
+
 ## Übersicht
 
 Die Sensoren bieten:
