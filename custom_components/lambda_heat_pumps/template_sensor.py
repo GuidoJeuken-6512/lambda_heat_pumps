@@ -826,7 +826,6 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
             if raw_offset is not None:
                 try:
                     flow_line_offset = float(raw_offset)
-                    result += flow_line_offset
                 except (TypeError, ValueError):
                     _LOGGER.warning(
                         "%s — Flow-Line-Offset (%s) konnte nicht verarbeitet werden: %s",
