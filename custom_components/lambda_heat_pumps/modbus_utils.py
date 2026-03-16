@@ -490,13 +490,13 @@ async def wait_for_stable_connection(coordinator) -> None:
     max_attempts = 10
     attempt = 0
     
-    _LOGGER.info("CONNECTION: Starting wait_for_stable_connection (coordinator_id=%s)", id(coordinator))
+    _LOGGER.debug("CONNECTION: Starting wait_for_stable_connection (coordinator_id=%s)", id(coordinator))
     
     while attempt < max_attempts:
         try:
             # Teste Verbindung mit eigenständiger Health-Check
             if await _test_connection_health(coordinator):
-                _LOGGER.info("CONNECTION: Connection stable after %d attempts", attempt + 1)
+                _LOGGER.debug("CONNECTION: Connection stable after %d attempts", attempt + 1)
                 return
             
             attempt += 1
@@ -524,7 +524,7 @@ async def _test_connection_health(coordinator) -> bool:
     # Verwende Lock, um parallele Health-Checks zu vermeiden
     async with _health_check_lock:
         try:
-            _LOGGER.info("CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
+            _LOGGER.debug("CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
             # Try a simple read to test connection health using robust API compatibility
             # Use register 0 (General Error Number) as a health check
             result = await asyncio.wait_for(
@@ -532,7 +532,7 @@ async def _test_connection_health(coordinator) -> bool:
                 timeout=2  # 2 Sekunden Timeout für schnellen Health Check
             )
             if result is not None:
-                _LOGGER.info("CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
+                _LOGGER.debug("CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
                 return True
             else:
                 _LOGGER.info("CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))

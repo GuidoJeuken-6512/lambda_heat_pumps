@@ -34,9 +34,14 @@ Jede Betriebsart wird nach Zeitraum aufgeteilt:
 ┌─────────────────────────────────────────────────────────────┐
 │                    Coordinator                              │
 │  ┌──────────────────────────────────────────────────────┐  │
-│  │  _async_update_data()                                  │  │
-│  │    └─ Flankenerkennung (Operating State Change)       │  │
-│  │       └─ increment_cycling_counter()                   │  │
+│  │  _async_fast_update()  [alle 2 Sekunden]              │  │
+│  │    └─ _run_cycling_edge_detection()                   │  │
+│  │         └─ increment_cycling_counter()                │  │
+│  └──────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  _async_update_data()  [alle 30 Sekunden, konfigur.] │  │
+│  │    └─ Nur Energieintegration (kWh), keine Cycling-   │  │
+│  │       Flankenerkennung                                │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                             │
@@ -86,12 +91,18 @@ Jede Betriebsart wird nach Zeitraum aufgeteilt:
 
 ### Datenfluss
 
-1. **Coordinator** erkennt Betriebsmodus-Wechsel:
-   - Liest Operating State Register
-   - Vergleicht mit vorherigem Wert
-   - Erkennt Flanke (State Change)
+1. **Coordinator** (`_async_fast_update`, alle 2 Sekunden) liest nur zwei Register pro Wärmepumpe:
+   - Register 1002 (`HP_STATE`) — Kompressorstarterkennung
+   - Register 1003 (`HP_OPERATING_STATE`) — Betriebsmoduszustand
+   - Ruft `_run_cycling_edge_detection()` auf
 
-2. **Coordinator** ruft `increment_cycling_counter()` auf:
+2. **Coordinator** (`_run_cycling_edge_detection`) erkennt Betriebsmodus-Wechsel:
+   - Vergleicht aktuellen Wert mit `_last_operating_state` / `_last_state`
+   - Erkennt Flanke (State Change)
+   - Ruft `increment_cycling_counter()` auf
+   - Aktualisiert `_last_operating_state` / `_last_state`
+
+3. **Coordinator** ruft `increment_cycling_counter()` auf:
    - Übergibt Mode (heating, hot_water, etc.)
    - Übergibt HP-Index
 
@@ -186,35 +197,47 @@ CALCULATED_SENSOR_TEMPLATES = {
 
 ### 3. Flankenerkennung
 
-Die Flankenerkennung erfolgt im Coordinator (`coordinator.py`):
+Die Flankenerkennung erfolgt im Coordinator (`coordinator.py`) in `_run_cycling_edge_detection()`, aufgerufen von `_async_fast_update()` alle **2 Sekunden** (fest konfiguriert, kein UI-Option). Die Trennung vom 30-Sekunden-Vollupdate verhindert, dass kurze Modusübergänge übersehen werden.
+
+Zwei Register werden überwacht:
+
+| Register | Adresse HP1 | Variable | Überwachte Modi |
+|----------|-------------|----------|-----------------|
+| `HP_OPERATING_STATE` | 1003 | `_last_operating_state` | heating=1, hot_water=2, cooling=3, defrost=5 |
+| `HP_STATE` | 1002 | `_last_state` | compressor_start=2 |
 
 ```python
-# In _async_update_data()
+# In _run_cycling_edge_detection()
 last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
-op_state_val = data.get(f"hp{hp_idx}_operating_state", 0)
+op_state_val = data.get(f"hp{hp_idx}_operating_state")
 
 # Flankenerkennung: State hat sich geändert
-if (self._initialization_complete and 
+if (self._initialization_complete and
     last_op_state != "UNBEKANNT" and
-    last_op_state != mode_val and 
+    last_op_state != mode_val and
     op_state_val == mode_val):
-    
+
     # Betriebsmodus-Wechsel erkannt!
     await increment_cycling_counter(
         self.hass,
         mode=mode,
         hp_index=hp_idx,
         name_prefix=self.entry.data.get("name", "eu08l"),
-        use_legacy_modbus_names=True,
-        cycling_offsets=self._cycling_offsets.get(f"hp{hp_idx}", {}),
+        use_legacy_modbus_names=self._use_legacy_names,
+        cycling_offsets=self._cycling_offsets,
     )
+
+# _last_operating_state wird NACH der Verarbeitung aktualisiert
+self._last_operating_state[str(hp_idx)] = op_state_val
 ```
 
 **Wichtig**: Flankenerkennung wird nur ausgelöst, wenn:
 - Initialisierung abgeschlossen ist (`_initialization_complete == True`)
-- Vorheriger State nicht "UNBEKANNT" war
-- State-Wechsel erkannt wurde (alter State != neuer State)
-- Neuer State entspricht dem erwarteten Mode-Wert
+- Vorheriger State nicht "UNBEKANNT" war (verhindert Falscherkennung beim ersten Poll)
+- Pump war NICHT bereits in diesem Modus (`last != mode_val`)
+- Pump IST JETZT in diesem Modus (`cur == mode_val`) — reines Rising-Edge-Erkennen
+
+**Verhältnis zu `_async_update_data()`**: Der 30-Sekunden-Vollupdate liest ebenfalls Register 1003, verwendet den Wert aber ausschließlich für die Energieintegration (`kWh += power × interval`). Er schreibt `_last_operating_state` nicht mehr und ruft `increment_cycling_counter()` nicht auf.
 
 ### 4. Increment-Logik
 
@@ -595,10 +618,15 @@ if not self._initialization_complete:
 }
 ```
 
-2. Mode-Wert in Coordinator prüfen:
+2. Mode-Wert im `MODES`-Dict in `_run_cycling_edge_detection()` ergänzen:
 ```python
-if op_state_val == NEW_MODE_VALUE:
-    await increment_cycling_counter(..., mode="new_mode", ...)
+MODES = {
+    "heating": 1,
+    "hot_water": 2,
+    "cooling": 3,
+    "defrost": 5,
+    "new_mode": NEW_MODE_VALUE,  # neu
+}
 ```
 
 ### Neue Perioden hinzufügen

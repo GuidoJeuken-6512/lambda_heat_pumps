@@ -84,6 +84,10 @@ DEFAULT_UPDATE_INTERVAL = 30
 # Changed from 30 to 41 to avoid timing collisions with coordinator reads (30s)
 DEFAULT_WRITE_INTERVAL = 9
 
+# Default interval for fast modbus communication für state change detection (in seconds)
+# 
+DEFAULT_FAST_UPDATE_INTERVAL = 2
+
 # Lambda-specific Modbus configuration
 LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout
 LAMBDA_MODBUS_UNIT_ID = 1   # Lambda Unit ID
