@@ -76,6 +76,19 @@ self._unsub_fast_poll = None       # Handle zum Abmelden des Fast-Poll-Timers
 
 ---
 
+## Fixes
+
+### Übersetzung `vda_rating`: „Max" ergänzt
+
+Der Sensor `vda_rating` zeigt den **maximalen** VdA-Leistungswert der Wärmepumpe. Die Bezeichnung wurde in beiden Sprachen entsprechend korrigiert:
+
+| Sprache | Vorher | Nachher |
+|---------|--------|---------|
+| Englisch | `VdA Rating` | `VdA Rating Max` |
+| Deutsch | `VdA Leistung` | `VdA Leistung Max` |
+
+---
+
 ## Interne Refactorings
 
 ### `_run_cycling_edge_detection()` als eigene Methode
