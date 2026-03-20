@@ -6,6 +6,10 @@
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![GitHub Downloads](https://img.shields.io/github/downloads/GuidoJeuken-6512/lambda_heat_pumps/total)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 
+<a href="https://www.paypal.com/donate/?hosted_button_id=P3N7RRC2SNQ48">
+  <img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" alt="Donate with PayPal" />
+</a>
+
 ---
 Für die deutsche Anleitung bitte weiter unten schauen.
 
