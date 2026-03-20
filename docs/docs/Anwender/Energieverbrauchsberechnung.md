@@ -9,7 +9,6 @@ Die Lambda Heat Pumps Integration bietet umfassende Sensoren für **Stromverbrau
 ⚠️ **Die Daten der Sensoren werden in der Integration berechnet, sie können nicht aus der Lambda ausgelesen werden. Daher können sie von der Werten in der Lambda abweichen. Zudem müssen sich die Tages- Monats- & Jahres-Werte erst aufbauen.**
 
 Um die Total-Werte denen in der Anzeige der Lambda anzugleichen, wird es in einem der nächsten Releases eine Möglichkeit geben, diese mit einem Offset anzugleichen.
-
 ## Übersicht
 
 Die Sensoren bieten:
