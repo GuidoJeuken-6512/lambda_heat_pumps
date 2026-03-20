@@ -2,8 +2,9 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-2.3-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
+[![version](https://img.shields.io/badge/version-2.3.2-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 [![license](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![GitHub Downloads](https://img.shields.io/github/downloads/GuidoJeuken-6512/lambda_heat_pumps/total)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 
 ---
 Für die deutsche Anleitung bitte weiter unten schauen.
