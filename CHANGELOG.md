@@ -7,7 +7,7 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
  
-### [2.3.2] - 2026-03-21
+### [2.3.4] - 2026-03-21
 Change to the logic for detecting compressor starts (cycling): The 'compressor_unit_rating' sensor is used and is queried more frequently.
 
 ### [2.3] - 2026-03-01

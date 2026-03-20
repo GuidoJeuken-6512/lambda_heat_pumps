@@ -101,7 +101,7 @@ nav = [
 
   { "Releases" = [
       { "Releases" = "Releases/releases.md" },
-      { "Release 2.3.2 Aktuell" = "Releases/release-2-3-2.md" },
+      { "Release 2.3.4 Aktuell" = "Releases/release-2-3-4.md" },
       { "Release 2.3" = "Releases/release-2-3.md" },
       { "Release 2.2" = "Releases/release-2-2.md" },
       { "Release 2.0" = "Releases/release-2-0.md" },
