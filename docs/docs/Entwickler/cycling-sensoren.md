@@ -92,7 +92,7 @@ Jede Betriebsart wird nach Zeitraum aufgeteilt:
 ### Datenfluss
 
 1. **Coordinator** (`_async_fast_update`, alle 2 Sekunden) liest nur zwei Register pro Wärmepumpe:
-   - Register 1002 (`HP_STATE`) — Kompressorstarterkennung
+   - Register 1010 (`compressor_unit_rating`) — Kompressorstarterkennung durch Änderung von 0 auf > 0 
    - Register 1003 (`HP_OPERATING_STATE`) — Betriebsmoduszustand
    - Ruft `_run_cycling_edge_detection()` auf
 
@@ -204,7 +204,7 @@ Zwei Register werden überwacht:
 | Register | Adresse HP1 | Variable | Überwachte Modi |
 |----------|-------------|----------|-----------------|
 | `HP_OPERATING_STATE` | 1003 | `_last_operating_state` | heating=1, hot_water=2, cooling=3, defrost=5 |
-| `HP_STATE` | 1002 | `_last_state` | compressor_start=2 |
+| `compressor_unit_rating` | 1010 | `_last_state` | compressor_unit_rating von 0 auf  > 0 |
 
 ```python
 # In _run_cycling_edge_detection()
