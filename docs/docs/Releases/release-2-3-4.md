@@ -1,6 +1,6 @@
-# Release 2.3.2
+# Release 2.3.4
 
-> Version 2.3.1 wurde übersprungen.
+> Version 2.3.1/3 wurde übersprungen.
 
 ---
 
@@ -10,7 +10,7 @@
 
 Der Sensor zur Erkennung eines Kompressorstarts wurde geändert:
 
-| | Vorher (2.3) | Jetzt (2.3.2) |
+| | Vorher (2.3) | Jetzt (2.3.4) |
 |---|---|---|
 | **Quelle** | `HP_STATE` (Register 1002) | `compressor_unit_rating` (Register 1010) |
 | **Erkennungsbedingung** | Übergang in State `2` (RESTART-BLOCK) | Anstieg von `0 → >0` (Rising Edge) |
