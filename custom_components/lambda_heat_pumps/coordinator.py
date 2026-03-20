@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
+from homeassistant.helpers.event import async_track_time_interval
 from .const import (
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
@@ -23,6 +24,7 @@ from .const import (
     SOL_SENSOR_TEMPLATES,
     HC_SENSOR_TEMPLATES,
     DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_FAST_UPDATE_INTERVAL,
     CALCULATED_SENSOR_TEMPLATES,
     LAMBDA_MODBUS_UNIT_ID,
     LAMBDA_MODBUS_PORT,
@@ -81,7 +83,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self._last_operating_state = {}
-        self._last_state = {}  # Für HP_STATE Flankenerkennung (z.B. START COMPRESSOR)
+        self._last_compressor_rating = {}  # Für compressor_unit_rating Flankenerkennung (0 → >0)
         self._heating_cycles = {}
         self._heating_energy = {}
         self._last_energy_update = {}
@@ -131,6 +133,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Flag für Initialisierung - verhindert Flankenerkennung beim ersten Update
         self._initialization_complete = False
+
+        # Fast polling for edge detection (HP_STATE / HP_OPERATING_STATE only)
+        self._full_update_running = False  # True while _async_update_data holds Modbus
+        self._unsub_fast_poll = None
 
         # Persist File I/O Optimierung
         self._persist_dirty = False  # Dirty-Flag für Änderungen
@@ -1517,25 +1523,225 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             msg = f"Connection failed: {e}"
             raise UpdateFailed(msg) from e
 
+    def _cycling_entities_ready(self) -> bool:
+        """Check whether cycling counter entities are registered and ready."""
+        try:
+            return (
+                "lambda_heat_pumps" in self.hass.data
+                and self.entry.entry_id in self.hass.data["lambda_heat_pumps"]
+                and "cycling_entities" in self.hass.data["lambda_heat_pumps"][self.entry.entry_id]
+            )
+        except Exception:
+            return False
+
+    async def _run_cycling_edge_detection(self, data: dict) -> None:
+        """Run edge detection on HP_OPERATING_STATE (reg 1003) and compressor_unit_rating (reg 1010).
+
+        Called exclusively by _async_fast_update. Increments cycling counters on
+        rising-edge transitions. Updates _last_operating_state and _last_compressor_rating.
+        """
+        num_hps = self.entry.data.get("num_hps", 1)
+        MODES = {
+            "heating": 1,
+            "hot_water": 2,
+            "cooling": 3,
+            "defrost": 5,
+        }
+
+        # --- HP_OPERATING_STATE edge detection ---
+        for hp_idx in range(1, num_hps + 1):
+            op_state_val = data.get(f"hp{hp_idx}_operating_state")
+            if op_state_val is None:
+                continue
+
+            last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
+
+            if last_op_state == "UNBEKANNT":
+                _LOGGER.info(
+                    "Fast poll: init _last_operating_state HP%d = %s", hp_idx, op_state_val
+                )
+            elif last_op_state != op_state_val:
+                _LOGGER.debug(
+                    "Fast poll: HP%d operating_state %s -> %s", hp_idx, last_op_state, op_state_val
+                )
+
+            for mode, mode_val in MODES.items():
+                cycling_key = f"{mode}_cycles"
+                if not hasattr(self, cycling_key):
+                    setattr(self, cycling_key, {})
+                cycles = getattr(self, cycling_key)
+
+                _LOGGER.debug(
+                    "FAST EDGE HP%s: init=%s last=%s mode_val=%s cur=%s",
+                    hp_idx, self._initialization_complete, last_op_state, mode_val, op_state_val,
+                )
+
+                if (
+                    self._initialization_complete
+                    and last_op_state != "UNBEKANNT"
+                    and last_op_state != mode_val
+                    and op_state_val == mode_val
+                ):
+                    _LOGGER.info(
+                        "Edge detected: HP%d operating state → %s (was %s)",
+                        hp_idx, mode, last_op_state,
+                    )
+                    if self._cycling_entities_ready():
+                        await increment_cycling_counter(
+                            self.hass,
+                            mode=mode,
+                            hp_index=hp_idx,
+                            name_prefix=self.entry.data.get("name", "eu08l"),
+                            use_legacy_modbus_names=self._use_legacy_names,
+                            cycling_offsets=self._cycling_offsets,
+                        )
+                        old_count = cycles.get(hp_idx, 0)
+                        if not isinstance(old_count, (int, float)):
+                            old_count = 0
+                        new_count = old_count + 1
+                        cycles[hp_idx] = new_count
+                        _LOGGER.info(
+                            "🔄 FAST EDGE: HP%d %s → %s | %s: %d → %d",
+                            hp_idx, last_op_state, op_state_val, mode, old_count, new_count,
+                        )
+                    else:
+                        _LOGGER.debug(
+                            "Fast poll: cycling entities not ready, skipping HP%d %s", hp_idx, mode
+                        )
+                elif not self._initialization_complete:
+                    _LOGGER.debug(
+                        "Fast poll: HP%d %s edge suppressed during init", hp_idx, mode
+                    )
+
+            self._last_operating_state[str(hp_idx)] = op_state_val
+
+        # --- compressor_unit_rating edge detection (0 → >0 = compressor start) ---
+        for hp_idx in range(1, num_hps + 1):
+            rating_val = data.get(f"hp{hp_idx}_compressor_unit_rating")
+            if rating_val is None:
+                continue
+
+            last_rating = self._last_compressor_rating.get(str(hp_idx), "UNBEKANNT")
+
+            if last_rating == "UNBEKANNT":
+                _LOGGER.info(
+                    "Fast poll: init _last_compressor_rating HP%d = %s", hp_idx, rating_val
+                )
+            elif last_rating != rating_val:
+                _LOGGER.debug(
+                    "Fast poll: HP%d compressor_unit_rating %s -> %s", hp_idx, last_rating, rating_val
+                )
+
+            mode = "compressor_start"
+            cycling_key = f"{mode}_cycles"
+            if not hasattr(self, cycling_key):
+                setattr(self, cycling_key, {})
+            cycles = getattr(self, cycling_key)
+
+            if (
+                self._initialization_complete
+                and last_rating != "UNBEKANNT"
+                and last_rating == 0
+                and rating_val != 0
+            ):
+                _LOGGER.info(
+                    "Edge detected: HP%d compressor started (rating 0 → %s)",
+                    hp_idx, rating_val,
+                )
+                if self._cycling_entities_ready():
+                    await increment_cycling_counter(
+                        self.hass,
+                        mode=mode,
+                        hp_index=hp_idx,
+                        name_prefix=self.entry.data.get("name", "eu08l"),
+                        use_legacy_modbus_names=self._use_legacy_names,
+                        cycling_offsets=self._cycling_offsets,
+                    )
+                    old_count = cycles.get(hp_idx, 0)
+                    if not isinstance(old_count, (int, float)):
+                        old_count = 0
+                    new_count = old_count + 1
+                    cycles[hp_idx] = new_count
+                    _LOGGER.info(
+                        "🔄 FAST EDGE compressor_unit_rating: HP%d 0 → %s | %s: %d → %d",
+                        hp_idx, rating_val, mode, old_count, new_count,
+                    )
+                else:
+                    _LOGGER.debug(
+                        "Fast poll: cycling entities not ready, skipping HP%d %s (compressor_unit_rating)", hp_idx, mode
+                    )
+            elif not self._initialization_complete:
+                _LOGGER.debug(
+                    "Fast poll: HP%d %s (compressor_unit_rating) edge suppressed during init", hp_idx, mode
+                )
+
+            self._last_compressor_rating[str(hp_idx)] = rating_val
+
+        self._persist_dirty = True
+
+    async def _async_fast_update(self, now) -> None:
+        """Fast poll: read HP_OPERATING_STATE (1003) and compressor_unit_rating (1010) for edge detection.
+
+        Runs on fast_update_interval (default 2s). Serialized with the full update
+        via _modbus_lock. Skips this cycle if the lock is already held.
+        """
+        if not self._initialization_complete or self.hass.is_stopping or self.client is None:
+            return
+
+        if self._full_update_running:
+            _LOGGER.debug("Fast poll skipped: full update in progress")
+            return
+
+        try:
+            num_hps = self.entry.data.get("num_hps", 1)
+            data = {}
+            for hp_idx in range(1, num_hps + 1):
+                base_addr = 1000 + (hp_idx - 1) * 100
+                # HP_OPERATING_STATE (register offset 3)
+                result = await async_read_holding_registers(
+                    self.client, base_addr + 3, 1, self.slave_id
+                )
+                if result is not None and not result.isError():
+                    data[f"hp{hp_idx}_operating_state"] = result.registers[0]
+                # compressor_unit_rating (register offset 10)
+                result = await async_read_holding_registers(
+                    self.client, base_addr + 10, 1, self.slave_id
+                )
+                if result is not None and not result.isError():
+                    data[f"hp{hp_idx}_compressor_unit_rating"] = result.registers[0]
+
+            _LOGGER.debug(
+                "Fast poll: read %d HP(s) — %s",
+                num_hps,
+                ", ".join(
+                    f"HP{i} op_state={data.get(f'hp{i}_operating_state', 'n/a')} comp_rating={data.get(f'hp{i}_compressor_unit_rating', 'n/a')}"
+                    for i in range(1, num_hps + 1)
+                ),
+            )
+            await self._run_cycling_edge_detection(data)
+
+        except Exception as ex:
+            _LOGGER.debug("Fast poll error (non-fatal): %s", ex)
 
     async def _async_update_data(self) -> dict:
         """Fetch data from Lambda device."""
+        self._full_update_running = True
         try:
-            _LOGGER.info("PRODUCTION: Starting data update (coordinator_id=%s)", id(self))
+            _LOGGER.debug("PRODUCTION: Starting data update (coordinator_id=%s)", id(self))
             # Check if Home Assistant is shutting down
             if self.hass.is_stopping:
                 _LOGGER.debug("Home Assistant is stopping, skipping data update")
                 return self.data
-            
+
             # Reset global register cache für neuen Update-Zyklus
             self._global_register_cache = {}
             self._global_register_requests = {}  # Sammle alle Register-Requests vor dem Lesen
             _LOGGER.debug("Reset global register cache for new update cycle")
             
             # 🎯 NEUE LOGIK: Warte auf stabile Verbindung vor Datenupdate
-            _LOGGER.info("COORDINATOR: Checking connection stability before data update...")
+            _LOGGER.debug("COORDINATOR: Checking connection stability before data update...")
             await wait_for_stable_connection(self)
-            _LOGGER.info("COORDINATOR: Connection stable, proceeding with data update")
+            _LOGGER.debug("COORDINATOR: Connection stable, proceeding with data update")
 
             # Get firmware version for sensor filtering
             fw_version = get_firmware_version_int(self.entry)
@@ -1558,7 +1764,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
             data = {}
-            interval = DEFAULT_UPDATE_INTERVAL / 3600.0  # Intervall in Stunden
+            update_interval_seconds = self.entry.options.get("update_interval", DEFAULT_UPDATE_INTERVAL)
+            interval = update_interval_seconds / 3600.0  # Intervall in Stunden
             
             # Debug: Start data update
             _LOGGER.debug("Starting _async_update_data")
@@ -1815,293 +2022,32 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             data.update(global_data)
             _LOGGER.debug("Global register reading completed: %s values", len(global_data))
 
-            # Flankenerkennung und Energieintegration NACH dem Lesen aller Register
+            # Energieintegration für aktiven Modus (Cycling-Flankenerkennung läuft via _async_fast_update)
             for hp_idx in range(1, num_hps + 1):
                 op_state_val = data.get(f"hp{hp_idx}_operating_state")
                 if op_state_val is None:
                     continue
 
-                # Get last operating state
-                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
-                
-                # Initialisierung beim ersten Update: Logge den aktuellen operating_state
-                if last_op_state == "UNBEKANNT":
-                    _LOGGER.info(
-                        f"Initialisiere _last_operating_state für HP {hp_idx} mit operating_state {op_state_val}"
-                    )
-                
-                # Info-Meldung bei Änderung
-                if last_op_state != op_state_val:
-                    _LOGGER.info(
-                        "Wärmepumpe %d: operating_state geändert von %s auf %s",
-                        hp_idx,
-                        last_op_state,
-                        op_state_val,
-                    )
-                # Speichere den alten Wert für die Flankenerkennung
-                last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
-                
                 for mode, mode_val in MODES.items():
-                    cycling_key = f"{mode}_cycles"
                     energy_key = f"{mode}_energy"
-                    if not hasattr(self, cycling_key):
-                        setattr(self, cycling_key, {})
                     if not hasattr(self, energy_key):
                         setattr(self, energy_key, {})
-                    cycles = getattr(self, cycling_key)
                     energy = getattr(self, energy_key)
-                    
-                    # Debug: Check energy structure
-                    _LOGGER.debug("energy structure for %s: %s", energy_key, energy)
-                    
-                    # Ensure energy[hp_idx] is a number, not a dict
+
                     if hp_idx not in energy:
                         energy[hp_idx] = 0.0
                     elif isinstance(energy[hp_idx], dict):
                         _LOGGER.warning("energy[%s] is a dict, converting to 0.0: %s", hp_idx, energy[hp_idx])
                         energy[hp_idx] = 0.0
-                    
-                    # Debug: Check energy structure before any operations
-                    _LOGGER.debug("energy[%s] before processing: %s (type: %s)", hp_idx, energy[hp_idx], type(energy[hp_idx]))
-                    # Flanke: operating_state wechselt von etwas anderem auf mode_val
-                    # ABER: Nur wenn Initialisierung abgeschlossen ist
-                    _LOGGER.debug("FLANKENERKENNUNG DEBUG HP%s: init_complete=%s, last_op_state='%s', mode_val='%s', op_state_val='%s'", hp_idx, self._initialization_complete, last_op_state, mode_val, op_state_val)
-                    
-                    if (self._initialization_complete and 
-                        last_op_state != "UNBEKANNT" and
-                        last_op_state != mode_val and 
-                        op_state_val == mode_val):
-                        
-                        
-                        # Prüfe, ob die Cycling-Entities bereits registriert sind
-                        cycling_entities_ready = False
-                        try:
-                            # Prüfe, ob die Cycling-Entities in hass.data verfügbar sind
-                            if (
-                                "lambda_heat_pumps" in self.hass.data
-                                and self.entry.entry_id
-                                in self.hass.data["lambda_heat_pumps"]
-                                and "cycling_entities"
-                                in self.hass.data["lambda_heat_pumps"][
-                                    self.entry.entry_id
-                                ]
-                            ):
-                                cycling_entities_ready = True
-                        except Exception:
-                            pass
 
-                        if cycling_entities_ready:
-                            # Zentrale Funktion für total-Zähler aufrufen
-                            await increment_cycling_counter(
-                                self.hass,
-                                mode=mode,
-                                hp_index=hp_idx,
-                                name_prefix=self.entry.data.get("name", "eu08l"),
-                                use_legacy_modbus_names=self._use_legacy_names,
-                                cycling_offsets=self._cycling_offsets,
-                            )
-                            # Get current cycling count for logging
-                            cycling_key = f"{mode}_cycles"
-                            cycles = getattr(self, cycling_key)
-                            old_count = cycles.get(hp_idx, 0)
-                            
-                            # Debug: Check old_count type
-                            if not isinstance(old_count, (int, float)):
-                                _LOGGER.error("cycles[%s] is not a number: %s = %s", hp_idx, type(old_count), old_count)
-                                old_count = 0
-                            
-                            new_count = old_count + 1
-                            cycles[hp_idx] = new_count
-                            
-                            _LOGGER.info(
-                                f"🔄 FLANKENERKENNUNG: HP{hp_idx} {last_op_state} → {op_state_val} | Cycling {mode} erhöht: {old_count} → {new_count}"
-                            )
-                            _LOGGER.debug(
-                                f"Flankenwechsel Details: HP{hp_idx} operating_state von '{last_op_state}' auf '{op_state_val}' geändert, {mode} Modus aktiviert"
-                            )
-                        else:
-                            _LOGGER.debug(
-                                "Wärmepumpe %d: %s Modus aktiviert "
-                                "(Cycling-Entities noch nicht bereit)",
-                                hp_idx,
-                                mode,
-                            )
-                    elif not self._initialization_complete:
-                        # Flankenerkennung während Initialisierung unterdrückt
-                        _LOGGER.debug(
-                            "Wärmepumpe %d: %s Modus erkannt, aber Flankenerkennung "
-                            "während Initialisierung unterdrückt",
-                            hp_idx,
-                            mode,
-                        )
-                    else:
-                        # Flankenerkennung aus anderen Gründen nicht ausgelöst
-                        _LOGGER.debug(
-                            f"FLANKENERKENNUNG NICHT AUSGELÖST HP{hp_idx}: init_complete={self._initialization_complete}, last_op_state='{last_op_state}', mode_val='{mode_val}', op_state_val='{op_state_val}'"
-                        )
-                    # Nur für Debug-Zwecke, nicht als Info-Log:
-                    # _LOGGER.debug(
-                    #     "HP %d, Modus %s: last_mode_state=%s, op_state_val=%s",
-                    #     hp_idx, mode, last_mode_state, op_state_val
-                    # )
-
-                    # Energieintegration für aktiven Modus
                     power_info = HP_SENSOR_TEMPLATES.get("actual_heating_capacity")
                     if power_info:
                         power_val = data.get(f"hp{hp_idx}_actual_heating_capacity", 0.0)
                         if op_state_val == mode_val:
-                            # energy[hp_idx] ist ein dict, nicht eine Zahl
-                            if hp_idx not in energy:
-                                energy[hp_idx] = 0.0
-                            elif isinstance(energy[hp_idx], dict):
-                                _LOGGER.warning("energy[%s] is a dict, converting to 0.0: %s", hp_idx, energy[hp_idx])
-                                energy[hp_idx] = 0.0
-                            # Debug: Check types before addition
-                            _LOGGER.debug("Before addition: energy[%s] = %s (type: %s), power_val * interval = %s (type: %s)", hp_idx, energy[hp_idx], type(energy[hp_idx]), power_val * interval, type(power_val * interval))
-                            # Ensure energy[hp_idx] is a number before addition
                             if not isinstance(energy[hp_idx], (int, float)):
-                                _LOGGER.error("energy[%s] is not a number: %s = %s", hp_idx, type(energy[hp_idx]), energy[hp_idx])
                                 energy[hp_idx] = 0.0
                             energy[hp_idx] = energy[hp_idx] + (power_val * interval)
-                    # COMMENTED OUT: remnant of old template-sensor architecture.
-                    # Cycling/energy sensors no longer read from coordinator.data via entity-ID
-                    # keys; they use internal state updated through dispatcher signals.
-                    # _generate_entity_id will emit a warning if somehow still reached.
-                    # cycling_entity_id = self._generate_entity_id(
-                    #     f"{mode}_cycling_daily", hp_idx - 1
-                    # )
-                    # energy_entity_id = self._generate_entity_id(
-                    #     f"{mode}_energy_daily", hp_idx - 1
-                    # )
-                    # hp_cycling_offsets = self._cycling_offsets.get(f"hp{hp_idx}", {})
-                    # if isinstance(hp_cycling_offsets, dict):
-                    #     cycling_offset = hp_cycling_offsets.get(f"{mode}_cycling_daily", 0)
-                    # else:
-                    #     _LOGGER.warning("Invalid cycling offset structure for hp%s: %s", hp_idx, hp_cycling_offsets)
-                    #     cycling_offset = 0
-                    # energy_offset = self._energy_offsets.get(f"hp{hp_idx}", {})
-                    # energy_sensor_offset = 0.0
-                    # if isinstance(energy_offset, dict):
-                    #     energy_sensor_offset = energy_offset.get(f"{mode}_energy_daily", 0.0)
-                    # else:
-                    #     _LOGGER.warning("Invalid energy offset structure for hp%s: %s", hp_idx, energy_offset)
-                    # data[cycling_entity_id] = cycles.get(hp_idx, 0) + cycling_offset
-                    # energy_value = energy.get(hp_idx, 0.0)
-                    # if not isinstance(energy_value, (int, float)):
-                    #     _LOGGER.error("energy[%s] is not a number: %s = %s", hp_idx, type(energy_value), energy_value)
-                    #     energy_value = 0.0
-                    # data[energy_entity_id] = energy_value + energy_sensor_offset
-                
-                # Aktualisiere _last_operating_state NACH der Flankenerkennung
-                self._last_operating_state[str(hp_idx)] = op_state_val
-            
-            # Flankenerkennung für HP_STATE (z.B. START COMPRESSOR)
-            for hp_idx in range(1, num_hps + 1):
-                state_val = data.get(f"hp{hp_idx}_state")
-                if state_val is None:
-                    continue
 
-                # Get last state
-                last_state = self._last_state.get(str(hp_idx), "UNBEKANNT")
-                
-                # Initialisierung beim ersten Update: Logge den aktuellen state
-                if last_state == "UNBEKANNT":
-                    _LOGGER.info(
-                        f"Initialisiere _last_state für HP {hp_idx} mit state {state_val}"
-                    )
-                
-                # Info-Meldung bei Änderung
-                if last_state != state_val:
-                    _LOGGER.info(
-                        "Wärmepumpe %d: state geändert von %s auf %s",
-                        hp_idx,
-                        last_state,
-                        state_val,
-                    )
-                
-                # Verwende last_state für Flankenerkennung (bereits bei Zeile 1801 gesetzt)
-                for mode, mode_val in HP_STATE_MODES.items():
-                    cycling_key = f"{mode}_cycles"
-                    if not hasattr(self, cycling_key):
-                        setattr(self, cycling_key, {})
-                    cycles = getattr(self, cycling_key)
-                    
-                    # Flanke: state wechselt von etwas anderem auf mode_val
-                    # ABER: Nur wenn Initialisierung abgeschlossen ist
-                    _LOGGER.debug("FLANKENERKENNUNG HP_STATE DEBUG HP%s: init_complete=%s, last_state='%s', mode_val=%s, state_val='%s'", hp_idx, self._initialization_complete, last_state, mode_val, state_val)
-                    
-                    if (self._initialization_complete and 
-                        last_state != "UNBEKANNT" and
-                        last_state != mode_val and 
-                        state_val == mode_val):
-                        
-                        # Prüfe, ob die Cycling-Entities bereits registriert sind
-                        cycling_entities_ready = False
-                        try:
-                            if (
-                                "lambda_heat_pumps" in self.hass.data
-                                and self.entry.entry_id
-                                in self.hass.data["lambda_heat_pumps"]
-                                and "cycling_entities"
-                                in self.hass.data["lambda_heat_pumps"][
-                                    self.entry.entry_id
-                                ]
-                            ):
-                                cycling_entities_ready = True
-                        except Exception:
-                            pass
-
-                        if cycling_entities_ready:
-                            # Zentrale Funktion für total-Zähler aufrufen
-                            await increment_cycling_counter(
-                                self.hass,
-                                mode=mode,
-                                hp_index=hp_idx,
-                                name_prefix=self.entry.data.get("name", "eu08l"),
-                                use_legacy_modbus_names=self._use_legacy_names,
-                                cycling_offsets=self._cycling_offsets,
-                            )
-                            # Get current cycling count for logging
-                            old_count = cycles.get(hp_idx, 0)
-                            
-                            # Debug: Check old_count type
-                            if not isinstance(old_count, (int, float)):
-                                _LOGGER.error("cycles[%s] is not a number: %s = %s", hp_idx, type(old_count), old_count)
-                                old_count = 0
-                            
-                            new_count = old_count + 1
-                            cycles[hp_idx] = new_count
-                            
-                            _LOGGER.info(
-                                f"🔄 FLANKENERKENNUNG HP_STATE: HP{hp_idx} {last_state} → {state_val} | Cycling {mode} erhöht: {old_count} → {new_count}"
-                            )
-                            _LOGGER.debug(
-                                f"Flankenwechsel Details HP_STATE: HP{hp_idx} state von '{last_state}' auf '{state_val}' geändert, {mode} Modus aktiviert"
-                            )
-                        else:
-                            _LOGGER.debug(
-                                "Wärmepumpe %d: %s Modus aktiviert (HP_STATE) "
-                                "(Cycling-Entities noch nicht bereit)",
-                                hp_idx,
-                                mode,
-                            )
-                    elif not self._initialization_complete:
-                        # Flankenerkennung während Initialisierung unterdrückt
-                        _LOGGER.debug(
-                            "Wärmepumpe %d: %s Modus erkannt (HP_STATE), aber Flankenerkennung "
-                            "während Initialisierung unterdrückt",
-                            hp_idx,
-                            mode,
-                        )
-                    else:
-                        # Flankenerkennung aus anderen Gründen nicht ausgelöst
-                        _LOGGER.debug(
-                            f"FLANKENERKENNUNG HP_STATE NICHT AUSGELÖST HP{hp_idx}: init_complete={self._initialization_complete}, last_state='{last_state}', mode_val={mode_val}, state_val='{state_val}'"
-                        )
-                
-                # Aktualisiere _last_state NACH der Flankenerkennung
-                self._last_state[str(hp_idx)] = state_val
-            
             await self._persist_counters()
             
             # Setze Dirty-Flag wenn sich Werte geändert haben
@@ -2112,7 +2058,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             await self._track_energy_consumption(data)
             _LOGGER.debug("DEBUG-002: Energy consumption tracking completed")
 
-            _LOGGER.info("PRODUCTION: Data update completed successfully (coordinator_id=%s)", id(self))
+            _LOGGER.debug("PRODUCTION: Data update completed successfully (coordinator_id=%s)", id(self))
             return data
 
         except Exception as ex:
@@ -2131,6 +2077,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 finally:
                     self.client = None
             raise UpdateFailed(f"Error fetching Lambda data: {ex}")
+        finally:
+            self._full_update_running = False
 
     def _is_energy_unit(self, unit: str) -> bool:
         """Check if unit is a valid energy unit."""
@@ -2238,7 +2186,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Entity-IDs der Sensoren werden in sensor.py mit kleingeschriebenem name_prefix erzeugt
             name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
             sensor_entity_id = default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
-            _LOGGER.info(
+            _LOGGER.debug(
                 "[Energy] HP%s %s: Verwende Modbus-Sensor %s",
                 hp_idx, sensor_type, sensor_entity_id,
             )
@@ -2316,7 +2264,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         else:
             if mode == "stby" or energy_delta > 0:
                 if increment_fn:
-                    _LOGGER.info(
+                    _LOGGER.debug(
                         "[Energy] HP%s Modus %s: Inkrement %.4f kWh (Modbus: %.2f -> %.2f kWh)",
                         hp_idx, mode, energy_delta, last_energy, current_energy_kwh,
                     )
@@ -2358,6 +2306,21 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.debug(
             "Home Assistant started - enabling room temperature and PV surplus updates"
         )
+        self._start_fast_poll()
+
+    def _start_fast_poll(self) -> None:
+        """Register the fast polling timer for edge detection."""
+        if self._unsub_fast_poll is not None:
+            return
+        fast_interval = self.entry.options.get("fast_update_interval", DEFAULT_FAST_UPDATE_INTERVAL)
+        _LOGGER.info(
+            "Starting fast edge-detection poll at %ds interval", fast_interval
+        )
+        self._unsub_fast_poll = async_track_time_interval(
+            self.hass,
+            self._async_fast_update,
+            timedelta(seconds=fast_interval),
+        )
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator."""
@@ -2372,6 +2335,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.debug("Stopped periodic refresh updates")
                 except Exception as unsub_ex:
                     _LOGGER.debug("Error unsubscribing from refresh: %s", unsub_ex)
+
+            if self._unsub_fast_poll is not None:
+                try:
+                    self._unsub_fast_poll()
+                    self._unsub_fast_poll = None
+                    _LOGGER.debug("Stopped fast edge-detection polling")
+                except Exception as unsub_ex:
+                    _LOGGER.debug("Error unsubscribing fast poll: %s", unsub_ex)
             
             # Close Modbus connection immediately to cancel any pending operations
             # This should cause any running Modbus operations to fail gracefully

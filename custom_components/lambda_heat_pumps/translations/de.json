@@ -117,7 +117,7 @@
       "compressor_power_consumption_accumulated": { "name": "Verdichter Energie Gesamt" },
       "compressor_thermal_energy_output_accumulated": { "name": "Wärmeenergie Gesamt" },
       "config_parameter_24": { "name": "Parameter 24" },
-      "vda_rating": { "name": "VdA Leistung" },
+      "vda_rating": { "name": "VdA Leistung Max" },
       "hot_gas_temperature": { "name": "Heißgas" },
       "subcooling_temperature": { "name": "Unterkühlung" },
       "suction_gas_temperature": { "name": "Sauggas" },

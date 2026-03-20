@@ -62,6 +62,7 @@ LOG_LEVELS = {"error": "ERROR", "warning": "WARNING", "info": "INFO", "debug": "
 # Firmware Versions
 FIRMWARE_VERSION = {
     "V1.1.0-3K": 8,  # Latest firmware
+    "V0.0.10-3K": 8,
     "V0.0.9-3K": 7,
     "V0.0.8-3K": 6,  # Previous firmware - most common in the field
     "V0.0.7-3K": 5,
@@ -82,6 +83,10 @@ DEFAULT_UPDATE_INTERVAL = 30
 # Default interval for writing room temperature and PV surplus (in seconds)
 # Changed from 30 to 41 to avoid timing collisions with coordinator reads (30s)
 DEFAULT_WRITE_INTERVAL = 9
+
+# Default interval for fast modbus communication für state change detection (in seconds)
+# 
+DEFAULT_FAST_UPDATE_INTERVAL = 2
 
 # Lambda-specific Modbus configuration
 LAMBDA_MODBUS_TIMEOUT = 60  # Lambda requires 1 minute timeout

@@ -862,6 +862,8 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         self._unsub_dispatcher = None
         self._unsub_2h_dispatcher = None
         self._unsub_4h_dispatcher = None
+        self._unsub_monthly_dispatcher = None
+        self._unsub_yearly_dispatcher = None
 
         if state_class == "total_increasing":
             self._attr_state_class = SensorStateClass.TOTAL_INCREASING
