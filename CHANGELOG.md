@@ -7,14 +7,15 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
  
-
+### [2.3.2] - 2026-03-21
+Change to the logic for detecting compressor starts (cycling): The 'compressor_unit_rating' sensor is used and is queried more frequently.
 
 ### [2.3] - 2026-03-01
 
-> ⚠️ **Before upgrading**: Create a backup of your Home Assistant configuration (`config/` directory) and your `lambda_wp_config.yaml`. This release contains a breaking change that may alter entity IDs.
+> ⚠️ **Before upgrading**: Create a backup of your Home Assistant configuration. This release contains a breaking change that may alter entity IDs under certain conditions.
 
 #### Breaking Changes
-- **Name Prefix Normalization**: The configured `name_prefix` is now automatically converted to lowercase with spaces removed. If your prefix contained uppercase letters or spaces (e.g. `"EU08L"` or `"Lambda WP"`), entity IDs will change — update any automations, dashboards or template sensors that reference the old IDs.
+- **Name Prefix Normalization**: The configured `name_prefix` is now automatically converted to lowercase with spaces removed. 
 
 #### New Features
 - **COP Sensors** (Heating / Cooling / Hot Water): New sensors for the Coefficient of Performance — hourly, daily, monthly, and total periods. Calculated from thermal energy output and electrical consumption.
