@@ -29,7 +29,7 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "state": {
         "relative_address": 2,
@@ -93,7 +93,7 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "energy_source_inlet_temperature": {
         "relative_address": 7,
@@ -131,7 +131,7 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "compressor_unit_rating": {
         "relative_address": 10,
@@ -143,7 +143,7 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "actual_heating_capacity": {
         "relative_address": 11,
@@ -181,7 +181,7 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "request_type": {
         "relative_address": 15,
@@ -193,7 +193,7 @@ HP_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "Hp",
         "writeable": True,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "requested_flow_line_temperature": {
         "relative_address": 16,
@@ -553,7 +553,7 @@ BOIL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "boil",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "operating_state": {
         "relative_address": 1,
@@ -660,7 +660,7 @@ BUFF_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "buff",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "operating_state": {
         "relative_address": 1,
@@ -803,7 +803,7 @@ SOL_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "sol",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "operating_state": {
         "relative_address": 1,
@@ -909,7 +909,7 @@ HC_SENSOR_TEMPLATES = {
         "firmware_version": 1,
         "device_type": "hc",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "operating_state": {
         "relative_address": 1,
@@ -1173,7 +1173,7 @@ SENSOR_TYPES = {
         "firmware_version": 1,
         "device_type": "main",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
         "options": {"register": True},
     },
     "ambient_operating_state": {
@@ -1238,7 +1238,7 @@ SENSOR_TYPES = {
         "firmware_version": 1,
         "device_type": "main",
         "writeable": False,
-        "state_class": "total",
+        "state_class": "measurement",
     },
     "emgr_operating_state": {
         "address": 101,
