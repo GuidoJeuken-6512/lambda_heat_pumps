@@ -4,6 +4,8 @@ title: "modbus_wp_config.yaml (Entwickler)"
 
 # modbus_wp_config.yaml – Entwicklereinstellungen
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Datei `modbus_wp_config.yaml` ermöglicht Entwicklern, das Verhalten der Lambda Heat Pumps Integration auf Register‑Ebene anzupassen. Dies betrifft vor allem Register‑Deaktivierung, Sensor‑Namensüberschreibungen, Zähler‑Offsets, Energie‑Sensoren und Modbus‑Parameter.
 
 **Pfad:** `config/lambda_wp_config.yaml`

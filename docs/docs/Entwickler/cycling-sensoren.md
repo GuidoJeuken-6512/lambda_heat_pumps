@@ -4,6 +4,8 @@ title: "Cycling-Sensoren - Technische Dokumentation"
 
 # Cycling-Sensoren - Technische Dokumentation
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Dokumentation beschreibt die technische Implementierung der Cycling-Sensoren in der Lambda Heat Pumps Integration.
 
 ## Übersicht

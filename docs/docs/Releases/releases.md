@@ -2,6 +2,8 @@
 title: "Releases"
 ---
 
+*Zuletzt geändert am 21.03.2026*
+
 Übersicht der Release-Dokumentation.
 
 - [Release 2.4.0](release-2-4-0.md)

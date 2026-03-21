@@ -4,6 +4,8 @@ title: "lambda_wp_config.yaml Konfiguration"
 
 # lambda_wp_config.yaml Konfiguration
 
+*Zuletzt geändert am 21.03.2026*
+
 Die `lambda_wp_config.yaml` Datei ist die Hauptkonfigurationsdatei für erweiterte Einstellungen der Lambda Heat Pumps Integration. Sie ermöglicht es, Sensoreinstellungen, Energieverbrauchserfassung und Modbus-Kommunikationsparameter anzupassen.
 
 ## Datei-Location

@@ -4,6 +4,8 @@ title: "Release 2.4.0"
 
 # Release 2.4.0
 
+*Last modified: 2026-03-21*
+
 > **Current Release** · Branch `V2.4.0`
 
 ---
