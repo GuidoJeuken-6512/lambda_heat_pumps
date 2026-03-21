@@ -1593,7 +1593,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             hp_index=hp_idx,
                             name_prefix=self.entry.data.get("name", "eu08l"),
                             use_legacy_modbus_names=self._use_legacy_names,
-                            cycling_offsets=self._cycling_offsets,
                         )
                         old_count = cycles.get(hp_idx, 0)
                         if not isinstance(old_count, (int, float)):
@@ -1655,7 +1654,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         hp_index=hp_idx,
                         name_prefix=self.entry.data.get("name", "eu08l"),
                         use_legacy_modbus_names=self._use_legacy_names,
-                        cycling_offsets=self._cycling_offsets,
                     )
                     old_count = cycles.get(hp_idx, 0)
                     if not isinstance(old_count, (int, float)):

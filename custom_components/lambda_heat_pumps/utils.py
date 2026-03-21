@@ -771,12 +771,11 @@ async def increment_cycling_counter(
     hp_index: int,
     name_prefix: str,
     use_legacy_modbus_names: bool = True,
-    cycling_offsets: dict = None,
 ):
     """
     Increment ALL cycling counters for a given mode and heat pump index.
     This should be called only on a real flank (state change)!
-    
+
     Increments: Total, Daily, 2H, 4H sensors
 
     Args:
@@ -785,7 +784,6 @@ async def increment_cycling_counter(
         hp_index: Index of the heat pump (1-based)
         name_prefix: Name prefix (e.g. "eu08l")
         use_legacy_modbus_names: Use legacy entity naming
-        cycling_offsets: Optional dict with cycling offsets from config
     """
 
     device_prefix = f"hp{hp_index}"
@@ -878,13 +876,6 @@ async def increment_cycling_counter(
             except Exception:
                 current = 0
 
-        # Offset nur für Total-Sensoren anwenden
-        offset = 0
-        if cycling_offsets is not None and sensor_id.endswith("_total"):
-            device_key = device_prefix
-            if device_key in cycling_offsets:
-                offset = int(cycling_offsets[device_key].get(sensor_id, 0))
-
         new_value = int(current + 1)
 
         # Versuche die Entity-Instanz zu finden
@@ -899,11 +890,10 @@ async def increment_cycling_counter(
         except Exception as e:
             _LOGGER.debug("Error searching for entity %s: %s", entity_id, e)
 
-        final_value = int(new_value + offset)
         if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
-            cycling_entity.set_cycling_value(final_value)
+            cycling_entity.set_cycling_value(new_value)
             _LOGGER.info(
-                f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [entity updated]"
+                f"Cycling counter incremented: {entity_id} = {new_value} (was {current}) [entity updated]"
             )
         else:
             # Fallback: State setzen wie bisher
@@ -911,10 +901,10 @@ async def increment_cycling_counter(
                 f"Cycling entity {entity_id} not found, using fallback state update"
             )
             hass.states.async_set(
-                entity_id, final_value, state_obj.attributes if state_obj else {}
+                entity_id, new_value, state_obj.attributes if state_obj else {}
             )
             _LOGGER.info(
-                f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [state only]"
+                f"Cycling counter incremented: {entity_id} = {new_value} (was {current}) [state only]"
             )
 
         # Optional: Entity zum Update zwingen (z.B. für Recorder)

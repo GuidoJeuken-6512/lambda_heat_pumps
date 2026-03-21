@@ -224,7 +224,6 @@ if (self._initialization_complete and
         hp_index=hp_idx,
         name_prefix=self.entry.data.get("name", "eu08l"),
         use_legacy_modbus_names=self._use_legacy_names,
-        cycling_offsets=self._cycling_offsets,
     )
 
 # _last_operating_state wird NACH der Verarbeitung aktualisiert
@@ -250,60 +249,51 @@ async def increment_cycling_counter(
     hp_index: int,
     name_prefix: str,
     use_legacy_modbus_names: bool = True,
-    cycling_offsets: dict = None,
 ):
     """
     Increment ALL cycling counters for a given mode and heat pump index.
     This should be called only on a real flank (state change)!
-    
+
     Increments: Total, Daily, 2H, 4H sensors
     """
     device_prefix = f"hp{hp_index}"
-    
+
     # Liste aller Sensor-Typen, die erhöht werden sollen
     sensor_types = [
         f"{mode}_cycling_total",
-        f"{mode}_cycling_daily", 
+        f"{mode}_cycling_daily",
         f"{mode}_cycling_2h",
         f"{mode}_cycling_4h"
     ]
-    
+
     # Für compressor_start: auch monthly hinzufügen
     if mode == "compressor_start":
         sensor_types.append(f"{mode}_cycling_monthly")
-    
+
     for sensor_id in sensor_types:
         # Finde Entity
         names = generate_sensor_names(...)
         entity_id = names["entity_id"]
-        
+
         # Hole aktuellen Wert
         state_obj = hass.states.get(entity_id)
         current = int(float(state_obj.state)) if state_obj else 0
-        
-        # Offset nur für Total-Sensoren anwenden
-        offset = 0
-        if cycling_offsets is not None and sensor_id.endswith("_total"):
-            device_key = device_prefix
-            if device_key in cycling_offsets:
-                offset = int(cycling_offsets[device_key].get(sensor_id, 0))
-        
-        # Erhöhe um 1
+
+        # Erhöhe um 1 – kein Offset hier
         new_value = int(current + 1)
-        final_value = int(new_value + offset)
-        
+
         # Setze neuen Wert
         cycling_entity = find_cycling_entity(hass, entity_id)
         if cycling_entity:
-            cycling_entity.set_cycling_value(final_value)
+            cycling_entity.set_cycling_value(new_value)
         else:
             # Fallback: State setzen
-            hass.states.async_set(entity_id, final_value, ...)
+            hass.states.async_set(entity_id, new_value, ...)
 ```
 
-**Wichtig**: 
+**Wichtig**:
 - Alle Perioden (Total, Daily, 2h, 4h) werden gleichzeitig um +1 erhöht
-- Offsets werden nur für Total-Sensoren angewendet
+- **Kein Offset in dieser Funktion** — Offsets werden ausschließlich durch `_apply_cycling_offset()` in `sensor.py` beim Start angewendet
 - Die Funktion sollte nur bei echten Flanken (State Changes) aufgerufen werden
 
 ### 5. LambdaCyclingSensor Klasse
@@ -452,11 +442,11 @@ Cycling-Offsets werden in `lambda_wp_config.yaml` konfiguriert:
 ```yaml
 cycling_offsets:
   hp1:
-    heating_cycling_total: 100
-    hot_water_cycling_total: 50
+    heating_cycling_total: 1500    # Positive Werte addieren
+    hot_water_cycling_total: -50   # Negative Werte subtrahieren (z. B. zur Korrektur)
 ```
 
-Offsets werden nur für Total-Sensoren angewendet:
+Offsets werden **ausschließlich** durch `_apply_cycling_offset()` in `sensor.py` angewendet — einmalig beim Start jedes Total-Sensors:
 
 ```python
 # In LambdaCyclingSensor._apply_cycling_offset()
@@ -464,14 +454,14 @@ async def _apply_cycling_offset(self):
     """Apply cycling offset from configuration."""
     config = await load_lambda_config(self.hass)
     cycling_offsets = config.get("cycling_offsets", {})
-    
+
     device_key = f"hp{self._hp_index}"
     current_offset = cycling_offsets[device_key].get(self._sensor_id, 0)
     applied_offset = getattr(self, "_applied_offset", 0)
-    
-    # Berechne Differenz
+
+    # Berechne Differenz zwischen konfiguriertem und bereits angewendetem Offset
     offset_difference = current_offset - applied_offset
-    
+
     if offset_difference != 0:
         old_value = self._cycling_value
         self._cycling_value = int(self._cycling_value + offset_difference)
@@ -479,11 +469,14 @@ async def _apply_cycling_offset(self):
         self.async_write_ha_state()
 ```
 
+**`increment_cycling_counter()` kennt keinen Offset** — das war ein früherer Bug (B-1), der dazu führte, dass der volle YAML-Offset bei jedem Zyklus-Ereignis erneut addiert wurde. Nach dem Fix liegt die alleinige Verantwortung bei `_apply_cycling_offset()`.
+
 **Wichtig**:
-- Offsets werden nur beim Start angewendet (in `restore_state()`)
+- Offsets werden nur beim HA-Start angewendet (in `async_added_to_hass()` → `_apply_cycling_offset()`)
 - Nur Total-Sensoren unterstützen Offsets
-- Der angewendete Offset wird in `_applied_offset` gespeichert
-- Bei Änderung des Offsets wird die Differenz zum aktuellen Wert addiert
+- Der angewendete Offset wird in `_applied_offset` gespeichert und über `applied_offset`-Attribut persistiert
+- Bei YAML-Änderung wird nach Neustart nur die **Differenz** zum bisher angewendeten Wert addiert — keine Doppelanwendung
+- Positive und **negative** Offsets sind erlaubt
 
 ### 9. Persistenz
 
@@ -645,7 +638,7 @@ MODES = {
 Cycling-Sensoren verwenden strukturiertes Logging:
 
 ```python
-_LOGGER.info(f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset})")
+_LOGGER.info(f"Cycling counter incremented: {entity_id} = {new_value} (was {current}) [entity updated]")
 _LOGGER.debug(f"Cycling sensor {entity_id} value set to {value}")
 _LOGGER.warning(f"Cycling entity {entity_id} not found, using fallback state update")
 ```

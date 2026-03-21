@@ -100,8 +100,6 @@ sensors_names_override:
 
 ### 3. Cycling-Zähler-Offsets
 
-> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
-
 Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
 ```yaml
@@ -124,6 +122,8 @@ cycling_offsets:
 - Wärmepumpen-Austausch: Zählerstand der vorherigen Pumpe hinzufügen
 - Zähler-Reset: Manuelle Resets kompensieren
 - Historische Daten erhalten: Kontinuität der Daten beibehalten
+
+**Hinweis:** Positive und **negative** Werte sind erlaubt. Ein negativer Offset subtrahiert den angegebenen Betrag vom Gesamtzähler (z. B. um einen zu hohen Ausgangswert zu korrigieren).
 
 **Beispiel-Szenario: Wärmepumpen-Austausch**
 ```yaml
@@ -174,8 +174,6 @@ Weitere Informationen: [Energieverbrauchsberechnung](Energieverbrauchsberechnung
 
 ### 5. Energieverbrauchs-Offsets
 
-> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
-
 Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
 
 **⚠️ WICHTIG: Alle Werte müssen in kWh angegeben werden!**
@@ -183,10 +181,12 @@ Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich be
 ```yaml
 energy_consumption_offsets:
   hp1:
-    heating_energy_total: 0.0       # kWh Offset für HP1 Heizungs-Total
-    hot_water_energy_total: 0.0     # kWh Offset für HP1 Warmwasser-Total
-    cooling_energy_total: 0.0       # kWh Offset für HP1 Kühlungs-Total
-    defrost_energy_total: 0.0       # kWh Offset für HP1 Abtau-Total
+    heating_energy_total: 0.0            # kWh Offset für HP1 Heizungs-Total (elektrisch)
+    hot_water_energy_total: 0.0          # kWh Offset für HP1 Warmwasser-Total (elektrisch)
+    cooling_energy_total: 0.0            # kWh Offset für HP1 Kühlungs-Total (elektrisch)
+    defrost_energy_total: 0.0            # kWh Offset für HP1 Abtau-Total (elektrisch)
+    heating_thermal_energy_total: 0.0    # kWh Offset für HP1 Heizungs-Total (thermisch, optional)
+    hot_water_thermal_energy_total: 0.0  # kWh Offset für HP1 Warmwasser-Total (thermisch, optional)
   hp2:
     heating_energy_total: 150.5     # Beispiel: HP2 verbrauchte bereits 150.5 kWh Heizung
     hot_water_energy_total: 45.25   # Beispiel: HP2 verbrauchte bereits 45.25 kWh Warmwasser
@@ -209,10 +209,12 @@ energy_consumption_offsets:
     defrost_energy_total: 150.0     # Alte Pumpe verbrauchte 150 kWh Abtau
 ```
 
-**Hinweis**: 
+**Hinweis**:
 - Alle Werte müssen in **kWh** angegeben werden
 - Verwenden Sie Punkt (.) als Dezimaltrennzeichen in YAML
 - Offsets werden nur auf TOTAL-Sensoren angewendet, nicht auf Daily/Monthly/Yearly Sensoren
+- Positive und **negative** Werte sind erlaubt. Ein negativer Offset subtrahiert den angegebenen Betrag vom Gesamtwert
+- Thermische Energie-Offsets (`{mode}_thermal_energy_total`) sind optional und gelten für Wärmeabgabe-Sensoren
 
 Weitere Informationen: [Historische Daten übernehmen](historische-daten.md)
 
