@@ -4,6 +4,8 @@ title: "Sensoren-Übersicht - Technische Dokumentation"
 
 # Sensoren-Übersicht - Technische Dokumentation
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, gruppiert nach Device-Typ und kategorisiert nach nativ (direkt aus Modbus) oder berechnet.
 
 ## Legende

@@ -4,6 +4,8 @@ title: "Warmwasser Solltemperatur Steuerung"
 
 # Warmwasser Solltemperatur Steuerung
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration ermöglicht die Steuerung der Warmwasser-Solltemperatur über Home Assistant. Sie können die gewünschte Warmwassertemperatur direkt in Home Assistant einstellen, und die Integration schreibt diese Werte an die Lambda-Wärmepumpe.
 
 ## Verfügbare Entitäten

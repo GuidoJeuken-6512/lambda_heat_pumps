@@ -4,6 +4,8 @@ title: "Entity-Duplikate (_2, _3) – Cleanup"
 
 # Entity-Duplikate (_2, _3) – Cleanup
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Seite beschreibt, wie die Integration doppelt angelegte Entities (z. B. `sensor.xyz_2`, `climate.xyz_3`) erkennt und bereinigt – ohne die Namenslogik oder bestehende Entity-IDs zu ändern (kein Verlust historischer Daten).
 
 ## Hintergrund

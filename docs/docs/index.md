@@ -3,6 +3,8 @@ title: Home
 ---
 # Lambda Integration für Home Assistant
 
+*Zuletzt geändert am 21.03.2026*
+
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
     <img src="assets/Integration_Hauptseite_de.png" alt="Lambda Integration Hauptseite" style="width: 100%; height: auto; border-radius: 8px;">

@@ -4,6 +4,8 @@ title: "Energiesensor-Werte anpassen (Entwicklerwerkzeuge)"
 
 # Energiesensor-Werte anpassen (Entwicklerwerkzeuge)
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration bietet **Energieverbrauchssensoren** nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen): sowohl **elektrisch** (Stromverbrauch) als auch **thermisch** (Wärmeabgabe). Diese Werte können Sie bei Bedarf über die Home-Assistant-**Entwicklerwerkzeuge** anpassen – z. B. um Startwerte zu setzen oder Korrekturen vorzunehmen.
 
 ## Wann ist eine Anpassung sinnvoll?

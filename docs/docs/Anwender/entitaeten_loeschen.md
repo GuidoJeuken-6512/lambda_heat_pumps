@@ -4,6 +4,8 @@ title: "Entitäten löschen"
 
 # Entitäten löschen
 
+*Zuletzt geändert am 21.03.2026*
+
 Entitäten, die von der Lambda-Integration nicht mehr bereitgestellt werden (z. B. nach einem Update oder nach Änderungen an der Firmware), können in Home Assistant gelöscht werden. Es gibt zwei Wege.
 
 ## Weg 1: Über die Entitätsseite

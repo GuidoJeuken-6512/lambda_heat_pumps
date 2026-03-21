@@ -1,5 +1,7 @@
 # Release 2.3.4
 
+*Zuletzt geändert am 21.03.2026*
+
 > Version 2.3.1/3 wurde übersprungen.
 
 ---

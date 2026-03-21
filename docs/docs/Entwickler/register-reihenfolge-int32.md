@@ -4,6 +4,8 @@ title: "Register-Reihenfolge für int32-Sensoren (Issue #22)"
 
 # Register-Reihenfolge für int32-Sensoren
 
+*Zuletzt geändert am 21.03.2026*
+
 Technische Dokumentation zur konfigurierbaren Register-Reihenfolge (Register/Word Order) bei 32-Bit-Modbus-Werten. Basis: [Issue #22](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22); Implementierung im Code (Stand: aktuell).
 
 ## Problemstellung

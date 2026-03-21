@@ -4,6 +4,8 @@ title: "Modbus-Serialisierung - Technische Dokumentation"
 
 # Modbus-Serialisierung - Technische Dokumentation
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Dokumentation beschreibt die Serialisierung von Modbus-Operationen in der Lambda Heat Pumps Integration, um Transaction ID Mismatches zu vermeiden.
 
 ## Übersicht

@@ -4,6 +4,8 @@ title: "Anpassungen der Sensoren abhängig von der Firmware"
 
 # Anpassungen der Sensoren abhängig von der Firmware
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration erstellt automatisch Sensoren basierend auf der erkannten Hardware und der konfigurierten Firmware-Version. Die Firmware-Version bestimmt, welche Sensoren verfügbar sind und welche Register gelesen werden können.
 
 ## Firmware-Version und Sensor-Verfügbarkeit

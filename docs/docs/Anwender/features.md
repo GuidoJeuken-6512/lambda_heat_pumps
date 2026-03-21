@@ -4,6 +4,8 @@ title: "Features"
 
 # Features der Lambda Heat Pumps Integration
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und Überwachung Ihrer Lambda-Wärmepumpe über Home Assistant. Hier finden Sie eine Übersicht aller verfügbaren Features.
 
 ## 🔌 Modbus/TCP Kommunikation
@@ -42,10 +44,7 @@ Umfassende Zähler für alle Betriebsmodi:
 
 ### Funktionen
 - **Automatischer Reset**: Tägliche Sensoren werden automatisch um Mitternacht zurückgesetzt
-- **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel oder Zählerrücksetzungen 
-
-> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
-
+- **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel oder Zählerrücksetzungen
 
 ## ⚡ Energieverbrauchssensoren
 

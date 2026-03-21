@@ -4,6 +4,8 @@ title: "Heizkurve / berechnete Vorlauftemperatur"
 
 # Heizkurve
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Wärmepumpen Integration berechnet die Vorlauftemperatur des Heizkreises.
 Die Heizkurve bestimmt die Vorlauftemperatur basierend auf der Außentemperatur und ermöglicht eine energieeffiziente und komfortable Heizungssteuerung. Der Sensor "heating_curve_flow_line_temperature_calc" / "Heizkurve Vorlauf ber." wird dazu zur Verfügung gestellt.
 

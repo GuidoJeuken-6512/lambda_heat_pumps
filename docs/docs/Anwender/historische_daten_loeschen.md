@@ -4,6 +4,8 @@ title: "Historische Daten löschen"
 
 # Historische Daten löschen
 
+*Zuletzt geändert am 21.03.2026*
+
 Falls Sie die historischen Daten der Lambda Wärmepumpen Integration aus Home Assistant entfernen möchten, können Sie dies über die Home Assistant Benutzeroberfläche durchführen.
 
 

@@ -4,6 +4,8 @@ title: "Attribute eines Sensors auslesen"
 
 # Attribute auslesen
 
+*Zuletzt geändert am 21.03.2026*
+
 Um die Attribute eines Sensors asuzulesen gibt es mehrere Möglichkeiten.
 
 ## Über den Sensor

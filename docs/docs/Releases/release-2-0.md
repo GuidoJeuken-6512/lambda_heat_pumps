@@ -1,5 +1,7 @@
 # Release 2.0.0
 
+*Zuletzt geändert am 21.03.2026*
+
 Dokumentation basierend auf dem [GitHub Release V2.0.0](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases/tag/V2.0.0).
 
 ---

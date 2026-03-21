@@ -4,6 +4,8 @@ title: "Firmware-Einstellung – technische Auswirkungen"
 
 # Firmware-Einstellung – technische Auswirkungen
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Seite beschreibt, wo die Firmware-Version in der Integration gesetzt wird, wie sie ausgewertet wird und welche Folgen die **initiale Konfiguration** gegenüber einer **späteren Änderung** der Firmware haben.
 
 ## Speicherort der Firmware-Version

@@ -1,6 +1,8 @@
 # Lambda Heat Pumps Integration – Ablaufdiagramm & Entwicklerreferenz
 
-**Stand:** Release 2.3 · **Letzte Aktualisierung:** 2026-02-21
+*Zuletzt geändert am 21.03.2026*
+
+**Stand:** Release 2.4.0 · **Letzte Aktualisierung:** 2026-03-21
 
 Dieses Dokument beschreibt den vollständigen Ablauf der Integration – von der Initialisierung bis zum laufenden Betrieb. Es dient als Referenz für zukünftige Entwicklung und Debugging.
 
