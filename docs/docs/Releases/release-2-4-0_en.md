@@ -4,7 +4,7 @@ title: "Release 2.4.0"
 
 # Release 2.4.0
 
-*Last modified: 2026-03-21*
+*Last modified: 2026-03-28*
 
 > **Current Release** · Branch `V2.4.0`
 
@@ -12,7 +12,7 @@ title: "Release 2.4.0"
 
 ## Summary
 
-Release 2.4.0 fixes a critical bug in the offset logic for cycling sensors that caused configured offsets from `lambda_wp_config.yaml` to be re-added on every cycle event instead of once at startup. Additionally, the documentation, configuration template, and test suite were fully updated.
+Release 2.4.0 fixes several bugs: a critical error in the cycling sensor offset logic (offsets were re-added on every cycle event) and a bug in mode detection for cycling counters (missed cycles due to shared state between fast poll and full update). Additionally, the documentation, configuration template, and test suite were fully updated.
 
 ---
 
@@ -61,6 +61,36 @@ Next HA startup:
 Cycle event (after fix):
   increment_cycling_counter() adds only +1
   Result: 1600 + 1 = 1601  ✓
+```
+
+### Cycling counters: missed cycles due to shared state
+
+**Affected:** `custom_components/lambda_heat_pumps/coordinator.py` · `_track_hp_energy_consumption()` and `_run_cycling_edge_detection()`
+**Affected:** `custom_components/lambda_heat_pumps/utils.py` · `increment_cycling_counter()`
+
+**Symptom:** Two HA systems monitoring the same heat pump showed diverging `heating_cycling_daily` values over time. Operating mode transitions were not always detected.
+
+**Root cause:** `_last_operating_state` was written by two independent code paths with conflicting semantics:
+
+- **Fast poll** (every 2 s, `coordinator.py:1615`): writes the last-seen Modbus value as edge-detection memory for cycling detection.
+- **Full update** (every 30 s, `coordinator.py:2270` inside `_track_hp_energy_consumption`): writes the state read at the start of the full update as a side effect of energy attribution.
+
+During a full update, all fast polls are blocked (`_full_update_running` flag). If the heat pump transitioned A → B → A during that window, the full update wrote `A` back to `_last_operating_state` on completion. The next fast poll saw `last=A, cur=A` → **no edge, both cycles silently lost**.
+
+**Fix:** Energy attribution gets its own `_energy_last_operating_state` dict. The full update writes exclusively to `_energy_last_operating_state`; `_last_operating_state` is owned solely by the fast poll.
+
+Additionally, `increment_cycling_counter()` now reads `cycling_entity._cycling_value` as the counter base instead of `hass.states.get()`, avoiding potential staleness after HA startup restoration.
+
+```python
+# _track_hp_energy_consumption – before:
+last_state = self._last_operating_state.get(str(hp_idx), 0)   # ← fast poll state!
+...
+self._last_operating_state[str(hp_idx)] = current_state        # ← overwrites fast poll!
+
+# After:
+last_state = self._energy_last_operating_state.get(str(hp_idx), 0)
+...
+self._energy_last_operating_state[str(hp_idx)] = current_state
 ```
 
 ---
@@ -166,8 +196,8 @@ await increment_cycling_counter(
 
 | File | Type |
 |---|---|
-| `custom_components/lambda_heat_pumps/utils.py` | Bug fix: offset block removed from `increment_cycling_counter()` |
-| `custom_components/lambda_heat_pumps/coordinator.py` | Adjustment: `cycling_offsets` parameter removed from both call sites |
+| `custom_components/lambda_heat_pumps/utils.py` | Bug fix: offset block removed from `increment_cycling_counter()`; counter base now reads `_cycling_value` instead of HA state |
+| `custom_components/lambda_heat_pumps/coordinator.py` | Bug fix: `_energy_last_operating_state` separated from `_last_operating_state`; `cycling_offsets` parameter removed from call sites |
 | `custom_components/lambda_heat_pumps/const_base.py` | Extension: `LAMBDA_WP_CONFIG_TEMPLATE` |
 | `tests/test_offset_features.py` | New: 23 offset tests |
 | `docs/docs/Anwender/lambda-wp-config.md` | Documentation updated |

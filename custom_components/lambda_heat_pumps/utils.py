@@ -867,8 +867,10 @@ async def increment_cycling_counter(
             if state_warning_key in coordinator._cycling_warnings:
                 del coordinator._cycling_warnings[state_warning_key]
 
-        # Get current state
-        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
+        # Prefer entity's internal counter (authoritative); fall back to HA state machine
+        if cycling_entity is not None and hasattr(cycling_entity, "_cycling_value"):
+            current = cycling_entity._cycling_value or 0
+        elif state_obj.state in (None, STATE_UNKNOWN, "unknown"):
             current = 0
         else:
             try:

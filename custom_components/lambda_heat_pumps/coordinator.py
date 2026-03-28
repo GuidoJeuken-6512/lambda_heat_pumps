@@ -83,6 +83,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self.hass = hass
         self.entry = entry
         self._last_operating_state = {}
+        self._energy_last_operating_state = {}  # Separate state for energy attribution (full update only)
         self._last_compressor_rating = {}  # Für compressor_unit_rating Flankenerkennung (0 → >0)
         self._heating_cycles = {}
         self._heating_energy = {}
@@ -386,6 +387,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
             "last_operating_states": normalized_operating_states,
+            "energy_last_operating_states": self._normalize_operating_states(
+                getattr(self, "_energy_last_operating_state", {})
+            ),
             "last_states": normalized_states,
             "energy_consumption": self._energy_consumption,
             "last_energy_readings": self._last_energy_reading,
@@ -505,6 +509,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         
         # Lade persistierte State-Informationen
         self._last_operating_state = data.get("last_operating_states", {})
+        self._energy_last_operating_state = data.get("energy_last_operating_states", {})
         self._last_state = data.get("last_states", {})
         
         # Lade persistierte Energy Consumption Daten
@@ -2244,7 +2249,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             return
         last_reading_dict[f"hp{hp_idx}"] = current_energy_kwh
         # Get last operating state for this heat pump
-        last_state = self._last_operating_state.get(str(hp_idx), 0)
+        last_state = self._energy_last_operating_state.get(str(hp_idx), 0)
         mode_mapping = {
             0: "stby", 1: "heating", 2: "hot_water", 3: "cooling", 4: "stby", 5: "defrost",
         }
@@ -2267,7 +2272,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         hp_idx, mode, energy_delta, last_energy, current_energy_kwh,
                     )
                     await increment_fn(hp_idx, mode, energy_delta)
-        self._last_operating_state[str(hp_idx)] = current_state
+        self._energy_last_operating_state[str(hp_idx)] = current_state
 
     async def _increment_energy_consumption(self, hp_idx, mode, energy_delta):
         """Increment energy consumption for a specific mode and heat pump."""

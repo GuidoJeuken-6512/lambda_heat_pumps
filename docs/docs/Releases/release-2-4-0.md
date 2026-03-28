@@ -4,7 +4,7 @@ title: "Release 2.4.0"
 
 # Release 2.4.0
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 28.03.2026*
 
 > **Aktueller Release** · Branch `V2.4.0`
 
@@ -12,7 +12,7 @@ title: "Release 2.4.0"
 
 ## Zusammenfassung
 
-Release 2.4.0 behebt einen kritischen Bug in der Offset-Logik für Cycling-Sensoren, der dazu führte, dass konfigurierte Offsets aus der `lambda_wp_config.yaml` bei jedem Zyklus-Ereignis erneut addiert wurden statt einmalig beim Start. Zusätzlich wurden die Dokumentation, das Konfigurations-Template und die Test-Suite vollständig aktualisiert.
+Release 2.4.0 behebt mehrere Bugs: einen kritischen Fehler in der Offset-Logik für Cycling-Sensoren (Offsets wurden bei jedem Zyklus-Ereignis erneut addiert) sowie einen Fehler bei der Moduserkennung für Cycling-Zähler (verpasste Zyklen durch geteilten State zwischen Fast Poll und Full Update). Zusätzlich wurden die Dokumentation, das Konfigurations-Template und die Test-Suite vollständig aktualisiert.
 
 ---
 
@@ -61,6 +61,36 @@ Nächster HA-Start:
 Zyklus-Ereignis (nach Fix):
   increment_cycling_counter() addiert nur +1
   Ergebnis: 1600 + 1 = 1601  ✓
+```
+
+### Cycling-Zähler: Verpasste Zyklen durch geteilten State
+
+**Betroffen:** `custom_components/lambda_heat_pumps/coordinator.py` · `_track_hp_energy_consumption()` und `_run_cycling_edge_detection()`
+**Betroffen:** `custom_components/lambda_heat_pumps/utils.py` · `increment_cycling_counter()`
+
+**Symptom:** Zwei HA-Systeme, die dieselbe Wärmepumpe überwachen, zeigten über Zeit unterschiedliche `heating_cycling_daily`-Werte. Betriebsmodusübergänge wurden nicht immer erkannt.
+
+**Ursache:** `_last_operating_state` wurde von zwei unabhängigen Code-Pfaden mit unterschiedlicher Semantik beschrieben:
+
+- **Fast Poll** (alle 2s, `coordinator.py:1615`): schreibt den zuletzt gesehenen Modbus-Wert als Flanken-Gedächtnis für die Cycling-Erkennung.
+- **Full Update** (alle 30s, `coordinator.py:2270` in `_track_hp_energy_consumption`): schreibt den zu Beginn des Full Updates gelesenen Zustand als Seiteneffekt der Energieattribution.
+
+Während eines Full Updates werden alle Fast Polls blockiert (`_full_update_running`-Flag). Wenn die WP in dieser Zeit von Zustand A → B → A wechselte, schrieb das Full Update beim Abschluss `A` zurück in `_last_operating_state`. Der nächste Fast Poll sah `last=A, cur=A` → **keine Flanke, beide Zyklen verloren**.
+
+**Fix:** Die Energieattribution erhält ein eigenes `_energy_last_operating_state`-Dict. Der Full Update schreibt ausschließlich in `_energy_last_operating_state`; `_last_operating_state` gehört allein dem Fast Poll.
+
+Zusätzlich liest `increment_cycling_counter()` jetzt `cycling_entity._cycling_value` als Basiswert für den Zähler statt `hass.states.get()`, um eine potenzielle Veraltung nach HA-Start-Wiederherstellung zu vermeiden.
+
+```python
+# _track_hp_energy_consumption – vorher:
+last_state = self._last_operating_state.get(str(hp_idx), 0)   # ← Fast-Poll-State!
+...
+self._last_operating_state[str(hp_idx)] = current_state        # ← überschreibt Fast-Poll!
+
+# Nachher:
+last_state = self._energy_last_operating_state.get(str(hp_idx), 0)
+...
+self._energy_last_operating_state[str(hp_idx)] = current_state
 ```
 
 ---
@@ -166,8 +196,8 @@ await increment_cycling_counter(
 
 | Datei | Art |
 |---|---|
-| `custom_components/lambda_heat_pumps/utils.py` | Bugfix: Offset-Block aus `increment_cycling_counter()` entfernt |
-| `custom_components/lambda_heat_pumps/coordinator.py` | Anpassung: `cycling_offsets`-Parameter aus beiden Aufrufen entfernt |
+| `custom_components/lambda_heat_pumps/utils.py` | Bugfix: Offset-Block aus `increment_cycling_counter()` entfernt; Basiswert liest jetzt `_cycling_value` statt HA-State |
+| `custom_components/lambda_heat_pumps/coordinator.py` | Bugfix: `_energy_last_operating_state` getrennt von `_last_operating_state`; `cycling_offsets`-Parameter aus Aufrufen entfernt |
 | `custom_components/lambda_heat_pumps/const_base.py` | Erweiterung: `LAMBDA_WP_CONFIG_TEMPLATE` |
 | `tests/test_offset_features.py` | Neu: 23 Offset-Tests |
 | `docs/docs/Anwender/lambda-wp-config.md` | Dokumentation aktualisiert |
