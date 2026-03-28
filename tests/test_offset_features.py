@@ -605,3 +605,161 @@ class TestConfigTemplate:
         """The template must include compressor_start_cycling_total as a commented example."""
         from custom_components.lambda_heat_pumps.const_base import LAMBDA_WP_CONFIG_TEMPLATE
         assert "compressor_start_cycling_total" in LAMBDA_WP_CONFIG_TEMPLATE
+
+
+# ===========================================================================
+# 9. Migration – compressor_start_cycling_total
+# ===========================================================================
+
+class TestMigrateCyclingOffsetCompressorStart:
+    """Migration adds compressor_start_cycling_total after defrost_cycling_total if absent."""
+
+    # Minimal lambda_wp_config.yaml WITHOUT compressor_start_cycling_total
+    _YAML_WITHOUT = """\
+# Cycling counter offsets for total sensors
+# These offsets are added to the calculated cycling counts
+# Useful when replacing heat pumps or resetting counters
+# Example:
+#cycling_offsets:
+#  hp1:
+#    heating_cycling_total: 0      # Offset for HP1 heating total cycles
+#    hot_water_cycling_total: 0    # Offset for HP1 hot water total cycles
+#    cooling_cycling_total: 0      # Offset for HP1 cooling total cycles
+#    defrost_cycling_total: 0      # Offset for HP1 defrost total cycles
+#  hp2:
+#    heating_cycling_total: 1500   # Example
+#    hot_water_cycling_total: 800  # Example
+#    cooling_cycling_total: 200    # Example
+#    defrost_cycling_total: 50     # Example
+
+# Energy consumption sensor configuration
+energy_consumption_sensors:
+  hp1:
+    sensor_entity_id: "sensor.test"
+    # thermal_sensor_entity_id: "sensor.test_thermal"  # optional
+"""
+
+    # Same file but WITH compressor_start_cycling_total already present
+    _YAML_WITH = """\
+# Cycling counter offsets for total sensors
+# These offsets are added to the calculated cycling counts
+# Useful when replacing heat pumps or resetting counters
+# Example:
+#cycling_offsets:
+#  hp1:
+#    heating_cycling_total: 0
+#    hot_water_cycling_total: 0
+#    cooling_cycling_total: 0
+#    defrost_cycling_total: 0
+#    compressor_start_cycling_total: 0      # Offset for compressor start total
+#  hp2:
+#    heating_cycling_total: 1500
+#    hot_water_cycling_total: 800
+#    cooling_cycling_total: 200
+#    defrost_cycling_total: 50
+#    compressor_start_cycling_total: 0      # Offset for compressor start total
+
+# Energy consumption sensor configuration
+energy_consumption_sensors:
+  hp1:
+    sensor_entity_id: "sensor.test"
+    # thermal_sensor_entity_id: "sensor.test_thermal"  # optional
+"""
+
+    # Active (uncommented) cycling_offsets without compressor_start_cycling_total
+    _YAML_ACTIVE = """\
+# Cycling counter offsets for total sensors
+cycling_offsets:
+  hp1:
+    heating_cycling_total: 100
+    hot_water_cycling_total: 50
+    cooling_cycling_total: 10
+    defrost_cycling_total: 5
+
+# Energy consumption sensor configuration
+energy_consumption_sensors:
+  hp1:
+    sensor_entity_id: "sensor.test"
+    # thermal_sensor_entity_id: "sensor.test_thermal"  # optional
+"""
+
+    def _make_hass(self, tmp_path, content):
+        config_path = tmp_path / "lambda_wp_config.yaml"
+        config_path.write_text(content, encoding="utf-8")
+        hass = Mock()
+        hass.config.config_dir = str(tmp_path)
+        # async_add_executor_job executes sync callables synchronously in tests
+        async def fake_executor(fn, *args):
+            return fn(*args) if args else fn()
+        hass.async_add_executor_job = fake_executor
+        return hass, config_path
+
+    @pytest.mark.asyncio
+    async def test_adds_line_when_missing(self, tmp_path):
+        """compressor_start_cycling_total is inserted after each defrost_cycling_total."""
+        from custom_components.lambda_heat_pumps.migration import migrate_lambda_config_sections
+        hass, config_path = self._make_hass(tmp_path, self._YAML_WITHOUT)
+
+        result = await migrate_lambda_config_sections(hass)
+
+        assert result is True
+        updated = config_path.read_text(encoding="utf-8")
+        assert "compressor_start_cycling_total:" in updated
+        # Must appear after defrost_cycling_total in the file
+        defrost_pos = updated.find("defrost_cycling_total: 0      # Offset")
+        compressor_pos = updated.find("compressor_start_cycling_total:", defrost_pos)
+        assert compressor_pos > defrost_pos
+
+    @pytest.mark.asyncio
+    async def test_skips_when_already_present(self, tmp_path):
+        """compressor_start_cycling_total is not duplicated when already present."""
+        from custom_components.lambda_heat_pumps.migration import migrate_lambda_config_sections
+        hass, config_path = self._make_hass(tmp_path, self._YAML_WITH)
+        original_count = self._YAML_WITH.count("compressor_start_cycling_total:")
+
+        await migrate_lambda_config_sections(hass)
+
+        updated = config_path.read_text(encoding="utf-8")
+        # Count must not increase — no duplicate insertion
+        assert updated.count("compressor_start_cycling_total:") == original_count
+
+    @pytest.mark.asyncio
+    async def test_handles_active_cycling_offsets(self, tmp_path):
+        """Active (uncommented) cycling_offsets section also gets the line added."""
+        from custom_components.lambda_heat_pumps.migration import migrate_lambda_config_sections
+        hass, config_path = self._make_hass(tmp_path, self._YAML_ACTIVE)
+
+        result = await migrate_lambda_config_sections(hass)
+
+        assert result is True
+        updated = config_path.read_text(encoding="utf-8")
+        assert "compressor_start_cycling_total:" in updated
+        # Should NOT be commented out (prefix is spaces, not #)
+        for line in updated.splitlines():
+            if "compressor_start_cycling_total:" in line:
+                assert not line.lstrip().startswith("#"), (
+                    "Active cycling_offsets: compressor line must not be commented out"
+                )
+                break
+
+    @pytest.mark.asyncio
+    async def test_preserves_other_content(self, tmp_path):
+        """Existing cycling offset lines are preserved; only compressor line is added."""
+        from custom_components.lambda_heat_pumps.migration import migrate_lambda_config_sections
+        hass, config_path = self._make_hass(tmp_path, self._YAML_WITHOUT)
+
+        await migrate_lambda_config_sections(hass)
+
+        updated = config_path.read_text(encoding="utf-8")
+        # All original cycling-offsets example lines must still be present
+        cycling_lines = [
+            "#cycling_offsets:",
+            "#    heating_cycling_total: 0      # Offset for HP1 heating total cycles",
+            "#    hot_water_cycling_total: 0    # Offset for HP1 hot water total cycles",
+            "#    cooling_cycling_total: 0      # Offset for HP1 cooling total cycles",
+            "#    defrost_cycling_total: 0      # Offset for HP1 defrost total cycles",
+            "#    heating_cycling_total: 1500   # Example",
+            "#    defrost_cycling_total: 50     # Example",
+        ]
+        for line in cycling_lines:
+            assert line in updated, f"Cycling line missing after migration: {line!r}"
