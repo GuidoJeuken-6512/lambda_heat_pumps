@@ -258,11 +258,17 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    defrost_energy_total: 0.0              # kWh offset for HP1 defrost total (electrical)
 #    heating_thermal_energy_total: 0.0      # kWh offset for HP1 heating total (thermal, optional)
 #    hot_water_thermal_energy_total: 0.0    # kWh offset for HP1 hot water total (thermal, optional)
+#    cooling_thermal_energy_total: 0.0      # kWh offset for HP1 cooling total (thermal, optional)
+#    defrost_thermal_energy_total: 0.0      # kWh offset for HP1 defrost total (thermal, optional)
 #  hp2:
 #    heating_energy_total: 150.5            # Example: HP2 already consumed 150.5 kWh heating
 #    hot_water_energy_total: 45.25          # Example: HP2 already consumed 45.25 kWh hot water
 #    cooling_energy_total: 12.8             # Example: HP2 already consumed 12.8 kWh cooling
 #    defrost_energy_total: 3.1              # Example: HP2 already consumed 3.1 kWh defrost
+#    heating_thermal_energy_total: 620.0    # Example: HP2 already produced 620.0 kWh heating (thermal)
+#    hot_water_thermal_energy_total: 180.5  # Example: HP2 already produced 180.5 kWh hot water (thermal)
+#    cooling_thermal_energy_total: 45.2     # Example: HP2 already produced 45.2 kWh cooling (thermal)
+#    defrost_thermal_energy_total: 12.1     # Example: HP2 already produced 12.1 kWh defrost (thermal)
 
 # Modbus configuration
 # Register order for 32-bit registers (int32 sensors)

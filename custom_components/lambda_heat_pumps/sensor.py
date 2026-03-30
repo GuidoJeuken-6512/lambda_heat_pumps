@@ -1292,6 +1292,11 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             self._apply_persisted_energy_state(our_state)
             self.async_write_ha_state()
 
+        # Apply energy offset LAST — after _apply_persisted_energy_state() may have
+        # overwritten _energy_value with the coordinator's raw persisted value.
+        if self._period == "total":
+            await self._apply_energy_offset()
+
         # Für Daily-Sensoren: Initialisiere Yesterday-Wert beim Start, falls notwendig
         # Total-Sensoren werden oft erst nach Daily-Sensoren registriert → 100ms + ggf. verzögerter Zweitlauf
         if self._period == "daily" and self._reset_interval == "daily":
@@ -1459,6 +1464,19 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         try:
             attrs = data.get("attributes") or {}
             self._energy_value = float(attrs.get("energy_value", self._energy_value))
+            # Restore applied_offset from coordinator JSON so _apply_energy_offset() uses the
+            # correct base: if coordinator JSON has energy_value WITH offset, applied_offset
+            # must match so the differential check gives 0 and no double-application occurs.
+            # If energy_value was present but applied_offset is missing (old JSON format,
+            # pre-fix), assume energy_value is the raw value and reset applied_offset to 0
+            # so _apply_energy_offset() re-applies the full offset.
+            if "applied_offset" in attrs:
+                self._applied_offset = float(attrs["applied_offset"])
+            elif "energy_value" in attrs:
+                # Coordinator overwrote _energy_value but has no applied_offset key (old format).
+                # The stored energy_value is the raw value — reset so full offset is applied.
+                self._applied_offset = 0.0
+            # else: attrs was empty, coordinator didn't overwrite anything → keep _applied_offset
             for period, cfg in ENERGY_PERIOD_CONFIG.items():
                 val = attrs.get(cfg["attr_name"])
                 if val is not None:
@@ -1608,8 +1626,10 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
                 _LOGGER.debug("No energy consumption offsets found for device %s", device_key)
                 return
             
-            # Hole den aktuellen Offset für diesen Sensor
-            sensor_id = f"{self._mode}_energy_total"
+            # Hole den aktuellen Offset für diesen Sensor.
+            # self._sensor_id unterscheidet elektrisch (hot_water_energy_total) von
+            # thermisch (hot_water_thermal_energy_total) — direkt als Schlüssel verwenden.
+            sensor_id = self._sensor_id
             current_offset = energy_offsets[device_key].get(sensor_id, 0.0)
             
             # Hole den bereits angewendeten Offset aus den Attributen (wie bei Cycling)
@@ -1620,24 +1640,29 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
             
             if offset_difference > 0:
                 # Apply only the difference to current value
+                old_value = self._energy_value
                 self._energy_value += float(offset_difference)
                 self._applied_offset = current_offset  # Update applied offset
                 self.async_write_ha_state()
-                _LOGGER.debug(
-                    "Applied energy offset for %s: +%.2f kWh (new total: %.2f kWh)",
-                    self.entity_id, offset_difference, self._energy_value,
+                _LOGGER.info(
+                    "Applied energy offset for %s: %.2f + %.2f = %.2f kWh (applied_offset: %.4f)",
+                    self.entity_id, old_value, offset_difference, self._energy_value, self._applied_offset,
                 )
             elif offset_difference < 0:
                 # Offset was reduced, subtract the difference
+                old_value = self._energy_value
                 self._energy_value += float(offset_difference)  # offset_difference is negative
                 self._applied_offset = current_offset
                 self.async_write_ha_state()
-                _LOGGER.debug(
-                    "Reduced energy offset for %s: %.2f kWh (new total: %.2f kWh)",
-                    self.entity_id, offset_difference, self._energy_value,
+                _LOGGER.info(
+                    "Reduced energy offset for %s: %.2f - %.2f = %.2f kWh (applied_offset: %.4f)",
+                    self.entity_id, old_value, abs(offset_difference), self._energy_value, self._applied_offset,
                 )
             else:
-                _LOGGER.debug("No offset change for %s", self.entity_id)
+                _LOGGER.debug(
+                    "No energy offset change for %s (current_offset=%.4f, applied_offset=%.4f, energy_value=%.2f)",
+                    self.entity_id, current_offset, applied_offset, self._energy_value,
+                )
         except Exception as e:
             _LOGGER.error("Error applying energy offset for %s: %s", self.entity_id, e)
 

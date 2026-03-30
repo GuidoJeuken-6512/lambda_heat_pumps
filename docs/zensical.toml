@@ -63,7 +63,8 @@ nav = [
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
-    { "Historische Daten löschen" = "Anwender/historische_daten_loeschen.md" },    
+    { "Offsets (Historische Daten)" = "Anwender/offsets.md" },
+    { "Historische Daten löschen" = "Anwender/historische_daten_loeschen.md" },
     { "lambda_wp_config.yaml Konfiguration" = "Anwender/lambda-wp-config.md" },
     { "Aktionen (read / write Modbus register)" = "Anwender/aktionen-modbus.md" },
     { "Debug Logs erzeugen" = "Anwender/debug-logs-erzeugen.md" },
@@ -93,6 +94,7 @@ nav = [
     { "Entity-Duplikate (_2, _3) – Cleanup" = "Entwickler/entity-duplikat-cleanup.md" },
     { "Firmware-Einstellung – Auswirkungen" = "Entwickler/firmware-einstellung-auswirkungen.md" },
     { "Migrationssystem" = "Entwickler/migration-system.md" },
+    { "Offset-System" = "Entwickler/offset-system.md" },
   ] },
   { "FAQ" = [
     { "FAQ" = "FAQ/FAQ.md" },

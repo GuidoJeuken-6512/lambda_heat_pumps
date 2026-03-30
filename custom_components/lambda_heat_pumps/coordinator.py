@@ -85,6 +85,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._last_operating_state = {}
         self._energy_last_operating_state = {}  # Separate state for energy attribution (full update only)
         self._last_compressor_rating = {}  # Für compressor_unit_rating Flankenerkennung (0 → >0)
+        self._last_state = {}  # HP_STATE (reg 1002) – persisted across restarts
         self._heating_cycles = {}
         self._heating_energy = {}
         self._last_energy_update = {}
@@ -444,11 +445,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     prev_monthly_val = energy_val
                 if "_yearly" in entity_id and prev_yearly_val > energy_val:
                     prev_yearly_val = energy_val
+                applied_offset_val = round(getattr(ent, "_applied_offset", 0.0), 4)
                 attrs = {
                     "energy_value": energy_val,
                     "yesterday_value": yesterday_val,
                     "previous_monthly_value": prev_monthly_val,
                     "previous_yearly_value": prev_yearly_val,
+                    "applied_offset": applied_offset_val,
                 }
                 out[entity_id] = {"state": round(float(state_val), 2), "attributes": attrs}
         except Exception as e:
