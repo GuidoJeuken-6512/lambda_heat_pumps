@@ -2,7 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
 [![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-2.3.4-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
+[![version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 [![license](https://img.shields.io/github/license/GuidoJeuken-6512/lambda_heat_pumps.svg)](LICENSE)
 ![Usage](https://img.shields.io/badge/dynamic/json?color=9932CC&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.lambda_heat_pumps.total)
 
