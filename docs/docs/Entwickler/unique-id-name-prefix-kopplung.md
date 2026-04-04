@@ -4,6 +4,8 @@ title: "unique_id – Kopplung an name_prefix: Problem und Lösung"
 
 # unique_id – Kopplung an name_prefix: Problem und Lösung
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Seite beschreibt, warum die Ableitung der `unique_id` aus dem vom Nutzer konfigurierbaren `name_prefix` ein strukturelles Problem darstellt, welche Auswirkungen das hat und wie eine verlustfreie Migration zur stabilen `entry_id`-basierten Lösung aussieht.
 
 ---

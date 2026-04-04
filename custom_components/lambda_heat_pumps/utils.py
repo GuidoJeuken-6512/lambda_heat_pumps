@@ -457,6 +457,32 @@ async def load_lambda_config(hass: HomeAssistant) -> dict:
                 _LOGGER.error("Invalid energy_consumption_offsets format: %s", e)
                 energy_consumption_offsets = {}
 
+        # Warn when only one of electrical/thermal offset is specified for a mode.
+        # Modes with both sensor types: heating, hot_water, cooling, defrost (not stby).
+        _THERMAL_MODES = ("heating", "hot_water", "cooling", "defrost")
+        for device, offsets in energy_consumption_offsets.items():
+            if not isinstance(offsets, dict):
+                continue
+            for mode in _THERMAL_MODES:
+                elec_key = f"{mode}_energy_total"
+                therm_key = f"{mode}_thermal_energy_total"
+                elec_val = float(offsets.get(elec_key, 0.0))
+                therm_val = float(offsets.get(therm_key, 0.0))
+                if elec_val != 0.0 and therm_val == 0.0:
+                    _LOGGER.warning(
+                        "energy_consumption_offsets [%s]: %s is set (%.4f) but %s is 0 or missing — "
+                        "thermal energy sensor will not receive an offset. "
+                        "Add %s: <value> if a thermal offset is intended.",
+                        device, elec_key, elec_val, therm_key, therm_key,
+                    )
+                elif therm_val != 0.0 and elec_val == 0.0:
+                    _LOGGER.warning(
+                        "energy_consumption_offsets [%s]: %s is set (%.4f) but %s is 0 or missing — "
+                        "electrical energy sensor will not receive an offset. "
+                        "Add %s: <value> if an electrical offset is intended.",
+                        device, therm_key, therm_val, elec_key, elec_key,
+                    )
+
         _LOGGER.debug(
             "Loaded Lambda config: %d disabled registers, %d sensor "
             "overrides, %d cycling device offsets, %d energy consumption device offsets",
@@ -771,12 +797,11 @@ async def increment_cycling_counter(
     hp_index: int,
     name_prefix: str,
     use_legacy_modbus_names: bool = True,
-    cycling_offsets: dict = None,
 ):
     """
     Increment ALL cycling counters for a given mode and heat pump index.
     This should be called only on a real flank (state change)!
-    
+
     Increments: Total, Daily, 2H, 4H sensors
 
     Args:
@@ -785,7 +810,6 @@ async def increment_cycling_counter(
         hp_index: Index of the heat pump (1-based)
         name_prefix: Name prefix (e.g. "eu08l")
         use_legacy_modbus_names: Use legacy entity naming
-        cycling_offsets: Optional dict with cycling offsets from config
     """
 
     device_prefix = f"hp{hp_index}"
@@ -869,24 +893,6 @@ async def increment_cycling_counter(
             if state_warning_key in coordinator._cycling_warnings:
                 del coordinator._cycling_warnings[state_warning_key]
 
-        # Get current state
-        if state_obj.state in (None, STATE_UNKNOWN, "unknown"):
-            current = 0
-        else:
-            try:
-                current = int(float(state_obj.state))
-            except Exception:
-                current = 0
-
-        # Offset nur für Total-Sensoren anwenden
-        offset = 0
-        if cycling_offsets is not None and sensor_id.endswith("_total"):
-            device_key = device_prefix
-            if device_key in cycling_offsets:
-                offset = int(cycling_offsets[device_key].get(sensor_id, 0))
-
-        new_value = int(current + 1)
-
         # Versuche die Entity-Instanz zu finden
         cycling_entity = None
         try:
@@ -899,11 +905,23 @@ async def increment_cycling_counter(
         except Exception as e:
             _LOGGER.debug("Error searching for entity %s: %s", entity_id, e)
 
-        final_value = int(new_value + offset)
+        # Prefer entity's internal counter (authoritative); fall back to HA state machine
+        if cycling_entity is not None and hasattr(cycling_entity, "_cycling_value"):
+            current = cycling_entity._cycling_value or 0
+        elif state_obj.state in (None, STATE_UNKNOWN, "unknown"):
+            current = 0
+        else:
+            try:
+                current = int(float(state_obj.state))
+            except Exception:
+                current = 0
+
+        new_value = int(current + 1)
+
         if cycling_entity is not None and hasattr(cycling_entity, "set_cycling_value"):
-            cycling_entity.set_cycling_value(final_value)
+            cycling_entity.set_cycling_value(new_value)
             _LOGGER.info(
-                f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [entity updated]"
+                f"Cycling counter incremented: {entity_id} = {new_value} (was {current}) [entity updated]"
             )
         else:
             # Fallback: State setzen wie bisher
@@ -911,10 +929,10 @@ async def increment_cycling_counter(
                 f"Cycling entity {entity_id} not found, using fallback state update"
             )
             hass.states.async_set(
-                entity_id, final_value, state_obj.attributes if state_obj else {}
+                entity_id, new_value, state_obj.attributes if state_obj else {}
             )
             _LOGGER.info(
-                f"Cycling counter incremented: {entity_id} = {final_value} (was {current}, offset {offset}) [state only]"
+                f"Cycling counter incremented: {entity_id} = {new_value} (was {current}) [state only]"
             )
 
         # Optional: Entity zum Update zwingen (z.B. für Recorder)

@@ -4,6 +4,8 @@ title: "Raumthermometer"
 
 # Raumthermometer
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration unterstützt die Integration externer Raumthermometer-Sensoren für eine präzise Temperatursteuerung. Diese Funktion ermöglicht es, die Heizkurven-Vorlauftemperatur basierend auf der tatsächlichen Raumtemperatur anzupassen.
 
 ## Übersicht

@@ -4,6 +4,8 @@ title: "Lambda Energy Dashboard"
 
 # Lambda Energy Dashboard (Vorlage)
 
+*Zuletzt geändert am 21.03.2026*
+
 ### ⚠️ ⚠️ Achtung, dies Dashboard benötigt Sensoren, die erst mit der Version 2.3 der Lambda Integration herauskommen. Mit älteren Versionen werden viele Werte nicht gefunden.
 
 Diese Vorlage erstellt ein Lovelace-Dashboard **„lambda Energy“** mit zwei Reitern:

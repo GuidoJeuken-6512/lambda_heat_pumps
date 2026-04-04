@@ -7,6 +7,21 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
  
+### [2.4.0] - 2026-03-29
+
+#### Fixed
+- **Critical: Cycling offset re-applied on every cycle event**: `increment_cycling_counter()` was re-adding the full `cycling_offsets` YAML value on every detected mode change instead of once at startup. Offset logic removed from this function; sole responsibility now lies with `_apply_cycling_offset()` in `sensor.py`, which correctly uses differential tracking.
+- **Mode detection for cycling counters**: Fixed shared-state bug that caused cycle events to be missed.
+- **NameError in `increment_cycling_counter()`**: Operating mode transitions were detected but never counted due to a `cycling_entity` NameError.
+- **Energy offsets silently ignored**: `_apply_energy_offset()` was never called from `async_added_to_hass()`, causing configured energy offsets to have no effect at HA startup.
+
+#### Improvements
+- Configuration template (`lambda_wp_config.yaml`) extended with examples for negative offsets and thermal energy offset keys.
+- Migration system updated; 23 new tests added covering offset scenarios.
+- Documentation updated: negative offset usage documented, stale warning banners removed.
+
+---
+
 ### [2.3.4] - 2026-03-21
 Change to the logic for detecting compressor starts (cycling): The 'compressor_unit_rating' sensor is used and is queried more frequently.
 
@@ -300,6 +315,26 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
 
+
+### [2.4.0] - 2026-03-29
+
+#### Behoben
+- **Kritisch: Cycling-Offset wurde bei jedem Zyklus erneut addiert**: `increment_cycling_counter()` hat den in `lambda_wp_config.yaml` konfigurierten `cycling_offsets`-Wert bei jeder erkannten Modusänderung neu aufaddiert statt einmalig beim Start. Die Offset-Logik wurde aus dieser Funktion entfernt; alleinige Verantwortung liegt jetzt bei `_apply_cycling_offset()` in `sensor.py`, das korrekt mit Differenz-Tracking arbeitet.
+- **Moduserkennung für Cycling-Zähler**: Fehler durch gemeinsam genutzten Zustand behoben, der dazu führte, dass Zyklusereignisse nicht erkannt wurden.
+- **NameError in `increment_cycling_counter()`**: Betriebsmodus-Übergänge wurden zwar erkannt, aber wegen eines `cycling_entity`-NameErrors nie gezählt.
+- **Energie-Offsets wurden lautlos ignoriert**: `_apply_energy_offset()` wurde nicht aus `async_added_to_hass()` aufgerufen, sodass konfigurierte Energie-Offsets beim HA-Start keine Wirkung hatten.
+
+#### Verbesserungen
+- Konfigurations-Template (`lambda_wp_config.yaml`) um Beispiele für negative Offsets und thermische Energie-Offset-Schlüssel erweitert.
+- Migrationssystem aktualisiert; 23 neue Tests für Offset-Szenarien hinzugefügt.
+- Dokumentation aktualisiert: Verwendung negativer Offsets dokumentiert, veraltete Warnhinweise entfernt.
+
+---
+
+### [2.3.4] - 2026-03-21
+Änderung an der Logik zur Erkennung von Kompressorstarts (Cycling): Der Sensor `compressor_unit_rating` wird verwendet und häufiger abgefragt.
+
+---
 
 ### [2.3] - 2026-XX-XX
 

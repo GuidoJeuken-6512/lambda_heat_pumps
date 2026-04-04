@@ -4,6 +4,8 @@ title: "Reset-Logik und Yesterday-Sensoren - Technische Dokumentation"
 
 # Reset-Logik und Yesterday-Sensoren - Technische Dokumentation
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Dokumentation beschreibt die technische Implementierung der Reset-Logik für Energieverbrauchssensoren (Daily, Monthly, Yearly) und die Yesterday-Wert-Verwaltung in der Lambda Heat Pumps Integration.
 
 ## Übersicht

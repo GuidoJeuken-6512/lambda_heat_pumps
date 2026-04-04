@@ -4,6 +4,8 @@ title: "Konfiguration löschen"
 
 # Konfiguration löschen
 
+*Zuletzt geändert am 21.03.2026*
+
 Falls Sie die Lambda Wärmepumpen Integration aus Home Assistant entfernen möchten, können Sie dies über die Home Assistant Benutzeroberfläche durchführen.
 
 ## Integration entfernen

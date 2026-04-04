@@ -4,6 +4,8 @@ title: "Features (Technische Übersicht)"
 
 # Features – Technische Übersicht
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Seite bietet eine technische Übersicht der wichtigsten Features der Lambda Heat Pumps Integration mit Code-Beispielen und Implementierungsdetails.
 
 ## Architektur-Übersicht

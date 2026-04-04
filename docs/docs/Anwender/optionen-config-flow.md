@@ -4,6 +4,8 @@ title: "Optionen des config_flow"
 
 # Optionen des config_flow
 
+*Zuletzt geändert am 21.03.2026*
+
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
     <img src="../../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">

@@ -4,6 +4,8 @@ title: "Installation"
 
 # Installation
 
+*Zuletzt geändert am 21.03.2026*
+
 ## Voraussetzungen
 
 ### HACS Installation

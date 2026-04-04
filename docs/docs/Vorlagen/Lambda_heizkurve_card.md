@@ -4,6 +4,8 @@ title: "Lambda Heizkurven-Card"
 
 # Lambda Heizkurven-Card (Vorlage)
 
+*Zuletzt geändert am 21.03.2026*
+
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 320px;">
     <img src="../../assets/heizkurven_card_de.png" alt="Heizkurven-Card Vorschau" style="width: 100%; height: auto; border-radius: 8px;">

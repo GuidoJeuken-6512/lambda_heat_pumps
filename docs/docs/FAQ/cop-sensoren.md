@@ -4,6 +4,8 @@ title: "FAQ – COP-Sensoren"
 
 # COP-Sensoren: Periodische Werte und Anzeige
 
+*Zuletzt geändert am 21.03.2026*
+
 ## Periodische COP-Werte bauen sich erst auf
 
 Die **periodischen** COP-Sensoren (Daily, Monthly, Yearly) beziehen ihre Werte aus den jeweiligen Energieverbrauchssensoren für den gleichen Zeitraum. Diese Werte **bauen sich erst im Lauf der Zeit auf**:

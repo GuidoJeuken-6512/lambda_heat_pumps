@@ -4,6 +4,8 @@ title: "Debug Logs erzeugen"
 
 # Debug Logs erzeugen
 
+*Zuletzt geändert am 21.03.2026*
+
 Um Fehler zu analysieren oder detaillierte Abläufe der Integration zu prüfen, können Sie die Debug-Protokollierung für Lambda Heat Pumps einschalten.
 
 ## Debug-Logging aktivieren

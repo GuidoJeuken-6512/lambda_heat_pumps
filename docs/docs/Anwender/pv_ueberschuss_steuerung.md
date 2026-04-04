@@ -4,6 +4,8 @@ title: "PV Überschuss Steuerung"
 
 # PV Überschuss Steuerung
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. 
 
 Diese Integration unterstützt die Funktion, die Option muss in der Configuration der Lambda Wärmepumpen Integration aktiviert und konfiguriert werden. 

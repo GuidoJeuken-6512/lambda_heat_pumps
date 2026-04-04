@@ -4,6 +4,8 @@ icon: lucide/rocket
 
 # Zensical Get started
 
+*Zuletzt geändert am 21.03.2026*
+
 For full documentation visit [zensical.org](https://zensical.org/docs/).
 
 ## Commands

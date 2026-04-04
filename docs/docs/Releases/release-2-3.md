@@ -1,5 +1,7 @@
 # Release 2.3
 
+*Zuletzt geändert am 21.03.2026*
+
 > ⚠️ **Vor dem Update**: Erstelle ein Backup deiner Home Assistant Konfiguration (Verzeichnis `config/`) sowie der `lambda_wp_config.yaml`. Dieses Release enthält einen Breaking Change, der Entity-IDs verändern kann.
 
 ---

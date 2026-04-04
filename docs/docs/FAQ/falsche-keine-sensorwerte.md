@@ -4,6 +4,8 @@ title: "FAQ – Falsche / keine Sensorwerte"
 
 # Falsche oder keine Sensorwerte
 
+*Zuletzt geändert am 21.03.2026*
+
 Hier finden Sie die häufigsten Ursachen und Lösungen, wenn Sensoren **falsche Werte** anzeigen oder **gar keine Werte** liefern.
 
 ---

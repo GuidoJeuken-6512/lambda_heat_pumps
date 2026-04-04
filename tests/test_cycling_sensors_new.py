@@ -715,3 +715,258 @@ async def test_cycling_offset_no_config(mock_entry, mock_coordinator):
         # Value should remain unchanged when no offset configured
         assert sensor._cycling_value == 100
         assert sensor._applied_offset == 0
+
+
+# ===========================================================================
+# Regression tests: NameError bug in increment_cycling_counter
+#
+# Pre-fix: cycling_entity was referenced on line 871 before being defined on
+# line 884. On the first iteration of the for-sensor_id loop Python raised
+# NameError. The exception was silently swallowed in _async_fast_update at
+# debug level — edges were detected but counters were never incremented.
+#
+# Secondary effect: _last_operating_state was never updated after the failed
+# call, so the same edge was re-detected every 2 s indefinitely.
+# ===========================================================================
+
+def _make_increment_hass(entity_id, fake_entity, state_value="0"):
+    """Return a minimal hass mock wired up for increment_cycling_counter tests."""
+    hass = Mock()
+    hass.data = {
+        "lambda_heat_pumps": {
+            "test_entry": {
+                "cycling_entities": {entity_id: fake_entity}
+            }
+        }
+    }
+    state_obj = Mock()
+    state_obj.state = str(state_value)
+    state_obj.attributes = {}
+    hass.states.get = Mock(return_value=state_obj)
+    return hass, state_obj
+
+
+class TestIncrementCyclingCounterEntityLookupOrder:
+    """
+    Ensure cycling_entity is looked up BEFORE the current counter value is read.
+
+    The old code used cycling_entity on line 871 but only defined it on line 884.
+    Moving the lookup before the read fixes the NameError and ensures the entity's
+    authoritative _cycling_value is used instead of the potentially stale HA state.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_name_error_on_first_call(self, mock_entry, mock_coordinator):
+        """increment_cycling_counter must not raise NameError on the first invocation.
+
+        Pre-fix: cycling_entity was used before definition → NameError on first
+        loop iteration → exception silently caught in _async_fast_update.
+        """
+        from custom_components.lambda_heat_pumps.utils import increment_cycling_counter
+
+        entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+
+        class FakeCyclingEntity:
+            _cycling_value = 10
+            def set_cycling_value(self, value): pass
+
+        hass, _ = _make_increment_hass(entity_id, FakeCyclingEntity(), state_value="10")
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils._get_coordinator",
+            return_value=None,
+        ):
+            try:
+                await increment_cycling_counter(
+                    hass=hass, mode="heating", hp_index=1,
+                    name_prefix="eu08l", use_legacy_modbus_names=True,
+                )
+            except NameError as exc:
+                pytest.fail(
+                    f"NameError raised in increment_cycling_counter: {exc}. "
+                    "Regression: cycling_entity used before being defined."
+                )
+
+    @pytest.mark.asyncio
+    async def test_entity_cycling_value_takes_precedence_over_ha_state(self, mock_entry, mock_coordinator):
+        """Entity._cycling_value (50) must be used, not state_obj.state (200).
+
+        This is the direct regression test: with the old code the NameError
+        prevented the entity lookup entirely, so the increment silently failed.
+        With the fix the entity is found first, _cycling_value=50 is used, and
+        the result is 51 — not 201 (from HA state) and not an exception.
+        """
+        from custom_components.lambda_heat_pumps.utils import increment_cycling_counter
+
+        received_values = []
+
+        class FakeCyclingEntity:
+            _cycling_value = 50  # authoritative internal counter
+
+            def set_cycling_value(self, value):
+                received_values.append(value)
+
+        entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+        # HA state reports 200 — wrong result if entity lookup fails
+        hass, _ = _make_increment_hass(entity_id, FakeCyclingEntity(), state_value="200")
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils._get_coordinator",
+            return_value=None,
+        ):
+            await increment_cycling_counter(
+                hass=hass, mode="heating", hp_index=1,
+                name_prefix="eu08l", use_legacy_modbus_names=True,
+            )
+
+        assert any(v == 51 for v in received_values), (
+            f"Expected 51 (entity._cycling_value=50 + 1) but got {received_values}. "
+            "Regression: entity lookup happens after current value is read, or entity not found."
+        )
+        assert not any(v == 201 for v in received_values), (
+            "Regression: HA state (200) was used instead of entity._cycling_value (50). "
+            "Entity lookup must happen BEFORE reading current value."
+        )
+
+    @pytest.mark.asyncio
+    async def test_ha_state_used_as_fallback_when_entity_has_no_cycling_value(self, mock_entry, mock_coordinator):
+        """When entity exists but has no _cycling_value, HA state is the fallback."""
+        from custom_components.lambda_heat_pumps.utils import increment_cycling_counter
+
+        received_values = []
+
+        class FakeCyclingEntity:
+            # No _cycling_value attribute
+            def set_cycling_value(self, value):
+                received_values.append(value)
+
+        entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+        hass, _ = _make_increment_hass(entity_id, FakeCyclingEntity(), state_value="300")
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils._get_coordinator",
+            return_value=None,
+        ):
+            await increment_cycling_counter(
+                hass=hass, mode="heating", hp_index=1,
+                name_prefix="eu08l", use_legacy_modbus_names=True,
+            )
+
+        assert any(v == 301 for v in received_values), (
+            f"Expected 301 (HA state 300 + 1) but got {received_values}."
+        )
+
+
+class TestEdgeDetectionStateUpdate:
+    """
+    Regression tests for the secondary consequence of the NameError bug.
+
+    Pre-fix: NameError in increment_cycling_counter exited
+    _run_cycling_edge_detection before the line
+        self._last_operating_state[str(hp_idx)] = op_state_val
+    was reached. The same transition was therefore re-detected on every
+    subsequent fast poll (every 2 s) without ever incrementing the counter.
+    """
+
+    def _make_coordinator(self, last_op_state_val):
+        """Return a minimal coordinator mock for _run_cycling_edge_detection."""
+        coordinator = Mock()
+        coordinator._last_operating_state = {"1": last_op_state_val}
+        coordinator._last_compressor_rating = {}
+        coordinator._initialization_complete = True
+        coordinator._cycling_entities_ready = Mock(return_value=True)
+        coordinator._persist_dirty = False
+        coordinator.entry = Mock()
+        coordinator.entry.data = {"num_hps": 1, "name": "eu08l"}
+        coordinator.hass = Mock()
+        coordinator._use_legacy_names = True
+        # _run_cycling_edge_detection uses setattr/getattr for "{mode}_cycles" dicts.
+        # Pre-seed them so item assignment works (Mock attributes don't support it).
+        for mode in ("heating", "hot_water", "cooling", "defrost", "compressor_start"):
+            setattr(coordinator, f"{mode}_cycles", {})
+        return coordinator
+
+    @pytest.mark.asyncio
+    async def test_last_operating_state_updated_after_successful_edge(self):
+        """_last_operating_state must be updated after a successful edge + increment.
+
+        Simulates STBY-FROST (8) → CH (1): heating edge detected.
+        After the call, _last_operating_state["1"] must be 1, not still 8.
+        """
+        from custom_components.lambda_heat_pumps.coordinator import LambdaDataUpdateCoordinator
+
+        coordinator = self._make_coordinator(last_op_state_val=8)  # STBY-FROST
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.increment_cycling_counter",
+            new_callable=AsyncMock,
+        ) as mock_increment:
+            await LambdaDataUpdateCoordinator._run_cycling_edge_detection(
+                coordinator,
+                {"hp1_operating_state": 1},   # transition to CH
+            )
+
+        assert coordinator._last_operating_state["1"] == 1, (
+            f"Regression: _last_operating_state not updated after edge detection "
+            f"(got {coordinator._last_operating_state['1']!r}, expected 1). "
+            "Pre-fix, an exception exited the function before the state was written — "
+            "causing the same edge to be re-detected every 2 s indefinitely."
+        )
+        assert mock_increment.called, (
+            "increment_cycling_counter was not called for the heating edge (STBY-FROST→CH)."
+        )
+
+    @pytest.mark.asyncio
+    async def test_last_operating_state_not_updated_when_no_edge(self):
+        """_last_operating_state is updated to current value even when no edge occurs.
+
+        Ensures that a state update without a mode change still moves
+        _last_operating_state forward so stale transitions don't fire later.
+        """
+        from custom_components.lambda_heat_pumps.coordinator import LambdaDataUpdateCoordinator
+
+        coordinator = self._make_coordinator(last_op_state_val=8)  # STBY-FROST
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.increment_cycling_counter",
+            new_callable=AsyncMock,
+        ) as mock_increment:
+            # State stays at STBY-FROST (8) — no edge
+            await LambdaDataUpdateCoordinator._run_cycling_edge_detection(
+                coordinator,
+                {"hp1_operating_state": 8},
+            )
+
+        # State must still be updated (to 8)
+        assert coordinator._last_operating_state["1"] == 8
+        # No increment must have fired
+        assert not mock_increment.called, (
+            "increment_cycling_counter fired without a mode transition."
+        )

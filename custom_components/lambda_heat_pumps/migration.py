@@ -338,6 +338,79 @@ async def migrate_lambda_config_sections(hass: HomeAssistant) -> bool:
             content_n, ranges = _find_section_ranges_in_content(content)
             section_ranges = {name: (s, e) for s, e, name in ranges}
 
+        # Migrate cycling_offsets: add compressor_start_cycling_total after defrost_cycling_total if missing
+        if "cycling_offsets" in section_ranges:
+            s_co, e_co = section_ranges["cycling_offsets"]
+            section_text = content_n[s_co:e_co]
+            inserts = []
+            for match in re.finditer(r"\n((?:#\s+|\s+))defrost_cycling_total:[^\n]*", section_text):
+                line_end = section_text.find("\n", match.end())
+                if line_end == -1:
+                    line_end = len(section_text)
+                next_start = line_end + 1
+                next_end = section_text.find("\n", next_start)
+                if next_end == -1:
+                    next_end = len(section_text)
+                next_line = section_text[next_start:next_end] if next_start < len(section_text) else ""
+                if "compressor_start_cycling_total:" in next_line:
+                    continue
+                prefix = match.group(1)  # e.g. "#    " or "    "
+                new_line = "\n" + prefix + "compressor_start_cycling_total: 0      # Offset for compressor start total"
+                inserts.append((line_end, new_line))
+            for pos, new_line in sorted(inserts, key=lambda x: -x[0]):
+                section_text = section_text[:pos] + new_line + section_text[pos:]
+            if inserts:
+                content_n = content_n[:s_co] + section_text + content_n[e_co:]
+                content = content_n
+                content_modified = True
+                _LOGGER.info(
+                    "Added compressor_start_cycling_total line(s) to cycling_offsets block (%d entries)",
+                    len(inserts),
+                )
+                content_n, ranges = _find_section_ranges_in_content(content)
+                section_ranges = {name: (s, e) for s, e, name in ranges}
+
+        # Migrate energy_consumption_offsets: add missing thermal_energy_total lines
+        # Chain: defrost_energy_total → heating_thermal → hot_water_thermal → cooling_thermal → defrost_thermal
+        _THERMAL_CHAIN = [
+            (r"\n((?:#\s+|\s+))defrost_energy_total:[^\n]*",          "heating_thermal_energy_total",   "0.0      # kWh offset for heating total (thermal, optional)"),
+            (r"\n((?:#\s+|\s+))heating_thermal_energy_total:[^\n]*",   "hot_water_thermal_energy_total", "0.0      # kWh offset for hot water total (thermal, optional)"),
+            (r"\n((?:#\s+|\s+))hot_water_thermal_energy_total:[^\n]*", "cooling_thermal_energy_total",   "0.0      # kWh offset for cooling total (thermal, optional)"),
+            (r"\n((?:#\s+|\s+))cooling_thermal_energy_total:[^\n]*",   "defrost_thermal_energy_total",   "0.0      # kWh offset for defrost total (thermal, optional)"),
+        ]
+        if "energy_consumption_offsets" in section_ranges:
+            s_eo, e_eo = section_ranges["energy_consumption_offsets"]
+            section_text = content_n[s_eo:e_eo]
+            thermal_inserts_total = 0
+            for anchor_pattern, new_key, new_comment in _THERMAL_CHAIN:
+                inserts = []
+                for match in re.finditer(anchor_pattern, section_text):
+                    line_end = section_text.find("\n", match.end())
+                    if line_end == -1:
+                        line_end = len(section_text)
+                    next_start = line_end + 1
+                    next_end = section_text.find("\n", next_start)
+                    if next_end == -1:
+                        next_end = len(section_text)
+                    next_line = section_text[next_start:next_end] if next_start < len(section_text) else ""
+                    if new_key + ":" in next_line:
+                        continue
+                    prefix = match.group(1)
+                    inserts.append((line_end, "\n" + prefix + f"{new_key}: {new_comment}"))
+                for pos, new_line in sorted(inserts, key=lambda x: -x[0]):
+                    section_text = section_text[:pos] + new_line + section_text[pos:]
+                thermal_inserts_total += len(inserts)
+            if thermal_inserts_total:
+                content_n = content_n[:s_eo] + section_text + content_n[e_eo:]
+                content = content_n
+                content_modified = True
+                _LOGGER.info(
+                    "Added %d thermal_energy_total line(s) to energy_consumption_offsets block",
+                    thermal_inserts_total,
+                )
+                content_n, ranges = _find_section_ranges_in_content(content)
+                section_ranges = {name: (s, e) for s, e, name in ranges}
+
         template_sections = _extract_config_sections()
         template_order = list(template_sections.keys())
         first_section_start = min(r[0] for r in ranges) if ranges else len(content_n)

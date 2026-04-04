@@ -4,6 +4,8 @@ title: "modbus_wp_config.yaml (Entwickler)"
 
 # modbus_wp_config.yaml – Entwicklereinstellungen
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Datei `modbus_wp_config.yaml` ermöglicht Entwicklern, das Verhalten der Lambda Heat Pumps Integration auf Register‑Ebene anzupassen. Dies betrifft vor allem Register‑Deaktivierung, Sensor‑Namensüberschreibungen, Zähler‑Offsets, Energie‑Sensoren und Modbus‑Parameter.
 
 **Pfad:** `config/lambda_wp_config.yaml`
@@ -255,45 +257,35 @@ cycling_offsets:
             self._energy_offsets = config.get("energy_consumption_offsets", {})
 ```
 
-3. **Anwendung auf Sensoren:** Der Offset wird zum Sensorwert addiert:
+3. **Anwendung auf Sensoren:** Der Offset wird **einmalig beim HA-Start** durch `_apply_cycling_offset()` angewendet (aufgerufen aus `async_added_to_hass()`). `increment_cycling_counter()` enthält **keinen** Offset-Code mehr:
 
-```880:910:custom_components/lambda_heat_pumps/sensor.py
-        """Apply cycling offset from configuration."""
-        try:
-            # Lade die Cycling-Offsets aus der Konfiguration
-            from .utils import load_lambda_config
-            config = await load_lambda_config(self.hass)
-            cycling_offsets = config.get("cycling_offsets", {})
-            
-            if not cycling_offsets:
-                _LOGGER.debug(f"No cycling offsets found for {self.entity_id}")
-                return
-            
-            # Bestimme den Device-Key (z.B. "hp1")
-            device_key = f"hp{self._hp_index}"
-            
-            if device_key not in cycling_offsets:
-                _LOGGER.debug(f"No cycling offsets found for device {device_key}")
-                return
-            
-            # Hole den aktuellen Offset für diesen Sensor
-            current_offset = cycling_offsets[device_key].get(self._sensor_id, 0)
-            
-            # Hole den bereits angewendeten Offset aus den Attributen
-            applied_offset = getattr(self, "_applied_offset", 0)
-            
-            # Berechne die Differenz zwischen aktuellem und bereits angewendetem Offset
-            offset_difference = current_offset - applied_offset
-            
-            # Debug-Log für bessere Nachverfolgung
-            _LOGGER.debug(
-                f"Offset calculation for {self.entity_id}: current={current_offset}, applied={applied_offset}, difference={offset_difference}"
+```python
+# sensor.py – LambdaCyclingSensor._apply_cycling_offset()
+async def _apply_cycling_offset(self):
+    config = await load_lambda_config(self.hass)
+    cycling_offsets = config.get("cycling_offsets", {})
+
+    device_key = f"hp{self._hp_index}"
+    if device_key not in cycling_offsets:
+        return
+
+    current_offset = cycling_offsets[device_key].get(self._sensor_id, 0)
+    applied_offset = getattr(self, "_applied_offset", 0)
+    offset_difference = current_offset - applied_offset   # nur Differenz!
+
+    if offset_difference != 0:
+        self._cycling_value = int(self._cycling_value + offset_difference)
+        self._applied_offset = current_offset
+        self.async_write_ha_state()
 ```
+
+Der bereits angewendete Offset wird im State-Attribut `applied_offset` persistiert, sodass nach einem HA-Neustart nicht erneut der volle Offset addiert wird.
 
 **Hinweise:**
 - Gilt nur für **Total‑Sensoren**, nicht für Daily/Monthly/Yearly.
-- Werte sind absolute Zähler (keine Deltas).
-- Der Offset wird einmalig beim Sensor-Start angewendet.
+- Werte sind absolute Zähler (keine Deltas); **positive und negative** Werte sind erlaubt.
+- Der Offset wird einmalig beim Sensor-Start angewendet (differenzbasiert).
+- `increment_cycling_counter()` kennt keinen Offset — er erhöht rein um +1.
 
 ## energy_consumption_sensors
 
@@ -354,10 +346,12 @@ Offsets für Total‑Energieverbrauch (kWh). Nützlich nach Pumpentausch oder Z�
 ```yaml
 energy_consumption_offsets:
   hp1:
-    heating_energy_total: 5000.0
+    heating_energy_total: 5000.0            # kWh, elektrisch
     hot_water_energy_total: 2000.0
     cooling_energy_total: 500.0
     defrost_energy_total: 150.0
+    heating_thermal_energy_total: 6500.0    # kWh, thermisch (optional)
+    hot_water_thermal_energy_total: 2600.0  # kWh, thermisch (optional)
   hp2:
     heating_energy_total: 150.5
     hot_water_energy_total: 45.25
@@ -402,11 +396,25 @@ energy_consumption_offsets:
             self._energy_offsets = config.get("energy_consumption_offsets", {})
 ```
 
-3. **Anwendung:** Der Offset wird zu den Energieverbrauchswerten addiert (ähnlich wie bei cycling_offsets).
+3. **Anwendung:** Zwei Mechanismen, beide differenzbasiert:
+   - `_apply_energy_offset()` in `sensor.py` — einmalig beim HA-Start für den Startwert
+   - `increment_energy_consumption_counter()` in `utils.py` — bei jedem Energie-Update (prüft, ob Offset sich geändert hat, und addiert nur die Differenz)
+
+```python
+# utils.py – increment_energy_consumption_counter()
+offset = float(device_offsets.get(sensor_id, 0.0))
+if hasattr(energy_entity, "_applied_offset"):
+    if energy_entity._applied_offset != offset:
+        new_value += offset - energy_entity._applied_offset  # nur Differenz
+        energy_entity._applied_offset = offset
+```
 
 **Hinweise:**
 - Alle Werte in **kWh**.
 - Gilt nur für **Total‑Sensoren** (nicht Daily/Monthly/Yearly).
+- Positive und **negative** Werte sind erlaubt.
+- Elektrische Offsets: `{mode}_energy_total` (z. B. `heating_energy_total`).
+- Thermische Offsets: `{mode}_thermal_energy_total` (z. B. `heating_thermal_energy_total`) — optional, selbe Mechanik.
 
 ## modbus
 
@@ -518,7 +526,7 @@ sensors_names_override:
   - id: hp1_return_temp
     override_name: "Rücklauf Temperatur"
 
-# Cycling‑Offsets
+# Cycling‑Offsets (positive oder negative Ganzzahlen, nur Total-Sensoren)
 cycling_offsets:
   hp1:
     heating_cycling_total: 2500
@@ -534,13 +542,15 @@ energy_consumption_sensors:
   hp2:
     sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"
 
-# Energieverbrauchs‑Offsets (kWh)
+# Energieverbrauchs‑Offsets (kWh, positive oder negative Werte, nur Total-Sensoren)
 energy_consumption_offsets:
   hp1:
     heating_energy_total: 5000.0
     hot_water_energy_total: 2000.0
     cooling_energy_total: 500.0
     defrost_energy_total: 150.0
+    heating_thermal_energy_total: 6500.0    # optional: thermische Energie
+    hot_water_thermal_energy_total: 2600.0  # optional: thermische Energie
 
 # Modbus‑Parameter
 modbus:

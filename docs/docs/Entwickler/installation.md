@@ -4,6 +4,8 @@ title: "Manuelle Installation"
 
 # Manuelle Installation
 
+*Zuletzt geändert am 21.03.2026*
+
 Diese Anleitung beschreibt, wie Sie die Lambda Heat Pumps Integration manuell ohne HACS installieren können.
 
 !!! tip "Einfachere Installation mit HACS"

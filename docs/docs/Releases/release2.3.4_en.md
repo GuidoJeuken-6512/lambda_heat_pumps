@@ -1,6 +1,8 @@
-# Release 2.3.2
+# Release 2.3.4
 
-> Version 2.3.1 was skipped.
+*Last modified: 2026-03-21*
+
+> Version 2.3.1/3 were skipped.
 
 ---
 
@@ -10,7 +12,7 @@
 
 The sensor used to detect a compressor start has been changed:
 
-| | Before (2.3) | Now (2.3.2) |
+| | Before (2.3) | Now (2.3.4) |
 |---|---|---|
 | **Source** | `HP_STATE` (register 1002) | `compressor_unit_rating` (register 1010) |
 | **Detection condition** | Transition to state `2` (RESTART-BLOCK) | Rise from `0 → >0` (rising edge) |

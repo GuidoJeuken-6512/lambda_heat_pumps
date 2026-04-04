@@ -1,5 +1,7 @@
 # Plan: Status-Sensoren – History & Grafana-Visualisierung
 
+*Zuletzt geändert am 21.03.2026*
+
 **Status:** Entwurf
 **Betrifft:** Alle `txt_mapping: True`-Sensoren (operating_state, state, error_state, operating_mode, …)
 

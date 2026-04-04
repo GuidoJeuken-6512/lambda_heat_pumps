@@ -4,6 +4,8 @@ title: "Heizkurve"
 
 # Heizkurve
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration unterstützt die Konfiguration von Heizkurven für jeden Heizkreis. Die Heizkurve bestimmt die Vorlauftemperatur basierend auf der Außentemperatur und ermöglicht eine energieeffiziente und komfortable Heizungssteuerung.
 
 ## Übersicht

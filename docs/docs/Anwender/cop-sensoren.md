@@ -4,6 +4,8 @@ title: "COP-Sensoren (Leistungszahl)"
 
 # COP-Sensoren (Leistungszahl)
 
+*Zuletzt geändert am 21.03.2026*
+
 Die Lambda Heat Pumps Integration bietet **COP-Sensoren** (Coefficient of Performance / Leistungszahl), die das Verhältnis von erzeugter Wärme zu eingesetztem Strom anzeigen. Diese Sensoren helfen Ihnen, die Effizienz Ihrer Wärmepumpe zu überwachen und zu analysieren.
 
 ## Was ist COP?
@@ -185,8 +187,6 @@ severity:
 - Prüfen Sie die Quellsensoren (thermal_energy und energy) auf realistische Werte
 - Prüfen Sie die Einheiten (müssen beide in kWh sein)
 
-> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!** Offsets in der `lambda_wp_config.yaml` sollten derzeit nicht genutzt werden.
-
 ### COP-Sensor aktualisiert sich nicht
 
 **Ursache**: Quellsensoren aktualisieren sich nicht oder State-Tracking funktioniert nicht.
@@ -208,6 +208,6 @@ Für weitere Informationen zu den Energieverbrauchssensoren siehe [Energieverbra
 ## Nächste Schritte
 
 - [Energieverbrauchsberechnung](Energieverbrauchsberechnung.md) - Detaillierte Informationen zu den Quellsensoren
-- [Historische Daten übernehmen](historische-daten.md) - Offsets für historische Daten (⚠️ derzeit fehlerhaft, nicht nutzen)
+- [Historische Daten übernehmen](historische-daten.md) - Offsets für historische Daten
 - [Dashboard-Erstellung](features.md) - Weitere Dashboard-Beispiele
 

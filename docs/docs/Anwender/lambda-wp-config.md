@@ -4,6 +4,8 @@ title: "lambda_wp_config.yaml Konfiguration"
 
 # lambda_wp_config.yaml Konfiguration
 
+*Zuletzt geändert am 28.03.2026*
+
 Die `lambda_wp_config.yaml` Datei ist die Hauptkonfigurationsdatei für erweiterte Einstellungen der Lambda Heat Pumps Integration. Sie ermöglicht es, Sensoreinstellungen, Energieverbrauchserfassung und Modbus-Kommunikationsparameter anzupassen.
 
 ## Datei-Location
@@ -100,42 +102,19 @@ sensors_names_override:
 
 ### 3. Cycling-Zähler-Offsets
 
-> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
-
-Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
+Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen, nach einem Zählerreset oder zur Korrektur eines falschen Ausgangswertes. Positive und **negative** Werte sind erlaubt.
 
 ```yaml
 cycling_offsets:
   hp1:
-    heating_cycling_total: 1500    # HP1 hatte bereits 1500 Heizungszyklen
-    hot_water_cycling_total: 800   # HP1 hatte bereits 800 Warmwasserzyklen
-    cooling_cycling_total: 200     # HP1 hatte bereits 200 Kühlungszyklen
-    defrost_cycling_total: 50      # HP1 hatte bereits 50 Abtauzyklen
-    compressor_start_cycling_total: 5000  # HP1 hatte bereits 5000 Kompressor-Starts
-  hp2:
-    heating_cycling_total: 0       # HP2 startet frisch
-    hot_water_cycling_total: 0     # HP2 startet frisch
-    cooling_cycling_total: 0       # HP2 startet frisch
-    defrost_cycling_total: 0       # HP2 startet frisch
-    compressor_start_cycling_total: 0     # HP2 startet frisch
+    heating_cycling_total: 1500
+    hot_water_cycling_total: 800
+    cooling_cycling_total: 200
+    defrost_cycling_total: 50
+    compressor_start_cycling_total: 5000
 ```
 
-**Wann verwenden?**
-- Wärmepumpen-Austausch: Zählerstand der vorherigen Pumpe hinzufügen
-- Zähler-Reset: Manuelle Resets kompensieren
-- Historische Daten erhalten: Kontinuität der Daten beibehalten
-
-**Beispiel-Szenario: Wärmepumpen-Austausch**
-```yaml
-cycling_offsets:
-  hp1:
-    heating_cycling_total: 2500    # Alte Pumpe hatte 2500 Heizungszyklen
-    hot_water_cycling_total: 1200  # Alte Pumpe hatte 1200 Warmwasserzyklen
-    cooling_cycling_total: 300     # Alte Pumpe hatte 300 Kühlungszyklen
-    defrost_cycling_total: 80      # Alte Pumpe hatte 80 Abtauzyklen
-```
-
-Weitere Informationen: [Historische Daten übernehmen](historische-daten.md)
+Ausführliche Beschreibung, alle Szenarien und negative Offsets: [Offsets – Historische Daten übernehmen](offsets.md)
 
 ### 4. Energieverbrauchs-Sensoren
 
@@ -174,47 +153,24 @@ Weitere Informationen: [Energieverbrauchsberechnung](Energieverbrauchsberechnung
 
 ### 5. Energieverbrauchs-Offsets
 
-> ⚠️ ⚠️ **Achtung, die Funktion der Offsets für Sensoren ist fehlerhaft, bitte im Moment nicht einsetzen!**
+Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen, nach einem Zählerreset oder zur Korrektur eines falschen Ausgangswertes.
 
-Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen von Zählern.
-
-**⚠️ WICHTIG: Alle Werte müssen in kWh angegeben werden!**
+**⚠️ WICHTIG: Alle Werte müssen in kWh angegeben werden!** Positive und **negative** Werte sind erlaubt.
 
 ```yaml
 energy_consumption_offsets:
   hp1:
-    heating_energy_total: 0.0       # kWh Offset für HP1 Heizungs-Total
-    hot_water_energy_total: 0.0     # kWh Offset für HP1 Warmwasser-Total
-    cooling_energy_total: 0.0       # kWh Offset für HP1 Kühlungs-Total
-    defrost_energy_total: 0.0       # kWh Offset für HP1 Abtau-Total
-  hp2:
-    heating_energy_total: 150.5     # Beispiel: HP2 verbrauchte bereits 150.5 kWh Heizung
-    hot_water_energy_total: 45.25   # Beispiel: HP2 verbrauchte bereits 45.25 kWh Warmwasser
-    cooling_energy_total: 12.8      # Beispiel: HP2 verbrauchte bereits 12.8 kWh Kühlung
-    defrost_energy_total: 3.1       # Beispiel: HP2 verbrauchte bereits 3.1 kWh Abtau
+    heating_energy_total: 5000.0              # kWh elektrisch
+    hot_water_energy_total: 2000.0
+    cooling_energy_total: 500.0
+    defrost_energy_total: 150.0
+    heating_thermal_energy_total: 18000.0     # kWh thermisch (optional)
+    hot_water_thermal_energy_total: 7200.0
+    cooling_thermal_energy_total: 1500.0
+    defrost_thermal_energy_total: 480.0
 ```
 
-**Wann verwenden?**
-- Wärmepumpen-Austausch: Energieverbrauch der vorherigen Pumpe hinzufügen
-- Zähler-Reset: Manuelle Resets kompensieren
-- Historische Daten erhalten: Energieverbrauchshistorie beibehalten
-
-**Beispiel-Szenario: Wärmepumpen-Austausch**
-```yaml
-energy_consumption_offsets:
-  hp1:
-    heating_energy_total: 5000.0    # Alte Pumpe verbrauchte 5000 kWh Heizung
-    hot_water_energy_total: 2000.0  # Alte Pumpe verbrauchte 2000 kWh Warmwasser
-    cooling_energy_total: 500.0     # Alte Pumpe verbrauchte 500 kWh Kühlung
-    defrost_energy_total: 150.0     # Alte Pumpe verbrauchte 150 kWh Abtau
-```
-
-**Hinweis**: 
-- Alle Werte müssen in **kWh** angegeben werden
-- Verwenden Sie Punkt (.) als Dezimaltrennzeichen in YAML
-- Offsets werden nur auf TOTAL-Sensoren angewendet, nicht auf Daily/Monthly/Yearly Sensoren
-
-Weitere Informationen: [Historische Daten übernehmen](historische-daten.md)
+Ausführliche Beschreibung, alle Szenarien, thermische Offsets und negative Offsets: [Offsets – Historische Daten übernehmen](offsets.md)
 
 ### 6. Modbus-Konfiguration
 

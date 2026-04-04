@@ -4,6 +4,8 @@ title: "Lambda Register-Dashboard"
 
 # Lambda Register-Dashboard (Vorlage)
 
+*Zuletzt geändert am 21.03.2026*
+
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 320px;">
     <a href="../../assets/lambda-register-dashboard-general.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen">

@@ -213,20 +213,23 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #  override_name: new_name_of_the_sensor_example
 
 # Cycling counter offsets for total sensors
-# These offsets are added to the calculated cycling counts
-# Useful when replacing heat pumps or resetting counters
+# These offsets are added to the calculated cycling counts once at HA start.
+# Useful when replacing heat pumps or resetting counters.
+# Positive values add to the total; negative values subtract.
 # Example:
 #cycling_offsets:
 #  hp1:
-#    heating_cycling_total: 0      # Offset for HP1 heating total cycles
-#    hot_water_cycling_total: 0    # Offset for HP1 hot water total cycles
-#    cooling_cycling_total: 0      # Offset for HP1 cooling total cycles
-#    defrost_cycling_total: 0      # Offset for HP1 defrost total cycles
+#    heating_cycling_total: 0               # Offset for HP1 heating total cycles
+#    hot_water_cycling_total: 0             # Offset for HP1 hot water total cycles
+#    cooling_cycling_total: 0               # Offset for HP1 cooling total cycles
+#    defrost_cycling_total: 0               # Offset for HP1 defrost total cycles
+#    compressor_start_cycling_total: 0      # Offset for HP1 compressor start total
 #  hp2:
-#    heating_cycling_total: 1500   # Example: HP2 already had 1500 heating cycles
-#    hot_water_cycling_total: 800  # Example: HP2 already had 800 hot water cycles
-#    cooling_cycling_total: 200    # Example: HP2 already had 200 cooling cycles
-#    defrost_cycling_total: 50     # Example: HP2 already had 50 defrost cycles
+#    heating_cycling_total: 1500            # Example: HP2 already had 1500 heating cycles
+#    hot_water_cycling_total: 800           # Example: HP2 already had 800 hot water cycles
+#    cooling_cycling_total: 200             # Example: HP2 already had 200 cooling cycles
+#    defrost_cycling_total: 50              # Example: HP2 already had 50 defrost cycles
+#    compressor_start_cycling_total: 5000   # Example: HP2 already had 5000 compressor starts
 
 # Energy consumption sensor configuration (Quellsensoren für den Energieverbrauch)
 # Diese Sensoren müssen den Gesamtverbrauch in Wh oder kWh anzeigen
@@ -241,21 +244,31 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 #    sensor_entity_id: "sensor.lambda_wp_verbrauch2"
 #    thermal_sensor_entity_id: "sensor.lambda_wp_waerme2"  # optional
 
-# Energy consumption offsets for total sensors (WICHTIG: Alle Werte müssen in kWh angegeben werden!)
-# Diese Offsets werden nur auf die TOTAL-Sensoren angewendet, nicht auf Daily/Monthly/Yearly
-# Nützlich beim Austausch von Wärmepumpen oder Zurücksetzen der Zähler
-# Beispiel mit Nachkommastellen:
+# Energy consumption offsets for total sensors (IMPORTANT: all values in kWh!)
+# Applied only to TOTAL sensors, not to Daily/Monthly/Yearly.
+# Useful when replacing heat pumps or resetting counters.
+# Positive values add to the total; negative values subtract.
+# Electrical offsets: {mode}_energy_total
+# Thermal offsets:    {mode}_thermal_energy_total  (optional)
 #energy_consumption_offsets:
 #  hp1:
-#    heating_energy_total: 0.0       # kWh offset for HP1 heating total
-#    hot_water_energy_total: 0.0     # kWh offset for HP1 hot water total
-#    cooling_energy_total: 0.0       # kWh offset for HP1 cooling total
-#    defrost_energy_total: 0.0       # kWh offset for HP1 defrost total
+#    heating_energy_total: 0.0              # kWh offset for HP1 heating total (electrical)
+#    hot_water_energy_total: 0.0            # kWh offset for HP1 hot water total (electrical)
+#    cooling_energy_total: 0.0              # kWh offset for HP1 cooling total (electrical)
+#    defrost_energy_total: 0.0              # kWh offset for HP1 defrost total (electrical)
+#    heating_thermal_energy_total: 0.0      # kWh offset for HP1 heating total (thermal, optional)
+#    hot_water_thermal_energy_total: 0.0    # kWh offset for HP1 hot water total (thermal, optional)
+#    cooling_thermal_energy_total: 0.0      # kWh offset for HP1 cooling total (thermal, optional)
+#    defrost_thermal_energy_total: 0.0      # kWh offset for HP1 defrost total (thermal, optional)
 #  hp2:
-#    heating_energy_total: 150.5     # Beispiel: HP2 bereits 150,5 kWh Heizen verbraucht
-#    hot_water_energy_total: 45.25   # Beispiel: HP2 bereits 45,25 kWh Warmwasser verbraucht
-#    cooling_energy_total: 12.8      # Beispiel: HP2 bereits 12,8 kWh Kühlen verbraucht
-#    defrost_energy_total: 3.1       # Beispiel: HP2 bereits 3,1 kWh Abtauen verbraucht
+#    heating_energy_total: 150.5            # Example: HP2 already consumed 150.5 kWh heating
+#    hot_water_energy_total: 45.25          # Example: HP2 already consumed 45.25 kWh hot water
+#    cooling_energy_total: 12.8             # Example: HP2 already consumed 12.8 kWh cooling
+#    defrost_energy_total: 3.1              # Example: HP2 already consumed 3.1 kWh defrost
+#    heating_thermal_energy_total: 620.0    # Example: HP2 already produced 620.0 kWh heating (thermal)
+#    hot_water_thermal_energy_total: 180.5  # Example: HP2 already produced 180.5 kWh hot water (thermal)
+#    cooling_thermal_energy_total: 45.2     # Example: HP2 already produced 45.2 kWh cooling (thermal)
+#    defrost_thermal_energy_total: 12.1     # Example: HP2 already produced 12.1 kWh defrost (thermal)
 
 # Modbus configuration
 # Register order for 32-bit registers (int32 sensors)
