@@ -86,19 +86,23 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
 
         # Temperaturbereich aus Entry-Optionen lesen
         if climate_type == "hot_water":
-            self._attr_min_temp = entry.options.get(
-                "hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT
-            )
-            self._attr_max_temp = entry.options.get(
-                "hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT
-            )
+            min_temp = entry.options.get("hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT)
+            max_temp = entry.options.get("hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT)
+            default_min, default_max = HOT_WATER_MIN_TEMP_LIMIT, HOT_WATER_MAX_TEMP_LIMIT
         else:  # heating_circuit
-            self._attr_min_temp = entry.options.get(
-                "heating_circuit_min_temp", DEFAULT_HEATING_CIRCUIT_MIN_TEMP
+            min_temp = entry.options.get("heating_circuit_min_temp", DEFAULT_HEATING_CIRCUIT_MIN_TEMP)
+            max_temp = entry.options.get("heating_circuit_max_temp", DEFAULT_HEATING_CIRCUIT_MAX_TEMP)
+            default_min, default_max = DEFAULT_HEATING_CIRCUIT_MIN_TEMP, DEFAULT_HEATING_CIRCUIT_MAX_TEMP
+
+        if min_temp >= max_temp:
+            _LOGGER.warning(
+                "Invalid temperature range min=%s >= max=%s for %s, using defaults",
+                min_temp, max_temp, climate_type,
             )
-            self._attr_max_temp = entry.options.get(
-                "heating_circuit_max_temp", DEFAULT_HEATING_CIRCUIT_MAX_TEMP
-            )
+            min_temp, max_temp = default_min, default_max
+
+        self._attr_min_temp = min_temp
+        self._attr_max_temp = max_temp
 
         self._attr_target_temperature_step = self._template.get("precision", 0.5)
         self._attr_temperature_unit = self._template.get("unit", "°C")

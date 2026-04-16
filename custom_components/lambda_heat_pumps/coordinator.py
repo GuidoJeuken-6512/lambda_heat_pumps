@@ -234,112 +234,54 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return normalized
 
     async def _repair_and_load_persist_file(self):
-        """Lade und repariere persistierte JSON-Datei bei Bedarf."""
-        
-        def _repair_json():
+        """Lade persistierte JSON-Datei, normalisiere und fülle fehlende Felder auf."""
+        _REQUIRED_FIELDS = [
+            "heating_cycles", "heating_energy", "last_operating_states",
+            "energy_consumption", "last_energy_readings", "last_thermal_energy_readings",
+            "energy_offsets", "sensor_ids", "thermal_sensor_ids", "energy_sensor_states",
+        ]
+
+        def _load_and_normalize():
             try:
                 with open(self._persist_file) as f:
                     content = f.read().strip()
-                    
+
                 if not content:
                     _LOGGER.warning("Persist file %s is empty, using defaults", self._persist_file)
                     return {}
-                    
-                # Versuche normales Laden
+
                 data = json.loads(content)
-                
-                # Repariere doppelte Schlüssel in last_operating_states
-                if "last_operating_states" in data and isinstance(data["last_operating_states"], dict):
-                    states = data["last_operating_states"]
-                    # Entferne doppelte Schlüssel - behalte den letzten Wert
-                    clean_states = {}
-                    for key, value in states.items():
-                        clean_states[str(key)] = value  # Normalisiere zu String
-                    data["last_operating_states"] = clean_states
-                    _LOGGER.info(
-                        f"Repaired duplicate keys in last_operating_states: {clean_states}"
-                    )
-                
-                    # Stelle sicher, dass alle wichtigen Felder existieren
-                    required_fields = [
-                        "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "energy_offsets",
-                        "energy_sensor_states",
-                    ]
-                    for field in required_fields:
-                        if field not in data:
-                            data[field] = {}
-                            _LOGGER.info("Added missing field %s to repaired JSON", field)
-                    
-                    # sensor_ids / thermal_sensor_ids nur hinzufügen wenn komplett fehlt
-                    if "sensor_ids" not in data:
-                        data["sensor_ids"] = {}
-                        _LOGGER.info("Added missing sensor_ids field to repaired JSON")
-                    if "thermal_sensor_ids" not in data:
-                        data["thermal_sensor_ids"] = {}
-                    if "last_thermal_energy_readings" not in data:
-                        data["last_thermal_energy_readings"] = {}
-                    
+
+                # Normalisiere last_operating_states-Schlüssel zu Strings
+                if isinstance(data.get("last_operating_states"), dict):
+                    data["last_operating_states"] = {
+                        str(k): v for k, v in data["last_operating_states"].items()
+                    }
+
+                # Fehlende Felder mit leeren Dicts aufüllen
+                for field in _REQUIRED_FIELDS:
+                    if field not in data:
+                        data[field] = {}
+                        _LOGGER.debug("Added missing field '%s' to loaded persist data", field)
+
                 return data
-                
+
             except json.JSONDecodeError as e:
-                _LOGGER.error("JSON decode error in %s: %s", self._persist_file, e)
-                _LOGGER.warning("Attempting to repair corrupted JSON file")
-                
-                # Versuche einfache Reparatur durch Entfernung doppelter Schlüssel
+                _LOGGER.error("Corrupted persist file %s: %s — backing up and starting fresh", self._persist_file, e)
                 try:
-                    # Erstelle Backup der ursprünglichen Datei
                     backup_file = self._persist_file + ".backup"
-                    with open(self._persist_file, 'r') as src, open(backup_file, 'w') as dst:
+                    with open(self._persist_file, "r") as src, open(backup_file, "w") as dst:
                         dst.write(src.read())
-                    
-                    # Versuche Reparatur durch Regex
-                    import re
-                    # Entferne doppelte Schlüssel: "key": value, "key": value
-                    duplicate_pattern = r'("[^"]+"\s*:\s*[^,}]+),\s*\1'
-                    
-                    with open(self._persist_file, 'r') as f:
-                        content = f.read()
-                    
-                    # Repariere doppelte Schlüssel
-                    repaired_content = content
-                    while re.search(duplicate_pattern, repaired_content):
-                        repaired_content = re.sub(duplicate_pattern, r'\1', repaired_content)
-                    
-                    # Versuche das reparierte JSON zu laden
-                    data = json.loads(repaired_content)
-                    
-                    # Stelle sicher, dass alle wichtigen Felder existieren
-                    required_fields = [
-                        "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "last_thermal_energy_readings",
-                        "energy_offsets", "sensor_ids", "thermal_sensor_ids",
-                        "energy_sensor_states",
-                    ]
-                    for field in required_fields:
-                        if field not in data:
-                            data[field] = {}
-                    
-                    # Speichere reparierte Version
-                    with open(self._persist_file, 'w') as f:
-                        json.dump(data, f, indent=2)
-                    
-                    _LOGGER.info("Successfully repaired corrupted JSON file")
-                    return data
-                    
-                except Exception as repair_error:
-                    _LOGGER.error("Failed to repair JSON file: %s", repair_error)
-                    _LOGGER.warning("Deleting corrupted persist file and starting fresh")
-                    try:
-                        os.remove(self._persist_file)
-                    except Exception:
-                        pass  # Ignore if file can't be deleted
-                    return {}
+                    os.remove(self._persist_file)
+                except Exception as backup_err:
+                    _LOGGER.warning("Could not back up corrupted persist file: %s", backup_err)
+                return {}
+
             except Exception as e:
                 _LOGGER.error("Error reading persist file %s: %s", self._persist_file, e)
                 return {}
-        
-        return await self.hass.async_add_executor_job(_repair_json)
+
+        return await self.hass.async_add_executor_job(_load_and_normalize)
 
     async def _persist_counters(self):
         """Persist counter data and state information to file using optimized I/O with debouncing."""
@@ -390,6 +332,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         energy_sensor_states_to_save = self._collect_energy_sensor_states()
 
         data = {
+            "version": 1,
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
             "last_operating_states": normalized_operating_states,
@@ -938,7 +881,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 not current_batch
                 or addr != last_addr + 1
                 or current_type != dtype
-                or len(current_batch) >= 120  # Modbus safety margin
+                or len(current_batch) >= 100  # Modbus max 125 holding regs; 100 = safe margin
             ):
                 if current_batch:
                     batches.append(current_batch)
