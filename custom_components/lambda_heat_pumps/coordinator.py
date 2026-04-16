@@ -40,6 +40,11 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     normalize_name_prefix,
+    detect_sensor_change,
+    get_stored_sensor_id,
+    store_sensor_id,
+    get_stored_thermal_sensor_id,
+    store_thermal_sensor_id,
 )
 from .modbus_utils import async_read_holding_registers, combine_int32_registers, wait_for_stable_connection
 import time
@@ -590,13 +595,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
         
         try:
-            from .utils import (
-                detect_sensor_change,
-                get_stored_sensor_id,
-                store_sensor_id,
-                get_stored_thermal_sensor_id,
-                store_thermal_sensor_id,
-            )
             # Erstelle persist_data dict für die Hilfsfunktionen
             persist_data = {"sensor_ids": self._sensor_ids, "thermal_sensor_ids": self._thermal_sensor_ids}
             
@@ -791,24 +789,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         await self._persist_counters()
         _LOGGER.info("SENSOR-CHANGE: Thermik Zero-Value Protection aktiv HP%s", hp_idx)
 
-    def _generate_entity_id(self, sensor_type: str, idx: int) -> str:
-        # DEAD CODE GUARD: This method should no longer be called.
-        # It is a remnant of the old template-sensor architecture where cycling/energy
-        # values were written into coordinator.data under entity-ID keys.
-        # Cycling and energy sensors now use internal state (_cycling_value / _energy_value)
-        # updated via dispatcher signals, not coordinator.data lookups.
-        # If this warning appears in the logs, the caller must be investigated.
-        _LOGGER.warning(
-            "_generate_entity_id called unexpectedly (possible dead-code remnant) – "
-            "sensor_type=%s, idx=%s. Please report this at "
-            "https://github.com/lambdanerds/lambda_heat_pumps/issues",
-            sensor_type,
-            idx,
-        )
-        if self._use_legacy_names:
-            return f"sensor.hp{idx + 1}_{sensor_type}"
-        else:
-            return f"sensor.{self._name_prefix}_hp{idx + 1}_{sensor_type}"
 
     async def async_init(self) -> None:
         """Async initialization (inkl. Modbus-Connect für Auto-Detection)."""
@@ -914,37 +894,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 len(int32_addresses), list(int32_addresses.keys())
             )
         
-        # DEBUG: Prüfe spezifisch Register 1020/1022
-        if 1020 in address_list or 1022 in address_list:
-            _LOGGER.debug(
-                "INT32-REGISTER-DEBUG: Register 1020/1022 gefunden in address_list: "
-                "1020=%s, 1022=%s, enabled_addresses 1020=%s, 1022=%s",
-                1020 in address_list, 1022 in address_list,
-                1020 in self._enabled_addresses if hasattr(self, '_enabled_addresses') else 'N/A',
-                1022 in self._enabled_addresses if hasattr(self, '_enabled_addresses') else 'N/A'
-            )
-
         # Globale Deduplizierung - verhindere mehrfaches Lesen der gleichen Register über alle Module
         unique_addresses = {}
         for address, sensor_info in address_list.items():
-            # DEBUG: Spezifisch für 1020/1022
-            if address in [1020, 1022]:
-                _LOGGER.debug(
-                    "INT32-REGISTER-DEBUG: Prüfe Register %d - "
-                    "Im Cache: %s, Wert: %s",
-                    address,
-                    address in self._global_register_cache,
-                    self._global_register_cache.get(address, "NICHT_GEFUNDEN")
-                )
-            
             # Prüfe globalen Cache zuerst
             if address in self._global_register_cache:
-                # DEBUG: Für 1020/1022 - Zeige Cache-Status
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Register %d ist im Cache (Wert: %s) - wird verwendet",
-                        address, self._global_register_cache[address]
-                    )
                 # Verwende gecachten Wert (Cache wird pro Update-Zyklus geleert)
                 sensor_id = sensor_mapping.get(address, f"addr_{address}")
                 data[sensor_id] = self._global_register_cache[address]
@@ -1085,24 +1039,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     # Rückwärtskompatibilität: byte_order wird auch akzeptiert
                                     register_order = sensor_info.get("register_order") or sensor_info.get("byte_order") or self._int32_register_order
                                     
-                                    # DEBUG: Für 1020/1022
-                                    if addr in [1020, 1022]:
-                                        _LOGGER.debug(
-                                            "INT32-REGISTER-DEBUG: Batch-Verarbeitung Register %d: "
-                                            "Register[%d]=%d, Register[%d]=%d, order=%s",
-                                            addr, i, value, i+1, next_value, register_order
-                                        )
-                                    
                                     value = combine_int32_registers([value, next_value], register_order)
                                     value = to_signed_32bit(value)
-                                    
-                                    # DEBUG: Für 1020/1022
-                                    if addr in [1020, 1022]:
-                                        _LOGGER.debug(
-                                            "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
-                                            addr, value
-                                        )
-                                    
                                     # Überspringe das nächste Register (bereits verarbeitet)
                                     i += 1
                                 else:
@@ -1152,15 +1090,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             sensor_id = sensor_mapping[address]
             count = 2 if sensor_info.get("data_type") == "int32" else 1
 
-            # DEBUG: Für 1020/1022
-            if address in [1020, 1022]:
-                _LOGGER.debug(
-                    "INT32-REGISTER-DEBUG: _read_single_register aufgerufen für %d, "
-                    "sensor_id=%s, count=%d, data_type=%s, register_order=%s",
-                    address, sensor_id, count, sensor_info.get("data_type"),
-                    self._int32_register_order
-                )
-
             _LOGGER.debug(
                 f"Address {address} polling status: enabled=True (entity-based)"
             )
@@ -1176,22 +1105,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             if count == 2:
-                # DEBUG: Für 1020/1022
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Kombiniere Register %d: "
-                        "Register[0]=%d, Register[1]=%d, order=%s",
-                        address, result.registers[0], result.registers[1], 
-                        self._int32_register_order
-                    )
                 value = combine_int32_registers(result.registers, self._int32_register_order)
                 value = to_signed_32bit(value)
-                # DEBUG: Für 1020/1022
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
-                        address, value
-                    )
             else:
                 value = result.registers[0]
                 if sensor_info.get("data_type") == "int16":
@@ -1199,24 +1114,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             if "scale" in sensor_info:
                 value = value * sensor_info["scale"]
-                # DEBUG: Für 1020/1022
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Register %d nach Scale (%s): %s",
-                        address, sensor_info["scale"], value
-                    )
 
             data[sensor_id] = value
-            
-            # Cache den Wert im globalen Cache für andere Module
             self._global_register_cache[address] = value
-            if address in [1020, 1022]:
-                _LOGGER.debug("INT32-REGISTER-DEBUG: Cached register %s = %s", address, value)
-            else:
-                _LOGGER.debug("Cached register %s = %s", address, value)
+            _LOGGER.debug("Cached register %s = %s", address, value)
 
         except Exception as ex:
-            _LOGGER.info("MODBUS READ FAILED: address=%s, error=%s, caller=_async_update_data", address, ex)
+            _LOGGER.warning("MODBUS READ FAILED: address=%s, error=%s, caller=_async_update_data", address, ex)
 
     async def _read_general_sensors_batch(self, data):
         """Read general sensors using global register collection."""
@@ -1237,23 +1141,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             for sensor_id, sensor_info in compatible_hp_sensors.items():
                 address = base_address + sensor_info["relative_address"]
                 
-                # DEBUG: Spezifisch für int32-Sensoren
-                if sensor_info.get("data_type") == "int32":
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Sensor %s (hp%d_%s), address=%d, "
-                        "enabled=%s, disabled=%s",
-                        sensor_id, hp_idx, sensor_id, address,
-                        self.is_address_enabled_by_entity(address),
-                        self.is_register_disabled(address)
-                    )
-                
                 if not self.is_address_enabled_by_entity(address):
-                    if address in [1020, 1022]:
-                        _LOGGER.debug(
-                            "INT32-REGISTER-DEBUG: Register %d ist NICHT enabled - "
-                            "Entity-basiertes Polling blockiert!",
-                            address
-                        )
                     continue
 
                 # Sammle Register-Request statt sofort zu lesen
@@ -1520,13 +1408,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             if not await self.client.connect():
                 msg = f"Failed to connect to {self.host}:{self.port}"
-                _LOGGER.info("MODBUS CONNECT: Failed to connect to %s:%s", self.host, self.port)
+                _LOGGER.warning("MODBUS CONNECT: Failed to connect to %s:%s", self.host, self.port)
                 raise UpdateFailed(msg)
 
             _LOGGER.info("MODBUS CONNECT: Successfully connected to %s:%s (coordinator_id=%s)", self.host, self.port, id(self))
 
         except Exception as e:
-            _LOGGER.info("MODBUS CONNECT: Failed to connect to %s:%s, error=%s (coordinator_id=%s)", self.host, self.port, e, id(self))
+            _LOGGER.warning("MODBUS CONNECT: Failed to connect to %s:%s, error=%s (coordinator_id=%s)", self.host, self.port, e, id(self))
             self.client = None
             msg = f"Connection failed: {e}"
             raise UpdateFailed(msg) from e

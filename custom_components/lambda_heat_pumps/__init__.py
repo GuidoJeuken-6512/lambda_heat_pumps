@@ -39,6 +39,10 @@ TRANSLATION_SOURCES = {DOMAIN: "translations"}
 _entry_reload_locks: dict[str, asyncio.Lock] = {}
 _entry_reload_flags: dict[str, bool] = {}
 
+_LOG_RELOAD = "RELOAD"
+_LOG_AUTODETECT = "AUTO-DETECT"
+_LOG_SETUP = "SETUP"
+
 # Tracks which entries have been set up at least once in this HA session.
 # Used to distinguish a first-time setup from a reload (H-04):
 # after async_unload_entry clears hass.data, checking hass.data is unreliable.
@@ -182,7 +186,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 else:
                     _LOGGER.info("AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
             except Exception as ex:
-                _LOGGER.info("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
+                _LOGGER.warning("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
         
         # FIX K-02: Task-Referenz speichern – wird beim Unload abgebrochen,
         # sodass kein verwaister Task nach einem Reload einen weiteren Reload triggert.

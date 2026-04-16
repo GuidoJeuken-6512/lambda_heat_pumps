@@ -505,7 +505,7 @@ async def wait_for_stable_connection(coordinator) -> None:
             
         except Exception as e:
             attempt += 1
-            _LOGGER.info("⏳ CONNECTION: Connection test failed (attempt %d/%d): %s", attempt, max_attempts, e)
+            _LOGGER.debug("⏳ CONNECTION: Connection test failed (attempt %d/%d): %s", attempt, max_attempts, e)
             await asyncio.sleep(1)
     
     _LOGGER.warning("CONNECTION: Connection not stable after %d attempts, proceeding anyway", max_attempts)
@@ -518,7 +518,7 @@ async def _test_connection_health(coordinator) -> bool:
     Transaction ID mismatches.
     """
     if not coordinator.client:
-        _LOGGER.info("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
+        _LOGGER.debug("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
         return False
     
     # Verwende Lock, um parallele Health-Checks zu vermeiden
@@ -535,10 +535,10 @@ async def _test_connection_health(coordinator) -> bool:
                 _LOGGER.debug("CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
                 return True
             else:
-                _LOGGER.info("CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
+                _LOGGER.debug("CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
                 return False
         except Exception as e:
-            _LOGGER.info("CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
+            _LOGGER.debug("CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
             return False
 
 
