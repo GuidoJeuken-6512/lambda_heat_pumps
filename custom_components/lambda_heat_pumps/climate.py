@@ -168,8 +168,9 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
             [raw_value],
             self._entry.data.get("slave_id", 1),
         )
-        if hasattr(result, "isError") and result.isError():
+        if result is None or (hasattr(result, "isError") and result.isError()):
             _LOGGER.error("Failed to write target temperature: %s", result)
+            await self.coordinator.async_request_refresh()
             return
         key = (
             f"boil{self._idx}_target_high_temperature"
@@ -177,8 +178,8 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
             else f"hc{self._idx}_target_room_temperature"
         )
         self.coordinator.data[key] = temperature
-        await self.coordinator.async_refresh()
         self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
 
 async def async_setup_entry(

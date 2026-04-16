@@ -404,7 +404,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.exception("Error during centralized cleanup")
         
         # Services cleanup is now handled by centralized cleanup function
-        
+
+        # Persist-Flush bei Shutdown: Dirty-Daten vor dem Entladen sichern
+        try:
+            entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+            coordinator = entry_data.get("coordinator")
+            if coordinator is not None and getattr(coordinator, "_persist_dirty", False):
+                _LOGGER.debug("UNLOAD: Flushing dirty persist data before unload")
+                await coordinator._persist_counters(force=True)
+        except Exception:
+            _LOGGER.exception("UNLOAD: Error during persist flush")
+
         # Clean up domain data if this is the last entry
         if DOMAIN in hass.data and len(hass.data[DOMAIN]) == 0:
             hass.data.pop(DOMAIN, None)

@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_time_interval, async_call_later
 from .const import (
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
@@ -124,6 +124,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._entity_address_mapping = {}  # Initialize entity address mapping
         self._entity_registry = None  # Initialize entity registry reference
         self._registry_listener = None  # Initialize registry listener reference
+        self._registry_update_cancel = None  # Debounce cancel handle
 
         # Dynamische Batch-Read-Fehlerbehandlung
         self._batch_failures = {}  # Dict: (start_addr, count) -> failure_count
@@ -283,22 +284,20 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
         return await self.hass.async_add_executor_job(_load_and_normalize)
 
-    async def _persist_counters(self):
+    async def _persist_counters(self, force: bool = False):
         """Persist counter data and state information to file using optimized I/O with debouncing."""
-        # Also persist thermal energy readings
-        # (Extend this logic if you want to persist more types in the future)
         import time
-        
+
         # Prüfe Dirty-Flag - nur schreiben wenn sich etwas geändert hat
         if not self._persist_dirty:
             _LOGGER.debug("No changes to persist, skipping write")
             return
-        
+
         current_time = time.time()
-        
-        # Debouncing: Max 1x pro 30 Sekunden schreiben
-        if current_time - self._persist_last_write < self._persist_debounce_seconds:
-            _LOGGER.debug("Persist write debounced (last write %.1fs ago)", 
+
+        # Debouncing: Max 1x pro 30 Sekunden schreiben (außer bei force=True beim Shutdown)
+        if not force and current_time - self._persist_last_write < self._persist_debounce_seconds:
+            _LOGGER.debug("Persist write debounced (last write %.1fs ago)",
                          current_time - self._persist_last_write)
             return
         
@@ -538,8 +537,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
         
         try:
-            # Erstelle persist_data dict für die Hilfsfunktionen
-            persist_data = {"sensor_ids": self._sensor_ids, "thermal_sensor_ids": self._thermal_sensor_ids}
+            # Arbeite auf Kopien, um atomaren Tausch am Ende zu ermöglichen
+            local_sensor_ids = dict(self._sensor_ids)
+            local_thermal_sensor_ids = dict(self._thermal_sensor_ids)
+            persist_data = {"sensor_ids": local_sensor_ids, "thermal_sensor_ids": local_thermal_sensor_ids}
             
             # Prüfe alle Wärmepumpen, die in _sensor_ids gespeichert sind (auch wenn keine Custom-Sensoren konfiguriert sind)
             all_hp_keys = set()
@@ -588,10 +589,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt für %s: %s -> %s", hp_key, stored_sensor_id, current_sensor_id)
                     await self._handle_sensor_change(hp_idx, current_sensor_id)
                 
-                # Speichere neue Sensor-ID für nächsten Vergleich
+                # Speichere neue Sensor-ID in lokale Kopie
                 store_sensor_id(persist_data, hp_idx, current_sensor_id)
-                self._sensor_ids = persist_data["sensor_ids"]
-                
                 _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-ID für %s aktualisiert: %s", hp_key, current_sensor_id)
 
             # Thermik-Sensor-Wechsel prüfen (analog zu elektrisch)
@@ -614,7 +613,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     await self._handle_thermal_sensor_change(hp_idx, current_thermal_id)
                 store_thermal_sensor_id(persist_data, hp_idx, current_thermal_id)
-                self._thermal_sensor_ids = persist_data["thermal_sensor_ids"]
+
+            # Atomar tauschen — kein yield zwischen diesen beiden Zeilen
+            self._sensor_ids = persist_data["sensor_ids"]
+            self._thermal_sensor_ids = persist_data["thermal_sensor_ids"]
 
             # Speichere alle Änderungen in der JSON-Datei
             if self._sensor_ids or self._thermal_sensor_ids:
@@ -1273,7 +1275,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
     @callback
     def _on_entity_registry_changed(self, event):
-        """Handle entity registry changes."""
+        """Handle entity registry changes with debounce to avoid excessive Modbus reads."""
         try:
             data = event.data
             entity_id = data.get("entity_id")
@@ -1281,11 +1283,21 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if entity_id and _name_prefix and entity_id.startswith(
                 f"sensor.{_name_prefix}_"
             ):
-                # This is one of our entities
                 _LOGGER.debug("Entity registry change for %s: %s", entity_id, data)
 
-                # Schedule update of address mapping
-                self.hass.async_create_task(self._update_entity_address_mapping())
+                # Cancel pending update if one is already scheduled
+                if self._registry_update_cancel is not None:
+                    self._registry_update_cancel()
+                    self._registry_update_cancel = None
+
+                @callback
+                def _delayed_update(_now):
+                    self._registry_update_cancel = None
+                    self.hass.async_create_task(self._update_entity_address_mapping())
+
+                self._registry_update_cancel = async_call_later(
+                    self.hass, 0.25, _delayed_update
+                )
 
         except Exception as e:
             _LOGGER.error("Error handling entity registry change: %s", str(e))
