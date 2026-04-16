@@ -219,7 +219,7 @@ Sie können Offsets jederzeit anpassen:
 
 Nach der Übernahme historischer Daten können Sie:
 
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) einrichten
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Optionen des config_flow](optionen-config-flow.md) anpassen
 - [Aktionen (read/write Modbus register)](aktionen-modbus.md) verwenden
 

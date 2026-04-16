@@ -182,7 +182,7 @@ automation:
 
 Nach der Einrichtung des Raumthermostats können Sie:
 
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) einrichten
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
 - [Optionen des config_flow](optionen-config-flow.md) anpassen
 

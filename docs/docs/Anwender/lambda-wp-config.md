@@ -323,6 +323,6 @@ Die Integration validiert die Konfiguration automatisch beim Start:
 Nach der Konfiguration der `lambda_wp_config.yaml` können Sie:
 
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) mit externen Sensoren einrichten
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) mit externen Sensoren einrichten
 - [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md) vornehmen
 

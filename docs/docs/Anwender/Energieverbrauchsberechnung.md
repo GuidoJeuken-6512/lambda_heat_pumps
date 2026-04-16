@@ -4,19 +4,19 @@ title: "Energie- und Wärmeverbrauchsberechnung"
 
 # Energie- und Wärmeverbrauchsberechnung
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 16.04.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Sensoren für **Stromverbrauch** (elektrische Energie) und **Wärmeabgabe** (thermische Energie) – jeweils nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) und Zeitraum (Total, Täglich, Monatlich, Jährlich). Damit ist eine vollständige Analyse des Energie- und Wärmeflusses Ihrer Wärmepumpe möglich.
 
-⚠️ **Die Daten der Sensoren werden in der Integration berechnet, sie können nicht aus der Lambda ausgelesen werden. Daher können sie von der Werten in der Lambda abweichen. Zudem müssen sich die Tages- Monats- & Jahres-Werte erst aufbauen.**
+⚠️ **Die Daten der Sensoren werden in der Integration berechnet, sie können nicht aus der Lambda ausgelesen werden. Daher können sie von den Werten in der Lambda abweichen. Zudem müssen sich die Tages-, Monats- & Jahres-Werte erst aufbauen.**
 
-Um die Total-Werte denen in der Anzeige der Lambda anzugleichen, wird es in einem der nächsten Releases eine Möglichkeit geben, diese mit einem Offset anzugleichen.
+Um die Total-Werte an die Anzeige der Lambda anzugleichen, können Offsets in der `lambda_wp_config.yaml` konfiguriert werden (siehe [Historische Daten übernehmen](historische-daten.md)).
 ## Übersicht
 
 Die Sensoren bieten:
 
 - **Betriebsart-spezifisches Tracking**: Für jede Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen, Standby)
-- **Zeiträume**: Total, Täglich, Monatlich, Jährlich
+- **Zeiträume**: Total, Stündlich (nur Heizen), Täglich, Monatlich, Jährlich
 - **Stromverbrauch (elektrisch)** und **Wärmeabgabe (thermisch)**
 - **Konfigurierbare Quellsensoren**: Lambda eigener oder externer Energiezähler nutzbar
 - **Automatische Einheitenkonvertierung**: Wh, kWh, MWh
@@ -26,18 +26,22 @@ Die Sensoren bieten:
 ### Elektrische Energieverbrauchs-Sensoren (Stromverbrauch)
 
 - **Total**: `sensor.eu08l_hp1_heating_energy_total`, ...
+- **Stündlich** (nur Heizen): `sensor.eu08l_hp1_heating_energy_hourly`
 - **Täglich**: `sensor.eu08l_hp1_heating_energy_daily`, ...
 - **Monatlich**: `sensor.eu08l_hp1_heating_energy_monthly`, ...
 - **Jährlich**: `sensor.eu08l_hp1_heating_energy_yearly`, ...
-- Für alle Modi: heating, hot_water, cooling, defrost, stby
+- Für alle Modi: `heating`, `hot_water`, `cooling`, `defrost`, `stby`
+
+> **Hinweis**: `stby`-Sensoren (Standby-Energie) existieren nur als elektrische Sensoren – es gibt keine thermischen Standby-Sensoren.
 
 ### Thermische Energieverbrauchs-Sensoren (Wärmeabgabe)
 
 - **Total**: `sensor.eu08l_hp1_heating_thermal_energy_total`, ...
+- **Stündlich** (nur Heizen): `sensor.eu08l_hp1_heating_thermal_energy_hourly`
 - **Täglich**: `sensor.eu08l_hp1_heating_thermal_energy_daily`, ...
 - **Monatlich**: `sensor.eu08l_hp1_heating_thermal_energy_monthly`, ...
 - **Jährlich**: `sensor.eu08l_hp1_heating_thermal_energy_yearly`, ...
-- Für alle Modi: heating, hot_water, cooling, defrost
+- Für alle Modi: `heating`, `hot_water`, `cooling`, `defrost`
 
 Jeder Sensor ist pro Wärmepumpe (`hp1`, `hp2`, ...) und Modus/Zeitraum verfügbar.
 

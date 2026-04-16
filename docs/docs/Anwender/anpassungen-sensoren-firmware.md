@@ -135,5 +135,5 @@ Nach der Anpassung der Sensoren können Sie:
 
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
 - [Raumthermostat](raumthermostat.md) konfigurieren
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) einrichten
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 

@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen des config_flow
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 16.04.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -58,19 +58,19 @@ title: "Optionen des config_flow"
 **Beschreibung**: Legen Sie die minimalen und maximalen Temperaturgrenzen für Heizkreise fest.
 
 - **Minimum-Temperatur**: 
-  - **Standard**: 10°C
+  - **Standard**: 15°C
   - **Bereich**: 10°C bis 40°C
   - **Schrittweite**: 1°C
   - **Einheit**: °C
 
 - **Maximum-Temperatur**: 
-  - **Standard**: 40°C
+  - **Standard**: 35°C
   - **Bereich**: 10°C bis 40°C
   - **Schrittweite**: 1°C
   - **Einheit**: °C
 
 - **Temperatur-Schrittweite**: 
-  - **Standard**: 0.1°C
+  - **Standard**: 0.5°C
   - **Bereich**: 0.1°C bis 2.0°C
   - **Schrittweite**: 0.1°C
   - **Einheit**: °C
@@ -81,8 +81,22 @@ title: "Optionen des config_flow"
 
 **Beschreibung**: Aktualisieren Sie die Firmware-Version Ihrer Lambda-Wärmepumpe.
 
-- **Standard**: Die bei der Initialkonfiguration ausgewählte Firmware-Version
+- **Standard**: `V0.0.8-3K` (häufigste Feldversion)
 - **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren verfügbar sind
+
+**Verfügbare Firmware-Versionen:**
+
+| Version | Firmware-Level |
+|---------|----------------|
+| `V1.1.0-3K` | 8 (neueste) |
+| `V0.0.10-3K` | 8 |
+| `V0.0.9-3K` | 7 |
+| `V0.0.8-3K` | 6 (Standard) |
+| `V0.0.7-3K` | 5 |
+| `V0.0.6-3K` | 4 |
+| `V0.0.5-3K` | 3 |
+| `V0.0.4-3K` | 2 |
+| `V0.0.3-3K` | 1 |
 
 **So finden Sie die Firmware-Version:**
 1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
@@ -91,6 +105,14 @@ title: "Optionen des config_flow"
 4. Die Firmware-Version wird dort angezeigt
 
 **Hinweis**: Nach Änderung der Firmware-Version müssen Sie Home Assistant neu starten, damit die neuen Sensoren erkannt werden.
+
+### Abfrage-Intervall
+
+**Beschreibung**: Wie oft die Integration Daten von der Lambda über Modbus abruft.
+
+- **Standard**: 30 Sekunden
+- **Bereich**: 10 bis 300 Sekunden
+- **Hinweis**: Lambda erfordert ein Timeout von mindestens 60 Sekunden. Ein Wert von 30 Sekunden ist daher der empfohlene Standard.
 
 ### Raumthermostat-Steuerung
 
@@ -129,14 +151,20 @@ title: "Optionen des config_flow"
 4. Klicken Sie auf **Absenden**
 
 **PV-Überschuss-Modi:**
-- **Optionen**: Verschiedene Modi je nach Konfiguration
 
+| Schlüssel | Beschreibung |
+|-----------|-------------|
+| `pos` (Standard) | Pos. E-Überschuss – nur positive Werte, UINT16 |
+| `entry` | E-Eintrag – nur positive Werte, UINT16 |
+| `neg` | Neg. E-Überschuss – positive und negative Werte, INT16 |
+
+Der Modus bestimmt, wie der Leistungswert des PV-Sensors an das Lambda-Register 102 (E-Manager Actual Power) übertragen wird.
 
 Nach der Anpassung der Optionen können Sie:
 
 - [Raumthermostat](raumthermostat.md) konfigurieren (falls aktiviert)
 - [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) verwenden (falls aktiviert)
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) verwenden
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) einrichten
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
 
