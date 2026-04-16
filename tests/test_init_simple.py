@@ -66,20 +66,23 @@ def test_per_entry_reload_state_uses_dicts():
 
 @pytest.mark.asyncio
 async def test_concurrent_reload_same_entry_is_skipped():
-    """K-02: Ein zweiter Reload desselben Entry wird übersprungen wenn einer läuft."""
+    """K-01: Ein zweiter Reload desselben Entry wird übersprungen wenn Lock gehalten wird."""
     from custom_components.lambda_heat_pumps import async_reload_entry
 
     entry = MagicMock()
     entry.entry_id = "test_concurrent_reload"
 
-    # Setze Flag manuell so als lief bereits ein Reload
-    _entry_reload_flags["test_concurrent_reload"] = True
+    # Simuliere laufenden Reload: Lock direkt setzen und sperren
+    lock = asyncio.Lock()
+    _entry_reload_locks["test_concurrent_reload"] = lock
+    await lock.acquire()  # Lock halten = Reload läuft
 
     try:
         result = await async_reload_entry(MagicMock(), entry)
         # Zweiter Aufruf soll True zurückgeben (nicht abstürzen)
         assert result is True
     finally:
+        lock.release()
         _entry_reload_flags.pop("test_concurrent_reload", None)
         _entry_reload_locks.pop("test_concurrent_reload", None)
 
@@ -261,19 +264,19 @@ def test_config_cache_keys_cleared_on_setup():
 # ---------------------------------------------------------------------------
 
 def test_async_read_input_registers_uses_lock_and_retry():
-    """2d: async_read_input_registers verwendet den globalen Modbus-Lock."""
+    """2d: async_read_input_registers verwendet den globalen Modbus-Lock (lazy-init)."""
     import inspect
     from custom_components.lambda_heat_pumps.modbus_utils import (
         async_read_input_registers,
-        _modbus_read_lock,
+        _get_modbus_read_lock,
     )
     # Funktion existiert und ist eine Coroutine
     assert asyncio.iscoroutinefunction(async_read_input_registers)
-    # Globaler Lock existiert
-    assert isinstance(_modbus_read_lock, asyncio.Lock)
-    # Quellcode der Funktion referenziert den Lock
+    # Lock-Getter liefert einen Lock (lazy-init)
+    assert isinstance(_get_modbus_read_lock(), asyncio.Lock)
+    # Quellcode der Funktion referenziert den Lock-Getter
     source = inspect.getsource(async_read_input_registers)
-    assert "_modbus_read_lock" in source
+    assert "_get_modbus_read_lock" in source
     assert "LAMBDA_MAX_RETRIES" in source
 
 

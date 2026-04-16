@@ -140,6 +140,7 @@ async def test_lambda_climate_entity_set_temperature():
         return_value=MagicMock(isError=lambda: False)
     )
     coordinator_mock.async_refresh = AsyncMock()
+    coordinator_mock.async_request_refresh = AsyncMock()
 
     entry_mock = MagicMock()
     entry_mock.entry_id = "test_entry"
@@ -188,8 +189,8 @@ async def test_lambda_climate_entity_set_temperature():
     # Überprüfe, ob der Coordinator-Cache aktualisiert wurde
     assert coordinator_mock.data["boil1_target_high_temperature"] == 60
 
-    # Überprüfe, ob async_refresh aufgerufen wurde
-    coordinator_mock.async_refresh.assert_called_once()
+    # Überprüfe, ob async_request_refresh aufgerufen wurde (H-04: nach Erfolg)
+    coordinator_mock.async_request_refresh.assert_called_once()
 
 
 @pytest.mark.asyncio
