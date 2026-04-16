@@ -81,21 +81,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Reload config entry."""
-    # FIX K-02: Pro Entry eigener Lock und Flag – keine modul-globale Sperre mehr.
     entry_id = entry.entry_id
+    reload_lock = _entry_reload_locks.setdefault(entry_id, asyncio.Lock())
 
-    if _entry_reload_flags.get(entry_id, False):
+    # Non-blocking fast-path: if the lock is already held, a reload is in progress
+    if reload_lock.locked():
         _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
         return True
 
-    reload_lock = _entry_reload_locks.setdefault(entry_id, asyncio.Lock())
     _LOGGER.info("RELOAD: Starting reload for entry: %s", entry_id)
 
     async with reload_lock:
-        if _entry_reload_flags.get(entry_id, False):
-            _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
-            return True
-
         _entry_reload_flags[entry_id] = True
         _LOGGER.info("RELOAD: Reload lock acquired for entry %s, proceeding", entry_id)
 
