@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - "main"
+      - "V2.5.0"
     paths:
       - 'docs/**'
       - '.github/workflows/docsz.yml'

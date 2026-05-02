@@ -76,6 +76,7 @@ nav = [
     { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
     { "Lambda Heizkurven Card" = "Vorlagen/Lambda_heizkurve_card.md" },
     { "Lambda Register-Dashboard" = "Vorlagen/Lambda_register_dashboard.md" },
+    { "Lambda Dynamisch Dashboard" = "Vorlagen/Lambda_dynamisch_dashboard.md" },
   ] },
   { "Entwickler" = [
     { "Features (Technische Übersicht)" = "Entwickler/features.md" },
