@@ -6,7 +6,7 @@ title: "Lambda Dynamisch Dashboard"
 
 *Zuletzt geändert am 02.05.2026*
 
-Diese Vorlage beschreibt ein vollständig **dynamisches** Lovelace-Dashboard für die Lambda Wärmepumpen Integration.
+Diese Vorlage beschreibt ein **dynamisches** Lovelace-Dashboard für die Lambda Wärmepumpen Integration.
 
 **Besonderheit:** Der Gerätename (Prefix wie `eu08l`) wird automatisch aus der Integration ausgelesen – es muss **nichts angepasst** werden. Das Dashboard passt sich jeder Lambda-Konfiguration ohne manuelle Änderung an. Das Dashboard zeigt zudem das jeweilige Modbus Register zum Sensor an.
 
