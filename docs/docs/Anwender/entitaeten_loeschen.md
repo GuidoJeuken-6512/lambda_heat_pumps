@@ -12,7 +12,7 @@ Entitäten, die von der Lambda-Integration nicht mehr bereitgestellt werden (z.�
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../../assets/entitaet_loeschen1_de.png" alt="Entitätsdetail mit Zahnrad-Menü" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/entitaet_loeschen1_de.png" alt="Entitätsdetail mit Zahnrad-Menü" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
     <ol>
@@ -28,7 +28,7 @@ Entitäten, die von der Lambda-Integration nicht mehr bereitgestellt werden (z.�
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../../assets/entitaet_loeschen2_de.png" alt="Entitätenliste mit Filter und Auswahl" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/entitaet_loeschen2_de.png" alt="Entitätenliste mit Filter und Auswahl" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
     <ol>
@@ -43,7 +43,7 @@ Entitäten, die von der Lambda-Integration nicht mehr bereitgestellt werden (z.�
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../../assets/entitaet_loeschen3_de.png" alt="Menü Ausgewählte löschen" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/entitaet_loeschen3_de.png" alt="Menü Ausgewählte löschen" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
     <ol start="6">

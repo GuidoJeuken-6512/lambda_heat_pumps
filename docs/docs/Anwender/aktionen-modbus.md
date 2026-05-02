@@ -90,7 +90,7 @@ automation:
 
 ## Verwendung über Developer Tools
 
-<img src="../../assets/dev_tools_actions_de.png" alt="DevTools Actions" style="width: 60%; height: auto; border-radius: 8px;">
+<img src="../assets/dev_tools_actions_de.png" alt="DevTools Actions" style="width: 60%; height: auto; border-radius: 8px;">
 
 ### Register lesen
 
