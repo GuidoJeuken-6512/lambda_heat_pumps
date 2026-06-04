@@ -203,6 +203,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         # Neue Config: Auto-Detection mit Retry (blocking für Setup)
         _LOGGER.info("AUTO-DETECT: New configuration detected, performing auto-detection (coordinator_id=%s)", id(coordinator))
+        # Warte auf stabile Verbindung auch beim ersten Start (Fix Issue #80):
+        # Das Gerät ist beim HA-Kaltstart oft noch nicht erreichbar.
+        _LOGGER.info("AUTO-DETECT: Waiting for stable connection before first-start auto-detection...")
+        await wait_for_stable_connection(coordinator)
+        _LOGGER.info("AUTO-DETECT: Connection stable, starting first-start module detection...")
         detected_counts = None
         for attempt in range(AUTO_DETECT_RETRIES):
             try:

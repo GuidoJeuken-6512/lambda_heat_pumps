@@ -1,5 +1,39 @@
 # Änderungsprotokoll
 
+### [2.5.0] - 2026-04-16
+
+#### Kritische Fehlerbehebungen
+- **K-01 · Race Condition im Reload-Flag**: Fast-Path verwendet jetzt `lock.locked()` (atomar) statt unsynchronisiertem Flag-Check (TOCTOU-Lücke geschlossen)
+- **K-02 · Auto-Detection Erststart (Issue #80)**: `wait_for_stable_connection()` vor erster Modul-Erkennung eingefügt — Gerät bei HA-Kaltstart nicht sofort erreichbar; Exception-Logging auf `WARNING` + `exc_info=True` angehoben
+- **K-03 · Modbus-Locks**: Lazy-Initialization — Locks werden erst beim ersten Aufruf erzeugt, nicht mehr beim Modul-Import
+
+#### Hohe Priorität
+- **H-01 · Entity-Registry-Listener**: 250ms Debounce verhindert parallele Mapping-Updates bei Massen-Änderungen
+- **H-02 · Sensor-ID-Updates**: Atomarer Tausch am Ende der Verarbeitung — kein inkonsistenter Zwischenzustand mehr
+- **H-03 · Persist-Flush beim Shutdown**: `_persist_counters(force=True)` beim Unload verhindert Datenverlust im Debounce-Fenster
+- **H-04 · Climate Write-Fehler**: Explizite `None`-Prüfung vor lokalem State-Update; Refresh bei Fehler
+
+#### Mittlere Priorität
+- **M-01 · JSON-Repair-Logik**: Fragile Regex-Reparatur entfernt; klare Backup-und-Reset-Strategie bei korrupten Dateien
+- **M-02 · Modbus-Batch-Größe**: Limit von 120 auf 100 Register gesenkt (sicherer Puffer zum Modbus-Standard-Maximum 125)
+- **M-03 · Temperaturvalidierung**: `min_temp >= max_temp` wird erkannt und auf Defaults zurückgefallen
+- **M-04 · Persist-Versionsfeld**: `"version": 1` in alle neu geschriebenen Persist-Dateien eingefügt
+
+#### Code-Qualität
+- **Q-01**: Log-Level in `modbus_utils.py` und `coordinator.py` auf semantisch korrekte Levels korrigiert (INFO → WARNING/DEBUG)
+- **Q-02**: ~110 Zeilen hardcodierter INT32-Debug-Code für Register 1020/1022 entfernt
+- **Q-03**: Dead-Code-Methode `_generate_entity_id()` entfernt
+- **Q-04**: Log-Präfix-Konstanten (`_LOG_RELOAD`, `_LOG_AUTODETECT`, `_LOG_SETUP`) in `__init__.py` definiert
+- **Q-05**: Inline-Imports aus `_detect_and_handle_sensor_changes()` an den Dateianfang verschoben
+
+#### Dependency-Updates
+- `pymodbus`: 3.9.2 → 3.13.0
+- `homeassistant`: ≥2025.10 → ≥2026.2.3
+- `pytest`: 8.4.0 → ~9.0.3 · `pylint`: 3.3.7 → 4.0.5
+- `mkdocs-material`: ≥9.0.0 → ≥9.7.6 · `mkdocs-static-i18n`: ≥0.21.0 → ≥1.3.1
+
+---
+
 #### New Features seit dem letzten Release
 - **Geräte-Hierarchie**: Aufteilung in Haupt- und Sub-Geräte für bessere Organisation und klarere Entity-Struktur
 - **Mehrsprachige Unterstützung**: Umfassende Übersetzungen in Deutsch und Englisch für alle Entity-Namen

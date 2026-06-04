@@ -1,7 +1,41 @@
 # Changelog
 
 ## English Version
- 
+
+### [2.5.0] - 2026-04-16
+
+#### Critical Fixes
+- **K-01 · Race Condition in Reload Flag**: Fast-path now uses `lock.locked()` (atomic) instead of unsynchronized flag check (TOCTOU gap closed)
+- **K-02 · Auto-Detection First Start (Issue #80)**: `wait_for_stable_connection()` added before first-start module detection — device not immediately reachable during HA cold start; exception logging raised to `WARNING` + `exc_info=True`
+- **K-03 · Modbus Locks**: Lazy initialization — locks are created on first call, not at module import
+
+#### High Priority
+- **H-01 · Entity Registry Listener**: 250ms debounce prevents parallel mapping updates during bulk changes
+- **H-02 · Sensor ID Updates**: Atomic swap at end of processing — no inconsistent intermediate state
+- **H-03 · Persist Flush on Shutdown**: `_persist_counters(force=True)` on unload prevents data loss in debounce window
+- **H-04 · Climate Write Error**: Explicit `None` check before local state update; refresh on error
+
+#### Medium Priority
+- **M-01 · JSON Repair Logic**: Fragile regex repair removed; clear backup-and-reset strategy for corrupted files
+- **M-02 · Modbus Batch Size**: Limit lowered from 120 to 100 registers (safe buffer below Modbus standard maximum of 125)
+- **M-03 · Temperature Validation**: `min_temp >= max_temp` detected and falls back to defaults
+- **M-04 · Persist Version Field**: `"version": 1` inserted into all newly written persist files
+
+#### Code Quality
+- **Q-01**: Log levels in `modbus_utils.py` and `coordinator.py` corrected to semantically correct levels (INFO → WARNING/DEBUG)
+- **Q-02**: ~110 lines of hardcoded INT32 debug code for registers 1020/1022 removed
+- **Q-03**: Dead-code method `_generate_entity_id()` removed
+- **Q-04**: Log prefix constants (`_LOG_RELOAD`, `_LOG_AUTODETECT`, `_LOG_SETUP`) defined in `__init__.py`
+- **Q-05**: Inline imports from `_detect_and_handle_sensor_changes()` moved to top of file
+
+#### Dependency Updates
+- `pymodbus`: 3.9.2 → 3.13.0
+- `homeassistant`: ≥2025.10 → ≥2026.2.3
+- `pytest`: 8.4.0 → ~9.0.3 · `pylint`: 3.3.7 → 4.0.5
+- `mkdocs-material`: ≥9.0.0 → ≥9.7.6 · `mkdocs-static-i18n`: ≥0.21.0 → ≥1.3.1
+
+---
+
 #### New Features since last release
 - **Device Hierarchy**: Separation into main devices and sub-devices for better organization and clearer entity structure
 - **Multilingual Support**: Comprehensive translations in German and English for all entity names

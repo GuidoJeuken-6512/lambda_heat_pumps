@@ -114,6 +114,68 @@ async def test_reload_locks_are_per_entry_independent():
 
 
 # ---------------------------------------------------------------------------
+# Fix K-02 / Issue #80: wait_for_stable_connection im blocking-Detect-Pfad
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_first_start_blocking_detect_waits_for_stable_connection():
+    """K-02/Issue #80: wait_for_stable_connection wird im else-Zweig aufgerufen
+    (kein num_hps/num_hc in entry.data → Erststart ohne vorhandene Modulanzahl)."""
+    from custom_components.lambda_heat_pumps import async_setup_entry, _previously_setup_entries
+
+    entry_id = "test_issue80_first_start"
+    entry = MagicMock()
+    entry.entry_id = entry_id
+    # Kein num_hps / num_hc → has_module_counts = False → else-Zweig
+    entry.data = {"host": "192.168.1.1", "port": 502, "slave_id": 1}
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value=MagicMock())
+    entry.async_on_unload = MagicMock()
+
+    _previously_setup_entries.discard(entry_id)
+
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.services = MagicMock()
+    hass.services.has_service = MagicMock(return_value=True)
+    hass.async_create_task = MagicMock()
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_init = AsyncMock()
+    mock_coordinator.async_refresh = AsyncMock()
+    mock_coordinator.client = MagicMock()
+    mock_coordinator.client.connect = AsyncMock(return_value=True)
+    mock_coordinator.slave_id = 1
+    mock_coordinator._int32_register_order = "high_first"
+    mock_coordinator._persist_dirty = False
+
+    mock_wait = AsyncMock()
+
+    with (
+        patch("custom_components.lambda_heat_pumps.ensure_lambda_config", new=AsyncMock()),
+        patch("custom_components.lambda_heat_pumps.LambdaDataUpdateCoordinator", return_value=mock_coordinator),
+        patch("custom_components.lambda_heat_pumps.wait_for_stable_connection", mock_wait),
+        patch("custom_components.lambda_heat_pumps.auto_detect_modules", new=AsyncMock(
+            return_value={"hp": 1, "hc": 2, "boil": 1, "buff": 0, "sol": 0}
+        )),
+        patch("custom_components.lambda_heat_pumps.update_entry_with_detected_modules", new=AsyncMock(return_value=False)),
+        patch("custom_components.lambda_heat_pumps.async_remove_duplicate_entity_suffixes", new=AsyncMock()),
+        patch("custom_components.lambda_heat_pumps.modbus_utils.get_int32_register_order", new=AsyncMock(return_value="high_first")),
+        patch("custom_components.lambda_heat_pumps.ResetManager") as mock_rm,
+    ):
+        mock_rm.return_value.setup_reset_automations = MagicMock()
+        result = await async_setup_entry(hass, entry)
+
+    try:
+        assert result is True
+        mock_wait.assert_called_once_with(mock_coordinator)
+    finally:
+        _previously_setup_entries.discard(entry_id)
+
+
+# ---------------------------------------------------------------------------
 # Fix K-01: Template-Task wird beim Unload abgebrochen
 # ---------------------------------------------------------------------------
 

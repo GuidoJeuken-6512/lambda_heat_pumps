@@ -7,8 +7,36 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
  
-### [2.4.0] - 2026-03-29
+### [2.5.0] - 2026-04-16
 
+Pure code quality and stability release — no breaking changes, no impact on `unique_id`, `entity_id`, or `sensor_id`.
+
+#### Fixed
+- **Race condition in reload flag** (K-01): Fast-path now uses `lock.locked()` (atomic) to close a TOCTOU gap in `async_reload_entry()`
+- **Background auto-detection exception logging** (K-02, fixes #80): Level raised to `WARNING` with full traceback (`exc_info=True`)
+- **Modbus locks bound to wrong event loop** (K-03): Lazy initialization — locks are created on first call, not at module import
+- **Entity registry listener without debounce** (H-01): 250 ms debounce prevents redundant parallel mapping updates
+- **Non-atomic sensor ID update** (H-02): Local copies + atomic swap eliminates inconsistent intermediate state
+- **Persist data lost on shutdown** (H-03): `_persist_counters(force=True)` called on unload to flush within the debounce window
+- **Climate state inconsistency on write error** (H-04): Explicit `None` check before local state update; refresh on failure
+- **Fragile JSON repair logic** (M-01): Regex-based repair removed; backup-and-reset strategy for corrupted persist files
+- **Modbus batch size too close to protocol limit** (M-02): Limit lowered from 120 to 100 registers (safe margin below the 125-register maximum)
+- **Missing temperature range validation** (M-03): `min_temp >= max_temp` now falls back to defaults with a warning
+- **Persist file missing version field** (M-04): `"version": 1` written to all new persist files
+
+#### Code Quality
+- Log levels corrected (`INFO` → `WARNING`/`DEBUG`) for connection errors and health-check results (Q-01)
+- ~110 lines of hardcoded INT32 debug code for registers 1020/1022 removed (Q-02)
+- Dead-code method `_generate_entity_id()` removed (Q-03)
+- Log-prefix constants defined in `__init__.py` (Q-04); inline imports moved to file top (Q-05)
+
+#### Dependencies
+- `pymodbus` 3.9.2 → 3.13.0 · `packaging` ≥23.1 → ≥26.0 · `homeassistant` ≥2025.10 → ≥2026.2.3 (test)
+
+---
+
+### [2.4.0] - 2026-03-29
+ 
 #### Fixed
 - **Critical: Cycling offset re-applied on every cycle event**: `increment_cycling_counter()` was re-adding the full `cycling_offsets` YAML value on every detected mode change instead of once at startup. Offset logic removed from this function; sole responsibility now lies with `_apply_cycling_offset()` in `sensor.py`, which correctly uses differential tracking.
 - **Mode detection for cycling counters**: Fixed shared-state bug that caused cycle events to be missed.
@@ -315,6 +343,34 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
 
+
+### [2.5.0] - 2026-04-16
+
+Reines Code-Qualitäts- und Stabilitätsrelease — keine Breaking Changes, keine Auswirkung auf `unique_id`, `entity_id` oder `sensor_id`.
+
+#### Behoben
+- **Race Condition im Reload-Flag** (K-01): Fast-Path verwendet jetzt `lock.locked()` (atomar) — TOCTOU-Lücke in `async_reload_entry()` geschlossen
+- **Exception-Logging im Auto-Detection-Task** (K-02, behebt #80): Log-Level auf `WARNING` + `exc_info=True` für vollständigen Traceback angehoben
+- **Modbus-Locks an falschen Event-Loop gebunden** (K-03): Lazy-Initialization — Locks werden erst beim ersten Aufruf erstellt, nicht mehr beim Modul-Import
+- **Entity-Registry-Listener ohne Debounce** (H-01): 250 ms Debounce verhindert redundante parallele Mapping-Updates
+- **Nicht-atomares Sensor-ID-Update** (H-02): Lokale Kopien + atomarer Tausch eliminieren inkonsistente Zwischenzustände
+- **Persist-Datenverlust beim Shutdown** (H-03): `_persist_counters(force=True)` beim Unload flusht Daten innerhalb des Debounce-Fensters
+- **Climate State-Inkonsistenz bei Write-Fehler** (H-04): Explizite `None`-Prüfung vor lokalem State-Update; Refresh bei Fehler
+- **Fragile JSON-Repair-Logik** (M-01): Regex-Reparatur entfernt; Backup-und-Reset-Strategie bei korrupten Persist-Dateien
+- **Modbus-Batch-Größe zu nah am Protokoll-Limit** (M-02): Limit von 120 auf 100 Register gesenkt (sicherer Puffer unter dem Maximum von 125)
+- **Fehlende Temperaturbereich-Validierung** (M-03): `min_temp >= max_temp` wird erkannt und mit Warnung auf Defaults zurückgefallen
+- **Fehlendes Versionsfeld in der Persist-Datei** (M-04): `"version": 1` wird in alle neuen Persist-Dateien geschrieben
+
+#### Code-Qualität
+- Log-Level in `modbus_utils.py` und `coordinator.py` korrigiert (`INFO` → `WARNING`/`DEBUG`) (Q-01)
+- ~110 Zeilen hardcodierter INT32-Debug-Code für Register 1020/1022 entfernt (Q-02)
+- Dead-Code-Methode `_generate_entity_id()` entfernt (Q-03)
+- Log-Präfix-Konstanten in `__init__.py` definiert (Q-04); Inline-Imports an Dateianfang verschoben (Q-05)
+
+#### Abhängigkeiten
+- `pymodbus` 3.9.2 → 3.13.0 · `packaging` ≥23.1 → ≥26.0 · `homeassistant` ≥2025.10 → ≥2026.2.3 (Test)
+
+---
 
 ### [2.4.0] - 2026-03-29
 

@@ -12,7 +12,7 @@ title: "Release 2.5.0"
 
 ## Zusammenfassung
 
-Release 2.5.0 ist ein reines Code-Qualitäts- und Stabilitätsrelease ohne Breaking Changes. Es behebt 3 kritische Probleme (Race Condition im Reload-Mechanismus, Event-Loop-gebundene Modbus-Locks, unbehandelte Exceptions im Auto-Detection-Hintergrundtask), 4 Probleme hoher Priorität (Entity-Registry-Listener ohne Debounce, nicht-atomares Sensor-ID-Update, fehlender Persist-Flush beim Shutdown, State-Inkonsistenz bei fehlgeschlagenem Climate-Write) und 4 Probleme mittlerer Priorität (fragile JSON-Repair-Logik, fehlende Temperaturvalidierung, Batch-Limit-Optimierung, fehlendes Versionsfeld in der Persist-Datei). Zusätzlich wurden ~110 Zeilen hardcodierter Debug-Code und toter Code entfernt sowie Log-Level vereinheitlicht.
+Release 2.5.0 ist ein reines Code-Qualitäts- und Stabilitätsrelease ohne Breaking Changes. Es behebt 3 kritische Probleme (Race Condition im Reload-Mechanismus, Event-Loop-gebundene Modbus-Locks, unbehandelte Exceptions im Auto-Detection-Hintergrundtask), 4 Probleme hoher Priorität (Entity-Registry-Listener ohne Debounce, nicht-atomares Sensor-ID-Update, fehlender Persist-Flush beim Shutdown, State-Inkonsistenz bei fehlgeschlagenem Climate-Write) und 4 Probleme mittlerer Priorität (fragile JSON-Repair-Logik, fehlende Temperaturvalidierung, Batch-Limit-Optimierung, fehlendes Versionsfeld in der Persist-Datei). Zusätzlich wurden ~110 Zeilen hardcodierter Debug-Code und toter Code entfernt sowie Log-Level vereinheitlicht. Alle Abhängigkeiten wurden aktualisiert (u. a. pymodbus 3.9.2 → 3.13.0).
 
 **Keine Auswirkung auf `unique_id`, `entity_id` oder `sensor_id` — alle Änderungen sind non-destruktiv.**
 
@@ -46,11 +46,28 @@ async with reload_lock:
 
 ---
 
-### K-02 · Exception im Background-Auto-Detection-Task korrekt geloggt
+### K-02 · Auto-Detection Erststart + Exception-Logging verbessert (Issue #80)
 
-**Betroffen:** `custom_components/lambda_heat_pumps/__init__.py` · `background_auto_detect()`
+**Betroffen:** `custom_components/lambda_heat_pumps/__init__.py` · `async_setup_entry()` · `background_auto_detect()`
 
-**Problem:** Wenn die Hintergrundaufgabe zur Modul-Erkennung fehlschlug, wurde die Exception nur als `INFO` geloggt — ohne vollständigen Traceback. Fehler waren im Log kaum auffindbar.
+**Problem (Root Cause Issue #80):** Beim HA-Kaltstart war das Modbus-Gerät noch nicht erreichbar, wenn der blocking Auto-Detection-Lauf (erster Start ohne `num_hps`/`num_hc` in `entry.data`) seine Verbindungsversuche startete. Die Retry-Schleife lief vollständig durch und fiel auf Standardwerte zurück (`num_hc=1`). Erst beim zweiten HA-Start griff der Background-Detect-Pfad, der intern auf eine stabile Verbindung wartet — daher war z. B. HC2 erst beim zweiten Start sichtbar.
+
+**Fix:** `wait_for_stable_connection()` wird jetzt auch im blocking-Detect-Pfad (Erststart) aufgerufen, bevor die Retry-Schleife beginnt — analog zum Background-Pfad bei Reloads:
+
+```python
+# Vorher: Retry-Schleife startet sofort
+for attempt in range(AUTO_DETECT_RETRIES):
+    if await coordinator.client.connect():
+        ...
+
+# Nachher: stabile Verbindung abwarten
+await wait_for_stable_connection(coordinator)
+for attempt in range(AUTO_DETECT_RETRIES):
+    if await coordinator.client.connect():
+        ...
+```
+
+**Problem (Logging):** Wenn der Hintergrundtask fehlschlug, wurde die Exception nur als `INFO` geloggt — ohne vollständigen Traceback. Fehler waren im Log kaum auffindbar.
 
 **Fix:** Log-Level auf `WARNING` angehoben, `exc_info=True` für vollständigen Traceback:
 
@@ -232,7 +249,7 @@ if min_temp >= max_temp:
 
 ---
 
-### M-05 · Persist-Datei mit Versionsfeld
+### M-04 · Persist-Datei mit Versionsfeld
 
 **Betroffen:** `custom_components/lambda_heat_pumps/coordinator.py` · `_persist_counters()`
 
@@ -299,12 +316,33 @@ Fünf Utility-Funktionen (`detect_sensor_change`, `get_stored_sensor_id`, `store
 
 | Datei | Art |
 |-------|-----|
-| `custom_components/lambda_heat_pumps/__init__.py` | Fix: Race Condition (K-01), Warning-Log (K-02), Persist-Flush beim Shutdown (H-03), Log-Konstanten (Q-04) |
-| `custom_components/lambda_heat_pumps/coordinator.py` | Fix: Debounce (H-01), Atomares Sensor-Update (H-02), Persist-Version (M-05), JSON-Repair (M-01), Batch-Limit (M-02), Lazy-Import (Q-05), Debug-Code-Entfernung (Q-02), Dead-Code-Entfernung (Q-03), Log-Level (Q-01) |
+| `custom_components/lambda_heat_pumps/__init__.py` | Fix: Race Condition (K-01), Verbindungsstabilität Erststart + Warning-Log (K-02), Persist-Flush beim Shutdown (H-03), Log-Konstanten (Q-04) |
+| `custom_components/lambda_heat_pumps/coordinator.py` | Fix: Debounce (H-01), Atomares Sensor-Update (H-02), Persist-Version (M-04), JSON-Repair (M-01), Batch-Limit (M-02), Lazy-Import (Q-05), Debug-Code-Entfernung (Q-02), Dead-Code-Entfernung (Q-03), Log-Level (Q-01) |
 | `custom_components/lambda_heat_pumps/modbus_utils.py` | Fix: Lazy-Locks (K-03), Log-Level (Q-01) |
 | `custom_components/lambda_heat_pumps/climate.py` | Fix: State-Inkonsistenz (H-04), Temperaturvalidierung (M-03) |
 | `tests/test_climate.py` | Test-Anpassung: `async_request_refresh` statt `async_refresh` |
 | `tests/test_init_simple.py` | Test-Anpassung: `lock.locked()` statt Flag-Check; `_get_modbus_read_lock()` statt direkter Lock-Zugriff |
+
+---
+
+## Dependency-Updates
+
+| Paket | Alt | Neu | Typ |
+|-------|-----|-----|-----|
+| `pymodbus` | 3.9.2 | 3.13.0 | Runtime |
+| `packaging` | ≥23.1 | ≥26.0 | Runtime |
+| `openpyxl` | 3.1.2 | 3.1.5 | Runtime |
+| `homeassistant` | ≥2025.10 | ≥2026.2.3 | Test |
+| `pytest` | 8.4.0 | ~9.0.3 | Test |
+| `pytest-cov` | 6.1.1 | 7.1.0 | Test |
+| `pytest-asyncio` | 1.0.0 | 1.3.0 | Test |
+| `pytest-mock` | — | 3.15.1 | Test |
+| `flake8` | ≥6.1.0 | 7.3.0 | Test |
+| `pylint` | 3.3.7 | 4.0.5 | Test |
+| `mkdocs` | ≥1.5.0 | ≥1.6.1 | Docs |
+| `mkdocs-material` | ≥9.0.0 | ≥9.7.6 | Docs |
+| `mkdocs-mermaid2-plugin` | ≥1.0.0 | ≥1.2.3 | Docs |
+| `mkdocs-static-i18n` | ≥0.21.0 | ≥1.3.1 | Docs |
 
 ---
 
