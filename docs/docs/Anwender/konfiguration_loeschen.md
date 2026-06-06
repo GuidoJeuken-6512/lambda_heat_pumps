@@ -14,7 +14,7 @@ Falls Sie die Lambda Wärmepumpen Integration aus Home Assistant entfernen möch
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../../assets/delete_config_de.png" alt="Integration löschen" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/delete_config_de.png" alt="Integration löschen" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
     <ol>

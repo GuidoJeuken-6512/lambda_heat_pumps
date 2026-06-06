@@ -13,7 +13,7 @@ Diese Vorlage erstellt ein Lovelace-Dashboard **„lambda Energy“** mit zwei R
 1. **lambda Energy** – vier Spalten: **Täglich**, **Monatlich**, **Jährlich** und **Total**. Pro Spalte werden für Heizen, Warmwasser, Kühlen und Abtauen die elektrische Energie, die thermische Energie und der COP angezeigt (Abtau ohne COP).
 2. **lambda taktungen** – Cycling-Zähler (Taktungen) nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen, Kompressor-Starts) sowie COP-Übersichten für Heizen, Warmwasser und Kühlen.
 
-<a href="../../assets/dashboard-lambda-energy.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../../assets/dashboard-lambda-energy.png" alt="Lambda Energy Dashboard" width="600" style="max-width: 100%; height: auto;" /></a>
+<a href="../assets/dashboard-lambda-energy.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../assets/dashboard-lambda-energy.png" alt="Lambda Energy Dashboard" width="600" style="max-width: 100%; height: auto;" /></a>
 
 ## Einbindung in Home Assistant
 

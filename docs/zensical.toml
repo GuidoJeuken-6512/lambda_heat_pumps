@@ -76,6 +76,7 @@ nav = [
     { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
     { "Lambda Heizkurven Card" = "Vorlagen/Lambda_heizkurve_card.md" },
     { "Lambda Register-Dashboard" = "Vorlagen/Lambda_register_dashboard.md" },
+    { "Lambda Dynamisch Dashboard" = "Vorlagen/Lambda_dynamisch_dashboard.md" },
   ] },
   { "Entwickler" = [
     { "Features (Technische Übersicht)" = "Entwickler/features.md" },
@@ -95,6 +96,7 @@ nav = [
     { "Firmware-Einstellung – Auswirkungen" = "Entwickler/firmware-einstellung-auswirkungen.md" },
     { "Migrationssystem" = "Entwickler/migration-system.md" },
     { "Offset-System" = "Entwickler/offset-system.md" },
+    { "unique_id – Kopplung an name_prefix" = "Entwickler/unique-id-name-prefix-kopplung.md" },
   ] },
   { "FAQ" = [
     { "FAQ" = "FAQ/FAQ.md" },
@@ -104,8 +106,12 @@ nav = [
 
   { "Releases" = [
       { "Releases" = "Releases/releases.md" },
-      { "Release 2.4.0 Aktuell" = "Releases/release-2-4-0.md" },
+      { "Release 2.5.0 Aktuell" = "Releases/release-2-5-0.md" },
+      { "Release 2.5.0 EN" = "Releases/release-2-5-0_en.md" },
+      { "Release 2.4.0" = "Releases/release-2-4-0.md" },
+      { "Release 2.4.0 EN" = "Releases/release-2-4-0_en.md" },
       { "Release 2.3.4" = "Releases/release-2-3-4.md" },
+      { "Release 2.3.4 EN" = "Releases/release2.3.4_en.md" },
       { "Release 2.3" = "Releases/release-2-3.md" },
       { "Release 2.2" = "Releases/release-2-2.md" },
       { "Release 2.0" = "Releases/release-2-0.md" },

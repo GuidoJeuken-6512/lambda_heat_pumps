@@ -21,8 +21,8 @@ Sollte eure PV-Anlage negative Werte bei PV-Überschuss angeben, macht einen Tem
 
 Die Werte werden alle 9 sec an die Lambda gesendet. Wenn die Lambda keine Werte über einige Minuten empfängt, so erzeugt sie einen Fehler, daher die Option in der Lambda immer wieder deaktivieren, wenn sie nicht mehr eingesetzt wird.
 
-<img src="../../assets/pv_surplus_de_1.png" alt="PV Überschuss Steuerung" style="width: 100%; height: auto; border-radius: 8px;">
+<img src="../assets/pv_surplus_de_1.png" alt="PV Überschuss Steuerung" style="width: 100%; height: auto; border-radius: 8px;">
 
 In der Lambda müssen vorher folgende Einstellungen gesetzt sein, der PV-Überschuss ist dann auch in Oberfläche der Lambda sichtbar:
 
-<img src="../../assets/pv_surplus_de_2.png" alt="PV Überschuss Steuerung Lambda" style="width: 100%; height: auto; border-radius: 8px;">
+<img src="../assets/pv_surplus_de_2.png" alt="PV Überschuss Steuerung Lambda" style="width: 100%; height: auto; border-radius: 8px;">

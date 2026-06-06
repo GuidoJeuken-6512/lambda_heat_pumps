@@ -39,6 +39,10 @@ TRANSLATION_SOURCES = {DOMAIN: "translations"}
 _entry_reload_locks: dict[str, asyncio.Lock] = {}
 _entry_reload_flags: dict[str, bool] = {}
 
+_LOG_RELOAD = "RELOAD"
+_LOG_AUTODETECT = "AUTO-DETECT"
+_LOG_SETUP = "SETUP"
+
 # Tracks which entries have been set up at least once in this HA session.
 # Used to distinguish a first-time setup from a reload (H-04):
 # after async_unload_entry clears hass.data, checking hass.data is unreliable.
@@ -77,21 +81,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Reload config entry."""
-    # FIX K-02: Pro Entry eigener Lock und Flag – keine modul-globale Sperre mehr.
     entry_id = entry.entry_id
+    reload_lock = _entry_reload_locks.setdefault(entry_id, asyncio.Lock())
 
-    if _entry_reload_flags.get(entry_id, False):
+    # Non-blocking fast-path: if the lock is already held, a reload is in progress
+    if reload_lock.locked():
         _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
         return True
 
-    reload_lock = _entry_reload_locks.setdefault(entry_id, asyncio.Lock())
     _LOGGER.info("RELOAD: Starting reload for entry: %s", entry_id)
 
     async with reload_lock:
-        if _entry_reload_flags.get(entry_id, False):
-            _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
-            return True
-
         _entry_reload_flags[entry_id] = True
         _LOGGER.info("RELOAD: Reload lock acquired for entry %s, proceeding", entry_id)
 
@@ -182,7 +182,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 else:
                     _LOGGER.info("AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
             except Exception as ex:
-                _LOGGER.info("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
+                _LOGGER.warning("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
         
         # FIX K-02: Task-Referenz speichern – wird beim Unload abgebrochen,
         # sodass kein verwaister Task nach einem Reload einen weiteren Reload triggert.
@@ -203,6 +203,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         # Neue Config: Auto-Detection mit Retry (blocking für Setup)
         _LOGGER.info("AUTO-DETECT: New configuration detected, performing auto-detection (coordinator_id=%s)", id(coordinator))
+        # Warte auf stabile Verbindung auch beim ersten Start (Fix Issue #80):
+        # Das Gerät ist beim HA-Kaltstart oft noch nicht erreichbar.
+        _LOGGER.info("AUTO-DETECT: Waiting for stable connection before first-start auto-detection...")
+        await wait_for_stable_connection(coordinator)
+        _LOGGER.info("AUTO-DETECT: Connection stable, starting first-start module detection...")
         detected_counts = None
         for attempt in range(AUTO_DETECT_RETRIES):
             try:
@@ -400,7 +405,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.exception("Error during centralized cleanup")
         
         # Services cleanup is now handled by centralized cleanup function
-        
+
+        # Persist-Flush bei Shutdown: Dirty-Daten vor dem Entladen sichern
+        try:
+            entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+            coordinator = entry_data.get("coordinator")
+            if coordinator is not None and getattr(coordinator, "_persist_dirty", False):
+                _LOGGER.debug("UNLOAD: Flushing dirty persist data before unload")
+                await coordinator._persist_counters(force=True)
+        except Exception:
+            _LOGGER.exception("UNLOAD: Error during persist flush")
+
         # Clean up domain data if this is the last entry
         if DOMAIN in hass.data and len(hass.data[DOMAIN]) == 0:
             hass.data.pop(DOMAIN, None)

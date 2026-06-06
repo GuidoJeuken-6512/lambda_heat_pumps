@@ -4,7 +4,7 @@ title: "Features"
 
 # Features der Lambda Heat Pumps Integration
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 16.04.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und Überwachung Ihrer Lambda-Wärmepumpe über Home Assistant. Hier finden Sie eine Übersicht aller verfügbaren Features.
 
@@ -35,12 +35,15 @@ Umfassende Zähler für alle Betriebsmodi:
 **Die Kompressor Starts sind die "schädlichen" Taktungen**
 
 ### Zeiträume
-- **Total**: Gesamtzähler seit Installation
-- **Täglich**: Tageszähler (Reset um Mitternacht)
-- **Gestern**: Zählerstand vom Vortag
-- **2 Stunden**: 2-Stunden-Zähler (Reset alle 2 Stunden)
-- **4 Stunden**: 4-Stunden-Zähler (Reset alle 4 Stunden)
-- **Monatlich**: Monatszähler (Reset am 1. des Monats)
+
+| Zeitraum | Heizen | Warmwasser | Kühlen | Abtauen | Kompressor-Start |
+|----------|--------|------------|--------|---------|-----------------|
+| Total | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Gestern | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Täglich | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 2 Stunden | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 4 Stunden | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Monatlich | — | — | — | — | ✓ |
 
 ### Funktionen
 - **Automatischer Reset**: Tägliche Sensoren werden automatisch um Mitternacht zurückgesetzt
@@ -50,13 +53,19 @@ Umfassende Zähler für alle Betriebsmodi:
 
 Detaillierte Energieverfolgung nach Betriebsart:
 
-### Betriebsmodi
+### Betriebsmodi (elektrisch)
 - **Heizen**: Energieverbrauch für Heizbetrieb
 - **Warmwasser**: Energieverbrauch für Warmwasserbereitung
 - **Kühlen**: Energieverbrauch für Kühlbetrieb
 - **Abtauen**: Energieverbrauch für Abtauzyklen
+- **Standby**: Energieverbrauch im Standby-Betrieb
+
+### Betriebsmodi (thermisch / Wärmeabgabe)
+- **Heizen**, **Warmwasser**, **Kühlen**, **Abtauen** (kein Standby-Thermik-Sensor)
 
 ### Zeiträume
+- **Total**: Gesamtverbrauch seit Installation
+- **Stündlich**: Stündlicher Energieverbrauch (nur Heizen, elektrisch und thermisch)
 - **Täglich**: Täglicher Energieverbrauch
 - **Monatlich**: Monatlicher Energieverbrauch
 - **Jährlich**: Jährlicher Energieverbrauch
@@ -155,5 +164,5 @@ Damit kann jedes Register in einer Automatisierung in Home Assistant verwendet /
 - [Heizkurve](heizkurve.md)
 - [Raumthermometer](raumthermometer.md)
 - [WarmWasser-Steuerung](warmwasser-solltemperatur.md)
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md)
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md)
 

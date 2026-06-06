@@ -6,12 +6,24 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-# Lock für Health-Checks, um Transaction ID Mismatches zu vermeiden
-_health_check_lock = asyncio.Lock()
+# Lazy-initialized locks — created on first use to avoid event-loop binding issues
+# when the asyncio loop is destroyed and recreated (e.g. in test environments).
+_health_check_lock: asyncio.Lock | None = None
+_modbus_read_lock: asyncio.Lock | None = None
 
-# Globaler Lock für alle Modbus-Read-Operationen, um Transaction ID Mismatches zu vermeiden
-# Verhindert parallele Modbus-Requests, die zu Transaction ID Konflikten führen können
-_modbus_read_lock = asyncio.Lock()
+
+def _get_health_check_lock() -> asyncio.Lock:
+    global _health_check_lock
+    if _health_check_lock is None:
+        _health_check_lock = asyncio.Lock()
+    return _health_check_lock
+
+
+def _get_modbus_read_lock() -> asyncio.Lock:
+    global _modbus_read_lock
+    if _modbus_read_lock is None:
+        _modbus_read_lock = asyncio.Lock()
+    return _modbus_read_lock
 
 # Import Lambda-specific constants
 try:
@@ -85,7 +97,7 @@ async def async_read_holding_registers(
     # Verwende globalen Lock, um parallele Modbus-Requests zu vermeiden
     # Dies verhindert Transaction ID Mismatches, die auftreten können, wenn
     # mehrere Requests gleichzeitig gesendet werden
-    async with _modbus_read_lock:
+    async with _get_modbus_read_lock():
         for attempt in range(LAMBDA_MAX_RETRIES):
             try:
                 # For pymodbus 3.11.1, use only address as positional, rest as kwargs
@@ -168,7 +180,7 @@ async def async_read_input_registers(
     if not hasattr(client, "connected") or not client.connected:
         raise Exception("Modbus client not connected")
 
-    async with _modbus_read_lock:
+    async with _get_modbus_read_lock():
         for attempt in range(LAMBDA_MAX_RETRIES):
             try:
                 try:
@@ -236,7 +248,7 @@ async def async_write_register(
     Uses a global lock to prevent concurrent Modbus requests that could cause
     Transaction ID mismatches.
     """
-    async with _modbus_read_lock:
+    async with _get_modbus_read_lock():
         try:
             # For pymodbus 3.11.1, use address as positional, rest as kwargs
             try:
@@ -270,7 +282,7 @@ async def async_write_registers(
     Uses a global lock to prevent concurrent Modbus requests that could cause
     Transaction ID mismatches.
     """
-    async with _modbus_read_lock:
+    async with _get_modbus_read_lock():
         try:
             api_type = _detect_pymodbus_api(client, "write_registers")
 
@@ -505,7 +517,7 @@ async def wait_for_stable_connection(coordinator) -> None:
             
         except Exception as e:
             attempt += 1
-            _LOGGER.info("⏳ CONNECTION: Connection test failed (attempt %d/%d): %s", attempt, max_attempts, e)
+            _LOGGER.debug("⏳ CONNECTION: Connection test failed (attempt %d/%d): %s", attempt, max_attempts, e)
             await asyncio.sleep(1)
     
     _LOGGER.warning("CONNECTION: Connection not stable after %d attempts, proceeding anyway", max_attempts)
@@ -518,11 +530,11 @@ async def _test_connection_health(coordinator) -> bool:
     Transaction ID mismatches.
     """
     if not coordinator.client:
-        _LOGGER.info("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
+        _LOGGER.debug("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
         return False
     
     # Verwende Lock, um parallele Health-Checks zu vermeiden
-    async with _health_check_lock:
+    async with _get_health_check_lock():
         try:
             _LOGGER.debug("CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
             # Try a simple read to test connection health using robust API compatibility
@@ -535,10 +547,10 @@ async def _test_connection_health(coordinator) -> bool:
                 _LOGGER.debug("CONNECTION: Connection healthy (coordinator_id=%s)", id(coordinator))
                 return True
             else:
-                _LOGGER.info("CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
+                _LOGGER.debug("CONNECTION: Connection unhealthy - result is None (coordinator_id=%s)", id(coordinator))
                 return False
         except Exception as e:
-            _LOGGER.info("CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
+            _LOGGER.debug("CONNECTION: Connection unhealthy - error=%s (coordinator_id=%s)", e, id(coordinator))
             return False
 
 

@@ -15,7 +15,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_track_time_interval, async_call_later
 from .const import (
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
@@ -40,6 +40,11 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     normalize_name_prefix,
+    detect_sensor_change,
+    get_stored_sensor_id,
+    store_sensor_id,
+    get_stored_thermal_sensor_id,
+    store_thermal_sensor_id,
 )
 from .modbus_utils import async_read_holding_registers, combine_int32_registers, wait_for_stable_connection
 import time
@@ -119,6 +124,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._entity_address_mapping = {}  # Initialize entity address mapping
         self._entity_registry = None  # Initialize entity registry reference
         self._registry_listener = None  # Initialize registry listener reference
+        self._registry_update_cancel = None  # Debounce cancel handle
 
         # Dynamische Batch-Read-Fehlerbehandlung
         self._batch_failures = {}  # Dict: (start_addr, count) -> failure_count
@@ -229,129 +235,69 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return normalized
 
     async def _repair_and_load_persist_file(self):
-        """Lade und repariere persistierte JSON-Datei bei Bedarf."""
-        
-        def _repair_json():
+        """Lade persistierte JSON-Datei, normalisiere und fülle fehlende Felder auf."""
+        _REQUIRED_FIELDS = [
+            "heating_cycles", "heating_energy", "last_operating_states",
+            "energy_consumption", "last_energy_readings", "last_thermal_energy_readings",
+            "energy_offsets", "sensor_ids", "thermal_sensor_ids", "energy_sensor_states",
+        ]
+
+        def _load_and_normalize():
             try:
                 with open(self._persist_file) as f:
                     content = f.read().strip()
-                    
+
                 if not content:
                     _LOGGER.warning("Persist file %s is empty, using defaults", self._persist_file)
                     return {}
-                    
-                # Versuche normales Laden
+
                 data = json.loads(content)
-                
-                # Repariere doppelte Schlüssel in last_operating_states
-                if "last_operating_states" in data and isinstance(data["last_operating_states"], dict):
-                    states = data["last_operating_states"]
-                    # Entferne doppelte Schlüssel - behalte den letzten Wert
-                    clean_states = {}
-                    for key, value in states.items():
-                        clean_states[str(key)] = value  # Normalisiere zu String
-                    data["last_operating_states"] = clean_states
-                    _LOGGER.info(
-                        f"Repaired duplicate keys in last_operating_states: {clean_states}"
-                    )
-                
-                    # Stelle sicher, dass alle wichtigen Felder existieren
-                    required_fields = [
-                        "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "energy_offsets",
-                        "energy_sensor_states",
-                    ]
-                    for field in required_fields:
-                        if field not in data:
-                            data[field] = {}
-                            _LOGGER.info("Added missing field %s to repaired JSON", field)
-                    
-                    # sensor_ids / thermal_sensor_ids nur hinzufügen wenn komplett fehlt
-                    if "sensor_ids" not in data:
-                        data["sensor_ids"] = {}
-                        _LOGGER.info("Added missing sensor_ids field to repaired JSON")
-                    if "thermal_sensor_ids" not in data:
-                        data["thermal_sensor_ids"] = {}
-                    if "last_thermal_energy_readings" not in data:
-                        data["last_thermal_energy_readings"] = {}
-                    
+
+                # Normalisiere last_operating_states-Schlüssel zu Strings
+                if isinstance(data.get("last_operating_states"), dict):
+                    data["last_operating_states"] = {
+                        str(k): v for k, v in data["last_operating_states"].items()
+                    }
+
+                # Fehlende Felder mit leeren Dicts aufüllen
+                for field in _REQUIRED_FIELDS:
+                    if field not in data:
+                        data[field] = {}
+                        _LOGGER.debug("Added missing field '%s' to loaded persist data", field)
+
                 return data
-                
+
             except json.JSONDecodeError as e:
-                _LOGGER.error("JSON decode error in %s: %s", self._persist_file, e)
-                _LOGGER.warning("Attempting to repair corrupted JSON file")
-                
-                # Versuche einfache Reparatur durch Entfernung doppelter Schlüssel
+                _LOGGER.error("Corrupted persist file %s: %s — backing up and starting fresh", self._persist_file, e)
                 try:
-                    # Erstelle Backup der ursprünglichen Datei
                     backup_file = self._persist_file + ".backup"
-                    with open(self._persist_file, 'r') as src, open(backup_file, 'w') as dst:
+                    with open(self._persist_file, "r") as src, open(backup_file, "w") as dst:
                         dst.write(src.read())
-                    
-                    # Versuche Reparatur durch Regex
-                    import re
-                    # Entferne doppelte Schlüssel: "key": value, "key": value
-                    duplicate_pattern = r'("[^"]+"\s*:\s*[^,}]+),\s*\1'
-                    
-                    with open(self._persist_file, 'r') as f:
-                        content = f.read()
-                    
-                    # Repariere doppelte Schlüssel
-                    repaired_content = content
-                    while re.search(duplicate_pattern, repaired_content):
-                        repaired_content = re.sub(duplicate_pattern, r'\1', repaired_content)
-                    
-                    # Versuche das reparierte JSON zu laden
-                    data = json.loads(repaired_content)
-                    
-                    # Stelle sicher, dass alle wichtigen Felder existieren
-                    required_fields = [
-                        "heating_cycles", "heating_energy", "last_operating_states",
-                        "energy_consumption", "last_energy_readings", "last_thermal_energy_readings",
-                        "energy_offsets", "sensor_ids", "thermal_sensor_ids",
-                        "energy_sensor_states",
-                    ]
-                    for field in required_fields:
-                        if field not in data:
-                            data[field] = {}
-                    
-                    # Speichere reparierte Version
-                    with open(self._persist_file, 'w') as f:
-                        json.dump(data, f, indent=2)
-                    
-                    _LOGGER.info("Successfully repaired corrupted JSON file")
-                    return data
-                    
-                except Exception as repair_error:
-                    _LOGGER.error("Failed to repair JSON file: %s", repair_error)
-                    _LOGGER.warning("Deleting corrupted persist file and starting fresh")
-                    try:
-                        os.remove(self._persist_file)
-                    except Exception:
-                        pass  # Ignore if file can't be deleted
-                    return {}
+                    os.remove(self._persist_file)
+                except Exception as backup_err:
+                    _LOGGER.warning("Could not back up corrupted persist file: %s", backup_err)
+                return {}
+
             except Exception as e:
                 _LOGGER.error("Error reading persist file %s: %s", self._persist_file, e)
                 return {}
-        
-        return await self.hass.async_add_executor_job(_repair_json)
 
-    async def _persist_counters(self):
+        return await self.hass.async_add_executor_job(_load_and_normalize)
+
+    async def _persist_counters(self, force: bool = False):
         """Persist counter data and state information to file using optimized I/O with debouncing."""
-        # Also persist thermal energy readings
-        # (Extend this logic if you want to persist more types in the future)
         import time
-        
+
         # Prüfe Dirty-Flag - nur schreiben wenn sich etwas geändert hat
         if not self._persist_dirty:
             _LOGGER.debug("No changes to persist, skipping write")
             return
-        
+
         current_time = time.time()
-        
-        # Debouncing: Max 1x pro 30 Sekunden schreiben
-        if current_time - self._persist_last_write < self._persist_debounce_seconds:
-            _LOGGER.debug("Persist write debounced (last write %.1fs ago)", 
+
+        # Debouncing: Max 1x pro 30 Sekunden schreiben (außer bei force=True beim Shutdown)
+        if not force and current_time - self._persist_last_write < self._persist_debounce_seconds:
+            _LOGGER.debug("Persist write debounced (last write %.1fs ago)",
                          current_time - self._persist_last_write)
             return
         
@@ -385,6 +331,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         energy_sensor_states_to_save = self._collect_energy_sensor_states()
 
         data = {
+            "version": 1,
             "heating_cycles": self._heating_cycles,
             "heating_energy": self._heating_energy,
             "last_operating_states": normalized_operating_states,
@@ -590,15 +537,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.info("SENSOR-CHANGE-DETECTION: Starte Sensor-Wechsel-Erkennung")
         
         try:
-            from .utils import (
-                detect_sensor_change,
-                get_stored_sensor_id,
-                store_sensor_id,
-                get_stored_thermal_sensor_id,
-                store_thermal_sensor_id,
-            )
-            # Erstelle persist_data dict für die Hilfsfunktionen
-            persist_data = {"sensor_ids": self._sensor_ids, "thermal_sensor_ids": self._thermal_sensor_ids}
+            # Arbeite auf Kopien, um atomaren Tausch am Ende zu ermöglichen
+            local_sensor_ids = dict(self._sensor_ids)
+            local_thermal_sensor_ids = dict(self._thermal_sensor_ids)
+            persist_data = {"sensor_ids": local_sensor_ids, "thermal_sensor_ids": local_thermal_sensor_ids}
             
             # Prüfe alle Wärmepumpen, die in _sensor_ids gespeichert sind (auch wenn keine Custom-Sensoren konfiguriert sind)
             all_hp_keys = set()
@@ -647,10 +589,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-Wechsel erkannt für %s: %s -> %s", hp_key, stored_sensor_id, current_sensor_id)
                     await self._handle_sensor_change(hp_idx, current_sensor_id)
                 
-                # Speichere neue Sensor-ID für nächsten Vergleich
+                # Speichere neue Sensor-ID in lokale Kopie
                 store_sensor_id(persist_data, hp_idx, current_sensor_id)
-                self._sensor_ids = persist_data["sensor_ids"]
-                
                 _LOGGER.info("SENSOR-CHANGE-DETECTION: Sensor-ID für %s aktualisiert: %s", hp_key, current_sensor_id)
 
             # Thermik-Sensor-Wechsel prüfen (analog zu elektrisch)
@@ -673,7 +613,10 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                     )
                     await self._handle_thermal_sensor_change(hp_idx, current_thermal_id)
                 store_thermal_sensor_id(persist_data, hp_idx, current_thermal_id)
-                self._thermal_sensor_ids = persist_data["thermal_sensor_ids"]
+
+            # Atomar tauschen — kein yield zwischen diesen beiden Zeilen
+            self._sensor_ids = persist_data["sensor_ids"]
+            self._thermal_sensor_ids = persist_data["thermal_sensor_ids"]
 
             # Speichere alle Änderungen in der JSON-Datei
             if self._sensor_ids or self._thermal_sensor_ids:
@@ -791,24 +734,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         await self._persist_counters()
         _LOGGER.info("SENSOR-CHANGE: Thermik Zero-Value Protection aktiv HP%s", hp_idx)
 
-    def _generate_entity_id(self, sensor_type: str, idx: int) -> str:
-        # DEAD CODE GUARD: This method should no longer be called.
-        # It is a remnant of the old template-sensor architecture where cycling/energy
-        # values were written into coordinator.data under entity-ID keys.
-        # Cycling and energy sensors now use internal state (_cycling_value / _energy_value)
-        # updated via dispatcher signals, not coordinator.data lookups.
-        # If this warning appears in the logs, the caller must be investigated.
-        _LOGGER.warning(
-            "_generate_entity_id called unexpectedly (possible dead-code remnant) – "
-            "sensor_type=%s, idx=%s. Please report this at "
-            "https://github.com/lambdanerds/lambda_heat_pumps/issues",
-            sensor_type,
-            idx,
-        )
-        if self._use_legacy_names:
-            return f"sensor.hp{idx + 1}_{sensor_type}"
-        else:
-            return f"sensor.{self._name_prefix}_hp{idx + 1}_{sensor_type}"
 
     async def async_init(self) -> None:
         """Async initialization (inkl. Modbus-Connect für Auto-Detection)."""
@@ -914,37 +839,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 len(int32_addresses), list(int32_addresses.keys())
             )
         
-        # DEBUG: Prüfe spezifisch Register 1020/1022
-        if 1020 in address_list or 1022 in address_list:
-            _LOGGER.debug(
-                "INT32-REGISTER-DEBUG: Register 1020/1022 gefunden in address_list: "
-                "1020=%s, 1022=%s, enabled_addresses 1020=%s, 1022=%s",
-                1020 in address_list, 1022 in address_list,
-                1020 in self._enabled_addresses if hasattr(self, '_enabled_addresses') else 'N/A',
-                1022 in self._enabled_addresses if hasattr(self, '_enabled_addresses') else 'N/A'
-            )
-
         # Globale Deduplizierung - verhindere mehrfaches Lesen der gleichen Register über alle Module
         unique_addresses = {}
         for address, sensor_info in address_list.items():
-            # DEBUG: Spezifisch für 1020/1022
-            if address in [1020, 1022]:
-                _LOGGER.debug(
-                    "INT32-REGISTER-DEBUG: Prüfe Register %d - "
-                    "Im Cache: %s, Wert: %s",
-                    address,
-                    address in self._global_register_cache,
-                    self._global_register_cache.get(address, "NICHT_GEFUNDEN")
-                )
-            
             # Prüfe globalen Cache zuerst
             if address in self._global_register_cache:
-                # DEBUG: Für 1020/1022 - Zeige Cache-Status
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Register %d ist im Cache (Wert: %s) - wird verwendet",
-                        address, self._global_register_cache[address]
-                    )
                 # Verwende gecachten Wert (Cache wird pro Update-Zyklus geleert)
                 sensor_id = sensor_mapping.get(address, f"addr_{address}")
                 data[sensor_id] = self._global_register_cache[address]
@@ -984,7 +883,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 not current_batch
                 or addr != last_addr + 1
                 or current_type != dtype
-                or len(current_batch) >= 120  # Modbus safety margin
+                or len(current_batch) >= 100  # Modbus max 125 holding regs; 100 = safe margin
             ):
                 if current_batch:
                     batches.append(current_batch)
@@ -1085,24 +984,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     # Rückwärtskompatibilität: byte_order wird auch akzeptiert
                                     register_order = sensor_info.get("register_order") or sensor_info.get("byte_order") or self._int32_register_order
                                     
-                                    # DEBUG: Für 1020/1022
-                                    if addr in [1020, 1022]:
-                                        _LOGGER.debug(
-                                            "INT32-REGISTER-DEBUG: Batch-Verarbeitung Register %d: "
-                                            "Register[%d]=%d, Register[%d]=%d, order=%s",
-                                            addr, i, value, i+1, next_value, register_order
-                                        )
-                                    
                                     value = combine_int32_registers([value, next_value], register_order)
                                     value = to_signed_32bit(value)
-                                    
-                                    # DEBUG: Für 1020/1022
-                                    if addr in [1020, 1022]:
-                                        _LOGGER.debug(
-                                            "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
-                                            addr, value
-                                        )
-                                    
                                     # Überspringe das nächste Register (bereits verarbeitet)
                                     i += 1
                                 else:
@@ -1152,15 +1035,6 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             sensor_id = sensor_mapping[address]
             count = 2 if sensor_info.get("data_type") == "int32" else 1
 
-            # DEBUG: Für 1020/1022
-            if address in [1020, 1022]:
-                _LOGGER.debug(
-                    "INT32-REGISTER-DEBUG: _read_single_register aufgerufen für %d, "
-                    "sensor_id=%s, count=%d, data_type=%s, register_order=%s",
-                    address, sensor_id, count, sensor_info.get("data_type"),
-                    self._int32_register_order
-                )
-
             _LOGGER.debug(
                 f"Address {address} polling status: enabled=True (entity-based)"
             )
@@ -1176,22 +1050,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return
 
             if count == 2:
-                # DEBUG: Für 1020/1022
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Kombiniere Register %d: "
-                        "Register[0]=%d, Register[1]=%d, order=%s",
-                        address, result.registers[0], result.registers[1], 
-                        self._int32_register_order
-                    )
                 value = combine_int32_registers(result.registers, self._int32_register_order)
                 value = to_signed_32bit(value)
-                # DEBUG: Für 1020/1022
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Register %d kombiniert (vor Scale): %d",
-                        address, value
-                    )
             else:
                 value = result.registers[0]
                 if sensor_info.get("data_type") == "int16":
@@ -1199,24 +1059,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             if "scale" in sensor_info:
                 value = value * sensor_info["scale"]
-                # DEBUG: Für 1020/1022
-                if address in [1020, 1022]:
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Register %d nach Scale (%s): %s",
-                        address, sensor_info["scale"], value
-                    )
 
             data[sensor_id] = value
-            
-            # Cache den Wert im globalen Cache für andere Module
             self._global_register_cache[address] = value
-            if address in [1020, 1022]:
-                _LOGGER.debug("INT32-REGISTER-DEBUG: Cached register %s = %s", address, value)
-            else:
-                _LOGGER.debug("Cached register %s = %s", address, value)
+            _LOGGER.debug("Cached register %s = %s", address, value)
 
         except Exception as ex:
-            _LOGGER.info("MODBUS READ FAILED: address=%s, error=%s, caller=_async_update_data", address, ex)
+            _LOGGER.warning("MODBUS READ FAILED: address=%s, error=%s, caller=_async_update_data", address, ex)
 
     async def _read_general_sensors_batch(self, data):
         """Read general sensors using global register collection."""
@@ -1237,23 +1086,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             for sensor_id, sensor_info in compatible_hp_sensors.items():
                 address = base_address + sensor_info["relative_address"]
                 
-                # DEBUG: Spezifisch für int32-Sensoren
-                if sensor_info.get("data_type") == "int32":
-                    _LOGGER.debug(
-                        "INT32-REGISTER-DEBUG: Sensor %s (hp%d_%s), address=%d, "
-                        "enabled=%s, disabled=%s",
-                        sensor_id, hp_idx, sensor_id, address,
-                        self.is_address_enabled_by_entity(address),
-                        self.is_register_disabled(address)
-                    )
-                
                 if not self.is_address_enabled_by_entity(address):
-                    if address in [1020, 1022]:
-                        _LOGGER.debug(
-                            "INT32-REGISTER-DEBUG: Register %d ist NICHT enabled - "
-                            "Entity-basiertes Polling blockiert!",
-                            address
-                        )
                     continue
 
                 # Sammle Register-Request statt sofort zu lesen
@@ -1442,7 +1275,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
     @callback
     def _on_entity_registry_changed(self, event):
-        """Handle entity registry changes."""
+        """Handle entity registry changes with debounce to avoid excessive Modbus reads."""
         try:
             data = event.data
             entity_id = data.get("entity_id")
@@ -1450,11 +1283,21 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if entity_id and _name_prefix and entity_id.startswith(
                 f"sensor.{_name_prefix}_"
             ):
-                # This is one of our entities
                 _LOGGER.debug("Entity registry change for %s: %s", entity_id, data)
 
-                # Schedule update of address mapping
-                self.hass.async_create_task(self._update_entity_address_mapping())
+                # Cancel pending update if one is already scheduled
+                if self._registry_update_cancel is not None:
+                    self._registry_update_cancel()
+                    self._registry_update_cancel = None
+
+                @callback
+                def _delayed_update(_now):
+                    self._registry_update_cancel = None
+                    self.hass.async_create_task(self._update_entity_address_mapping())
+
+                self._registry_update_cancel = async_call_later(
+                    self.hass, 0.25, _delayed_update
+                )
 
         except Exception as e:
             _LOGGER.error("Error handling entity registry change: %s", str(e))
@@ -1520,13 +1363,13 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
 
             if not await self.client.connect():
                 msg = f"Failed to connect to {self.host}:{self.port}"
-                _LOGGER.info("MODBUS CONNECT: Failed to connect to %s:%s", self.host, self.port)
+                _LOGGER.warning("MODBUS CONNECT: Failed to connect to %s:%s", self.host, self.port)
                 raise UpdateFailed(msg)
 
             _LOGGER.info("MODBUS CONNECT: Successfully connected to %s:%s (coordinator_id=%s)", self.host, self.port, id(self))
 
         except Exception as e:
-            _LOGGER.info("MODBUS CONNECT: Failed to connect to %s:%s, error=%s (coordinator_id=%s)", self.host, self.port, e, id(self))
+            _LOGGER.warning("MODBUS CONNECT: Failed to connect to %s:%s, error=%s (coordinator_id=%s)", self.host, self.port, e, id(self))
             self.client = None
             msg = f"Connection failed: {e}"
             raise UpdateFailed(msg) from e

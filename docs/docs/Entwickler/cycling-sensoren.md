@@ -4,7 +4,7 @@ title: "Cycling-Sensoren - Technische Dokumentation"
 
 # Cycling-Sensoren - Technische Dokumentation
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 16.04.2026*
 
 Diese Dokumentation beschreibt die technische Implementierung der Cycling-Sensoren in der Lambda Heat Pumps Integration.
 
@@ -17,16 +17,25 @@ Die Integration bietet Cycling-Sensoren für folgende Betriebsarten:
 - **Hot Water** (Warmwasser)
 - **Cooling** (Kühlen)
 - **Defrost** (Abtauen)
-- **Compressor Start** (Kompressorstart, nur Total und Monthly)
+- **Compressor Start** (Kompressorstart)
 
-Jede Betriebsart wird nach Zeitraum aufgeteilt:
-- **Total**: Gesamtzähler seit Installation
+Die verfügbaren Zeiträume unterscheiden sich je nach Betriebsart:
+
+| Zeitraum | Heating | Hot Water | Cooling | Defrost | Compressor Start |
+|----------|---------|-----------|---------|---------|-----------------|
+| **Total** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Yesterday** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Daily** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **2h** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **4h** | ✓ | ✓ | ✓ | ✓ | ✓ |
+| **Monthly** | — | — | — | — | ✓ |
+
+- **Total**: Gesamtzähler seit Installation (wird nie zurückgesetzt)
+- **Yesterday**: Wert von gestern (wird täglich vor dem Daily-Reset gespeichert)
 - **Daily**: Täglich (wird um Mitternacht auf 0 zurückgesetzt)
-- **Yesterday**: Wert von gestern (wird vor Daily-Reset gespeichert)
 - **2h**: Alle 2 Stunden (wird alle 2 Stunden auf 0 zurückgesetzt)
 - **4h**: Alle 4 Stunden (wird alle 4 Stunden auf 0 zurückgesetzt)
-- **Monthly**: Monatlich (wird am 1. des Monats auf 0 zurückgesetzt, nur für Compressor Start)
-- **Yearly**: Jährlich (wird am 1. Januar auf 0 zurückgesetzt)
+- **Monthly**: Monatlich (wird am 1. des Monats auf 0 zurückgesetzt, **nur für Compressor Start**)
 
 ## Architektur
 

@@ -66,20 +66,23 @@ def test_per_entry_reload_state_uses_dicts():
 
 @pytest.mark.asyncio
 async def test_concurrent_reload_same_entry_is_skipped():
-    """K-02: Ein zweiter Reload desselben Entry wird übersprungen wenn einer läuft."""
+    """K-01: Ein zweiter Reload desselben Entry wird übersprungen wenn Lock gehalten wird."""
     from custom_components.lambda_heat_pumps import async_reload_entry
 
     entry = MagicMock()
     entry.entry_id = "test_concurrent_reload"
 
-    # Setze Flag manuell so als lief bereits ein Reload
-    _entry_reload_flags["test_concurrent_reload"] = True
+    # Simuliere laufenden Reload: Lock direkt setzen und sperren
+    lock = asyncio.Lock()
+    _entry_reload_locks["test_concurrent_reload"] = lock
+    await lock.acquire()  # Lock halten = Reload läuft
 
     try:
         result = await async_reload_entry(MagicMock(), entry)
         # Zweiter Aufruf soll True zurückgeben (nicht abstürzen)
         assert result is True
     finally:
+        lock.release()
         _entry_reload_flags.pop("test_concurrent_reload", None)
         _entry_reload_locks.pop("test_concurrent_reload", None)
 
@@ -108,6 +111,68 @@ async def test_reload_locks_are_per_entry_independent():
     for key in ("entry_a_locktest", "entry_b_locktest"):
         _entry_reload_flags.pop(key, None)
         _entry_reload_locks.pop(key, None)
+
+
+# ---------------------------------------------------------------------------
+# Fix K-02 / Issue #80: wait_for_stable_connection im blocking-Detect-Pfad
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_first_start_blocking_detect_waits_for_stable_connection():
+    """K-02/Issue #80: wait_for_stable_connection wird im else-Zweig aufgerufen
+    (kein num_hps/num_hc in entry.data → Erststart ohne vorhandene Modulanzahl)."""
+    from custom_components.lambda_heat_pumps import async_setup_entry, _previously_setup_entries
+
+    entry_id = "test_issue80_first_start"
+    entry = MagicMock()
+    entry.entry_id = entry_id
+    # Kein num_hps / num_hc → has_module_counts = False → else-Zweig
+    entry.data = {"host": "192.168.1.1", "port": 502, "slave_id": 1}
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value=MagicMock())
+    entry.async_on_unload = MagicMock()
+
+    _previously_setup_entries.discard(entry_id)
+
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.services = MagicMock()
+    hass.services.has_service = MagicMock(return_value=True)
+    hass.async_create_task = MagicMock()
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_init = AsyncMock()
+    mock_coordinator.async_refresh = AsyncMock()
+    mock_coordinator.client = MagicMock()
+    mock_coordinator.client.connect = AsyncMock(return_value=True)
+    mock_coordinator.slave_id = 1
+    mock_coordinator._int32_register_order = "high_first"
+    mock_coordinator._persist_dirty = False
+
+    mock_wait = AsyncMock()
+
+    with (
+        patch("custom_components.lambda_heat_pumps.ensure_lambda_config", new=AsyncMock()),
+        patch("custom_components.lambda_heat_pumps.LambdaDataUpdateCoordinator", return_value=mock_coordinator),
+        patch("custom_components.lambda_heat_pumps.wait_for_stable_connection", mock_wait),
+        patch("custom_components.lambda_heat_pumps.auto_detect_modules", new=AsyncMock(
+            return_value={"hp": 1, "hc": 2, "boil": 1, "buff": 0, "sol": 0}
+        )),
+        patch("custom_components.lambda_heat_pumps.update_entry_with_detected_modules", new=AsyncMock(return_value=False)),
+        patch("custom_components.lambda_heat_pumps.async_remove_duplicate_entity_suffixes", new=AsyncMock()),
+        patch("custom_components.lambda_heat_pumps.modbus_utils.get_int32_register_order", new=AsyncMock(return_value="high_first")),
+        patch("custom_components.lambda_heat_pumps.ResetManager") as mock_rm,
+    ):
+        mock_rm.return_value.setup_reset_automations = MagicMock()
+        result = await async_setup_entry(hass, entry)
+
+    try:
+        assert result is True
+        mock_wait.assert_called_once_with(mock_coordinator)
+    finally:
+        _previously_setup_entries.discard(entry_id)
 
 
 # ---------------------------------------------------------------------------
@@ -261,19 +326,19 @@ def test_config_cache_keys_cleared_on_setup():
 # ---------------------------------------------------------------------------
 
 def test_async_read_input_registers_uses_lock_and_retry():
-    """2d: async_read_input_registers verwendet den globalen Modbus-Lock."""
+    """2d: async_read_input_registers verwendet den globalen Modbus-Lock (lazy-init)."""
     import inspect
     from custom_components.lambda_heat_pumps.modbus_utils import (
         async_read_input_registers,
-        _modbus_read_lock,
+        _get_modbus_read_lock,
     )
     # Funktion existiert und ist eine Coroutine
     assert asyncio.iscoroutinefunction(async_read_input_registers)
-    # Globaler Lock existiert
-    assert isinstance(_modbus_read_lock, asyncio.Lock)
-    # Quellcode der Funktion referenziert den Lock
+    # Lock-Getter liefert einen Lock (lazy-init)
+    assert isinstance(_get_modbus_read_lock(), asyncio.Lock)
+    # Quellcode der Funktion referenziert den Lock-Getter
     source = inspect.getsource(async_read_input_registers)
-    assert "_modbus_read_lock" in source
+    assert "_get_modbus_read_lock" in source
     assert "LAMBDA_MAX_RETRIES" in source
 
 

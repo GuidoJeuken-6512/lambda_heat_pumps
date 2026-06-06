@@ -4,7 +4,7 @@ title: "Sensoren-Übersicht - Technische Dokumentation"
 
 # Sensoren-Übersicht - Technische Dokumentation
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 16.04.2026*
 
 Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, gruppiert nach Device-Typ und kategorisiert nach nativ (direkt aus Modbus) oder berechnet.
 
@@ -85,7 +85,7 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 | `eu08l_hp1_cooling_max_output_power` | `cooling_max_output_power` | 59 | 0.1 | measurement | power | Cooling Max Output Power |
 | `eu08l_hp1_config_parameter_60` | `config_parameter_60` | 60 | 1 | measurement | - | Unknown Parameter (R1060) |
 
-### Berechnet (75 Sensoren, inkl. COP)
+### Berechnet (77 Sensoren, inkl. COP)
 
 | unique_id | sensor_id | Register | Scale | State Class | Device Class | Data Type | Name |
 |-----------|-----------|----------|-------|-------------|--------------|-----------|------|
@@ -128,10 +128,12 @@ Diese Dokumentation listet alle Sensoren der Lambda Heat Pumps Integration auf, 
 | `eu08l_hp1_heating_cycling_total` | `heating_cycling_total` | - | - | total_increasing | - | calculated | Heating Cycling Total |
 | `eu08l_hp1_heating_cycling_yesterday` | `heating_cycling_yesterday` | - | - | total | - | calculated | Heating Cycling Yesterday |
 | `eu08l_hp1_heating_energy_daily` | `heating_energy_daily` | - | - | total | energy | calculated | Heating Energy Daily |
+| `eu08l_hp1_heating_energy_hourly` | `heating_energy_hourly` | - | - | total | energy | calculated | Heating Energy Hourly |
 | `eu08l_hp1_heating_energy_monthly` | `heating_energy_monthly` | - | - | total | energy | calculated | Heating Energy Monthly |
 | `eu08l_hp1_heating_energy_total` | `heating_energy_total` | - | - | total_increasing | energy | calculated | Heating Energy Total |
 | `eu08l_hp1_heating_energy_yearly` | `heating_energy_yearly` | - | - | total | energy | calculated | Heating Energy Yearly |
 | `eu08l_hp1_heating_thermal_energy_daily` | `heating_thermal_energy_daily` | - | - | total | energy | thermal_calculated | Heating Thermal Energy Daily |
+| `eu08l_hp1_heating_thermal_energy_hourly` | `heating_thermal_energy_hourly` | - | - | total | energy | thermal_calculated | Heating Thermal Energy Hourly |
 | `eu08l_hp1_heating_thermal_energy_monthly` | `heating_thermal_energy_monthly` | - | - | total | energy | thermal_calculated | Heating Thermal Energy Monthly |
 | `eu08l_hp1_heating_thermal_energy_total` | `heating_thermal_energy_total` | - | - | total_increasing | energy | thermal_calculated | Heating Thermal Energy Total |
 | `eu08l_hp1_heating_thermal_energy_yearly` | `heating_thermal_energy_yearly` | - | - | total | energy | thermal_calculated | Heating Thermal Energy Yearly |

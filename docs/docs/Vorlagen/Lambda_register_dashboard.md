@@ -8,8 +8,8 @@ title: "Lambda Register-Dashboard"
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 320px;">
-    <a href="../../assets/lambda-register-dashboard-general.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen">
-      <img src="../../assets/lambda-register-dashboard-general.png" alt="Lambda Register-Dashboard – General / Ambient & E-Manager" style="width: 100%; height: auto; border-radius: 8px;">
+    <a href="../assets/lambda-register-dashboard-general.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen">
+      <img src="../assets/lambda-register-dashboard-general.png" alt="Lambda Register-Dashboard – General / Ambient & E-Manager" style="width: 100%; height: auto; border-radius: 8px;">
     </a>
   </div>
   <div style="flex: 1; min-width: 280px;">

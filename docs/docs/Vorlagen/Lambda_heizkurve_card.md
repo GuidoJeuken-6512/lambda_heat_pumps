@@ -8,7 +8,7 @@ title: "Lambda Heizkurven-Card"
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 320px;">
-    <img src="../../assets/heizkurven_card_de.png" alt="Heizkurven-Card Vorschau" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/heizkurven_card_de.png" alt="Heizkurven-Card Vorschau" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 280px;">
     <p>Diese Vorlage fügt eine <strong>Lovelace-Custom-Card</strong> ein, die die <strong>Heizkurve</strong> einer Lambda-Wärmepumpe darstellt: eine Linie durch drei Stützpunkte (z. B. 22/35, 0/41, -22/50) und einen <strong>dicken Punkt</strong> für den aktuellen Betriebspunkt (X = Außentemperatur, Y = berechnete Vorlauftemperatur).</p>

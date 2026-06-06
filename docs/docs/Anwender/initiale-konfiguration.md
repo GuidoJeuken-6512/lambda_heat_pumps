@@ -124,6 +124,6 @@ Nach der erfolgreichen Initialkonfiguration können Sie:
 - [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md) vornehmen
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
 - [Raumthermostat](raumthermostat.md) konfigurieren
-- [Stromverbrauchsberechnung](stromverbrauchsberechnung.md) einrichten
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
 
