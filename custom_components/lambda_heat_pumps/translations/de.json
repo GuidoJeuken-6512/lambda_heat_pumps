@@ -55,13 +55,15 @@
           "room_thermostat_control": "Raumthermostat-Steuerung",
           "pv_surplus": "PV-Überschuss-Steuerung",
           "pv_surplus_mode": "E-Meter Messpunkt",
+          "cooling_mode_enabled": "Kühlbetrieb",
           "update_interval": "Update-Intervall (Sekunden)"
         },
         "data_description": {
           "firmware_version": "Wählen Sie die Firmware-Version Ihrer Lambda Wärmepumpe",
           "update_interval": "Aktualisierungsintervall für Modbus-Abfragen (10-300 Sekunden). Niedrigere Werte = häufiger Updates, aber mehr Modbus-Traffic.",
           "room_thermostat_control": "Ermöglicht Integration mit externen Raumthermostaten",
-          "pv_surplus": "Aktiviert PV-Überschuss-Steuerung für optimierten Energieverbrauch"
+          "pv_surplus": "Aktiviert PV-Überschuss-Steuerung für optimierten Energieverbrauch",
+          "cooling_mode_enabled": "Erstellt je Heizkreis eine zusätzliche Climate-Entity für den Kühlbetrieb-Sollwert"
         }
       },
       "thermostat_sensor": {

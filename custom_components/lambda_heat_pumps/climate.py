@@ -20,6 +20,7 @@ from .const import (
     HOT_WATER_MAX_TEMP_LIMIT,
     DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
     DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
+    DEFAULT_COOLING_MODE_ENABLED,
 )
 from .utils import (
     generate_base_addresses,
@@ -89,7 +90,7 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
             min_temp = entry.options.get("hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT)
             max_temp = entry.options.get("hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT)
             default_min, default_max = HOT_WATER_MIN_TEMP_LIMIT, HOT_WATER_MAX_TEMP_LIMIT
-        else:  # heating_circuit
+        else:  # heating_circuit oder cooling_circuit (gleicher Raumtemperaturbereich)
             min_temp = entry.options.get("heating_circuit_min_temp", DEFAULT_HEATING_CIRCUIT_MIN_TEMP)
             max_temp = entry.options.get("heating_circuit_max_temp", DEFAULT_HEATING_CIRCUIT_MAX_TEMP)
             default_min, default_max = DEFAULT_HEATING_CIRCUIT_MIN_TEMP, DEFAULT_HEATING_CIRCUIT_MAX_TEMP
@@ -110,7 +111,8 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
         # HVAC-Modi aus CLIMATE_TEMPLATES lesen
         hvac_modes_set = self._template.get("hvac_mode", {"heat"})
         self._attr_hvac_modes = [HVACMode(mode) for mode in hvac_modes_set]
-        self._attr_hvac_mode = HVACMode.HEAT  # Default-Modus
+        default_hvac_mode = "cool" if "cool" in hvac_modes_set else "heat"
+        self._attr_hvac_mode = HVACMode(default_hvac_mode)
         
         # Setze Icon aus Template (zentrale Steuerung)
         self._attr_icon = get_entity_icon(self._template)
@@ -130,12 +132,15 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
     def target_temperature(self):
         if self.coordinator.data is None:
             return None
-        key = (
-            f"boil{self._idx}_target_high_temperature"
-            if self._climate_type == "hot_water"
-            else f"hc{self._idx}_target_room_temperature"
-        )
-        return self.coordinator.data.get(key)
+        return self.coordinator.data.get(self._target_temperature_key)
+
+    @property
+    def _target_temperature_key(self):
+        if self._climate_type == "hot_water":
+            return f"boil{self._idx}_target_high_temperature"
+        if self._climate_type == "cooling_circuit":
+            return f"hc{self._idx}_set_cooling_mode_room_temperature"
+        return f"hc{self._idx}_target_room_temperature"
 
     @property
     def state_class(self):
@@ -172,12 +177,7 @@ class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
             _LOGGER.error("Failed to write target temperature: %s", result)
             await self.coordinator.async_request_refresh()
             return
-        key = (
-            f"boil{self._idx}_target_high_temperature"
-            if self._climate_type == "hot_water"
-            else f"hc{self._idx}_target_room_temperature"
-        )
-        self.coordinator.data[key] = temperature
+        self.coordinator.data[self._target_temperature_key] = temperature
         self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
@@ -246,5 +246,22 @@ async def async_setup_entry(
                 sensor_translations,
             )
         )
+
+    # Cooling Circuits (nur wenn Kühlbetrieb in den Optionen aktiviert ist)
+    if entry.options.get("cooling_mode_enabled", DEFAULT_COOLING_MODE_ENABLED):
+        for idx in range(1, num_hc + 1):
+            # Check if cooling_circuit climate is compatible
+            if "cooling_circuit" not in compatible_climates:
+                continue
+            entities.append(
+                LambdaClimateEntity(
+                    coordinator,
+                    entry,
+                    "cooling_circuit",  # climate_type aus CLIMATE_TEMPLATES
+                    idx,
+                    hc_addresses[idx],
+                    sensor_translations,
+                )
+            )
 
     async_add_entities(entities)

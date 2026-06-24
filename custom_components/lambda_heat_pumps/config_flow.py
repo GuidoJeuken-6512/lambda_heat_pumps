@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_FIRMWARE,
     DEFAULT_ROOM_THERMOSTAT_CONTROL,
     DEFAULT_PV_SURPLUS,
+    DEFAULT_COOLING_MODE_ENABLED,
     DEFAULT_NUM_HPS,
     DEFAULT_NUM_BOIL,
     DEFAULT_NUM_HC,
@@ -730,6 +731,7 @@ class LambdaOptionsFlow(OptionsFlow):
         self._options = {
             "room_thermostat_control": DEFAULT_ROOM_THERMOSTAT_CONTROL,
             "pv_surplus": DEFAULT_PV_SURPLUS,
+            "cooling_mode_enabled": DEFAULT_COOLING_MODE_ENABLED,
             "pv_surplus_mode": DEFAULT_PV_SURPLUS_MODE,
             "hot_water_min_temp": HOT_WATER_MIN_TEMP_LIMIT,
             "hot_water_max_temp": HOT_WATER_MAX_TEMP_LIMIT,
@@ -898,6 +900,12 @@ class LambdaOptionsFlow(OptionsFlow):
             vol.Optional(
                 "pv_surplus",
                 default=self._options.get("pv_surplus", DEFAULT_PV_SURPLUS),
+            ): selector.BooleanSelector(),
+            vol.Optional(
+                "cooling_mode_enabled",
+                default=self._options.get(
+                    "cooling_mode_enabled", DEFAULT_COOLING_MODE_ENABLED
+                ),
             ): selector.BooleanSelector(),
             vol.Optional(
                 "pv_surplus_mode",
