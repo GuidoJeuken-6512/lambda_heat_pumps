@@ -239,6 +239,34 @@ class TestLambdaOptionsFlow:
             assert result["type"] == FlowResultType.FORM
 
     @pytest.mark.asyncio
+    async def test_async_step_init_cooling_mode_requires_thermostat_sensor(
+        self, mock_hass, mock_entry
+    ):
+        """Cooling mode alone must also trigger the thermostat sensor step.
+
+        The room temperature entity is required for cooling mode as well,
+        since the actual room temperature is needed there too.
+        """
+        flow = LambdaOptionsFlow(mock_entry)
+        flow.hass = mock_hass
+
+        user_input = {
+            "update_interval": 60,
+            "heating_circuit_min_temp": 10,
+            "heating_circuit_max_temp": 40,
+            "heating_circuit_temp_step": 1.0,
+            "room_thermostat_control": False,
+            "pv_surplus": False,
+            "cooling_mode_enabled": True,
+        }
+
+        with patch.object(flow, "_get_entities", return_value=[]):
+            result = await flow.async_step_init(user_input)
+
+            assert result["type"] == FlowResultType.FORM
+            assert result["step_id"] == "thermostat_sensor"
+
+    @pytest.mark.asyncio
     async def test_async_step_init_with_defaults(self, mock_hass, mock_entry):
         """Test init step with default values."""
         flow = LambdaOptionsFlow(mock_entry)

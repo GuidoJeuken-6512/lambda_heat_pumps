@@ -1,8 +1,18 @@
 # Offset-Fehleranalyse: `cycling_offsets` und `energy_consumption_offsets`
 
-**Version:** 2.3
+**Version:** 2.3 (Analyse) · **Status-Update:** 24.06.2026
 **Analysedatum:** 21. Februar 2026
 **Branch:** Release2.3 (Commit fcd9a83)
+
+> ## ✅ Status: Alle 3 Bugs behoben in Release 2.4.0 (29.03.2026, Commit `434e20c`)
+>
+> | Bug | Fix |
+> |---|---|
+> | B-1 (Kritisch) | Offset-Block ersatzlos aus `increment_cycling_counter()` entfernt (Option A, siehe Abschnitt 7) |
+> | B-2 (Mittel) | Daily-Offset-Lookup/-Addition aus `_async_update_data()` entfernt; `self._cycling_offsets` wird zwar noch geladen, aber nirgends mehr angewendet |
+> | B-3 (Mittel) | Durch Fix B-1 erledigt – `_apply_cycling_offset()` in `sensor.py` ist jetzt der einzige verbleibende Offset-Mechanismus |
+>
+> Siehe [CHANGELOG.md](../../CHANGELOG.md#240---2026-03-29) ("Critical: Cycling offset re-applied on every cycle event"). Der unten stehende Analysetext beschreibt den **damaligen, mittlerweile behobenen** Zustand und bleibt als Dokumentation der Fehlerursache erhalten.
 
 ---
 
@@ -23,11 +33,11 @@
 
 Benutzer berichten, dass konfigurierte Offsets aus der `lambda_wp_config.yaml` nicht einmalig angewendet werden, sondern sich bei jedem Sensor-Update aufaddieren. Die Codeanalyse bestätigt dies und identifiziert **drei unabhängige Bugs**:
 
-| # | Schweregrad | Ort | Beschreibung |
-|---|---|---|---|
-| B-1 | **Kritisch** | utils.py:901 | Voller YAML-Offset wird bei **jedem Zyklus-Ereignis** auf den Total-Sensor addiert → exponentieller Wertzuwachs |
-| B-2 | Mittel | coordinator.py:1974/1982 | `_daily`-Offset wird alle 30 s in den Coordinator-Data-Dict geschrieben |
-| B-3 | Mittel | utils.py vs sensor.py | Zwei parallele Offset-Mechanismen für Total-Sensoren – einer ist korrekt, einer nicht |
+| # | Status | Schweregrad | Ort (damals) | Beschreibung |
+|---|---|---|---|---|
+| B-1 | ✅ Behoben (2.4.0) | **Kritisch** | utils.py:901 | Voller YAML-Offset wird bei **jedem Zyklus-Ereignis** auf den Total-Sensor addiert → exponentieller Wertzuwachs |
+| B-2 | ✅ Behoben (2.4.0) | Mittel | coordinator.py:1974/1982 | `_daily`-Offset wird alle 30 s in den Coordinator-Data-Dict geschrieben |
+| B-3 | ✅ Behoben (2.4.0) | Mittel | utils.py vs sensor.py | Zwei parallele Offset-Mechanismen für Total-Sensoren – einer ist korrekt, einer nicht |
 
 ---
 
@@ -272,13 +282,17 @@ self._applied_offset = float(attrs.get("applied_offset", 0.0))
 
 ---
 
-## 7. Empfohlene Korrekturen
+## 7. Empfohlene Korrekturen (umgesetzt in Release 2.4.0)
+
+> **Umgesetzt wurde Option A** für Bug 1 – der Offset-Block wurde ersatzlos aus
+> `increment_cycling_counter()` entfernt. Option B (Differenz-Tracking direkt im
+> Increment-Pfad) blieb ungenutzt.
 
 ### Fix für Bug 1 (Kritisch)
 
 **Ort:** [utils.py](../../custom_components/lambda_heat_pumps/utils.py), `increment_cycling_counter()`, Zeile ~880–914
 
-**Option A (empfohlen): Offset-Block aus `increment_cycling_counter()` entfernen**
+**Option A (✅ umgesetzt): Offset-Block aus `increment_cycling_counter()` entfernen**
 
 Da `_apply_cycling_offset()` in sensor.py den Offset bereits korrekt einmalig anwendet, muss `increment_cycling_counter()` den Offset gar nicht kennen. Der Block kann ersatzlos entfernt werden:
 
@@ -358,10 +372,10 @@ if self._sensor_id.endswith("_total"):
 
 ## 8. Betroffene Dateien
 
-| Datei | Zeile (ca.) | Bug | Aktion |
-|---|---|---|---|
-| [utils.py](../../custom_components/lambda_heat_pumps/utils.py) | 880–914 | B-1, B-3 | `increment_cycling_counter()`: Offset-Block entfernen (Option A) oder durch Differenz-Tracking ersetzen (Option B) |
-| [coordinator.py](../../custom_components/lambda_heat_pumps/coordinator.py) | 1959–1982 | B-2 | Daily-Offset-Lookup und Addition aus `_async_update_data()` entfernen |
+| Datei | Zeile (ca.) | Bug | Aktion | Status |
+|---|---|---|---|---|
+| [utils.py](../../custom_components/lambda_heat_pumps/utils.py) | 880–914 | B-1, B-3 | `increment_cycling_counter()`: Offset-Block entfernen (Option A) oder durch Differenz-Tracking ersetzen (Option B) | ✅ erledigt (Option A) |
+| [coordinator.py](../../custom_components/lambda_heat_pumps/coordinator.py) | 1959–1982 | B-2 | Daily-Offset-Lookup und Addition aus `_async_update_data()` entfernen | ✅ erledigt |
 | [sensor.py](../../custom_components/lambda_heat_pumps/sensor.py) | 1032–1085 | B-3 | `_apply_cycling_offset()` – keine Änderung (korrekt); ggf. Aufruf entfernen wenn Option B gewählt |
 
 ### Keine Änderungen nötig

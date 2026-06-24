@@ -94,6 +94,77 @@ async def test_climate_setup(mock_hass, mock_config_entry, mock_coordinator):
 
 
 @pytest.mark.asyncio
+async def test_climate_setup_cooling_without_room_thermostat_control(
+    mock_hass, mock_config_entry, mock_coordinator
+):
+    """Cooling mode alone must not create a heating_circuit climate entity.
+
+    The heating_circuit climate entity must only be created when
+    room_thermostat_control is enabled, even if a room_temperature_entity_X
+    is configured (which is now also kept when only cooling is enabled).
+    """
+    mock_hass.data = {
+        DOMAIN: {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
+    }
+
+    mock_config_entry.data = {
+        "name": "test",
+        "num_boil": 0,
+        "num_hc": 1,
+        "firmware_version": "V1.0.0",
+    }
+    mock_config_entry.options = {
+        "room_thermostat_control": False,
+        "cooling_mode_enabled": True,
+        "room_temperature_entity_1": "sensor.room_temp",
+    }
+
+    mock_add_entities = AsyncMock()
+
+    with patch(
+        "custom_components.lambda_heat_pumps.climate.LambdaClimateEntity"
+    ) as mock_climate:
+        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+
+        climate_types = [call.args[2] for call in mock_climate.call_args_list]
+        assert "heating_circuit" not in climate_types
+        assert "cooling_circuit" in climate_types
+
+
+@pytest.mark.asyncio
+async def test_climate_setup_heating_and_cooling_both_enabled(
+    mock_hass, mock_config_entry, mock_coordinator
+):
+    """Both climate entities must be created when both options are enabled."""
+    mock_hass.data = {
+        DOMAIN: {mock_config_entry.entry_id: {"coordinator": mock_coordinator}}
+    }
+
+    mock_config_entry.data = {
+        "name": "test",
+        "num_boil": 0,
+        "num_hc": 1,
+        "firmware_version": "V1.0.0",
+    }
+    mock_config_entry.options = {
+        "room_thermostat_control": True,
+        "cooling_mode_enabled": True,
+        "room_temperature_entity_1": "sensor.room_temp",
+    }
+
+    mock_add_entities = AsyncMock()
+
+    with patch(
+        "custom_components.lambda_heat_pumps.climate.LambdaClimateEntity"
+    ) as mock_climate:
+        await async_setup_entry(mock_hass, mock_config_entry, mock_add_entities)
+
+        climate_types = [call.args[2] for call in mock_climate.call_args_list]
+        assert "heating_circuit" in climate_types
+        assert "cooling_circuit" in climate_types
+
+
+@pytest.mark.asyncio
 async def test_lambda_climate_entity_properties():
     """Test properties of LambdaClimateEntity."""
     coordinator_mock = MagicMock()

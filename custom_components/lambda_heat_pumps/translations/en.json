@@ -68,7 +68,7 @@
       },
       "thermostat_sensor": {
         "title": "Room Temperature Sensors",
-        "description": "Select room temperature sensors for each heating circuit.",
+        "description": "Select room temperature sensors for each heating circuit. This is also required for cooling mode, since the actual room temperature is needed there as well.",
         "data": {
           "room_temperature_entity_1": "Room Temperature Sensor (HC 1)",
           "room_temperature_entity_2": "Room Temperature Sensor (HC 2)",
