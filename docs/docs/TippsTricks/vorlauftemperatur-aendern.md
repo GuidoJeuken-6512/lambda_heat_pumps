@@ -112,18 +112,25 @@ mode: single
 
 Bevor die Automatisierung aktiviert wird, lässt sich die Taupunkt-Berechnung gefahrlos in **Entwicklertools → Vorlage** (Dev Tools → Template) testen. Das Template liest nur Sensorwerte, schreibt **nichts** an die Wärmepumpe, und aktualisiert sich live bei Sensoränderungen.
 
-> **Hinweis**: Der Template-Editor kann keine Aktionen (Services) aufrufen — der dynamische Live-Read über `lambda_heat_pumps.read_modbus_register` (Betriebsart **und** Vorlauf) aus der Automatisierung lässt sich hier daher nicht nachbilden. Zum Testen der reinen Taupunkt-Formel wird der Vorlauf-Istwert stattdessen über die vorhandene Sensor-Entity `vorlauf_sensor` gelesen (z. B. `sensor.eu08l_hc1_flow_line_temperature` — entspricht Register 5n02); die Betriebsart-Prüfung wird hier ausgelassen.
+> **Hinweis**: Der Template-Editor kann keine Aktionen (Services) aufrufen — der dynamische Live-Read über `lambda_heat_pumps.read_modbus_register` aus der Automatisierung lässt sich hier nicht 1:1 nachbilden. Die Betriebsart-Prüfung wird daher über die vorhandene Sensor-Entity `betriebsart_sensor` nachgebildet (Textvergleich auf `'COOLING'`, da `states()` immer einen String liefert) statt über den rohen Registerwert `2`; der Vorlauf-Istwert wird ebenfalls über eine Sensor-Entity (`vorlauf_sensor`) statt per Live-Read gelesen. Beide Werte entsprechen aber genau den Registern 5n01 bzw. 5n02, die die Automatisierung live abfragt.
 
 ```jinja2
 {% set heizkreis_index = 1 %}
 {% set register_adresse_betriebsart = 5000 + (heizkreis_index - 1) * 100 + 1 %}
 {% set register_adresse_vorlauf = 5000 + (heizkreis_index - 1) * 100 + 2 %}
 {% set register_adresse_sollwert = 5000 + (heizkreis_index - 1) * 100 + 5 %}
+{% set betriebsart_sensor = 'sensor.eu08l_hc1_operating_state' %}
 {% set vorlauf_sensor = 'sensor.eu08l_hc1_flow_line_temperature' %}
 {% set raumtemperatur_sensor = 'sensor.wohnzimmer_wohnzimmer_temperature' %}
 {% set luftfeuchte_sensor = 'sensor.wohnzimmer_humidity' %}
 {% set sicherheitsabstand = 1.0 %}
 
+Heizkreis: HC{{ heizkreis_index }}  (Betriebsart-Register {{ register_adresse_betriebsart }}, Vorlauf-Register {{ register_adresse_vorlauf }}, Sollwert-Register {{ register_adresse_sollwert }})
+Betriebsart (aus {{ betriebsart_sensor }}): {{ states(betriebsart_sensor) }}
+{% if states(betriebsart_sensor) != 'COOLING' %}
+
+Heizkreis nicht im Kühlbetrieb (Betriebsart ≠ COOLING) – kein Eingriff nötig
+{% else %}
 {% set t = states(raumtemperatur_sensor) | float %}
 {% set rh = states(luftfeuchte_sensor) | float %}
 {% set vorlauf_ist = states(vorlauf_sensor) | float %}
@@ -133,7 +140,6 @@ Bevor die Automatisierung aktiviert wird, lässt sich die Taupunkt-Berechnung ge
 {% set taupunkt = ((b * gamma) / (a - gamma)) | round(1) %}
 {% set neuer_vorlauf = (taupunkt + sicherheitsabstand) | round(1) %}
 {% set register_wert = (neuer_vorlauf * 10) | round(0) | int %}
-Heizkreis: HC{{ heizkreis_index }}  (Betriebsart-Register {{ register_adresse_betriebsart }}, Vorlauf-Register {{ register_adresse_vorlauf }}, Sollwert-Register {{ register_adresse_sollwert }})
 Raumtemperatur: {{ t }} °C
 Luftfeuchtigkeit: {{ rh }} %
 Vorlauf (Ist, aus {{ vorlauf_sensor }} ≙ Register {{ register_adresse_vorlauf }}): {{ vorlauf_ist }} °C
@@ -144,14 +150,17 @@ Anpassung Vorlauf auf: {{ neuer_vorlauf }} °C (Register {{ register_adresse_sol
 {% else %}
 Kein Eingriff nötig (Abstand zum Taupunkt: {{ (vorlauf_ist - taupunkt) | round(1) }} °C)
 {% endif %}
+{% endif %}
 ```
 
 **Live-Read separat testen**: Um zu prüfen, dass Register `register_adresse_vorlauf` (5n02) tatsächlich den erwarteten Vorlaufwert liefert, die Aktion `lambda_heat_pumps.read_modbus_register` einmalig über **Entwicklertools → Aktionen** mit `register_address: 5002` (bzw. dem berechneten Wert für den eigenen Heizkreis) ausführen und die Antwort (`value`, roher Registerwert ×10) mit dem Sensor-Wert oben vergleichen.
 
-**Beispiel-Ausgabe** (Raumtemperatur 24 °C, Luftfeuchtigkeit 65 %, Vorlauf 17,5 °C):
+**Beispiel-Ausgabe** (Betriebsart `COOLING`, Raumtemperatur 24 °C, Luftfeuchtigkeit 65 %, Vorlauf 17,5 °C):
 
 ```
 Heizkreis: HC1  (Betriebsart-Register 5001, Vorlauf-Register 5002, Sollwert-Register 5005)
+Betriebsart (aus sensor.eu08l_hc1_operating_state): COOLING
+
 Raumtemperatur: 24.0 °C
 Luftfeuchtigkeit: 65.0 %
 Vorlauf (Ist, aus sensor.eu08l_hc1_flow_line_temperature ≙ Register 5002): 17.5 °C
@@ -165,6 +174,8 @@ Liegt der Vorlauf-Istwert deutlich über `Taupunkt + Sicherheitsabstand`, ersche
 
 ```
 Heizkreis: HC1  (Betriebsart-Register 5001, Vorlauf-Register 5002, Sollwert-Register 5005)
+Betriebsart (aus sensor.eu08l_hc1_operating_state): COOLING
+
 Raumtemperatur: 24.0 °C
 Luftfeuchtigkeit: 65.0 %
 Vorlauf (Ist, aus sensor.eu08l_hc1_flow_line_temperature ≙ Register 5002): 20.0 °C
@@ -174,7 +185,16 @@ Taupunkt: 17.0 °C
 Kein Eingriff nötig (Abstand zum Taupunkt: 3.0 °C)
 ```
 
-Erst wenn die berechneten Werte in beiden Fällen plausibel sind, sollte das identische Variablen-Set in der Automatisierung oben verwendet werden.
+Steht der Heizkreis nicht im Kühlbetrieb (z. B. Betriebsart `STBY-COOLING` oder `HEATING`), greift der Abbruch-Zweig — die Taupunkt-Berechnung wird dann gar nicht erst durchgeführt:
+
+```
+Heizkreis: HC1  (Betriebsart-Register 5001, Vorlauf-Register 5002, Sollwert-Register 5005)
+Betriebsart (aus sensor.eu08l_hc1_operating_state): STBY-COOLING
+
+Heizkreis nicht im Kühlbetrieb (Betriebsart ≠ COOLING) – kein Eingriff nötig
+```
+
+Erst wenn die berechneten Werte in allen drei Fällen plausibel sind, sollte das identische Variablen-Set in der Automatisierung oben verwendet werden.
 
 ### Einfügen in `automations.yaml`
 
