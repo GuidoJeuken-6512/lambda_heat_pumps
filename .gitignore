@@ -21,6 +21,7 @@ tests/playwright/
 !LICENSE
 !README.md
 !CHANGELOG.md
+!CHANGELOG_ALL_CHANGES.md
 !requirements.txt
 !requirements_test.txt
 
