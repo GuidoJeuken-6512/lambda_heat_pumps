@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - "main"
-      - "V2.5.0"
     paths:
       - 'docs/**'
       - '.github/workflows/docsz.yml'
@@ -20,7 +19,7 @@ jobs:
       url: https://guidojeuken-6512.github.io/lambda_heat_pumps/
     steps:
       - uses: actions/configure-pages@v6
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: 3.x

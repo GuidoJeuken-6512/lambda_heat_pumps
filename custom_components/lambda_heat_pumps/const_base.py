@@ -24,6 +24,7 @@ DEFAULT_SLAVE_ID = 1
 DEFAULT_FIRMWARE = "V0.0.8-3K"  # Updated to match current hardware
 DEFAULT_ROOM_THERMOSTAT_CONTROL = False
 DEFAULT_PV_SURPLUS = False
+DEFAULT_COOLING_MODE_ENABLED = False
 
 # Default counts for devices
 DEFAULT_NUM_HPS = 1

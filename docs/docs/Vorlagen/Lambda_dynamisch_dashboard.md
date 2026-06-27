@@ -10,7 +10,7 @@ Diese Vorlage beschreibt ein **dynamisches** Lovelace-Dashboard für die Lambda 
 
 **Besonderheit:** Der Gerätename (Prefix wie `eu08l`) wird automatisch aus der Integration ausgelesen – es muss **nichts angepasst** werden. Das Dashboard passt sich jeder Lambda-Konfiguration ohne manuelle Änderung an. Das Dashboard zeigt zudem das jeweilige Modbus Register zum Sensor an.
 
-<a href="../assets/dashboard_lambda_dynamisch1.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../assets/dashboard_lambda_dynamisch1.png" alt="Lambda Dynamisch Dashboard" width="500" style="max-width: 100%; height: auto;" /></a>
+<a href="../assets/dashboard_lambda_dynamisch1.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../../assets/dashboard_lambda_dynamisch1.png" alt="Lambda Dynamisch Dashboard" width="500" style="max-width: 100%; height: auto;" /></a>
 
 ## Funktionsweise
 

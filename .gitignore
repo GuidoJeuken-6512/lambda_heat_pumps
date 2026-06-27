@@ -21,24 +21,13 @@ tests/playwright/
 !LICENSE
 !README.md
 !CHANGELOG.md
+!CHANGELOG_ALL_CHANGES.md
 !requirements.txt
 !requirements_test.txt
 
-# Docs directory and all subdirectories
+# Docs directory and all subdirectories (offizielle, publizierte Doku)
 !docs/
 !docs/**
-
-# Docs old directory and all subdirectories
-!docs_old/
-!docs_old/**
-
-# MkDocs documentation source (sources we want tracked)
-!docs_src/
-!docs_src/**
-!docs_md/
-!docs_md/**
-!mkdocs.yml
-!requirements-docs.txt
 
 # MkDocs build output (should be ignored)
 site/

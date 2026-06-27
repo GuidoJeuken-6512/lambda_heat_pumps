@@ -1,8 +1,8 @@
 # Lambda Heat Pumps Integration – Ablaufdiagramm & Entwicklerreferenz
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 24.06.2026*
 
-**Stand:** Release 2.4.0 · **Letzte Aktualisierung:** 2026-03-21
+**Stand:** Release 2.6.0 · **Letzte Aktualisierung:** 2026-06-24
 
 Dieses Dokument beschreibt den vollständigen Ablauf der Integration – von der Initialisierung bis zum laufenden Betrieb. Es dient als Referenz für zukünftige Entwicklung und Debugging.
 
@@ -65,7 +65,9 @@ flowchart TD
     G --> G1[Modulzahlen in entry.data schreiben]
 
     F -->|Bestehende Konfiguration| H[Bestehende Modulzahlen verwenden]
-    H --> H1[Background Auto-Detect starten\nhass.async_create_task]
+    H --> H0{skip_auto_detect?}
+    H0 -->|Ja\nReload durch Options-Flow| H0a[Background-Scan überspringen\nHardware kann sich durch\nreine Options-Änderung nicht\ngeändert haben]
+    H0 -->|Nein| H1[Background Auto-Detect starten\nhass.async_create_task]
     H1 --> H2{is_reload?}
     H2 -->|Ja| H3[38s warten]
     H2 -->|Nein| H4[Sofort starten]
@@ -76,6 +78,7 @@ flowchart TD
     H1 --> H8[Task-Referenz in\ncoordinator_data speichern]
 
     G1 --> I
+    H0a --> I
     H --> I[Base-Adressen berechnen\ngenerate_base_addresses]
     I --> J[INT32-Register-Reihenfolge laden]
     J --> K[coordinator in hass.data speichern]
@@ -97,6 +100,19 @@ flowchart TD
 ```
 
 > **Hinweis:** `background_auto_detect` → `update_entry_with_detected_modules` → Reload → neuer `background_auto_detect` ist eine potenzielle Reload-Schleife. Der alte Task wird beim Unload abgebrochen, bevor der neue startet.
+
+> **`skip_auto_detect`-Parameter (Fix: „Sensoren ohne Werte nach Config-Änderung"):**
+> `async_setup_entry(hass, entry, skip_auto_detect=False)` erhält dieses Flag von
+> `async_reload_entry` (siehe Abschnitt 9). `async_reload_entry` ist ausschließlich der
+> Update-Listener für Options-Flow-Änderungen (`entry.add_update_listener`) – ein
+> Reconfigure (Host/Port/Firmware) oder ein manueller „Reload"-Klick laufen NICHT über
+> diese Funktion. Bei `skip_auto_detect=True` entfällt der 38s-verzögerte
+> Hintergrund-Scan komplett, da eine reine Options-Änderung die Modul-Hardware nicht
+> verändert haben kann. Grund: `auto_detect_modules`/`wait_for_stable_connection` nutzen
+> den **globalen** `_modbus_read_lock` (`modbus_utils.py`), der modulweit – nicht pro
+> Coordinator-Instanz – existiert und einen Reload überlebt. Ohne diesen Skip konkurriert
+> der alte Scan-Task mit der neuen Coordinator-Generation um diesen Lock und blockiert
+> so den ersten Datenabruf nach dem Reload.
 
 ---
 
@@ -248,6 +264,23 @@ classDiagram
     RestoreNumber <|-- LambdaFlowLineOffsetNumber
     NumberEntity <|-- LambdaFlowLineOffsetNumber
 ```
+
+**`LambdaClimateEntity`-Varianten (`climate_type`):** `hot_water`, `heating_circuit`
+und `cooling_circuit` nutzen dieselbe Klasse mit unterschiedlichen Templates aus
+`CLIMATE_TEMPLATES`. `heating_circuit` und `cooling_circuit` lesen ihre
+`current_temperature` beide aus demselben Register `hc{idx}_room_device_temperature` –
+der `target_temperature` kommt aber aus getrennten, eigenständig beschreibbaren
+Registern (`target_room_temperature` bzw. `set_cooling_mode_room_temperature`).
+Erzeugungs-Bedingungen in `climate.py::async_setup_entry` (entkoppelt voneinander):
+
+| Climate-Type | Bedingung |
+|---|---|
+| `heating_circuit` | `entry.options["room_thermostat_control"] == True` **und** `room_temperature_entity_{idx}` gesetzt |
+| `cooling_circuit` | `entry.options["cooling_mode_enabled"] == True` (Sensor-Auswahl unabhängig davon) |
+
+Der Options-Flow fragt die Raumtemperatur-Sensor-Auswahl (`thermostat_sensor`-Step) an,
+sobald **eine der beiden** Optionen aktiviert wird, da der Cooling-Betrieb denselben
+Raum-IST-Wert benötigt wie die Heizkreis-Regelung.
 
 ### 4.4 Device-Hierarchie
 
@@ -423,18 +456,27 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[async_unload_entry] --> T[template_setup_task abbrechen\nauto_detect_task abbrechen]
+    A[async_unload_entry] --> T0[Modbus-Client SOFORT schließen\ncoordinator.client.close → None]
+    T0 --> T[template_setup_task abbrechen\nauto_detect_task abbrechen\n2s Grace-Period]
     T --> B[ResetManager.cleanup\nautomatische Timer abmelden]
     B --> C[async_unload_platforms\nSENSOR · CLIMATE · NUMBER]
     C --> D[⚠ Template-Sensoren\nnicht in PLATFORMS\n→ offen: H-03]
-    D --> E[async_cleanup_all_components\nCoordinator herunterfahren\nModbus schließen\nhass.data aufräumen]
+    D --> E[async_cleanup_all_components\nCoordinator herunterfahren\nasync_shutdown idempotent,\nClient bereits None\nhass.data aufräumen]
     E --> F{Letzter Entry\nfür Domain?}
     F -->|Ja| G[hass.data DOMAIN entfernen]
     F -->|Nein| H([Unload abgeschlossen])
     G --> H
 
     style D fill:#fff9c4
+    style T0 fill:#fff9c4
 ```
+
+> **Warum der Client als erster Schritt schließt:** Die Task-Cancellation (`T`) hat nur
+> 2s Grace-Period, ein einzelner Modbus-Read kann aber bis zu `LAMBDA_MODBUS_TIMEOUT`
+> (60s) pro Versuch dauern. Ist der Client schon vor der Cancellation geschlossen,
+> schlägt jeder weitere Read-Versuch eines noch laufenden Hintergrund-Tasks sofort über
+> die `client.connected`-Prüfung in `modbus_utils.py` fehl – statt den globalen
+> Modbus-Lock minutenlang für die neue Coordinator-Generation zu blockieren.
 
 ### Reload
 
@@ -444,7 +486,7 @@ flowchart TD
     B -->|Ja| C([Skip – return True])
     B -->|Nein| D[Pro-Entry Lock acquire\n_entry_reload_flags\[entry_id\] = True]
     D --> E[async_unload_entry]
-    E --> F[async_setup_entry]
+    E --> F[async_setup_entry\nskip_auto_detect=True]
     F --> G[_entry_reload_flags\[entry_id\] = False\nin finally-Block]
     G --> H([Reload abgeschlossen])
 
@@ -457,13 +499,13 @@ flowchart TD
 
 ## 10. Offene Probleme
 
-| # | Schweregrad | Kurzbeschreibung | Ort | Analyse |
-|---|---|---|---|---|
-| B-1 | **Kritisch** | Cycling-Offset bei jedem Zyklus-Event erneut addiert → exponentieller Wertzuwachs | utils.py:901 | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
-| B-2 | Mittel | Daily-Offset alle 30s in Coordinator-Data-Dict geschrieben | coordinator.py:1974 | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
-| H-03 | Hoch | Template-Sensoren nicht in PLATFORMS → werden beim Unload nicht vollständig entladen | __init__.py:43 | [integration_analysis.md](../../analysis/integration_analysis.md) |
+| # | Status | Schweregrad | Kurzbeschreibung | Ort | Analyse |
+|---|---|---|---|---|---|
+| B-1 | ✅ Behoben (Release 2.4.0) | Kritisch | Cycling-Offset wurde bei jedem Zyklus-Event erneut addiert → exponentieller Wertzuwachs. Offset-Block aus `increment_cycling_counter()` entfernt; alleinige Verantwortung liegt jetzt bei `_apply_cycling_offset()` in `sensor.py` (Differenz-Tracking). | utils.py | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
+| B-2 | ✅ Behoben (Release 2.4.0) | Mittel | Daily-Offset-Lookup/-Addition im 30s-Update-Zyklus entfernt; `_cycling_offsets` wird zwar noch geladen, aber im Coordinator nirgends mehr angewendet. | coordinator.py | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
+| H-03 | ⚠️ Praktisch entschärft, architektonisch offen | Hoch | Template-Sensoren sind weiterhin nicht als eigene `Platform` deklariert. Das ursprünglich befürchtete Symptom (Geist-Entities nach Unload) wird aber dadurch vermieden, dass (a) `template_setup_task` als einer der ersten Schritte in `async_unload_entry` abgebrochen wird (Fix K-01, Abschnitt 9) und (b) Template-Entities über denselben `async_add_entities`-Callback wie die übrigen SENSOR-Entities laufen (`sensor.py` → `template_sensor.async_setup_entry(hass, entry, async_add_entities)`), also vom selben `EntityPlatform`-Objekt verwaltet werden. Eine echte `Platform.TEMPLATE`-Registrierung gibt es trotzdem nicht. | __init__.py, sensor.py, template_sensor.py | [integration_analysis.md](../../analysis/integration_analysis.md) |
 
-Vollständige Analyse: [docs/analysis/integration_analysis.md](../../analysis/integration_analysis.md)
+Vollständige Analyse: [docs/analysis/integration_analysis.md](../../analysis/integration_analysis.md) und [docs/analysis/offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) – beide Dokumente wurden am 24.06.2026 mit Status-Updates versehen (B-1/B-2/B-3 ✅ behoben, H-03 ⚠️ praktisch entschärft). Die übrigen, dort nicht erneut verifizierten Punkte (H-02, H-05, M-01, M-04, M-08) spiegeln weiterhin den Stand von Release 2.3.
 
 ---
 
@@ -499,4 +541,4 @@ HC1:                5000 – 5099    HC2: 5100–5199    …  HC12: 6100–6199
 
 ---
 
-*Dieses Dokument wurde auf Basis des tatsächlichen Quellcodes von Release 2.3 erstellt und ersetzt die veraltete Version.*
+*Dieses Dokument wurde auf Basis des tatsächlichen Quellcodes erstellt, ursprünglich für Release 2.3, zuletzt aktualisiert für Release 2.6.0 (Cooling-Circuit-Climate-Entity, `skip_auto_detect`-Fix).*

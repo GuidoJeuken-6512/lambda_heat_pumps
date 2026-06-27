@@ -55,18 +55,20 @@
           "room_thermostat_control": "Room Thermostat Control",
           "pv_surplus": "PV Surplus Control",
           "pv_surplus_mode": "E-Meter Measuring Point",
+          "cooling_mode_enabled": "Cooling Mode",
           "update_interval": "Update Interval (seconds)"
         },
         "data_description": {
           "firmware_version": "Select the firmware version of your Lambda heat pump",
           "update_interval": "Update interval for Modbus queries (10-300 seconds). Lower values = more frequent updates, but more Modbus traffic.",
           "room_thermostat_control": "Enable integration with external room thermostats",
-          "pv_surplus": "Enable PV surplus control for optimized energy consumption"
+          "pv_surplus": "Enable PV surplus control for optimized energy consumption",
+          "cooling_mode_enabled": "Creates an additional climate entity per heating circuit for the cooling mode setpoint"
         }
       },
       "thermostat_sensor": {
         "title": "Room Temperature Sensors",
-        "description": "Select room temperature sensors for each heating circuit.",
+        "description": "Select room temperature sensors for each heating circuit. This is also required for cooling mode, since the actual room temperature is needed there as well.",
         "data": {
           "room_temperature_entity_1": "Room Temperature Sensor (HC 1)",
           "room_temperature_entity_2": "Room Temperature Sensor (HC 2)",
@@ -253,6 +255,7 @@
     },
     "climate": {
       "heating_circuit": { "name": "Heating Circuit" },
+      "cooling_circuit": { "name": "Cooling Circuit" },
       "hot_water": { "name": "Hot Water" }
     },
     "number": {

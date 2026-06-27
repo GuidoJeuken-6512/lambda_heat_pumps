@@ -55,24 +55,33 @@
           "room_thermostat_control": "Raumthermostat-Steuerung",
           "pv_surplus": "PV-Überschuss-Steuerung",
           "pv_surplus_mode": "E-Meter Messpunkt",
+          "cooling_mode_enabled": "Kühlbetrieb",
           "update_interval": "Update-Intervall (Sekunden)"
         },
         "data_description": {
           "firmware_version": "Wählen Sie die Firmware-Version Ihrer Lambda Wärmepumpe",
           "update_interval": "Aktualisierungsintervall für Modbus-Abfragen (10-300 Sekunden). Niedrigere Werte = häufiger Updates, aber mehr Modbus-Traffic.",
           "room_thermostat_control": "Ermöglicht Integration mit externen Raumthermostaten",
-          "pv_surplus": "Aktiviert PV-Überschuss-Steuerung für optimierten Energieverbrauch"
+          "pv_surplus": "Aktiviert PV-Überschuss-Steuerung für optimierten Energieverbrauch",
+          "cooling_mode_enabled": "Erstellt je Heizkreis eine zusätzliche Climate-Entity für den Kühlbetrieb-Sollwert"
         }
       },
       "thermostat_sensor": {
         "title": "Raumthermostat-Sensoren",
-        "description": "Wählen Sie die Temperatursensoren für die Heizkreise aus. Dieser wird für die Raumtemperatursteuerung der Lambda verwendet. Hinweis: Es werden nur externe Sensoren mit der Geräteklasse temperature angezeigt, die nicht von dieser Integration stammen.",
+        "description": "Wählen Sie die Temperatursensoren für die Heizkreise aus. Dieser wird für die Raumtemperatursteuerung der Lambda verwendet und auch für den Kühlbetrieb benötigt, da dort ebenfalls der IST-Wert der Raumtemperatur erforderlich ist. Hinweis: Es werden nur externe Sensoren mit der Geräteklasse temperature angezeigt, die nicht von dieser Integration stammen.",
         "data": {
           "room_temperature_entity_1": "Temperatursensor HK1",
           "room_temperature_entity_2": "Temperatursensor HK2",
           "room_temperature_entity_3": "Temperatursensor HK3",
           "room_temperature_entity_4": "Temperatursensor HK4",
-          "room_temperature_entity_5": "Temperatursensor HK5"
+          "room_temperature_entity_5": "Temperatursensor HK5",
+          "room_temperature_entity_6": "Temperatursensor HK6",
+          "room_temperature_entity_7": "Temperatursensor HK7",
+          "room_temperature_entity_8": "Temperatursensor HK8",
+          "room_temperature_entity_9": "Temperatursensor HK9",
+          "room_temperature_entity_10": "Temperatursensor HK10",
+          "room_temperature_entity_11": "Temperatursensor HK11",
+          "room_temperature_entity_12": "Temperatursensor HK12"
         }
       },
       "pv_sensor": {
@@ -246,6 +255,7 @@
     },
     "climate": {
       "heating_circuit": { "name": "Heizkreis" },
+      "cooling_circuit": { "name": "Kühlkreis" },
       "hot_water": { "name": "Warmwasser" }
     },
     "number": {

@@ -1324,6 +1324,20 @@ CLIMATE_TEMPLATES = {
         "hvac_mode": {"heat"},
         "state_class": "measurement",
     },
+    "cooling_circuit": {
+        "relative_address": 4,  # room_device_temperature (gleich wie heating_circuit)
+        "relative_set_address": 52,  # set_cooling_mode_room_temperature
+        "name": "Cooling Circuit",
+        "unit": "°C",
+        "scale": 0.1,
+        "precision": 0.1,
+        "data_type": "uint16",
+        "firmware_version": 1,
+        "device_type": "hc",
+        "writeable": True,
+        "hvac_mode": {"cool"},
+        "state_class": "measurement",
+    },
 }
 
 
