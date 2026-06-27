@@ -74,7 +74,14 @@
           "room_temperature_entity_2": "Temperatursensor HK2",
           "room_temperature_entity_3": "Temperatursensor HK3",
           "room_temperature_entity_4": "Temperatursensor HK4",
-          "room_temperature_entity_5": "Temperatursensor HK5"
+          "room_temperature_entity_5": "Temperatursensor HK5",
+          "room_temperature_entity_6": "Temperatursensor HK6",
+          "room_temperature_entity_7": "Temperatursensor HK7",
+          "room_temperature_entity_8": "Temperatursensor HK8",
+          "room_temperature_entity_9": "Temperatursensor HK9",
+          "room_temperature_entity_10": "Temperatursensor HK10",
+          "room_temperature_entity_11": "Temperatursensor HK11",
+          "room_temperature_entity_12": "Temperatursensor HK12"
         }
       },
       "pv_sensor": {
