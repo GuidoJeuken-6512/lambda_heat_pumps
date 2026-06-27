@@ -248,6 +248,7 @@
     },
     "climate": {
       "heating_circuit": { "name": "Heizkreis" },
+      "cooling_circuit": { "name": "Kühlkreis" },
       "hot_water": { "name": "Warmwasser" }
     },
     "number": {

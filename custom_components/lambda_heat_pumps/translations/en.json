@@ -255,6 +255,7 @@
     },
     "climate": {
       "heating_circuit": { "name": "Heating Circuit" },
+      "cooling_circuit": { "name": "Cooling Circuit" },
       "hot_water": { "name": "Hot Water" }
     },
     "number": {
