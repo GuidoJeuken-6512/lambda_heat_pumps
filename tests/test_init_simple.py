@@ -354,6 +354,138 @@ def test_cycling_sensor_py_deleted():
     assert not (component_dir / "cycling_sensor.py").exists()
 
 
+# ---------------------------------------------------------------------------
+# Fix: Sensoren ohne Werte nach Config-Änderung (Reload-Bug)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_reload_entry_skips_auto_detect():
+    """async_reload_entry ruft async_setup_entry mit skip_auto_detect=True auf.
+
+    Ein durch den Options-Flow-Update-Listener ausgelöster Reload kann die
+    Modul-Hardware nicht verändert haben, daher ist der Hintergrund-Scan dort
+    unnötig und soll übersprungen werden.
+    """
+    from custom_components.lambda_heat_pumps import async_reload_entry
+
+    entry = MagicMock()
+    entry.entry_id = "test_reload_skip_auto_detect"
+
+    with (
+        patch(
+            "custom_components.lambda_heat_pumps.async_unload_entry",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "custom_components.lambda_heat_pumps.async_setup_entry",
+            new=AsyncMock(return_value=True),
+        ) as mock_setup,
+    ):
+        result = await async_reload_entry(MagicMock(), entry)
+
+    try:
+        assert result is True
+        mock_setup.assert_called_once()
+        _, kwargs = mock_setup.call_args
+        assert kwargs.get("skip_auto_detect") is True
+    finally:
+        _entry_reload_flags.pop(entry.entry_id, None)
+        _entry_reload_locks.pop(entry.entry_id, None)
+
+
+@pytest.mark.asyncio
+async def test_skip_auto_detect_does_not_schedule_background_task():
+    """Bei skip_auto_detect=True wird kein background_auto_detect-Task gestartet,
+    auch wenn has_module_counts=True (bestehende Config mit Modulzahlen)."""
+    from custom_components.lambda_heat_pumps import async_setup_entry
+
+    entry_id = "test_skip_auto_detect"
+    entry = MagicMock()
+    entry.entry_id = entry_id
+    entry.data = {
+        "host": "192.168.1.1",
+        "port": 502,
+        "slave_id": 1,
+        "num_hps": 1,
+        "num_hc": 1,
+        "num_boil": 1,
+        "num_buff": 0,
+        "num_sol": 0,
+    }
+    entry.options = {}
+    entry.add_update_listener = MagicMock(return_value=MagicMock())
+    entry.async_on_unload = MagicMock()
+
+    hass = MagicMock()
+    hass.data = {}
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_forward_entry_setups = AsyncMock(return_value=True)
+    hass.services = MagicMock()
+    hass.services.has_service = MagicMock(return_value=True)
+    hass.async_create_task = MagicMock()
+
+    mock_coordinator = MagicMock()
+    mock_coordinator.async_init = AsyncMock()
+    mock_coordinator.async_refresh = AsyncMock()
+    mock_coordinator.client = MagicMock()
+    mock_coordinator.slave_id = 1
+    mock_coordinator._int32_register_order = "high_first"
+    mock_coordinator._persist_dirty = False
+
+    with (
+        patch("custom_components.lambda_heat_pumps.ensure_lambda_config", new=AsyncMock()),
+        patch("custom_components.lambda_heat_pumps.LambdaDataUpdateCoordinator", return_value=mock_coordinator),
+        patch("custom_components.lambda_heat_pumps.async_remove_duplicate_entity_suffixes", new=AsyncMock()),
+        patch("custom_components.lambda_heat_pumps.modbus_utils.get_int32_register_order", new=AsyncMock(return_value="high_first")),
+        patch("custom_components.lambda_heat_pumps.ResetManager") as mock_rm,
+    ):
+        mock_rm.return_value.setup_reset_automations = MagicMock()
+        result = await async_setup_entry(hass, entry, skip_auto_detect=True)
+
+    assert result is True
+    # Kein Hintergrund-Task darf erzeugt worden sein
+    hass.async_create_task.assert_not_called()
+    assert "auto_detect_task" not in hass.data.get(DOMAIN, {}).get(entry_id, {})
+
+
+@pytest.mark.asyncio
+async def test_unload_closes_modbus_client_early():
+    """Modbus-Client wird beim Unload sofort geschlossen (vor der Task-Cancellation),
+    damit in-flight Modbus-Reads sofort fehlschlagen statt den globalen Lock zu
+    blockieren (siehe Root-Cause "Sensoren ohne Werte nach Config-Änderung")."""
+    from custom_components.lambda_heat_pumps import async_unload_entry
+
+    entry = MagicMock()
+    entry.entry_id = "test_close_client_early"
+
+    mock_coordinator = MagicMock()
+    original_client = MagicMock()
+    mock_coordinator.client = original_client
+    mock_coordinator._persist_dirty = False
+
+    hass = MagicMock()
+    hass.data = {
+        DOMAIN: {
+            "test_close_client_early": {
+                "coordinator": mock_coordinator,
+            }
+        }
+    }
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    hass.services = MagicMock()
+    hass.services.has_service = MagicMock(return_value=False)
+
+    with patch(
+        "custom_components.lambda_heat_pumps.utils.async_cleanup_all_components",
+        new=AsyncMock(),
+    ):
+        await async_unload_entry(hass, entry)
+
+    original_client.close.assert_called_once()
+    assert mock_coordinator.client is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
 

@@ -221,11 +221,13 @@ async def async_setup_entry(
                 )
             )
 
-    # Heating Circuits
+    # Heating Circuits (nur wenn Raumthermostat-Steuerung aktiviert ist)
     hc_addresses = generate_base_addresses("hc", num_hc)
     for idx in range(1, num_hc + 1):
         # Check if heating_circuit climate is compatible
         if "heating_circuit" not in compatible_climates:
+            continue
+        if not entry.options.get("room_thermostat_control", False):
             continue
         entity_key = f"room_temperature_entity_{idx}"
         if not entry.options.get(entity_key):

@@ -746,7 +746,11 @@ class LambdaOptionsFlow(OptionsFlow):
     def _cleanup_disabled_options(self) -> None:
         """Clean up sensor configurations when options are disabled."""
         # Clean up room thermostat configurations if disabled
-        if not self._options.get("room_thermostat_control", False):
+        # (room_temperature_entity_X is also needed for cooling mode, since
+        # the actual room temperature is required there as well)
+        if not self._options.get(
+            "room_thermostat_control", False
+        ) and not self._options.get("cooling_mode_enabled", False):
             num_hc = self._config_entry.data.get("num_hc", 1)
             for hc_idx in range(1, num_hc + 1):
                 entity_key = CONF_ROOM_TEMPERATURE_ENTITY.format(hc_idx)
@@ -790,7 +794,11 @@ class LambdaOptionsFlow(OptionsFlow):
                 self._cleanup_disabled_options()
 
                 # Entscheiden, welcher Schritt als nächstes kommt
-                if self._options.get("room_thermostat_control"):
+                # Cooling-Modus benötigt ebenfalls die Raumtemperatur-Entity,
+                # da der IST-Wert des Raumes auch beim Kühlen erforderlich ist
+                if self._options.get("room_thermostat_control") or self._options.get(
+                    "cooling_mode_enabled"
+                ):
                     return await self.async_step_thermostat_sensor()
                 if self._options.get("pv_surplus"):
                     return await self.async_step_pv_sensor()

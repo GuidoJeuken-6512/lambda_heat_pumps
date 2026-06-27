@@ -68,7 +68,7 @@
       },
       "thermostat_sensor": {
         "title": "Raumthermostat-Sensoren",
-        "description": "Wählen Sie die Temperatursensoren für die Heizkreise aus. Dieser wird für die Raumtemperatursteuerung der Lambda verwendet. Hinweis: Es werden nur externe Sensoren mit der Geräteklasse temperature angezeigt, die nicht von dieser Integration stammen.",
+        "description": "Wählen Sie die Temperatursensoren für die Heizkreise aus. Dieser wird für die Raumtemperatursteuerung der Lambda verwendet und auch für den Kühlbetrieb benötigt, da dort ebenfalls der IST-Wert der Raumtemperatur erforderlich ist. Hinweis: Es werden nur externe Sensoren mit der Geräteklasse temperature angezeigt, die nicht von dieser Integration stammen.",
         "data": {
           "room_temperature_entity_1": "Temperatursensor HK1",
           "room_temperature_entity_2": "Temperatursensor HK2",

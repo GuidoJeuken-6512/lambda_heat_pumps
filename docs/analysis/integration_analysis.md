@@ -1,9 +1,30 @@
 # Lambda Heat Pumps – Integrationsanalyse und Verbesserungsplan
 
-**Version:** 2.3
+**Version:** 2.3 (Analyse) · **Status-Update:** 24.06.2026
 **Analysedatum:** 21. Februar 2026
 **Branch:** Release2.3 (Commit fcd9a83)
 **Dokumentstatus:** Technische Interne Analyse
+
+> ## Status-Update (24.06.2026)
+>
+> Diese Analyse ist auf dem Stand von Release 2.3 und in Teilen überholt. Verifizierte
+> Deltas seit der Erstanalyse:
+>
+> - **H-03** (Template-Sensoren nicht in `PLATFORMS`): Architektonisch weiterhin so,
+>   aber das befürchtete Symptom (Geist-Entities nach Unload) tritt praktisch nicht
+>   mehr auf – siehe aktualisierter Eintrag in Abschnitt 4.5 und 6.
+> - **Cycling-/Energy-Offset-Bugs** (separat in
+>   [offset_bug_analysis.md](offset_bug_analysis.md) dokumentiert, nicht Teil der
+>   K/H/M-Nummerierung hier): in **Release 2.4.0** vollständig behoben.
+> - **JSON-Repair-Logik** (Abschnitt 8.6 unten, "Regex-basierte Schlüssel-Deduplizierung"):
+>   in **Release 2.5.0** entfernt und durch eine einfachere Backup-und-Reset-Strategie
+>   ersetzt.
+> - K-01/K-02/K-03/H-04/M-02/M-03 waren bereits zum Zeitpunkt dieser Analyse als
+>   behoben markiert und sind es laut Code weiterhin.
+> - H-02, H-05, M-01, M-04, M-08 (`unique_id`/`name_prefix`-Kopplung, Dateigröße,
+>   `asyncio.sleep`-Workaround, Vererbung, Lambda-Ausdrücke) wurden in dieser
+>   Aktualisierung **nicht** erneut verifiziert – dort gilt weiterhin der unten
+>   stehende Stand von Release 2.3, sofern nicht durch andere Doku widerlegt.
 
 ---
 
@@ -25,7 +46,7 @@
 
 Die Lambda Heat Pumps Integration ist eine funktionsfähige Home Assistant Custom Integration für Lambda Wärmepumpen via Modbus TCP. Sie bietet umfangreiche Sensor-Abdeckung (Temperatur, Energie, Zyklen, COP), Firmware-Versionierung, automatische Modul-Erkennung und ein eigenes Migrationssystem.
 
-Die Integration litt unter einem **kritischen, reproduzierbaren Bug**: Beim Reload entstanden duplizierte Entities mit `_2`-Suffix in der Entity-Registry. Die drei kritischsten Wurzelursachen (K-01, K-02, K-03) wurden in **Release2.3** behoben. Zwei weitere Ursachen (H-02 unique_id-Design, H-03 Template-Sensoren außerhalb von PLATFORMS) sind als mittelfristige Aufgaben offen.
+Die Integration litt unter einem **kritischen, reproduzierbaren Bug**: Beim Reload entstanden duplizierte Entities mit `_2`-Suffix in der Entity-Registry. Die drei kritischsten Wurzelursachen (K-01, K-02, K-03) wurden in **Release2.3** behoben. Von den zwei weiteren Ursachen ist H-02 (unique_id-Design) weiterhin offen; H-03 (Template-Sensoren außerhalb von PLATFORMS) ist architektonisch unverändert, das daraus befürchtete Symptom tritt aber seit dem K-01-Fix praktisch nicht mehr auf (siehe Status-Update oben).
 
 Darüber hinaus weist die Codebasis erhebliche **Wartbarkeits-Defizite** auf: Die zentralen Dateien `sensor.py` (3.010 Zeilen), `coordinator.py` (2.413 Zeilen) und `utils.py` (2.265 Zeilen) sind für einzelne Dateien weit zu groß.
 
@@ -49,7 +70,7 @@ Die folgende Tabelle zeigt die verbleibenden offenen Punkte nach Priorität.
 | ID | Schweregrad | Beschreibung | Datei(en) | Fix-Komplexität | Empfehlung |
 |---|---|---|---|---|---|
 | H-02 | 🔴 Hoch | `unique_id` enthält `name_prefix` → Waisenentities bei Umbenennung der Integration | utils.py, migration.py | ⬛ Sehr hoch – Migration erforderlich | Phase 4 |
-| H-03 | 🔴 Hoch | Template-Sensoren nicht in `PLATFORMS` → werden beim Unload nicht sauber entladen | __init__.py, sensor.py | 🟧 Mittel – PLATFORMS-Mechanismus erweitern | Phase 3 |
+| H-03 | 🟡 Praktisch entschärft | Template-Sensoren nicht in `PLATFORMS` (architektonisch unverändert), Geist-Entity-Symptom seit K-01-Fix aber nicht mehr beobachtet | __init__.py, sensor.py | 🟧 Mittel – PLATFORMS-Mechanismus erweitern (optional, nicht mehr dringend) | Phase 3 |
 | H-05 | 🟠 Mittel | `sensor.py` (3.010 Z.) und `coordinator.py` (2.413 Z.) kaum noch wartbar | sensor.py, coordinator.py | ⬛ Sehr hoch – Refactoring mehrerer Klassen | Phase 4 |
 | M-01 | 🟠 Mittel | `asyncio.sleep(0.05)` als fragiler Timing-Workaround für Device-Registry | sensor.py | 🟧 Mittel – HA-Event statt Sleep verwenden | Phase 3 |
 | M-03 | 🟡 Niedrig | `self._unique_id` **und** `self._attr_unique_id` in allen Entity-Klassen redundant doppelt gesetzt | sensor.py | 🟩 Niedrig – eine Zuweisung pro Klasse entfernen | Phase 3 |
@@ -273,6 +294,22 @@ PLATFORMS = [
 
 **Problem:** Template-Sensoren werden direkt aus `sensor.py` via Hintergrund-Task aufgerufen, nicht als eigene Platform registriert. `async_unload_platforms()` entlädt sie deshalb nicht → Geist-Entities nach Reload.
 
+> **Update 24.06.2026:** Diese Code-Struktur besteht weiterhin unverändert. Das
+> beschriebene Symptom tritt aber praktisch nicht mehr auf, aus zwei Gründen:
+> 1. `template_setup_task` wird seit dem K-01-Fix als einer der ersten Schritte in
+>    `async_unload_entry` abgebrochen ([Ablaufdiagramm.md](../docs/Entwickler/Ablaufdiagramm.md#9-unload-und-reload)),
+>    *bevor* `async_unload_platforms()` läuft. Ist der Task noch nicht fertig, werden
+>    seine Entities nie registriert – es entstehen keine Geister.
+> 2. `template_sensor.async_setup_entry(hass, entry, async_add_entities)` wird mit
+>    demselben `async_add_entities`-Callback aufgerufen, den `sensor.py` von der
+>    SENSOR-Platform erhalten hat. Template-Entities, die *vor* dem Unload erfolgreich
+>    hinzugefügt wurden, gehören damit zum selben `EntityPlatform`-Objekt wie alle
+>    übrigen Sensor-Entities und werden von `async_unload_platforms(entry, [Platform.SENSOR, ...])`
+>    mit entladen.
+>
+> Eine echte `Platform.TEMPLATE`-Registrierung wäre architektonisch sauberer, ist aber
+> nicht mehr als dringender Fix zu werten.
+
 ### 4.6 Wurzelursache 5: `unique_id` enthält `name_prefix`
 
 **Ort:** [utils.py](../../custom_components/lambda_heat_pumps/utils.py), Funktion `generate_sensor_names()`
@@ -403,7 +440,7 @@ unique_id = f"{entry_id}_{device_prefix}_{sensor_id}"
 |---|---|---|---|---|
 | H-01 | ✅ Behoben | ~~`_reload_lock` modul-global~~ → per-Entry-Dicts (K-02) | __init__.py | 40 |
 | H-02 | Offen | `unique_id` enthält `name_prefix` → Waisenentities bei Umbenennung | utils.py | generate_sensor_names |
-| H-03 | Offen | Template-Sensoren nicht in PLATFORMS → beim Unload nicht entladen | __init__.py | 43 |
+| H-03 | 🟡 Praktisch entschärft (24.06.2026) | Template-Sensoren nicht in PLATFORMS (architektonisch unverändert); Geist-Entity-Symptom seit K-01-Fix nicht mehr beobachtet, siehe Abschnitt 4.5 | __init__.py, sensor.py | – |
 | H-04 | ✅ Behoben | ~~`is_reload`-Flag race condition~~ → `_previously_setup_entries` set | __init__.py | 149 |
 | H-05 | Offen | `sensor.py` und `coordinator.py` mit >2.400 Zeilen nicht mehr wartbar | sensor.py, coordinator.py | gesamt |
 
@@ -663,8 +700,8 @@ Der Coordinator sammelt alle benötigten Register-Adressen und liest sie in opti
 ### 8.5 Firmware-Versions-Filterung
 Sensoren in `const.py` haben ein `firmware_version`-Feld. `get_compatible_sensors()` filtert automatisch inkompatible Sensoren heraus. Das ermöglicht sichere Vorwärtskompatibilität ohne Code-Änderungen.
 
-### 8.6 JSON-Persistenz mit Korruptionstruktur-Reparatur
-`cycle_energy_persist.json` speichert Cycling-Zähler, Energiewerte und Sensor-IDs. Der Coordinator repariert korrupte JSON-Dateien durch Regex-basierte Schlüssel-Deduplizierung und erstellt automatisch Backups.
+### 8.6 JSON-Persistenz mit Korruptionsstruktur-Reparatur
+`cycle_energy_persist.json` speichert Cycling-Zähler, Energiewerte und Sensor-IDs. ~~Der Coordinator repariert korrupte JSON-Dateien durch Regex-basierte Schlüssel-Deduplizierung~~ *(Update 24.06.2026: Die Regex-Reparatur wurde in Release 2.5.0 entfernt – fragil und unnötig, da `json.loads()` doppelte Schlüssel ohnehin automatisch auflöst. Bei korruptem JSON wird stattdessen die Datei gesichert (`.backup`) und leer neu begonnen.)* Backups werden weiterhin automatisch erstellt.
 
 ### 8.7 Automatische Modul-Erkennung
 `module_auto_detect.py` testet per Modbus-Read welche Geräte-Module vorhanden sind und aktualisiert die Config-Entry entsprechend. Dies vereinfacht die initiale Konfiguration erheblich.

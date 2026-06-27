@@ -103,7 +103,12 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 return False
 
             _LOGGER.info("RELOAD: Setting up entry again...")
-            setup_ok = await async_setup_entry(hass, entry)
+            # skip_auto_detect=True: Dieser Pfad wird ausschließlich durch den
+            # Options-Flow-Update-Listener ausgelöst (entry.options geändert).
+            # Die Modul-Hardware hat sich dabei nicht geändert, daher ist der
+            # 38s-verzögerte Hintergrund-Modbus-Scan hier unnötig und blockiert
+            # nur den globalen Modbus-Lock für die neue Coordinator-Generation.
+            setup_ok = await async_setup_entry(hass, entry, skip_auto_detect=True)
             if not setup_ok:
                 _LOGGER.error("RELOAD: Failed to setup entry during reload")
                 return False
@@ -119,8 +124,17 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.info("RELOAD: Reload lock released for entry %s", entry_id)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Lambda Heat Pumps from a config entry."""
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ConfigEntry, skip_auto_detect: bool = False
+) -> bool:
+    """Set up Lambda Heat Pumps from a config entry.
+
+    skip_auto_detect: Internal flag, set by async_reload_entry for reloads
+    triggered by an options-flow change. Module hardware can't have changed
+    from a pure options update, so the background auto-detect Modbus scan
+    is skipped to avoid contending with the new coordinator for the global
+    Modbus lock right after a reload.
+    """
     _LOGGER.info("SETUP: Setting up Lambda Heat Pumps integration for entry: %s", entry.entry_id)
 
     # Check if entry is already loaded
@@ -150,50 +164,61 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     
     if has_module_counts:
-        # Bestehende Config: Auto-Detection im Hintergrund (non-blocking)
-        _LOGGER.info("Using existing module counts, starting background auto-detection")
-        
-        # Zuverlässige Reload-Erkennung: hass.data wird beim Unload geleert,
-        # daher ist es keine brauchbare Quelle für diese Information (H-04).
-        is_reload = entry.entry_id in _previously_setup_entries
-        
-        async def background_auto_detect():
-            try:
-                _LOGGER.info("AUTO-DETECT: Background auto-detection started (coordinator_id=%s)", id(coordinator))
-                
-                if is_reload:
-                    # RELOAD: 38 Sekunden Verzögerung für stabile Verbindung
-                    _LOGGER.info("AUTO-DETECT: Reload detected - waiting 38 seconds for coordinator to complete initial read cycles...")
-                    await asyncio.sleep(38)  # 38 Sekunden warten
-                    _LOGGER.info("AUTO-DETECT: 38 seconds elapsed, starting auto-detection...")
-                else:
-                    # ERSTER START: Sofort starten (Config Flow)
-                    _LOGGER.info("AUTO-DETECT: First startup detected - starting auto-detection immediately...")
-                
-                # Zusätzlich: Warte auf stabile Verbindung vor Auto-Detection
-                _LOGGER.info("AUTO-DETECT: Waiting for stable connection before starting...")
-                await wait_for_stable_connection(coordinator)
-                _LOGGER.info("AUTO-DETECT: Connection stable, starting module detection...")
-                
-                detected = await auto_detect_modules(coordinator.client, coordinator.slave_id)
-                updated = await update_entry_with_detected_modules(hass, entry, detected)
-                if updated:
-                    _LOGGER.info("AUTO-DETECT: Background auto-detection updated module counts: %s (coordinator_id=%s)", detected, id(coordinator))
-                else:
-                    _LOGGER.info("AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
-            except Exception as ex:
-                _LOGGER.warning("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
-        
-        # FIX K-02: Task-Referenz speichern – wird beim Unload abgebrochen,
-        # sodass kein verwaister Task nach einem Reload einen weiteren Reload triggert.
-        _auto_detect_task = hass.async_create_task(background_auto_detect())
-        # Temporäre Zwischenspeicherung; endgültige Speicherung erfolgt nach
-        # hass.data-Initialisierung weiter unten.
-        hass.data.setdefault(DOMAIN, {}).setdefault(
-            entry.entry_id, {}
-        )["auto_detect_task"] = _auto_detect_task
-        _LOGGER.info("AUTO-DETECT: Started background auto-detection (non-blocking) (coordinator_id=%s)", id(coordinator))
-        
+        if skip_auto_detect:
+            # Reload durch Options-Flow-Änderung: Modul-Hardware kann sich dabei
+            # nicht geändert haben, daher kein Hintergrund-Scan nötig. Vermeidet
+            # unnötige Konkurrenz um den globalen Modbus-Lock direkt nach einem
+            # Reload (siehe Fix für "Sensoren ohne Werte nach Config-Änderung").
+            _LOGGER.debug(
+                "AUTO-DETECT: Skipping background auto-detection (reload triggered "
+                "by options-flow change, module hardware unaffected) (coordinator_id=%s)",
+                id(coordinator),
+            )
+        else:
+            # Bestehende Config: Auto-Detection im Hintergrund (non-blocking)
+            _LOGGER.info("Using existing module counts, starting background auto-detection")
+
+            # Zuverlässige Reload-Erkennung: hass.data wird beim Unload geleert,
+            # daher ist es keine brauchbare Quelle für diese Information (H-04).
+            is_reload = entry.entry_id in _previously_setup_entries
+
+            async def background_auto_detect():
+                try:
+                    _LOGGER.info("AUTO-DETECT: Background auto-detection started (coordinator_id=%s)", id(coordinator))
+
+                    if is_reload:
+                        # RELOAD: 38 Sekunden Verzögerung für stabile Verbindung
+                        _LOGGER.info("AUTO-DETECT: Reload detected - waiting 38 seconds for coordinator to complete initial read cycles...")
+                        await asyncio.sleep(38)  # 38 Sekunden warten
+                        _LOGGER.info("AUTO-DETECT: 38 seconds elapsed, starting auto-detection...")
+                    else:
+                        # ERSTER START: Sofort starten (Config Flow)
+                        _LOGGER.info("AUTO-DETECT: First startup detected - starting auto-detection immediately...")
+
+                    # Zusätzlich: Warte auf stabile Verbindung vor Auto-Detection
+                    _LOGGER.info("AUTO-DETECT: Waiting for stable connection before starting...")
+                    await wait_for_stable_connection(coordinator)
+                    _LOGGER.info("AUTO-DETECT: Connection stable, starting module detection...")
+
+                    detected = await auto_detect_modules(coordinator.client, coordinator.slave_id)
+                    updated = await update_entry_with_detected_modules(hass, entry, detected)
+                    if updated:
+                        _LOGGER.info("AUTO-DETECT: Background auto-detection updated module counts: %s (coordinator_id=%s)", detected, id(coordinator))
+                    else:
+                        _LOGGER.info("AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
+                except Exception as ex:
+                    _LOGGER.warning("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
+
+            # FIX K-02: Task-Referenz speichern – wird beim Unload abgebrochen,
+            # sodass kein verwaister Task nach einem Reload einen weiteren Reload triggert.
+            _auto_detect_task = hass.async_create_task(background_auto_detect())
+            # Temporäre Zwischenspeicherung; endgültige Speicherung erfolgt nach
+            # hass.data-Initialisierung weiter unten.
+            hass.data.setdefault(DOMAIN, {}).setdefault(
+                entry.entry_id, {}
+            )["auto_detect_task"] = _auto_detect_task
+            _LOGGER.info("AUTO-DETECT: Started background auto-detection (non-blocking) (coordinator_id=%s)", id(coordinator))
+
         # Verwende vorhandene Module Counts
         num_hps = entry.data.get("num_hps", 1)
         num_boil = entry.data.get("num_boil", 1)
@@ -352,10 +377,30 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = True
 
     try:
+        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
+
+        # Modbus-Client SOFORT schließen, noch vor der Task-Cancellation unten.
+        # Grund: Die Task-Cancellation hat nur 2s Grace-Period; ein laufender
+        # Modbus-Read kann aber bis zu LAMBDA_MODBUS_TIMEOUT (60s) pro Versuch
+        # dauern. Ist der Client hier schon geschlossen, schlägt jeder weitere
+        # Read-Versuch eines noch laufenden Hintergrund-Tasks (z.B. auto_detect_task
+        # oder ein in-flight Poll-Zyklus) sofort über die "not connected"-Prüfung
+        # in modbus_utils.py fehl, statt den globalen Modbus-Lock minutenlang für
+        # die neue Coordinator-Generation zu blockieren (siehe Fix für "Sensoren
+        # ohne Werte nach Config-Änderung").
+        coordinator = entry_data.get("coordinator")
+        if coordinator is not None and getattr(coordinator, "client", None) is not None:
+            try:
+                coordinator.client.close()
+                _LOGGER.debug("🧹 UNLOAD: Closed Modbus client early (coordinator_id=%s)", id(coordinator))
+            except Exception:
+                _LOGGER.debug("UNLOAD: Error closing Modbus client early", exc_info=True)
+            finally:
+                coordinator.client = None
+
         # FIX K-01 + K-02: Hintergrund-Tasks abbrechen, BEVOR Platforms entladen werden.
         # Verhindert, dass verwaiste Tasks nach dem Reload async_add_entities erneut
         # aufrufen (→ _2-Duplikate) oder einen weiteren Reload auslösen.
-        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
         for task_key in ("template_setup_task", "auto_detect_task"):
             task = entry_data.get(task_key)
             if task is not None and not task.done():
