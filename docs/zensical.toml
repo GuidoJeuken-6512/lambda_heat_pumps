@@ -74,6 +74,7 @@ nav = [
     { "Entitäten löschen" = "Anwender/entitaeten_loeschen.md" },
   ] },
   { "Vorlagen Templates" = [
+    { "Vorlagen Templates" = "Vorlagen/index.md" },
     { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
     { "Lambda Heizkurven Card" = "Vorlagen/Lambda_heizkurve_card.md" },
     { "Lambda Register-Dashboard" = "Vorlagen/Lambda_register_dashboard.md" },
@@ -104,6 +105,10 @@ nav = [
     { "FAQ" = "FAQ/FAQ.md" },
     { "COP-Sensoren" = "FAQ/cop-sensoren.md" },
     { "Falsche / keine Sensorwerte" = "FAQ/falsche-keine-sensorwerte.md" },
+  ] },
+  { "Tips&Tricks" = [
+    { "Tips&Tricks" = "TippsTricks/index.md" },
+    { "Vorlauftemperatur ändern" = "TippsTricks/vorlauftemperatur-aendern.md" },
   ] },
 
   { "Releases" = [

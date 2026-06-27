@@ -75,14 +75,6 @@ The new option and the new entity were added to both the German and English tran
 
 ---
 
-## Migration / Breaking Changes
-
-**No breaking changes.**
-
-The new entity is only created when the `cooling_mode_enabled` option is explicitly enabled. Existing installations remain fully unchanged without enabling the option — `unique_id`, `entity_id`, and behavior of all existing entities stay the same.
-
----
-
 ## Affected Files
 
 | File | Change |

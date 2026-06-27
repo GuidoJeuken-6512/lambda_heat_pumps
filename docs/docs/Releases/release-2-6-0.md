@@ -75,13 +75,6 @@ Die neue Option und die neue Entity wurden in den deutschen und englischen Über
 
 ---
 
-## Migration / Breaking Changes
-
-**Keine Breaking Changes.**
-
-Die neue Entity wird nur erzeugt, wenn die Option `cooling_mode_enabled` explizit aktiviert wird. Bestehende Installationen sind ohne Aktivierung der Option vollständig unverändert — `unique_id`, `entity_id` und Verhalten aller bestehenden Entities bleiben gleich.
-
----
 
 ## Betroffene Dateien
 
