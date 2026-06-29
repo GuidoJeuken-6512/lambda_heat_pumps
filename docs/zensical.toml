@@ -109,7 +109,6 @@ nav = [
   ] },
   { "Tips&Tricks" = [
     { "Tips&Tricks" = "TippsTricks/index.md" },
-    { "Vorlauftemperatur ändern" = "TippsTricks/vorlauftemperatur-aendern.md" },
   ] },
 
   { "Releases" = [
