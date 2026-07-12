@@ -150,6 +150,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         self._use_legacy_names = entry.data.get("use_legacy_modbus_names", True)
         self._name_prefix = entry.data.get("name", "eu08l")
         self._persist_file = os.path.join(
+            self._config_path, f"cycle_energy_persist_{entry.entry_id}.json"
+        )
+        self._persist_file_legacy = os.path.join(
             self._config_path, "cycle_energy_persist.json"
         )
 
@@ -273,7 +276,11 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         return normalized
 
     async def _repair_and_load_persist_file(self):
-        """Lade persistierte JSON-Datei, normalisiere und fülle fehlende Felder auf."""
+        """Lade persistierte JSON-Datei, normalisiere und fülle fehlende Felder auf.
+
+        Lädt zuerst die entry-spezifische Datei. Existiert sie nicht, wird als
+        Einmalmigrierung die Legacy-Datei (cycle_energy_persist.json) verwendet.
+        """
         _REQUIRED_FIELDS = [
             "heating_cycles", "heating_energy", "last_operating_states",
             "energy_consumption", "last_energy_readings", "last_thermal_energy_readings",
@@ -281,12 +288,21 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         ]
 
         def _load_and_normalize():
+            # Bestimme welche Datei geladen wird (entry-spezifisch oder Legacy-Migration)
+            load_path = self._persist_file
+            if not os.path.exists(load_path) and os.path.exists(self._persist_file_legacy):
+                load_path = self._persist_file_legacy
+                _LOGGER.info(
+                    "Persist-Migration: Lade Legacy-Datei %s → wird nach %s migriert",
+                    load_path, self._persist_file,
+                )
+
             try:
-                with open(self._persist_file, encoding="utf-8-sig") as f:
+                with open(load_path, encoding="utf-8-sig") as f:
                     content = f.read().strip()
 
                 if not content:
-                    _LOGGER.warning("Persist file %s is empty, using defaults", self._persist_file)
+                    _LOGGER.warning("Persist file %s is empty, using defaults", load_path)
                     return {}
 
                 data = json.loads(content)
@@ -306,18 +322,18 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 return data
 
             except json.JSONDecodeError as e:
-                _LOGGER.error("Corrupted persist file %s: %s — backing up and starting fresh", self._persist_file, e)
+                _LOGGER.error("Corrupted persist file %s: %s — backing up and starting fresh", load_path, e)
                 try:
-                    backup_file = self._persist_file + ".backup"
-                    with open(self._persist_file, "r") as src, open(backup_file, "w") as dst:
+                    backup_file = load_path + ".backup"
+                    with open(load_path, "r") as src, open(backup_file, "w") as dst:
                         dst.write(src.read())
-                    os.remove(self._persist_file)
+                    os.remove(load_path)
                 except Exception as backup_err:
                     _LOGGER.warning("Could not back up corrupted persist file: %s", backup_err)
                 return {}
 
             except Exception as e:
-                _LOGGER.error("Error reading persist file %s: %s", self._persist_file, e)
+                _LOGGER.error("Error reading persist file %s: %s", load_path, e)
                 return {}
 
         return await self.hass.async_add_executor_job(_load_and_normalize)
@@ -487,8 +503,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             self._energy_offsets = {}
             self._energy_sensor_configs = {}
 
-        # Lade persistierte Zählerstände (falls vorhanden) mit Reparatur-Funktion
-        if os.path.exists(self._persist_file):
+        # Lade persistierte Zählerstände (entry-spezifisch, mit Legacy-Migration als Fallback)
+        if os.path.exists(self._persist_file) or os.path.exists(self._persist_file_legacy):
             data = await self._repair_and_load_persist_file()
         else:
             data = {}

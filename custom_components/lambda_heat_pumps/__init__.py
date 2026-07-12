@@ -159,7 +159,8 @@ async def async_setup_entry(
     _init_config = await load_lambda_config(hass)
     if _init_config.get("maintenance", {}).get("reset_energy_statistics", False):
         _persist_path = _os.path.join(
-            hass.config.config_dir, "lambda_heat_pumps", "cycle_energy_persist.json"
+            hass.config.config_dir, "lambda_heat_pumps",
+            f"cycle_energy_persist_{entry.entry_id}.json",
         )
         await hass.async_add_executor_job(_reset_energy_persist_data, _persist_path)
         await clear_reset_energy_flag(hass)
