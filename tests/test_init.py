@@ -209,6 +209,31 @@ async def test_a_boiler_that_serves_only_part_of_its_block(
     assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
 
 
+async def test_an_unserved_register_between_two_served_ones(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A hole in the middle of a block does not take the block down with it.
+
+    Dropping the field is not enough: the registers on either side would still be
+    read as one block, which spans the hole and is refused. The read has to be
+    split at the hole, so both sides still come through.
+    """
+    controller.refuse(2002)  # actual_high_temperature, between 2001 and 2003
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.last_update_success
+    # Both sides of the hole are read.
+    assert state_of(hass, "eu08l_boil1_operating_state") == "DHW"
+    assert state_of(hass, "eu08l_boil1_actual_low_temperature") == "0.0"
+    assert state_of(hass, "eu08l_boil1_target_high_temperature") == "52.0"
+    # Only the hole itself is unavailable.
+    assert state_of(hass, "eu08l_boil1_actual_high_temperature") in (
+        "unknown",
+        "unavailable",
+    )
+
+
 async def test_a_heat_pump_without_the_undocumented_registers(
     hass: HomeAssistant, controller: Controller
 ) -> None:
