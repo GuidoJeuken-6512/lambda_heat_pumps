@@ -23,20 +23,20 @@ would require.
 A controller's register map depends on its firmware: it serves a subset of the
 registers a module could have, and refuses a block read that reaches a register
 it does not serve — which, read atomically, would take the served registers
-around it down too. So the layout is not declared and read; it is *probed*.
-:meth:`LambdaHeatPump.async_setup` reads each module a run at a time, drops to
-one register at a time on a run the controller refuses, and builds each module
-from the registers it actually answered for. What it does not serve simply is not
-read, and its entities read ``None``.
+around it down too. So the layout is declared here but *confirmed* against the
+controller. :meth:`LambdaHeatPump.async_setup` reads each module a run at a time,
+drops to one register at a time on a run the controller refuses, and narrows each
+module to the registers it actually answered for. A register it does not serve is
+dropped from that module's read plan, so it is never read and reads as ``None``,
+while everything else stays the ordinary typed component with the ordinary
+update.
 """
 
 from __future__ import annotations
 
-import copy
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from modbus_connection import ModbusExceptionError
-from modbus_connection.model import ManualComponent
 
 from .boiler import Boiler
 from .buffer import Buffer
@@ -65,32 +65,8 @@ __all__ = [
     "HeatingCircuit",
     "LambdaComponent",
     "LambdaHeatPump",
-    "LambdaManualComponent",
     "Solar",
 ]
-
-
-class LambdaManualComponent(ManualComponent):
-    """A module built from the registers the controller actually serves.
-
-    A :class:`modbus_connection.model.ManualComponent` reached by attribute, so
-    the rest of the integration reads a value as ``component.flow_line_temperature``
-    (the field key) just as it did off the typed component it replaces. A key the
-    controller did not serve was never added, so it reads ``None``.
-    """
-
-    # Every field the module could have, keyed by name, whether or not this
-    # controller serves it. The served subset is what is read; this is for
-    # metadata that does not depend on serving, like a state field's enum labels.
-    declared_fields: dict[str, Any] = {}
-
-    def __getattr__(self, name: str) -> Any:
-        # __getattr__ runs only for names normal lookup misses, so the real
-        # methods and private state are untouched; a leading underscore is never
-        # a field key, so let those raise rather than resolve to a None value.
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return self.get(name)
 
 
 async def _probe_served(unit: ModbusUnit, ranges: tuple[Range, ...]) -> set[int]:
@@ -150,13 +126,13 @@ class LambdaHeatPump:
         }
 
         # Populated by async_setup; declared here so the attributes always exist.
-        self.ambient: LambdaManualComponent
-        self.e_manager: LambdaManualComponent
-        self.heat_pumps: list[LambdaManualComponent] = []
-        self.boilers: list[LambdaManualComponent] = []
-        self.buffers: list[LambdaManualComponent] = []
-        self.solar_modules: list[LambdaManualComponent] = []
-        self.heating_circuits: list[LambdaManualComponent] = []
+        self.ambient: Ambient
+        self.e_manager: EManager
+        self.heat_pumps: list[HeatPump] = []
+        self.boilers: list[Boiler] = []
+        self.buffers: list[Buffer] = []
+        self.solar_modules: list[Solar] = []
+        self.heating_circuits: list[HeatingCircuit] = []
 
     async def async_setup(self) -> None:
         """Probe the controller and build each module from what it serves."""
@@ -171,44 +147,53 @@ class LambdaHeatPump:
         self.solar_modules = await self._build_all(solar_class, "sol")
         self.heating_circuits = await self._build_all(HeatingCircuit, "hc")
 
-    async def _build_all(
-        self, component_class: type[LambdaComponent], module: str
-    ) -> list[LambdaManualComponent]:
+    async def _build_all[C: LambdaComponent](
+        self, component_class: type[C], module: str
+    ) -> list[C]:
         """One component per installed module, each at its own 100-register block."""
         return [
             await self._build(
-                component_class, base_address(module, index), module_ranges(module)
+                component_class,
+                base_address(module, index),
+                module_ranges(module),
+                index=index,
             )
             for index in range(1, self._counts[module] + 1)
         ]
 
-    async def _build(
+    async def _build[C: LambdaComponent](
         self,
-        component_class: type[LambdaComponent],
+        component_class: type[C],
         base: int,
         relative_ranges: tuple[Range, ...],
-    ) -> LambdaManualComponent:
-        """Probe one module's runs and add the fields it answers for.
+        index: int = 1,
+    ) -> C:
+        """Probe one module's runs and keep only the fields it answers for.
 
-        A field is added only when the controller serves every register it spans,
-        with its address shifted from the layout-relative one the class declares
-        to the absolute one this module sits at.
+        The component is the ordinary typed one — same fields, same update — with
+        its read plan narrowed to the registers this controller serves. A field
+        the controller does not serve is dropped from the plan, so it is never
+        read and reads as ``None``.
         """
         ranges = tuple((base + low, base + high) for low, high in relative_ranges)
         served = await _probe_served(self._unit, ranges)
 
-        component = LambdaManualComponent(self._unit, holding_ranges=ranges)
-        component.declared_fields = component_class._register_fields
-        for name, field in component_class._register_fields.items():
-            address = base + field.address
-            if all(address + offset in served for offset in range(field.count)):
-                absolute = copy.copy(field)
-                absolute.address = address
-                component.add(name, absolute, space="holding")
+        component = component_class(self._unit, index=index, base_offset=base)
+        component.register_ranges = ranges
+        # The plan is built lazily and then cached, so narrowing the field set
+        # has to happen before the first update — after that it would be fixed.
+        component._register_fields = {
+            name: field
+            for name, field in component_class._register_fields.items()
+            if all(
+                base + field.address + offset in served
+                for offset in range(field.count)
+            )
+        }
         return component
 
     @property
-    def components(self) -> tuple[LambdaManualComponent, ...]:
+    def components(self) -> tuple[LambdaComponent, ...]:
         """Every sub-system that is polled."""
         return (
             self.ambient,

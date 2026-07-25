@@ -524,7 +524,11 @@ class LambdaSensor(LambdaEntity, SensorEntity):
             component = getattr(self.coordinator.device, self._component)
         else:
             component = self.coordinator.component(self._module, self._index)
-        field = component.declared_fields[self._attribute]
+        # Read the field off the class, not the instance: the instance keeps only
+        # the registers this controller serves, but the labels a state register
+        # can report are the same either way. Going through the class also picks
+        # up fields an override inherits, which its own __dict__ would not have.
+        field = type(component)._register_fields[self._attribute]
         # The field's converter is the state enum it decodes to.
         return [state.label for state in field.convert]
 

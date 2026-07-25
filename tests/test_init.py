@@ -11,10 +11,12 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.lambda_heat_pumps.const import (
     CONF_FIRMWARE_VERSION,
+    CONF_INT32_REGISTER_ORDER,
     CONF_SLAVE_ID,
     CONF_USE_LEGACY_MODBUS_NAMES,
     DOMAIN,
     ENTRY_VERSION,
+    REGISTER_ORDER_LOW_FIRST,
 )
 
 from .conftest import HOST, PORT, SLAVE_ID, Controller
@@ -226,6 +228,33 @@ async def test_a_heat_pump_without_the_undocumented_registers(
     assert state_of(hass, "eu08l_hp1_hot_gas_temperature") in ("unknown", "unavailable")
     # The one config register just before the capacity block is still served.
     assert state_of(hass, "eu08l_hp1_config_parameter_50") == "0"
+
+
+async def test_a_controller_that_stores_its_counters_low_word_first(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A low-first controller decodes its counters, and still names its states.
+
+    The low-first heat pump is a subclass that overrides only the two counters,
+    so it is the case where a field is inherited rather than declared on the
+    class being read — the state sensor has to find its labels all the same.
+    """
+    # The same 100000 Wh, stored low word first.
+    controller.registers[1020] = 0x86A0
+    controller.registers[1021] = 0x0001
+    await setup_entry(
+        hass,
+        controller,
+        legacy=True,
+        options={CONF_INT32_REGISTER_ORDER: REGISTER_ORDER_LOW_FIRST},
+    )
+
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+    # The state registers are declared on the base class, not the override.
+    assert state_of(hass, "eu08l_hp1_state") == "START COMPRESSOR"
+    assert state_of(hass, "eu08l_hp1_operating_state") == "CH"
 
 
 async def test_only_the_totals_are_enabled_by_default(
