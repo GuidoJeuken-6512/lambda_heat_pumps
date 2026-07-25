@@ -164,21 +164,34 @@ async def test_unload_closes_the_connection(
     assert not connection.connected
 
 
-async def test_a_refused_block_says_which_one(
+async def test_a_controller_that_changes_is_looked_at_again(
     hass: HomeAssistant, controller: Controller
 ) -> None:
-    """A module that stops answering names itself, rather than just failing."""
-    entry = await setup_entry(hass, controller)
-    coordinator = entry.runtime_data
+    """A register that stops answering makes the integration re-probe itself.
 
-    # The heat pump is pulled out: it no longer answers for its registers.
+    The map was read off the controller at setup, so a block it now refuses
+    means that map is stale. Rather than sitting there failing until the user
+    reloads it, the integration sets itself up again and carries on with what
+    the controller serves now.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+    # The controller stops serving a register it served at setup.
     controller.refuse(1004)
-    await coordinator.async_refresh()
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
 
-    assert not coordinator.last_update_success
-    message = str(coordinator.last_exception)
-    assert "holding registers 1000-1013" in message
-    assert "reload" in message
+    # It set itself up again, and is working — without the refused register.
+    coordinator = entry.runtime_data
+    assert entry.state is ConfigEntryState.LOADED
+    assert coordinator.last_update_success
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") in (
+        "unknown",
+        "unavailable",
+    )
+    # Its neighbours, which the controller still serves, are read as before.
+    assert state_of(hass, "eu08l_hp1_return_line_temperature") == "28.9"
 
 
 async def test_a_boiler_that_serves_only_part_of_its_block(

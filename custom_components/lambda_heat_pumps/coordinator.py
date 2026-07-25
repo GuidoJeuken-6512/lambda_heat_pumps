@@ -249,13 +249,18 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 await self.connection.connect()
             await self.device.async_update()
         except BlockReadError as err:
-            # The controller refused a block it is modelled as having. That is
-            # what it says when a module is no longer there, so name the block —
-            # it is the difference between "it broke" and "you pulled a module".
+            # The controller refused a block the probe found it serving, so what
+            # was read off it at setup no longer describes it — a module was
+            # added or removed, or its firmware changed. Only setting up again
+            # can find out what it has now, so ask for that rather than telling
+            # the user to; the block is named for the log.
+            self.hass.config_entries.async_schedule_reload(
+                self.config_entry.entry_id
+            )
             raise UpdateFailed(
                 f"The controller refused {err.space} registers "
-                f"{err.address}-{err.address + err.count - 1}. If a module was "
-                f"added or removed, reload the integration to look again."
+                f"{err.address}-{err.address + err.count - 1}, which it served "
+                f"when it was set up; looking again at what it has."
             ) from err
         except ModbusError as err:
             raise UpdateFailed(f"Error reading the controller: {err}") from err
