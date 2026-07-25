@@ -22,20 +22,20 @@ Die Auswertung erfolgt einheitlich über die Hilfsfunktionen in [utils.py](custo
 
 ### Konstanten ([const_base.py](custom_components/lambda_heat_pumps/const_base.py))
 
-```text
-FIRMWARE_VERSION = {
-    "V1.1.0-3K": 8,
-    "V0.0.9-3K": 7,
-    "V0.0.8-3K": 6,
-    "V0.0.7-3K": 5,
-    "V0.0.6-3K": 4,
-    "V0.0.5-3K": 3,
-    "V0.0.4-3K": 2,
-    "V0.0.3-3K": 1,
+Seit V2.7.0 ist `FIRMWARE_CONFIG` die Primärstruktur (trägt zusätzlich den FW-abhängigen Default für `int32_register_order`, siehe [Register-Reihenfolge int32](register-reihenfolge-int32.md)); `FIRMWARE_VERSION` wird automatisch davon abgeleitet und bleibt für alle bestehenden Aufrufer unverändert nutzbar:
+
+```python
+FIRMWARE_CONFIG: dict = {
+    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
+    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
+    "V0.0.9-3K":  {"version": 7, "reg_order": "high_first"},
+    # ...
+    "V0.0.3-3K":  {"version": 1, "reg_order": "high_first"},
 }
+FIRMWARE_VERSION: dict = {k: v["version"] for k, v in FIRMWARE_CONFIG.items()}
 ```
 
-Jede Firmware-*Zeichenkette* ist einer **numerischen Version** (1–8) zugeordnet. Diese Zahl wird für die Kompatibilitätsprüfung verwendet.
+Jede Firmware-*Zeichenkette* ist einer **numerischen Version** (aktuell 1–9) zugeordnet. Diese Zahl wird für die Kompatibilitätsprüfung verwendet.
 
 ### Abfrage der Firmware
 
@@ -46,14 +46,21 @@ Reihenfolge: `entry.options` → `entry.data` → `DEFAULT_FIRMWARE`.
 
 ### Sensor-Filterung
 
-**`get_compatible_sensors(sensor_templates, fw_version)`** ([utils.py](custom_components/lambda_heat_pumps/utils.py) Zeilen 50–67):
+**`get_compatible_sensors(sensor_templates, fw_version)`** ([utils.py](custom_components/lambda_heat_pumps/utils.py)), seit V2.8.0 mit zwei Feldern pro Template (Priorität von hoch nach niedrig):
 
-- Ein Sensor-Template wird **einbezogen**, wenn:
-  - es ein numerisches `firmware_version` hat und `template["firmware_version"] <= fw_version` ist, **oder**
-  - es **kein** numerisches `firmware_version` hat (dann gilt der Sensor für alle Firmware-Versionen).
-- Templates mit `firmware_version` **größer** als die konfigurierte Firmware werden **nicht** verwendet.
+1. **`firmware_versions`** (Range-Notation, neu in V2.8.0): Liste aus `"X-Y"` (Bereich inklusive), `"-X"` (Version X ausschließen) oder `X` (einzelne Version einschließen), ausgewertet über `_parse_firmware_versions()`. Erlaubt — anders als `firmware_version` — auch eine **Obergrenze**, z. B. `["1-7"]` für ein Register, das ab einer neueren Steuerungsgeneration nicht mehr existiert (siehe `ambient_temperature` in [const_sensor.py](custom_components/lambda_heat_pumps/const_sensor.py) und [Release 2.8.0](../Releases/release-2-8-0.md)).
+2. **`firmware_version`** (Minimum, bestehendes Verhalten): Sensor aktiv, wenn `template["firmware_version"] <= fw_version`.
+3. **Kein Feld**: Sensor gilt für alle Firmware-Versionen.
 
-In den Konstanten ([const_sensor.py](custom_components/lambda_heat_pumps/const_sensor.py), [const_calculated_sensors.py](custom_components/lambda_heat_pumps/const_calculated_sensors.py)) haben die allermeisten Sensoren `"firmware_version": 1`; einzelne können höhere Werte haben (z. B. `firmware_version: 3`). Nur bei höherer konfigurierter Firmware werden diese zusätzlichen Sensoren erzeugt.
+`firmware_versions` hat Vorrang vor `firmware_version`, falls beide gesetzt sind. Vollständig rückwärtskompatibel — bestehende `firmware_version: X`-Sensoren sind unverändert.
+
+In den Konstanten ([const_sensor.py](custom_components/lambda_heat_pumps/const_sensor.py), [const_calculated_sensors.py](custom_components/lambda_heat_pumps/const_calculated_sensors.py)) haben die allermeisten Sensoren `"firmware_version": 1`; einzelne können höhere Werte oder (seit V2.8.0) `firmware_versions`-Bereiche haben.
+
+**Wichtig — General Sensors (`SENSOR_TYPES`):** Bis einschließlich V2.7.0 wurde diese Sensorgruppe **nirgends** durch `get_compatible_sensors()` gefiltert — weder in `sensor.py` (Entity-Erzeugung) noch in `coordinator.py` (`_read_general_sensors_batch`). Ein `firmware_version`/`firmware_versions`-Feld bei einem General Sensor hatte dadurch **nie** eine Wirkung. Seit V2.8.0 ist das behoben; die Tabelle unten ist entsprechend aktuell.
+
+### Sentinel-Filterung als ergänzender Schutz
+
+Unabhängig von der FW-Filterung schützt seit V2.8.0 `is_sentinel_value()` ([utils.py](custom_components/lambda_heat_pumps/utils.py)) vor Lambda-Protokoll-Sentinel-Rohwerten (`0x8000` = Register nicht vorhanden, `-3000` als `int16` = Fühler nicht angeschlossen), die sonst unskaliert als reale Messwerte gespeichert würden. Ein optionales `sentinel_values`-Feld im Template aktiviert zusätzlich `-1` (`0xFFFF`) als Sentinel für einen einzelnen Sensor — global ist `-1` bewusst **kein** Sentinel, da er bei manchen Sensoren (z. B. Temperatur-Offsets) ein gültiger Wert ist. Details: [Release 2.8.0](../Releases/release-2-8-0.md).
 
 ---
 

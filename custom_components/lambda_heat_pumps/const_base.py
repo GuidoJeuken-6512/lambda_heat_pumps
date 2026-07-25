@@ -126,6 +126,13 @@ INDIVIDUAL_READ_REGISTERS = [
 ]
 
 
+# Maximal plausibles Energie-Delta pro Update-Zyklus (Wh). Ein Delta darueber gilt als
+# implausibel (z.B. durch einen Register-Order-Flip) und wird von calculate_energy_delta()
+# in utils.py verworfen statt gebucht - siehe Issue #100.
+# Ein echter Flip springt um Vielfache von 65536 (typ. mehrere MWh) - 5000 Wh liegt damit
+# weit unter einem Flip, aber deutlich ueber realistischen Verbrauchssprüngen pro Zyklus.
+MAX_ENERGY_DELTA_WH = 5000
+
 # Zentrale Konfiguration für Energy-Sensoren nach Zeitzyklus (Basis-Attribut, Persist-Name, Entity-Suffix)
 ENERGY_PERIOD_CONFIG = {
     "daily": {"baseline_attr": "_yesterday_value", "attr_name": "yesterday_value", "suffix": "_daily"},
@@ -281,7 +288,7 @@ LAMBDA_WP_CONFIG_TEMPLATE = """# Lambda WP configuration
 # This refers to the order of 16-bit registers when combining to 32-bit values (Register/Word Order),
 # NOT byte endianness within a register. Modbus uses Big-Endian for bytes within a register,
 # but the order of multiple registers varies by device manufacturer.
-# "high_first" = High-order register first (Register[0] contains MSW) - default
+# "high_first" = High-order register first (Register[0] contains MSW) 
 # "low_first" = Low-order register first (Register[0] contains LSW)
 # Example:
 #modbus:

@@ -120,7 +120,7 @@ async def async_setup_entry(
     # bevor Sub-Devices darauf verweisen (via_device). Dies verhindert Warnungen
     # über nicht existierende via_device Referenzen in Home Assistant 2025.12.0+.
     # General Sensors (SENSOR_TYPES) - erstellen das Haupt-Device
-    for sensor_id, sensor_info in SENSOR_TYPES.items():
+    for sensor_id, sensor_info in get_compatible_sensors(SENSOR_TYPES, fw_version).items():
         address = sensor_info["address"]
         if coordinator.is_register_disabled(address):
             _LOGGER.debug(

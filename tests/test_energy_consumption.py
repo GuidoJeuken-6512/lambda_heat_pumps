@@ -1,5 +1,6 @@
 """Test the Energy Consumption functionality."""
 
+import inspect
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from types import SimpleNamespace
@@ -19,6 +20,7 @@ from custom_components.lambda_heat_pumps.const import (
     ENERGY_CONSUMPTION_SENSOR_TEMPLATES,
     ENERGY_CONSUMPTION_MODES,
     ENERGY_CONSUMPTION_PERIODS,
+    MAX_ENERGY_DELTA_WH,
 )
 from tests.conftest import DummyLoop
 
@@ -76,11 +78,11 @@ class TestCalculateEnergyDelta:
     """Test energy delta calculation."""
 
     def test_normal_delta_calculation(self):
-        """Test normal energy delta calculation."""
+        """Test normal energy delta calculation (below the default max_delta)."""
         current = 100.5
-        last = 95.2
-        expected = 5.3
-        
+        last = 99.2
+        expected = 1.3
+
         result = calculate_energy_delta(current, last)
         assert result == expected
 
@@ -93,15 +95,32 @@ class TestCalculateEnergyDelta:
         result = calculate_energy_delta(current, last)
         assert result == expected
 
-    def test_max_delta_clamping(self):
-        """Test maximum delta clamping."""
+    def test_max_delta_exceeded_returns_none(self):
+        """Implausible delta must be discarded (None), not clamped."""
         current = 200.0
         last = 95.2
         max_delta = 50.0
-        expected = 50.0  # Should be clamped to max_delta
-        
+
         result = calculate_energy_delta(current, last, max_delta)
-        assert result == expected
+        assert result is None
+
+    def test_default_max_delta_sourced_from_const(self):
+        """The default max_delta must come from MAX_ENERGY_DELTA_WH (const_base.py),
+        not a second hardcoded literal - single source of truth (5000 Wh = 5.0 kWh)."""
+        assert MAX_ENERGY_DELTA_WH == 5000
+
+        default_max_delta = inspect.signature(calculate_energy_delta).parameters["max_delta"].default
+        assert default_max_delta == MAX_ENERGY_DELTA_WH / 1000
+
+        # Just below the threshold -> normal delta
+        current = 100.0 + default_max_delta - 0.1
+        result = calculate_energy_delta(current, 100.0)
+        assert result == pytest.approx(default_max_delta - 0.1)
+
+        # Just above the threshold -> implausible, discarded
+        current = 100.0 + default_max_delta + 0.1
+        result = calculate_energy_delta(current, 100.0)
+        assert result is None
 
     def test_zero_delta(self):
         """Test zero delta calculation."""

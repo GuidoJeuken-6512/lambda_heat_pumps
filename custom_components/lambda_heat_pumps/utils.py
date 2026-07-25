@@ -26,6 +26,7 @@ from .const import (
     ENERGY_INCREMENT_PERIODS,
     ENERGY_PERIOD_CONFIG,
     LAMBDA_WP_CONFIG_TEMPLATE,
+    MAX_ENERGY_DELTA_WH,
     RESET_VALID_PERIODS,
     RESET_VALID_SENSOR_TYPES,
 )
@@ -48,25 +49,53 @@ def _get_coordinator(hass: HomeAssistant):
     return None
 
 
+def _parse_firmware_versions(spec: list) -> set:
+    """Parse a firmware_versions spec into a set of active version integers.
+
+    Supported elements:
+      "X-Y"  -> range X to Y inclusive
+      "-X"   -> exclude version X
+      X      -> include version X (int)
+    """
+    included: set = set()
+    excluded: set = set()
+    for item in spec:
+        if isinstance(item, int):
+            included.add(item)
+        elif isinstance(item, str):
+            if item.startswith("-"):
+                excluded.add(int(item[1:]))
+            elif "-" in item:
+                lo, hi = item.split("-", 1)
+                included.update(range(int(lo), int(hi) + 1))
+            else:
+                included.add(int(item))
+    return included - excluded
+
+
 def get_compatible_sensors(sensor_templates: dict, fw_version: int) -> dict:
     """Return only sensors compatible with the given firmware version.
+
+    Priority: "firmware_versions" (range notation) > "firmware_version"
+    (minimum version) > neither field (always active).
+
     Args:
        sensor_templates: Dictionary of sensor templates
        fw_version: The firmware version to check against
     Returns:
        Filtered dictionary of compatible sensors
     """
-    return {
-        k: v
-        for k, v in sensor_templates.items()
-        if (
-            isinstance(v.get("firmware_version"), (int, float))
-            and v.get("firmware_version", 1) <= fw_version
-        )
-        or not isinstance(
-            v.get("firmware_version"), (int, float)
-        )  # Include sensors without firmware_version
-    }
+    result = {}
+    for k, v in sensor_templates.items():
+        if "firmware_versions" in v:
+            if fw_version in _parse_firmware_versions(v["firmware_versions"]):
+                result[k] = v
+        elif isinstance(v.get("firmware_version"), (int, float)):
+            if v["firmware_version"] <= fw_version:
+                result[k] = v
+        else:
+            result[k] = v
+    return result
 
 
 def get_firmware_version(entry):
@@ -688,12 +717,14 @@ def normalize_name_prefix(raw: str) -> str:
 
 
 def slugify_name_prefix_for_lookup(raw: str) -> str:
-    """ASCII-sicherer name_prefix für reine Status-Lookups (z.B. hass.states.get()).
+    """ASCII-sicherer name_prefix für read-only Lookups und entity_id-Erzeugung.
 
     Transliteriert Umlaute exakt so, wie Home Assistants Entity Registry beim
-    Anlegen einer Entity intern bereits slugify() anwendet. NUR für read-only
-    Lookups bestehender Entities verwenden — NICHT für unique_id/entity_id-Erzeugung
-    oder persistierte Vergleichswerte (das würde bestehende unique_ids ändern).
+    Anlegen einer Entity intern bereits slugify() anwendet. Verwendbar für
+    read-only Lookups bestehender Entities (z.B. hass.states.get()) und für die
+    Erzeugung von entity_id (muss ein gültiger ASCII-Slug sein) — NICHT für
+    unique_id oder andere persistierte Vergleichswerte (das würde bestehende
+    unique_ids ändern und Entities verwaisen lassen).
     Für reine ASCII-Namen identisch zu normalize_name_prefix().
     """
     if not raw or not isinstance(raw, str):
@@ -740,17 +771,22 @@ def generate_sensor_names(
         # Home Assistant adds the device prefix automatically in the UI
         display_name = resolved_sensor_name
 
-    # Always use lowercase for name_prefix to unify entity_id generation
+    # Always use lowercase for name_prefix to unify entity_id/unique_id generation.
+    # unique_id keeps this raw (non-transliterated) form for backward compatibility -
+    # changing it would orphan already-registered entities (history, statistics, automations).
     name_prefix_lc = name_prefix.lower() if name_prefix else ""
+    # entity_id must be an ASCII-safe HA slug (a-z/0-9/_ only). Umlauts etc. in name_prefix
+    # would otherwise be set as an invalid entity_id (HA warns now, rejects it from 2027.2.0).
+    name_prefix_slug = slugify_name_prefix_for_lookup(name_prefix) if name_prefix else ""
 
     # Entity ID und unique_id wie in der alten Version generieren
     if use_legacy_modbus_names:
         # Für General Sensors nur name_prefix_sensor_id verwenden
         if device_prefix == sensor_id:
-            entity_id = f"sensor.{name_prefix_lc}_{sensor_id}"
+            entity_id = f"sensor.{name_prefix_slug}_{sensor_id}"
             unique_id = f"{name_prefix_lc}_{sensor_id}"
         else:
-            entity_id = f"sensor.{name_prefix_lc}_{device_prefix}_{sensor_id}"
+            entity_id = f"sensor.{name_prefix_slug}_{device_prefix}_{sensor_id}"
             unique_id = f"{name_prefix_lc}_{device_prefix}_{sensor_id}"
     else:
         # Für General Sensors (device_prefix == sensor_id) nur sensor_id verwenden
@@ -1166,21 +1202,55 @@ def convert_energy_to_kwh(value: float, unit: str) -> float:
         return value
 
 
+# Sentinel-Rohwerte des Lambda-Modbus-Protokolls 1.0 (vor Skalierung, unsigned)
+_SENTINEL_NOT_AVAILABLE = 32768  # 0x8000 - Register/Sensor nicht vorhanden (alle Register)
+_SENTINEL_SENSOR_DISCONNECTED = 62536  # -3000 als uint16 - Fühler nicht angeschlossen (Temperatur-Register)
+
+
+def is_sentinel_value(
+    raw_value: int,
+    data_type: str = "int16",
+    extra_sentinels: list[int] | None = None,
+) -> bool:
+    """True wenn raw_value ein Lambda-Sentinel ist.
+
+    Muss auf dem unskalierten Rohwert geprüft werden, bevor "scale"
+    angewendet wird. `-1` (0xFFFF) ist bewusst kein globaler Sentinel hier,
+    da er bei einigen Sensoren (z.B. Temperatur-Offsets) ein gültiger Wert
+    sein kann.
+
+    extra_sentinels: Opt-in, sensor-spezifische zusätzliche Sentinel-Rohwerte
+    (aus dem Feld "sentinel_values" im Sensor-Template), z.B. [65535] für ein
+    Register, bei dem -1 nur bei diesem einen Sensor "nicht verfügbar" bedeutet.
+    """
+    if raw_value == _SENTINEL_NOT_AVAILABLE:
+        return True
+    if data_type == "int16" and raw_value == _SENTINEL_SENSOR_DISCONNECTED:
+        return True
+    if extra_sentinels and raw_value in extra_sentinels:
+        return True
+    return False
+
+
 def calculate_energy_delta(
     current_reading: float,
     last_reading: float,
-    max_delta: float = 100.0  # Zurück auf 100.0 kWh
-) -> float:
+    max_delta: float = MAX_ENERGY_DELTA_WH / 1000,  # Wh -> kWh, siehe const_base.py
+) -> Optional[float]:
     """
     Berechne Energie-Delta mit Überlauf-Schutz.
-    
+
     Args:
         current_reading: Aktueller Energieverbrauch in kWh
         last_reading: Letzter Energieverbrauch in kWh (kann None sein)
-        max_delta: Maximale erlaubte Delta (Schutz vor unrealistischen Sprüngen)
-    
+        max_delta: Maximale erlaubte Delta in kWh (Schutz vor unrealistischen
+            Sprüngen, z.B. Register-Order-Flip). Default aus `MAX_ENERGY_DELTA_WH`
+            (const_base.py), einzige Quelle für diesen Schwellenwert.
+
     Returns:
-        float: Berechnetes Delta in kWh
+        float: Berechnetes Delta in kWh, oder None wenn das Delta implausibel
+               ist (überschreitet max_delta). Der Caller muss in diesem Fall
+               die Referenz aktualisieren und darf nichts buchen.
     """
     # Wenn last_reading None ist, ist es ein neuer Sensor oder erster Start
     if last_reading is None:
@@ -1209,10 +1279,11 @@ def calculate_energy_delta(
         # Schutz vor unrealistischen Sprüngen (nur wenn last_reading > 0)
         if delta > max_delta:
             _LOGGER.warning(
-                "Energy delta %.6f exceeds maximum %.6f, clamping to maximum",
-                delta, max_delta
+                "Implausibles Delta %.1f kWh verworfen (Referenz %.2f -> %.2f). "
+                "Moegliche Ursache: geaenderte int32_register_order.",
+                delta, last_reading, current_reading,
             )
-            return max_delta
+            return None
         
         # Rückgabe mit hoher Präzision (6 Nachkommastellen)
         return round(delta, 6)

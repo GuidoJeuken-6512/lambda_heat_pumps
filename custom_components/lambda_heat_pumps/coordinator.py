@@ -46,6 +46,7 @@ from .utils import (
     store_sensor_id,
     get_stored_thermal_sensor_id,
     store_thermal_sensor_id,
+    is_sentinel_value,
 )
 from .modbus_utils import async_read_holding_registers, combine_int32_registers, wait_for_stable_connection
 import time
@@ -997,10 +998,20 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                                     i += 1
                                     continue
                             else:
+                                # Lambda-Sentinel (0x8000 etc.) vor Skalierung filtern
+                                if is_sentinel_value(value, sensor_info.get("data_type", "int16"), sensor_info.get("sentinel_values")):
+                                    _LOGGER.info(
+                                        "Sentinel-Wert %s bei Register %d (%s) erkannt - Sensor wird unavailable",
+                                        value, addr, sensor_id,
+                                    )
+                                    self._global_register_cache[addr] = None
+                                    data[sensor_id] = None
+                                    i += 1
+                                    continue
                                 # Für INT16/UINT16: Signed-Konvertierung falls nötig
                                 if sensor_info.get("data_type") == "int16":
                                     value = to_signed_16bit(value)
-                            
+
                             # WICHTIG: Scale-Wert anwenden (war zuvor fehlend!)
                             if "scale" in sensor_info:
                                 value = value * sensor_info["scale"]
@@ -1055,6 +1066,14 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 value = to_signed_32bit(value)
             else:
                 value = result.registers[0]
+                if is_sentinel_value(value, sensor_info.get("data_type", "int16"), sensor_info.get("sentinel_values")):
+                    _LOGGER.info(
+                        "Sentinel-Wert %s bei Register %d (%s) erkannt - Sensor wird unavailable",
+                        value, address, sensor_id,
+                    )
+                    data[sensor_id] = None
+                    self._global_register_cache[address] = None
+                    return
                 if sensor_info.get("data_type") == "int16":
                     value = to_signed_16bit(value)
 
@@ -1068,9 +1087,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as ex:
             _LOGGER.warning("MODBUS READ FAILED: address=%s, error=%s, caller=_async_update_data", address, ex)
 
-    async def _read_general_sensors_batch(self, data):
+    async def _read_general_sensors_batch(self, data, compatible_general_sensors):
         """Read general sensors using global register collection."""
-        for sensor_id, sensor_info in SENSOR_TYPES.items():
+        for sensor_id, sensor_info in compatible_general_sensors.items():
             if self.is_register_disabled(sensor_info["address"]):
                 continue
             if not self.is_address_enabled_by_entity(sensor_info["address"]):
@@ -1597,6 +1616,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             fw_version = get_firmware_version_int(self.entry)
 
             # Filter compatible sensors based on firmware version
+            compatible_general_sensors = get_compatible_sensors(
+                SENSOR_TYPES, fw_version
+            )
             compatible_hp_sensors = get_compatible_sensors(
                 HP_SENSOR_TEMPLATES, fw_version
             )
@@ -1639,7 +1661,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 self._last_state = {}
 
             # Read general sensors with batch optimization
-            await self._read_general_sensors_batch(data)
+            await self._read_general_sensors_batch(data, compatible_general_sensors)
 
             # Read heat pump sensors with batch optimization
             num_hps = self.entry.data.get("num_hps", 1)
@@ -1683,9 +1705,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             value = to_signed_32bit(value)
                         else:
                             value = result.registers[0]
-                            if sensor_info.get("data_type") == "int16":
+                            if is_sentinel_value(value, sensor_info.get("data_type", "int16"), sensor_info.get("sentinel_values")):
+                                _LOGGER.info(
+                                    "Sentinel-Wert %s bei Register %d (%s) erkannt - Sensor wird unavailable",
+                                    value, address, sensor_id,
+                                )
+                                value = None
+                            elif sensor_info.get("data_type") == "int16":
                                 value = to_signed_16bit(value)
-                        if "scale" in sensor_info:
+                        if value is not None and "scale" in sensor_info:
                             value = value * sensor_info["scale"]
                         # Prüfe auf Override-Name
                         override_name = None
@@ -1740,9 +1768,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             value = to_signed_32bit(value)
                         else:
                             value = result.registers[0]
-                            if sensor_info.get("data_type") == "int16":
+                            if is_sentinel_value(value, sensor_info.get("data_type", "int16"), sensor_info.get("sentinel_values")):
+                                _LOGGER.info(
+                                    "Sentinel-Wert %s bei Register %d (%s) erkannt - Sensor wird unavailable",
+                                    value, address, sensor_id,
+                                )
+                                value = None
+                            elif sensor_info.get("data_type") == "int16":
                                 value = to_signed_16bit(value)
-                        if "scale" in sensor_info:
+                        if value is not None and "scale" in sensor_info:
                             value = value * sensor_info["scale"]
                         # Prüfe auf Override-Name
                         override_name = None
@@ -1797,9 +1831,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             value = to_signed_32bit(value)
                         else:
                             value = result.registers[0]
-                            if sensor_info.get("data_type") == "int16":
+                            if is_sentinel_value(value, sensor_info.get("data_type", "int16"), sensor_info.get("sentinel_values")):
+                                _LOGGER.info(
+                                    "Sentinel-Wert %s bei Register %d (%s) erkannt - Sensor wird unavailable",
+                                    value, address, sensor_id,
+                                )
+                                value = None
+                            elif sensor_info.get("data_type") == "int16":
                                 value = to_signed_16bit(value)
-                        if "scale" in sensor_info:
+                        if value is not None and "scale" in sensor_info:
                             value = value * sensor_info["scale"]
                         # Prüfe auf Override-Name
                         override_name = None
@@ -2091,7 +2131,12 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             last_reading_dict[f"hp{hp_idx}"] = None
             await self._persist_counters()
             return
-        energy_delta = calculate_energy_delta(current_energy_kwh, last_energy, max_delta=100.0)
+        energy_delta = calculate_energy_delta(current_energy_kwh, last_energy)
+        if energy_delta is None:
+            # Implausibles Delta verworfen - Referenz neu setzen, kein Inkrement buchen
+            last_reading_dict[f"hp{hp_idx}"] = current_energy_kwh
+            await self._persist_counters()
+            return
         if energy_delta < 0:
             return
         last_reading_dict[f"hp{hp_idx}"] = current_energy_kwh

@@ -17,6 +17,7 @@ from custom_components.lambda_heat_pumps.utils import (
     get_compatible_sensors,
     get_stored_thermal_sensor_id,
     is_register_disabled,
+    is_sentinel_value,
     load_disabled_registers,
     load_sensor_translations,
     restore_energy_period_state,
@@ -25,6 +26,7 @@ from custom_components.lambda_heat_pumps.utils import (
     to_signed_32bit,
     validate_external_sensors,
     _get_coordinator,
+    _parse_firmware_versions,
 )
 
 
@@ -54,6 +56,136 @@ def test_get_compatible_sensors_no_firmware_version():
     # Should return sensors with firmware_version <= 1
     assert len(result) == 1
     assert "sensor1" in result
+
+
+def test_parse_firmware_versions_range():
+    """Range notation "X-Y" includes all versions from X to Y inclusive."""
+    assert _parse_firmware_versions(["1-5", "7-8"]) == {1, 2, 3, 4, 5, 7, 8}
+
+
+def test_parse_firmware_versions_exclude():
+    """Leading "-" excludes a single version from the resulting set."""
+    assert _parse_firmware_versions(["1-5", "-3"]) == {1, 2, 4, 5}
+
+
+def test_parse_firmware_versions_int_and_str():
+    """Plain ints and numeric strings are included as single versions."""
+    assert _parse_firmware_versions([1, "3", "5-6"]) == {1, 3, 5, 6}
+
+
+def test_get_compatible_sensors_firmware_versions_range():
+    """firmware_versions (range notation) takes priority over firmware_version."""
+    sensors = {
+        "sensor1": {"firmware_versions": ["1-3"]},
+        "sensor2": {"firmware_version": 1},
+    }
+
+    assert set(get_compatible_sensors(sensors, 2)) == {"sensor1", "sensor2"}
+    # Sensor with firmware_versions disappears once fw_version leaves the range
+    assert set(get_compatible_sensors(sensors, 4)) == {"sensor2"}
+
+
+def test_get_compatible_sensors_no_field_always_active():
+    """Sensors without firmware_version/firmware_versions are always included."""
+    sensors = {"sensor1": {"name": "Always on"}}
+
+    assert get_compatible_sensors(sensors, 1) == sensors
+    assert get_compatible_sensors(sensors, 99) == sensors
+
+
+def test_is_sentinel_value_not_available():
+    """0x8000 (32768) is the global 'register not available' sentinel."""
+    assert is_sentinel_value(32768) is True
+    assert is_sentinel_value(32768, "uint16") is True
+
+
+def test_is_sentinel_value_sensor_disconnected_int16_only():
+    """62536 ('-3000' as uint16) is a sentinel only for int16 temperature registers."""
+    assert is_sentinel_value(62536, "int16") is True
+    assert is_sentinel_value(62536, "uint16") is False
+
+
+def test_is_sentinel_value_minus_one_is_not_a_sentinel():
+    """-1 / 0xFFFF must NOT be treated as a global sentinel (valid offset value)."""
+    assert is_sentinel_value(65535) is False
+    assert is_sentinel_value(65535, "int16") is False
+
+
+def test_is_sentinel_value_normal_value():
+    """A plausible reading must not be flagged as a sentinel."""
+    assert is_sentinel_value(250, "int16") is False
+
+
+def test_is_sentinel_value_extra_sentinels_opt_in():
+    """extra_sentinels is opt-in per sensor and does not affect other sensors."""
+    assert is_sentinel_value(65535, "int16", [65535]) is True
+    # Without opt-in, -1/0xFFFF stays a valid value (e.g. temperature offsets)
+    assert is_sentinel_value(65535, "int16") is False
+    assert is_sentinel_value(65535, "int16", None) is False
+    assert is_sentinel_value(65535, "int16", []) is False
+
+
+def test_is_sentinel_value_extra_sentinels_does_not_override_normal_values():
+    """A value not listed in extra_sentinels is unaffected."""
+    assert is_sentinel_value(250, "int16", [65535]) is False
+
+
+def test_get_compatible_sensors_ambient_temperature_fw_range():
+    """ambient_temperature (Reg 0002) is only readable up to V0.0.9-3K (fw int 7);
+    newer controllers (fw int 8+) don't have it (see issue100)."""
+    from custom_components.lambda_heat_pumps.const_sensor import SENSOR_TYPES
+
+    assert "firmware_versions" in SENSOR_TYPES["ambient_temperature"]
+    assert SENSOR_TYPES["ambient_temperature"]["sentinel_values"] == [65535]
+
+    compatible_old = get_compatible_sensors(SENSOR_TYPES, 7)
+    assert "ambient_temperature" in compatible_old
+
+    compatible_new = get_compatible_sensors(SENSOR_TYPES, 8)
+    assert "ambient_temperature" not in compatible_new
+
+
+def test_buffer_request_registers_opt_in_sentinel():
+    """Buffer 'request' registers (3005-3009 => relative_address 5-9) treat
+    -1 (0xFFFF) as "keine Anforderung" - opt-in via sentinel_values, since
+    -1 is not a global sentinel (see is_sentinel_value)."""
+    from custom_components.lambda_heat_pumps.const_sensor import BUFF_SENSOR_TEMPLATES
+
+    request_sensors = [
+        "request_type",
+        "request_flow_line_temp_setpoint",
+        "request_return_line_temp_setpoint",
+        "request_heat_sink_temp_diff_setpoint",
+        "modbus_request_heating_capacity",
+    ]
+    for key in request_sensors:
+        assert BUFF_SENSOR_TEMPLATES[key]["sentinel_values"] == [65535], key
+        assert is_sentinel_value(65535, BUFF_SENSOR_TEMPLATES[key]["data_type"],
+                                  BUFF_SENSOR_TEMPLATES[key]["sentinel_values"]) is True
+
+    # Sanity check: relative addresses match register 3005-3009 (buff base 3000)
+    addresses = {BUFF_SENSOR_TEMPLATES[key]["relative_address"] for key in request_sensors}
+    assert addresses == {5, 6, 7, 8, 9}
+
+    # Other buffer sensors (not "request" registers) must NOT opt in
+    assert "sentinel_values" not in BUFF_SENSOR_TEMPLATES["actual_high_temperature"]
+
+
+def test_hc_operating_mode_opt_in_sentinel():
+    """HC 'operating_mode' (register 5006 => relative_address 6, hc base 5000)
+    treats -1 (0xFFFF) as "keine Anforderung" via opt-in sentinel_values."""
+    from custom_components.lambda_heat_pumps.const_sensor import HC_SENSOR_TEMPLATES
+
+    assert HC_SENSOR_TEMPLATES["operating_mode"]["relative_address"] == 6
+    assert HC_SENSOR_TEMPLATES["operating_mode"]["sentinel_values"] == [65535]
+    assert is_sentinel_value(
+        65535,
+        HC_SENSOR_TEMPLATES["operating_mode"]["data_type"],
+        HC_SENSOR_TEMPLATES["operating_mode"]["sentinel_values"],
+    ) is True
+
+    # Other HC sensors (not the request/operating_mode register) must NOT opt in
+    assert "sentinel_values" not in HC_SENSOR_TEMPLATES["flow_line_temperature"]
 
     def test_build_device_info():
         """Test build_device_info."""
@@ -520,7 +652,13 @@ class TestGenerateSensorNames:
         assert standard["entity_id"] == "sensor.hp1_flow_temp"
 
     def test_generate_sensor_names_special_characters(self):
-        """Test behavior with special characters in name_prefix."""
+        """Test behavior with special characters in name_prefix.
+
+        unique_id keeps the raw (lowercased) name_prefix for backward
+        compatibility. entity_id must be a valid ASCII/underscore-only HA
+        slug, so the hyphen is stripped there even though it survives in
+        unique_id.
+        """
         name_prefix = "eu-08l"  # Mit Bindestrich
 
         # Legacy Mode
@@ -528,7 +666,7 @@ class TestGenerateSensorNames:
             "hp1", "Flow Temperature", "flow_temp", name_prefix, True
         )
         assert legacy["unique_id"] == "eu-08l_hp1_flow_temp"
-        assert legacy["entity_id"] == "sensor.eu-08l_hp1_flow_temp"
+        assert legacy["entity_id"] == "sensor.eu08l_hp1_flow_temp"
 
         # Standard Mode
         standard = generate_sensor_names(
@@ -536,6 +674,22 @@ class TestGenerateSensorNames:
         )
         assert standard["unique_id"] == "hp1_flow_temp"
         assert standard["entity_id"] == "sensor.hp1_flow_temp"
+
+    def test_generate_sensor_names_umlaut_in_name_prefix(self):
+        """entity_id must be ASCII-safe even if the device name has umlauts.
+
+        HA rejects/deprecates entity_id containing non-ASCII characters
+        (e.g. 'sensor.eu08ü_...'). unique_id is left untouched (raw lowercase)
+        so existing entities are not orphaned; only entity_id is transliterated.
+        """
+        name_prefix = "eu08ü"
+
+        legacy = generate_sensor_names(
+            "hp1", "Flow Temperature", "flow_temp", name_prefix, True
+        )
+        assert legacy["unique_id"] == "eu08ü_hp1_flow_temp"
+        assert legacy["entity_id"] == "sensor.eu08u_hp1_flow_temp"
+        assert legacy["entity_id"].isascii()
 
     def test_generate_sensor_names_return_structure(self):
         """Test that the function returns the expected structure."""
