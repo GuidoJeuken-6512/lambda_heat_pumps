@@ -21,7 +21,7 @@ DEFAULT_NAME = "EU08L"
 DEFAULT_HOST = "192.168.178.194"
 DEFAULT_PORT = 502
 DEFAULT_SLAVE_ID = 1
-DEFAULT_FIRMWARE = "V0.0.8-3K"  # Updated to match current hardware
+DEFAULT_FIRMWARE = "V0.0.10-3K"  # Updated to match current hardware
 DEFAULT_ROOM_THERMOSTAT_CONTROL = False
 DEFAULT_PV_SURPLUS = False
 DEFAULT_COOLING_MODE_ENABLED = False
@@ -64,8 +64,8 @@ LOG_LEVELS = {"error": "ERROR", "warning": "WARNING", "info": "INFO", "debug": "
 # "reg_order" is the default for int32_register_order when no explicit YAML override is set.
 # YAML override (lambda_wp_config.yaml modbus.int32_register_order) always takes precedence.
 FIRMWARE_CONFIG: dict = {
-    "V1.1.0-3K":  {"version": 9, "reg_order": "high_first"},
-    "V0.0.10-3K": {"version": 8, "reg_order": "high_first"},
+    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
+    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     "V0.0.9-3K":  {"version": 7, "reg_order": "high_first"},
     "V0.0.8-3K":  {"version": 6, "reg_order": "high_first"},  # most common in the field
     "V0.0.7-3K":  {"version": 5, "reg_order": "high_first"},

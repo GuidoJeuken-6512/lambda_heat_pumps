@@ -433,34 +433,50 @@ modbus:
             "modbus": config.get("modbus", {}),  # Include modbus configuration
 ```
 
-2. **Laden der Register-Reihenfolge:** Beim Coordinator-Start wird die Reihenfolge geladen:
+2. **Laden der Register-Reihenfolge:** Beim Coordinator-Start wird die Reihenfolge geladen *(seit V2.7.0 mit firmware-abhängigem Default, siehe [Register-Reihenfolge für int32-Sensoren](register-reihenfolge-int32.md))*:
 
-```313:362:custom_components/lambda_heat_pumps/modbus_utils.py
-async def get_int32_register_order(hass) -> str:
+```389:439:custom_components/lambda_heat_pumps/modbus_utils.py
+async def get_int32_register_order(hass, entry=None) -> str:
     """
     Lädt Register-Reihenfolge-Konfiguration aus lambda_wp_config.yaml.
-    
+
     Es handelt sich um die Reihenfolge der 16-Bit-Register bei 32-Bit-Werten
     (Register/Word Order), nicht um Byte-Endianness innerhalb eines Registers.
-    
+
+    Priorität (niedrig → hoch):
+      1. "high_first" — absoluter Fallback
+      2. FIRMWARE_CONFIG[fw_version]["reg_order"] — FW-abhängiger Default (wenn entry übergeben)
+      3. modbus.int32_byte_order in YAML — Legacy-Override
+      4. modbus.int32_register_order in YAML — Expliziter Override (höchste Priorität)
+
     Args:
         hass: Home Assistant Instanz
-    
+        entry: Config-Entry (optional); wenn übergeben, wird der FW-Default aus FIRMWARE_CONFIG geladen
+
     Returns:
-        str: "high_first" oder "low_first" (Standard: "high_first")
-        
+        str: "high_first" oder "low_first"
+
     Note:
-        "high_first" = Höherwertiges Register zuerst (Register[0] << 16 | Register[1])
-        "low_first" = Niedrigwertiges Register zuerst (Register[1] << 16 | Register[0])
-        
-        Rückwärtskompatibilität: "big" wird zu "high_first", "little" zu "low_first" konvertiert
+        Rückwärtskompatibilität: "big" → "high_first", "little" → "low_first"
     """
     try:
-        from .utils import load_lambda_config
+        from .utils import load_lambda_config, get_firmware_version_int
+        from .const_base import FIRMWARE_CONFIG, DEFAULT_FIRMWARE
         config = await load_lambda_config(hass)
         modbus_config = config.get("modbus", {})
-        
-        # Prüfe zuerst neue Config, dann alte (für Rückwärtskompatibilität)
+
+        # Firmware-abhängiger Default
+        if entry is not None:
+            fw_version_str = (
+                entry.options.get("firmware_version")
+                or entry.data.get("firmware_version")
+                or DEFAULT_FIRMWARE
+            )
+        else:
+            fw_version_str = DEFAULT_FIRMWARE
+        fw_default = FIRMWARE_CONFIG.get(fw_version_str, {}).get("reg_order", "high_first")
+
+        # YAML-Override hat Vorrang (prüfe neue Config, dann alte für Rückwärtskompatibilität)
         register_order = modbus_config.get("int32_register_order")
         if register_order is None:
             # Rückwärtskompatibilität: Alte Config migrieren
@@ -472,20 +488,10 @@ async def get_int32_register_order(hass) -> str:
                 )
                 register_order = old_byte_order
             else:
-                register_order = "high_first"  # Standard
-        
-        # Rückwärtskompatibilität: Konvertiere alte Werte
-        if register_order == "big":
-            register_order = "high_first"
-            _LOGGER.info(
-                "Veralteter Wert 'big' verwendet. Bitte aktualisieren Sie Ihre Config auf 'high_first'"
-            )
-        elif register_order == "little":
-            register_order = "low_first"
-            _LOGGER.info(
-                "Veralteter Wert 'little' verwendet. Bitte aktualisieren Sie Ihre Config auf 'low_first'"
-            )
+                register_order = fw_default  # FW-abhängiger Default
 ```
+
+Der `entry`-Parameter wird bei allen Aufrufen ab V2.7.0 übergeben; für die beiden neuesten Firmware-Versionen (`V1.1.0-3K`, `V0.0.10-3K`) liefert `fw_default` `"low_first"`, für ältere Versionen `"high_first"`.
 
 3. **Verwendung:** Bei 32‑Bit‑Registern wird die Reihenfolge beim Kombinieren der Register verwendet:
 
@@ -504,8 +510,8 @@ async def get_int32_register_order(hass) -> str:
 ```
 
 **Optionen:**
-- `high_first` (Standard): höherwertiges Register zuerst.
-- `low_first`: niedrigeres Register zuerst (für bestimmte Geräte/Firmware).
+- `high_first` (absoluter Fallback, sowie FW-Default für die meisten Firmware-Versionen): höherwertiges Register zuerst.
+- `low_first` (FW-Default für `V1.1.0-3K` und `V0.0.10-3K` seit V2.7.0, sowie manuell für weitere Geräte/Firmware): niedrigeres Register zuerst.
 
 **Wann verwenden:**
 - Falsche Werte bei 32‑Bit‑Sensoren (Energieverbrauch, Zähler).

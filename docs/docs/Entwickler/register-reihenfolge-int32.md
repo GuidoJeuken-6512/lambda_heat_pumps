@@ -59,8 +59,8 @@ Jeder FW-Eintrag in `const_base.py` trägt einen `reg_order`-Wert:
 
 ```python
 FIRMWARE_CONFIG: dict = {
-    "V1.1.0-3K":  {"version": 9, "reg_order": "high_first"},
-    "V0.0.10-3K": {"version": 8, "reg_order": "high_first"},
+    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
+    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     "V0.0.9-3K":  {"version": 7, "reg_order": "high_first"},
     # ...
 }
@@ -69,6 +69,8 @@ FIRMWARE_VERSION: dict = {k: v["version"] for k, v in FIRMWARE_CONFIG.items()}
 ```
 
 Wenn eine Firmware-Version einen anderen Register-Order verwendet, genügt es, den entsprechenden Eintrag in `FIRMWARE_CONFIG` mit dem richtigen `"reg_order"`-Wert zu setzen. `FIRMWARE_VERSION` wird automatisch abgeleitet — alle bestehenden Aufrufer bleiben unverändert.
+
+**Hinweis:** Die beiden neuesten Firmware-Versionen (`V1.1.0-3K`, `V0.0.10-3K`) verwenden tatsächlich `"low_first"` — abweichend vom absoluten Fallback `"high_first"`, der für ältere Versionen zutrifft.
 
 ---
 

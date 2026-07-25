@@ -18,13 +18,13 @@ Hier finden Sie die häufigsten Ursachen und Lösungen, wenn Sensoren **falsche 
 - **Lambda-Software** zeigt dagegen korrekte Werte.
 - Betroffen sind vor allem **int32-Entitäten** (z. B. Akkumulations-Sensoren), die aus zwei 16-Bit-Modbus-Registern zusammengesetzt werden.
 
-**Ursache:** Die **Reihenfolge der Register** (Register/Word Order) bei der Interpretation von 32-Bit-Werten ist je nach Gerät/Firmware unterschiedlich. Es geht nicht um Byte-Endianness innerhalb eines Registers, sondern darum, ob das höherwertige oder das niedrigere 16-Bit-Register zuerst gelesen wird. 
+**Ursache:** Die **Reihenfolge der Register** (Register/Word Order) bei der Interpretation von 32-Bit-Werten ist je nach Gerät/Firmware unterschiedlich. Es geht nicht um Byte-Endianness innerhalb eines Registers, sondern darum, ob das höherwertige oder das niedrigere 16-Bit-Register zuerst gelesen wird.
 
-Leider kann nicht automatisch ermittelt werden, welche Register Reihenfolge die Lambda verwendet.
+Seit V2.7.0 setzt die Integration abhängig von der konfigurierten Firmware-Version automatisch einen passenden Default (`FIRMWARE_CONFIG` in `const_base.py`) — z. B. `"low_first"` für `V1.1.0-3K` und `V0.0.10-3K`, `"high_first"` für ältere Versionen. Trotzdem kann nicht für jedes Gerät zuverlässig automatisch ermittelt werden, welche Register-Reihenfolge tatsächlich zutrifft — zeigen Sensoren dennoch falsche Werte, hilft ein manueller Override.
 
 ### Lösung
 
-In der **lambda_wp_config.yaml** die Register-Reihenfolge für 32-Bit-Werte anpassen:
+In der **lambda_wp_config.yaml** die Register-Reihenfolge für 32-Bit-Werte anpassen (überschreibt den firmware-abhängigen Default):
 
 ```yaml
 modbus:

@@ -12,7 +12,7 @@ title: "Release 2.7.0"
 
 ## Summary
 
-Release 2.7.0 includes a bug fix for users with German umlauts in the device name, and a new mechanism to define the default register order for 32-bit Modbus sensors per firmware version. No breaking changes.
+Release 2.7.0 includes a bug fix for users with German umlauts in the device name, and a new mechanism to define the default register order for 32-bit Modbus sensors per firmware version. The default for the two newest firmware versions (`V1.1.0-3K`, `V0.0.10-3K`) was corrected to `"low_first"`. No breaking changes.
 
 ---
 
@@ -21,6 +21,14 @@ Release 2.7.0 includes a bug fix for users with German umlauts in the device nam
 ### Umlauts in device name cause energy sensor lookup to fail ([#93](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/93))
 
 **Affected:** Users who configured a device name containing umlauts (e.g. `Wärmepumpe`) in the integration's Options Flow **and** have not configured an external energy sensor (falling back to the integration's own sensor).
+
+### Wrong 32-bit register order default on newest firmware
+
+**Affected:** Users on firmware `V1.1.0-3K` or `V0.0.10-3K` without an explicit `int32_register_order` override in `lambda_wp_config.yaml`.
+
+**Root cause:** When the new firmware-dependent default (see below) was introduced, it initially defaulted to `"high_first"` for every firmware version — including the two newest, which actually use `"low_first"`. This could cause int32 sensors (e.g. energy accumulation) to report incorrect values.
+
+**Fix:** `FIRMWARE_CONFIG` in `const_base.py` now carries `"reg_order": "low_first"` for `V1.1.0-3K` and `V0.0.10-3K`. A manual YAML override still takes precedence, unaffected.
 
 **Symptom:** The debug log repeatedly shows lines like:
 
@@ -48,8 +56,8 @@ Previously, the default for the 32-bit register order (`"high_first"`) was hardc
 
 ```python
 FIRMWARE_CONFIG: dict[str, dict] = {
-    "V1.1.0-3K":  {"version": 8, "reg_order": "high_first"},
-    "V0.0.10-3K": {"version": 8, "reg_order": "high_first"},
+    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
+    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     # ...
 }
 # Backward compatibility — all existing callers unchanged:
@@ -75,6 +83,6 @@ The YAML override in `lambda_wp_config.yaml` is fully preserved and still takes 
 |---|---|
 | `custom_components/lambda_heat_pumps/utils.py` | New function `slugify_name_prefix_for_lookup()`; import `ha_slugify` |
 | `custom_components/lambda_heat_pumps/coordinator.py` | 2 lookup sites use `slugify_name_prefix_for_lookup` instead of `normalize_name_prefix` |
-| `custom_components/lambda_heat_pumps/const_base.py` | `FIRMWARE_CONFIG` as new primary structure; `FIRMWARE_VERSION` as derived compat dict |
+| `custom_components/lambda_heat_pumps/const_base.py` | `FIRMWARE_CONFIG` as new primary structure; `FIRMWARE_VERSION` as derived compat dict; `reg_order` for `V1.1.0-3K`/`V0.0.10-3K` corrected to `"low_first"` |
 | `custom_components/lambda_heat_pumps/modbus_utils.py` | `get_int32_register_order(hass, entry)` — firmware-dependent default before YAML fallback |
 | `custom_components/lambda_heat_pumps/__init__.py` | Call site passes `entry` to `get_int32_register_order` |
