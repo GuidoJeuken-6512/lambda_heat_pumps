@@ -282,6 +282,61 @@ async def test_a_controller_that_stores_its_counters_low_word_first(
     assert state_of(hass, "eu08l_hp1_operating_state") == "CH"
 
 
+async def test_a_momentary_drop_is_reconnected_in_the_same_poll(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A blip costs nothing: the poll re-establishes the link and carries on."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+
+    controller.drop_the_link()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.last_update_success
+    assert entry.state is ConfigEntryState.LOADED
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
+async def test_an_unreachable_controller_goes_unavailable_without_reloading(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A controller that cannot be reached marks its entities unavailable.
+
+    Reloading would tear down every entity and re-probe the register map for
+    what is usually a temporary outage. The coordinator keeps trying to
+    reconnect on its own schedule instead, so the entities stay where they are.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_flow_line_temperature"
+    )
+
+    controller.go_offline()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # The device is down, but the entry was never reloaded.
+    assert not coordinator.last_update_success
+    assert entry.state is ConfigEntryState.LOADED
+    assert hass.states.get(entity_id).state == "unavailable"
+
+    # When it answers again the values come back — to the same entity, so
+    # nothing was recreated and its history is intact.
+    controller.come_back_online()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.last_update_success
+    assert hass.states.get(entity_id).state == "34.12"
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, "eu08l_hp1_flow_line_temperature")
+        == entity_id
+    )
+
+
 async def test_only_the_totals_are_enabled_by_default(
     hass: HomeAssistant, controller: Controller
 ) -> None:

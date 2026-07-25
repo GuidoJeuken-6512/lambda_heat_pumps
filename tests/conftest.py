@@ -92,12 +92,35 @@ class Controller:
     # which is how a controller that serves only part of a module block is set up.
     _refused: set[int] = field(default_factory=set)
 
+    _connections: list[MockModbusConnection] = field(default_factory=list)
+
     def refuse(self, address: int) -> None:
         """Stop answering for any block covering this register, as a controller
         does for a register its firmware does not serve."""
         self._refused.add(address)
         for unit in self._units:
             unit.fail_read(address, ModbusExceptionError(ILLEGAL_DATA_ADDRESS))
+
+    _offline: bool = False
+
+    def drop_the_link(self) -> None:
+        """The link goes down, as a momentary network blip takes it down.
+
+        The controller is still there, so reconnecting works — which is what
+        makes this different from `go_offline`.
+        """
+        for connection in self._connections:
+            connection.simulate_connection_lost()
+
+    def go_offline(self) -> None:
+        """The controller becomes unreachable: the link drops, and re-establishing
+        it fails until `come_back_online`."""
+        self._offline = True
+        self.drop_the_link()
+
+    def come_back_online(self) -> None:
+        """The controller answers again; the next reconnect succeeds."""
+        self._offline = False
 
 
 def _refuse_absent_modules(unit: MockModbusUnit) -> None:
@@ -124,6 +147,20 @@ def controller() -> Iterator[Controller]:
     def connect(host: str, *, port: int) -> MockModbusConnection:
         device.ports.append(port)
         connection = MockModbusConnection()
+        device._connections.append(connection)
+
+        async def reconnect() -> None:
+            """Re-establish the link, as the real connection's connect() does.
+
+            The mock has no connect() of its own — it is born connected — so a
+            test that drops the link needs this to bring it back. A controller
+            that is offline refuses, exactly as an unreachable one does.
+            """
+            if device._offline:
+                raise ModbusConnectionError("no route to host")
+            connection._connected = True
+
+        connection.connect = reconnect
         base_for_unit = connection.for_unit
 
         def for_unit(unit_id: int) -> MockModbusUnit:
