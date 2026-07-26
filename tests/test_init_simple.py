@@ -343,6 +343,32 @@ def test_async_read_input_registers_uses_lock_and_retry():
 
 
 # ---------------------------------------------------------------------------
+# Health-Check-Lock vereinheitlicht (Race Condition PV-Surplus-Write-Kollision)
+# ---------------------------------------------------------------------------
+
+def test_connection_health_check_uses_shared_modbus_lock():
+    """_test_connection_health() muss denselben Lock wie Reads/Writes nutzen
+    (_get_modbus_read_lock), nicht mehr einen separaten Health-Check-Lock.
+
+    Vorher konnte ein Health-Check (vor jedem PV-Surplus-/Raumtemperatur-Write
+    via wait_for_stable_connection) parallel zu einem echten Coordinator-Read
+    oder -Write auf derselben Verbindung laufen, da zwei unabhaengige Locks
+    verwendet wurden - eine Race Condition, die Modbus-Transaktionen auf der
+    Leitung desynchronisieren und Schreibvorgaenge das Geraet nie erreichen
+    lassen konnte, obwohl das Log Erfolg meldete.
+    """
+    import inspect
+    import custom_components.lambda_heat_pumps.modbus_utils as modbus_utils
+
+    source = inspect.getsource(modbus_utils._test_connection_health)
+    assert "_get_modbus_read_lock" in source
+
+    # Der separate Health-Check-Lock darf nicht wiederkehren
+    assert not hasattr(modbus_utils, "_get_health_check_lock")
+    assert not hasattr(modbus_utils, "_health_check_lock")
+
+
+# ---------------------------------------------------------------------------
 # Phase 2 – 2e: cycling_sensor.py wurde gelöscht (M-05)
 # ---------------------------------------------------------------------------
 

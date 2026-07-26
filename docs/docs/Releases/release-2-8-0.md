@@ -12,7 +12,7 @@ title: "Release 2.8.0"
 
 ## Zusammenfassung
 
-Release 2.8.0 behebt vier Befunde aus [Issue #100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) (Datenschaden durch implausible Energie-Sprünge, ungefilterte Lambda-Sentinel-Rohwerte, ein W-only-Register mit ungültigem Lesewert sowie eine seit jeher wirkungslose Firmware-Filterung bei General Sensors) und führt dafür zwei neue, generische Mechanismen ein: Range-Notation für `firmware_versions` und opt-in Sentinel-Werte pro Sensor. Keine Breaking Changes; alle bestehenden `firmware_version: X`-Sensoren bleiben unverändert.
+Release 2.8.0 behebt vier Befunde aus [Issue #100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) (Datenschaden durch implausible Energie-Sprünge, ungefilterte Lambda-Sentinel-Rohwerte, ein W-only-Register mit ungültigem Lesewert sowie eine seit jeher wirkungslose Firmware-Filterung bei General Sensors) und führt dafür zwei neue, generische Mechanismen ein: Range-Notation für `firmware_versions` und opt-in Sentinel-Werte pro Sensor. Zusätzlich behebt es eine Race Condition aus [Issue #105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105), durch die PV-Überschuss- und Raumtemperatur-Schreibvorgänge sporadisch nie am Gerät ankamen, obwohl das Log Erfolg meldete. Keine Breaking Changes; alle bestehenden `firmware_version: X`-Sensoren bleiben unverändert.
 
 ---
 
@@ -103,11 +103,28 @@ Bereits angewendet auf die definierten Anforderungsregister, bei denen `-1` "kei
 
 ---
 
+## Fehlerbehebungen ([#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105))
+
+### PV-Überschuss-/Raumtemperatur-Schreibvorgänge kamen sporadisch nie am Gerät an
+
+**Betroffen:** Nutzer mit aktivierter PV-Überschuss- oder Raumthermostat-Steuerung (regelmäßige Modbus-Schreibvorgänge über `services.py`).
+
+**Symptom:** Im Log erscheint regelmäßig `✅ MODBUS WRITE SUCCESS`, der geschriebene Wert kommt am Gerät aber sporadisch nicht an.
+
+**Ursache:** Vor jedem Schreibvorgang prüft `wait_for_stable_connection()` die Verbindungsstabilität per Health-Check-Read. Dieser Health-Check nutzte einen eigenen, separaten Lock (`_health_check_lock`), während die eigentlichen Coordinator-Reads und die Schreibvorgänge selbst einen anderen, gemeinsamen Lock (`_modbus_read_lock`) teilten. Da beide Locks sich nicht gegenseitig ausschlossen, konnte der Health-Check-Read **parallel** zu einem echten Coordinator-Read oder -Write auf derselben Verbindung laufen — das kann Modbus-Transaktionen auf der Leitung desynchronisieren (Transaction-ID-Kollision bzw. bei seriellen Gateways ein durch Überlappung verworfener Frame), sodass der Schreibvorgang auf Protokollebene als erfolgreich zurückgemeldet wird, das Gerät den Wert aber nie tatsächlich übernimmt. Begünstigt durch zwei unabhängige, unsynchronisierte Timer (Schreib-Intervall `DEFAULT_WRITE_INTERVAL` und Lese-Intervall `DEFAULT_UPDATE_INTERVAL = 30`), deren Phasenlage über die Zeit periodisch durch ein Kollisionsfenster läuft.
+
+**Fix:** Der Health-Check nutzt jetzt denselben `_modbus_read_lock` wie alle anderen Modbus-Operationen (`async_read_holding_registers`, `async_read_input_registers`, `async_write_registers`) — Health-Check, Reads und Writes auf einer Verbindung sind damit strikt serialisiert, unabhängig von der Wahl der Timer-Intervalle. Der separate `_health_check_lock` wurde entfernt.
+
+**Betroffene Dateien:** `custom_components/lambda_heat_pumps/modbus_utils.py`
+
+---
+
 ## Betroffene Dateien
 
 | Datei | Änderung |
 |---|---|
 | `custom_components/lambda_heat_pumps/const_base.py` | `MAX_ENERGY_DELTA_WH = 5000` neu — einzige Quelle für den `calculate_energy_delta`-Schwellenwert |
+| `custom_components/lambda_heat_pumps/modbus_utils.py` | `_test_connection_health()` nutzt jetzt den gemeinsamen `_modbus_read_lock` statt eines separaten `_health_check_lock` (Issue #105) |
 | `custom_components/lambda_heat_pumps/utils.py` | `_parse_firmware_versions()` neu; `get_compatible_sensors()` um Range-Notation erweitert; `calculate_energy_delta()` gibt `None` statt `max_delta` zurück, Default aus `MAX_ENERGY_DELTA_WH`; `is_sentinel_value()` neu, inkl. opt-in `extra_sentinels`-Parameter |
 | `custom_components/lambda_heat_pumps/coordinator.py` | Caller von `calculate_energy_delta` behandelt `None` und übergibt `max_delta` nicht mehr explizit; Sentinel-Check (inkl. `sentinel_values` aus Template) vor Skalierung an 5 Stellen, mit `INFO`-Log; `_read_general_sensors_batch()` erhält gefilterte Sensor-Liste als Parameter |
 | `custom_components/lambda_heat_pumps/sensor.py` | Entity-Erzeugung für General Sensors (`SENSOR_TYPES`) nutzt jetzt `get_compatible_sensors()` |

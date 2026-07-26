@@ -6,17 +6,16 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-# Lazy-initialized locks — created on first use to avoid event-loop binding issues
+# Lazy-initialized lock — created on first use to avoid event-loop binding issues
 # when the asyncio loop is destroyed and recreated (e.g. in test environments).
-_health_check_lock: asyncio.Lock | None = None
+#
+# Shared by ALL Modbus operations (coordinator reads, connection health checks,
+# and writes) on a given connection. Health checks used to have their own,
+# separate lock, which meant a health-check read could run concurrently with a
+# real coordinator read or write on the same connection — a race that could
+# desync Modbus transactions on the wire and cause writes to silently not
+# reach the device even though the health check reported "stable" first.
 _modbus_read_lock: asyncio.Lock | None = None
-
-
-def _get_health_check_lock() -> asyncio.Lock:
-    global _health_check_lock
-    if _health_check_lock is None:
-        _health_check_lock = asyncio.Lock()
-    return _health_check_lock
 
 
 def _get_modbus_read_lock() -> asyncio.Lock:
@@ -541,16 +540,18 @@ async def wait_for_stable_connection(coordinator) -> None:
 
 async def _test_connection_health(coordinator) -> bool:
     """Test if the Modbus connection is healthy with robust API compatibility.
-    
-    Uses a lock to prevent concurrent health checks that could cause
-    Transaction ID mismatches.
+
+    Uses the shared _modbus_read_lock (same lock as async_read_holding_registers/
+    async_write_registers) to strictly serialize against concurrent coordinator
+    reads and writes on the same connection - not just against other health
+    checks. Without this, a health check could run at the same time as a real
+    read/write and desync Modbus transactions on the wire.
     """
     if not coordinator.client:
         _LOGGER.debug("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
         return False
-    
-    # Verwende Lock, um parallele Health-Checks zu vermeiden
-    async with _get_health_check_lock():
+
+    async with _get_modbus_read_lock():
         try:
             _LOGGER.debug("CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
             # Try a simple read to test connection health using robust API compatibility

@@ -12,7 +12,7 @@ title: "Release 2.8.0"
 
 ## Summary
 
-Release 2.8.0 fixes four findings from [Issue #100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) (data corruption from implausible energy jumps, unfiltered Lambda sentinel raw values, a write-only register returning an invalid reading, and a firmware filter for general sensors that never actually worked) and introduces two new, generic mechanisms to support them: range notation for `firmware_versions` and opt-in sentinel values per sensor. No breaking changes; all existing `firmware_version: X` sensors are unaffected.
+Release 2.8.0 fixes four findings from [Issue #100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) (data corruption from implausible energy jumps, unfiltered Lambda sentinel raw values, a write-only register returning an invalid reading, and a firmware filter for general sensors that never actually worked) and introduces two new, generic mechanisms to support them: range notation for `firmware_versions` and opt-in sentinel values per sensor. It also fixes a race condition from [Issue #105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) that could cause PV-surplus and room-temperature writes to sporadically never reach the device, even though the log reported success. No breaking changes; all existing `firmware_version: X` sensors are unaffected.
 
 ---
 
@@ -63,11 +63,13 @@ Already applied to the defined request registers where `-1` means "no request": 
 
 **Affected:** Energy consumption sensors on all heat pumps.
 
-**Symptom:** After an implausible register jump (e.g. caused by a changed `int32_register_order`, see Release 2.7.0), the difference was clamped to `max_delta` (default 100 kWh) and booked as real consumption — data corruption in the counter.
+**Symptom:** After an implausible register jump (e.g. caused by a changed `int32_register_order`, see Release 2.7.0), the difference was clamped to `max_delta` and booked as real consumption — data corruption in the counter.
 
 **Fix:** `calculate_energy_delta()` now returns `None` for a delta exceeding `max_delta` instead of clamping it. The caller in `coordinator.py` detects `None`, resets the reference reading to the current value, and books **nothing**.
 
-**Affected files:** `custom_components/lambda_heat_pumps/utils.py`, `custom_components/lambda_heat_pumps/coordinator.py`
+**Threshold extracted and tightened:** `max_delta` used to be hardcoded as the literal `100.0` (kWh) in two places (the function default in `utils.py` **and** an explicit call in `coordinator.py`). Now single source of truth: `MAX_ENERGY_DELTA_WH = 5000` in `const_base.py` (5 kWh instead of the previous 100 kWh). The `coordinator.py` call no longer passes `max_delta` explicitly, relying on the default instead. The value comes from an analysis in `docs_md/ToDos/auto_32bit_register_handling.md`: a real register-order flip jumps by multiples of 65,536 (typically several MWh), while realistic consumption jumps per update cycle are a few hundred Wh — `5000 Wh` is well above normal consumption but far below any flip. Only this threshold was adopted; the full automatic flip-detection concept sketched there is **not** part of this release.
+
+**Affected files:** `custom_components/lambda_heat_pumps/const_base.py`, `custom_components/lambda_heat_pumps/utils.py`, `custom_components/lambda_heat_pumps/coordinator.py`
 
 ### Finding 2 — Lambda sentinel raw values were never filtered
 
@@ -101,12 +103,30 @@ Already applied to the defined request registers where `-1` means "no request": 
 
 ---
 
+## Bug Fixes ([#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105))
+
+### PV-surplus / room-temperature writes could sporadically never reach the device
+
+**Affected:** Users with PV-surplus or room-thermostat control enabled (periodic Modbus writes via `services.py`).
+
+**Symptom:** The log regularly shows `✅ MODBUS WRITE SUCCESS`, but the written value sporadically never arrives at the device.
+
+**Root cause:** Before every write, `wait_for_stable_connection()` checks connection stability via a health-check read. This health check used its own, separate lock (`_health_check_lock`), while the actual coordinator reads and the writes themselves shared a different, common lock (`_modbus_read_lock`). Since the two locks didn't exclude each other, the health-check read could run **concurrently** with a real coordinator read or write on the same connection — which can desync Modbus transactions on the wire (Transaction ID collision, or on serial gateways a frame dropped due to overlap), so the write is reported successful at the protocol level while the device never actually applies the value. Made worse by two independent, unsynchronized timers (the write interval `DEFAULT_WRITE_INTERVAL` and the read interval `DEFAULT_UPDATE_INTERVAL = 30`), whose relative phase drifts through a collision window over time.
+
+**Fix:** The health check now uses the same `_modbus_read_lock` as all other Modbus operations (`async_read_holding_registers`, `async_read_input_registers`, `async_write_registers`) — health checks, reads, and writes on a connection are now strictly serialized, regardless of the chosen timer intervals. The separate `_health_check_lock` was removed.
+
+**Affected files:** `custom_components/lambda_heat_pumps/modbus_utils.py`
+
+---
+
 ## Affected Files
 
 | File | Change |
 |---|---|
-| `custom_components/lambda_heat_pumps/utils.py` | `_parse_firmware_versions()` new; `get_compatible_sensors()` extended with range notation; `calculate_energy_delta()` returns `None` instead of `max_delta`; `is_sentinel_value()` new, with opt-in `extra_sentinels` parameter |
-| `custom_components/lambda_heat_pumps/coordinator.py` | Caller of `calculate_energy_delta` handles `None`; sentinel check (including template `sentinel_values`) before scaling in 5 places, with `INFO` log; `_read_general_sensors_batch()` receives the filtered sensor list as a parameter |
+| `custom_components/lambda_heat_pumps/const_base.py` | `MAX_ENERGY_DELTA_WH = 5000` new — single source of truth for the `calculate_energy_delta` threshold |
+| `custom_components/lambda_heat_pumps/modbus_utils.py` | `_test_connection_health()` now uses the shared `_modbus_read_lock` instead of a separate `_health_check_lock` (Issue #105) |
+| `custom_components/lambda_heat_pumps/utils.py` | `_parse_firmware_versions()` new; `get_compatible_sensors()` extended with range notation; `calculate_energy_delta()` returns `None` instead of `max_delta`, default from `MAX_ENERGY_DELTA_WH`; `is_sentinel_value()` new, with opt-in `extra_sentinels` parameter |
+| `custom_components/lambda_heat_pumps/coordinator.py` | Caller of `calculate_energy_delta` handles `None` and no longer passes `max_delta` explicitly; sentinel check (including template `sentinel_values`) before scaling in 5 places, with `INFO` log; `_read_general_sensors_batch()` receives the filtered sensor list as a parameter |
 | `custom_components/lambda_heat_pumps/sensor.py` | General sensor (`SENSOR_TYPES`) entity creation now uses `get_compatible_sensors()` |
 | `custom_components/lambda_heat_pumps/const_sensor.py` | `ambient_temperature`: `"firmware_versions": ["1-7"]` + `"sentinel_values": [65535]`; buffer request registers 3005-3009 (5 sensors) + HC 5006 (`operating_mode`): `"sentinel_values": [65535]` |
 
