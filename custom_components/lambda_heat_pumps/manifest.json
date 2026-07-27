@@ -20,7 +20,7 @@
   "requirements": [
     "modbus-connection[tmodbus]==3.9.0"
   ],
-  "version": "3.0.8",
+  "version": "3.0.9",
   "loggers": [
     "modbus_connection",
     "tmodbus"
