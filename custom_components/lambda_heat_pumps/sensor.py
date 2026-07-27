@@ -121,10 +121,13 @@ def _percent(key: str, precision: int = 0) -> LambdaSensorDescription:
 
 
 def _count(key: str) -> LambdaSensorDescription:
-    """A bare number the controller reports — an error code, a request type."""
-    return LambdaSensorDescription(
-        key=key, state_class=SensorStateClass.TOTAL, suggested_display_precision=0
-    )
+    """A bare number the controller reports — an error code, a request type.
+
+    No state class: these are codes, not quantities. Averaging an error number
+    says nothing, and summing one says less — so there are no statistics to
+    generate for them.
+    """
+    return LambdaSensorDescription(key=key, suggested_display_precision=0)
 
 
 def _energy_register(key: str) -> LambdaSensorDescription:
