@@ -161,7 +161,7 @@ HP_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _temperature("return_line_temperature"),
     LambdaSensorDescription(
         key="volume_flow_heat_sink",
-        native_unit_of_measurement="l/h",
+        native_unit_of_measurement=UnitOfVolumeFlowRate.LITERS_PER_HOUR,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
     ),
