@@ -288,7 +288,7 @@ async def async_setup_entry(
     try:
         # Register-Order-Konfiguration (muss vor async_refresh() erfolgen)
         from .modbus_utils import get_int32_register_order
-        coordinator._int32_register_order = await get_int32_register_order(hass)
+        coordinator._int32_register_order = await get_int32_register_order(hass, entry)
         _LOGGER.info("Register-Order konfiguriert: %s", coordinator._int32_register_order)
 
         # Setze die generierten Base Addresses

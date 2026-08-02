@@ -389,6 +389,52 @@ async def test_async_update_data_int16_sensor(mock_hass, mock_entry):
 
 
 @pytest.mark.asyncio
+async def test_async_update_data_sentinel_value_filtered(mock_hass, mock_entry):
+    """A raw register value of 0x8000 (Lambda sentinel) must not be scaled into
+    a bogus reading - the affected int16 sensors must come back as None."""
+    mock_client = AsyncMock()
+    mock_result = Mock()
+    mock_result.isError.return_value = False
+    mock_result.registers = [32768]  # 0x8000 - "register not available"
+    mock_client.read_holding_registers = AsyncMock(return_value=mock_result)
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    coordinator.client = mock_client
+    coordinator.disabled_registers = set()
+
+    result = await coordinator._async_update_data()
+
+    assert result is not None
+    int16_values = [
+        v for k, v in result.items()
+        if isinstance(v, (int, float)) and v == 32768
+    ]
+    assert int16_values == []
+
+
+@pytest.mark.asyncio
+async def test_async_update_data_opt_in_sentinel_ambient_temperature(mock_hass, mock_entry):
+    """ambient_temperature opts in to 65535 (0xFFFF/-1) as a sentinel via
+    sentinel_values=[65535] in its template, unlike other int16 sensors where
+    -1 stays a valid reading (see is_sentinel_value extra_sentinels)."""
+    mock_client = AsyncMock()
+    mock_result = Mock()
+    mock_result.isError.return_value = False
+    mock_result.registers = [65535]
+    mock_client.read_holding_registers = AsyncMock(return_value=mock_result)
+
+    coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+    coordinator.client = mock_client
+    coordinator.disabled_registers = set()
+
+    result = await coordinator._async_update_data()
+
+    assert result is not None
+    assert result.get("ambient_temperature") is None
+    assert SENSOR_TYPES["ambient_temperature"]["sentinel_values"] == [65535]
+
+
+@pytest.mark.asyncio
 async def test_connect_success(mock_hass, mock_entry):
     """Test successful connection."""
     mock_client = AsyncMock()

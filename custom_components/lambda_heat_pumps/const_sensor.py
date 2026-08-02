@@ -724,6 +724,8 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "txt_mapping": True,
+        # -1 (0xFFFF) = "keine Anforderung" - Sentinel nur fuer dieses Anforderungsregister
+        "sentinel_values": [65535],
     },
     "request_flow_line_temp_setpoint": {
         "relative_address": 6,
@@ -737,6 +739,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
         "device_class": "temperature",
+        "sentinel_values": [65535],
     },
     "request_return_line_temp_setpoint": {
         "relative_address": 7,
@@ -750,6 +753,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
         "device_class": "temperature",
+        "sentinel_values": [65535],
     },
     "request_heat_sink_temp_diff_setpoint": {
         "relative_address": 8,
@@ -762,6 +766,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
+        "sentinel_values": [65535],
     },
     "modbus_request_heating_capacity": {
         "relative_address": 9,
@@ -775,6 +780,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
         "device_class": "power",
+        "sentinel_values": [65535],
     },
     "maximum_buffer_temp": {
         "relative_address": 50,
@@ -986,6 +992,8 @@ HC_SENSOR_TEMPLATES = {
         "device_type": "hc",
         "writeable": True,
         "txt_mapping": True,
+        # -1 (0xFFFF) = "keine Anforderung" - Sentinel nur fuer dieses Anforderungsregister
+        "sentinel_values": [65535],
     },
     "flow_line_temperature_setpoint": {
         "relative_address": 7,
@@ -1196,7 +1204,13 @@ SENSOR_TYPES = {
         "scale": 0.1,
         "precision": 1,
         "data_type": "int16",
-        "firmware_version": 1,
+        # W-only ab neuerer Steuerungsgeneration - Register nur bis V0.0.9-3K (Version 7)
+        # lesbar; danach liefert es keinen Wert mehr (0x8000).
+        "firmware_versions": ["1-7"],
+        # 0xFFFF (-1) = -300°C ist auf allen FW-Versionen bis Version 7 kein gueltiger
+        # Messwert, sondern "kein externer Sensor eingespeist" - opt-in, da -1 bei
+        # anderen Sensoren (z.B. Temperatur-Offsets) ein gueltiger Wert sein kann.
+        "sentinel_values": [65535],
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",

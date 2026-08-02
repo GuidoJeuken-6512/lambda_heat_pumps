@@ -6,17 +6,16 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
-# Lazy-initialized locks — created on first use to avoid event-loop binding issues
+# Lazy-initialized lock — created on first use to avoid event-loop binding issues
 # when the asyncio loop is destroyed and recreated (e.g. in test environments).
-_health_check_lock: asyncio.Lock | None = None
+#
+# Shared by ALL Modbus operations (coordinator reads, connection health checks,
+# and writes) on a given connection. Health checks used to have their own,
+# separate lock, which meant a health-check read could run concurrently with a
+# real coordinator read or write on the same connection — a race that could
+# desync Modbus transactions on the wire and cause writes to silently not
+# reach the device even though the health check reported "stable" first.
 _modbus_read_lock: asyncio.Lock | None = None
-
-
-def _get_health_check_lock() -> asyncio.Lock:
-    global _health_check_lock
-    if _health_check_lock is None:
-        _health_check_lock = asyncio.Lock()
-    return _health_check_lock
 
 
 def _get_modbus_read_lock() -> asyncio.Lock:
@@ -386,31 +385,47 @@ def read_input_registers(client, address: int, count: int, slave_id: int = 1) ->
 # INT32 REGISTER ORDER SUPPORT (Issue #22)
 # =============================================================================
 
-async def get_int32_register_order(hass) -> str:
+async def get_int32_register_order(hass, entry=None) -> str:
     """
     Lädt Register-Reihenfolge-Konfiguration aus lambda_wp_config.yaml.
-    
+
     Es handelt sich um die Reihenfolge der 16-Bit-Register bei 32-Bit-Werten
     (Register/Word Order), nicht um Byte-Endianness innerhalb eines Registers.
-    
+
+    Priorität (niedrig → hoch):
+      1. "high_first" — absoluter Fallback
+      2. FIRMWARE_CONFIG[fw_version]["reg_order"] — FW-abhängiger Default (wenn entry übergeben)
+      3. modbus.int32_byte_order in YAML — Legacy-Override
+      4. modbus.int32_register_order in YAML — Expliziter Override (höchste Priorität)
+
     Args:
         hass: Home Assistant Instanz
-    
+        entry: Config-Entry (optional); wenn übergeben, wird der FW-Default aus FIRMWARE_CONFIG geladen
+
     Returns:
-        str: "high_first" oder "low_first" (Standard: "high_first")
-        
+        str: "high_first" oder "low_first"
+
     Note:
-        "high_first" = Höherwertiges Register zuerst (Register[0] << 16 | Register[1])
-        "low_first" = Niedrigwertiges Register zuerst (Register[1] << 16 | Register[0])
-        
-        Rückwärtskompatibilität: "big" wird zu "high_first", "little" zu "low_first" konvertiert
+        Rückwärtskompatibilität: "big" → "high_first", "little" → "low_first"
     """
     try:
-        from .utils import load_lambda_config
+        from .utils import load_lambda_config, get_firmware_version_int
+        from .const_base import FIRMWARE_CONFIG, DEFAULT_FIRMWARE
         config = await load_lambda_config(hass)
         modbus_config = config.get("modbus", {})
-        
-        # Prüfe zuerst neue Config, dann alte (für Rückwärtskompatibilität)
+
+        # Firmware-abhängiger Default
+        if entry is not None:
+            fw_version_str = (
+                entry.options.get("firmware_version")
+                or entry.data.get("firmware_version")
+                or DEFAULT_FIRMWARE
+            )
+        else:
+            fw_version_str = DEFAULT_FIRMWARE
+        fw_default = FIRMWARE_CONFIG.get(fw_version_str, {}).get("reg_order", "high_first")
+
+        # YAML-Override hat Vorrang (prüfe neue Config, dann alte für Rückwärtskompatibilität)
         register_order = modbus_config.get("int32_register_order")
         if register_order is None:
             # Rückwärtskompatibilität: Alte Config migrieren
@@ -422,7 +437,7 @@ async def get_int32_register_order(hass) -> str:
                 )
                 register_order = old_byte_order
             else:
-                register_order = "high_first"  # Standard
+                register_order = fw_default  # FW-abhängiger Default
         
         # Rückwärtskompatibilität: Konvertiere alte Werte
         if register_order == "big":
@@ -525,16 +540,18 @@ async def wait_for_stable_connection(coordinator) -> None:
 
 async def _test_connection_health(coordinator) -> bool:
     """Test if the Modbus connection is healthy with robust API compatibility.
-    
-    Uses a lock to prevent concurrent health checks that could cause
-    Transaction ID mismatches.
+
+    Uses the shared _modbus_read_lock (same lock as async_read_holding_registers/
+    async_write_registers) to strictly serialize against concurrent coordinator
+    reads and writes on the same connection - not just against other health
+    checks. Without this, a health check could run at the same time as a real
+    read/write and desync Modbus transactions on the wire.
     """
     if not coordinator.client:
         _LOGGER.debug("CONNECTION: No client available (coordinator_id=%s)", id(coordinator))
         return False
-    
-    # Verwende Lock, um parallele Health-Checks zu vermeiden
-    async with _get_health_check_lock():
+
+    async with _get_modbus_read_lock():
         try:
             _LOGGER.debug("CONNECTION: Testing connection health... (coordinator_id=%s)", id(coordinator))
             # Try a simple read to test connection health using robust API compatibility

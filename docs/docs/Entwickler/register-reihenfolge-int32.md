@@ -4,9 +4,9 @@ title: "Register-Reihenfolge für int32-Sensoren (Issue #22)"
 
 # Register-Reihenfolge für int32-Sensoren
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 12.07.2026*
 
-Technische Dokumentation zur konfigurierbaren Register-Reihenfolge (Register/Word Order) bei 32-Bit-Modbus-Werten. Basis: [Issue #22](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22); Implementierung im Code (Stand: aktuell).
+Technische Dokumentation zur konfigurierbaren Register-Reihenfolge (Register/Word Order) bei 32-Bit-Modbus-Werten. Basis: [Issue #22](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22); erweitert in V2.7.0 um firmware-abhängigen Default.
 
 ## Problemstellung
 
@@ -31,7 +31,18 @@ Verschiedene Lambda-Geräte/Firmware-Varianten erwarten unterschiedliche Reihenf
 
 ## Konfiguration
 
-In **lambda_wp_config.yaml** unter `modbus`:
+### Prioritätskette (niedrig → hoch)
+
+| Priorität | Quelle | Beschreibung |
+|---|---|---|
+| 1 | Absoluter Fallback | `"high_first"` — greift nur, wenn FW-Version unbekannt |
+| 2 | `FIRMWARE_CONFIG` | FW-abhängiger Default aus `const_base.py` *(ab V2.7.0)* |
+| 3 | YAML Legacy | `modbus.int32_byte_order` in `lambda_wp_config.yaml` (deprecated, wird migriert) |
+| 4 | YAML Explizit | `modbus.int32_register_order` in `lambda_wp_config.yaml` — **höchste Priorität** |
+
+Der YAML-Override in `lambda_wp_config.yaml` gewinnt immer — er überschreibt den FW-abhängigen Default.
+
+### YAML-Override (lambda_wp_config.yaml)
 
 ```yaml
 modbus:
@@ -40,10 +51,26 @@ modbus:
   int32_register_order: "high_first"   # oder "low_first"
 ```
 
-- **high_first:** Höherwertiges Register zuerst (Register[0] enthält MSW) – Standard.
-- **low_first:** Niedrigwertiges Register zuerst (Register[0] enthält LSW) – bei falschen Werten ausprobieren.
-
 Weitere Beispiele und Kontext: [modbus_wp_config.yaml – Modbus-Parameter](modbus-wp-config.md).
+
+### Firmware-abhängiger Default (FIRMWARE_CONFIG, ab V2.7.0)
+
+Jeder FW-Eintrag in `const_base.py` trägt einen `reg_order`-Wert:
+
+```python
+FIRMWARE_CONFIG: dict = {
+    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
+    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
+    "V0.0.9-3K":  {"version": 7, "reg_order": "high_first"},
+    # ...
+}
+# Rückwärtskompatibilität — alle bestehenden Aufrufer unverändert:
+FIRMWARE_VERSION: dict = {k: v["version"] for k, v in FIRMWARE_CONFIG.items()}
+```
+
+Wenn eine Firmware-Version einen anderen Register-Order verwendet, genügt es, den entsprechenden Eintrag in `FIRMWARE_CONFIG` mit dem richtigen `"reg_order"`-Wert zu setzen. `FIRMWARE_VERSION` wird automatisch abgeleitet — alle bestehenden Aufrufer bleiben unverändert.
+
+**Hinweis:** Die beiden neuesten Firmware-Versionen (`V1.1.0-3K`, `V0.0.10-3K`) verwenden tatsächlich `"low_first"` — abweichend vom absoluten Fallback `"high_first"`, der für ältere Versionen zutrifft.
 
 ---
 
@@ -52,13 +79,15 @@ Weitere Beispiele und Kontext: [modbus_wp_config.yaml – Modbus-Parameter](modb
 ### 1. Konfiguration laden: `get_int32_register_order` (modbus_utils.py)
 
 - **Datei:** `custom_components/lambda_heat_pumps/modbus_utils.py`
-- **Funktion:** `async def get_int32_register_order(hass) -> str`
+- **Funktion:** `async def get_int32_register_order(hass, entry=None) -> str`
 - Liest `lambda_wp_config.yaml` und gibt `"high_first"` oder `"low_first"` zurück.
+- **Priorität** (ab V2.7.0): absoluter Fallback → FW-Default aus `FIRMWARE_CONFIG` → YAML-Legacy → YAML-Explizit.
 - **Rückwärtskompatibilität:**
   - Fehlt `int32_register_order`, wird `int32_byte_order` ausgewertet (mit Log-Hinweis zur Migration).
   - Werte `"big"` → `"high_first"`, `"little"` → `"low_first"` (mit Log-Hinweis).
   - Ungültige Werte → Fallback `"high_first"`.
   - Ausnahme beim Laden → Fallback `"high_first"`.
+  - `entry=None` → FW-Default wird aus `DEFAULT_FIRMWARE` abgeleitet (identisches Verhalten wie vor V2.7.0).
 
 ### 2. Register kombinieren: `combine_int32_registers` (modbus_utils.py)
 
@@ -75,7 +104,7 @@ Weitere Beispiele und Kontext: [modbus_wp_config.yaml – Modbus-Parameter](modb
 - **Datei:** `custom_components/lambda_heat_pumps/__init__.py`
 - **Zeitpunkt:** Vor dem ersten `async_refresh()` des Coordinators.
 - Coordinator erhält die globale Register-Reihenfolge:
-  - `coordinator._int32_register_order = await get_int32_register_order(hass)`
+  - `coordinator._int32_register_order = await get_int32_register_order(hass, entry)` *(entry ab V2.7.0)*
 - Default im Coordinator: `"high_first"` (siehe `coordinator.py`).
 
 ### 4. Verwendung im Coordinator (coordinator.py)
@@ -87,11 +116,18 @@ Weitere Beispiele und Kontext: [modbus_wp_config.yaml – Modbus-Parameter](modb
 - **Single-Read (int32):** Es wird `combine_int32_registers(result.registers, self._int32_register_order)` verwendet.
 - Betroffen sind u. a. Batch-Lesevorgänge, Boiler-, Buffer-, Solar-, Heizkreis- und Energieverbrauchs-Int32-Sensoren.
 
-### 5. Config-Template (const.py)
+### 5. Firmware-Konfiguration (const_base.py) *(ab V2.7.0)*
+
+- **Datei:** `custom_components/lambda_heat_pumps/const_base.py`
+- **`FIRMWARE_CONFIG`:** Primärstruktur mit `version` (int) und `reg_order` (`"high_first"` / `"low_first"`) je FW-Version-String.
+- **`FIRMWARE_VERSION`:** Abgeleitetes Compat-Dict `{fw_str: int}` — alle bestehenden Aufrufer unverändert.
+- **Pflege:** Neuen FW-Eintrag in `FIRMWARE_CONFIG` mit korrektem `reg_order` anlegen; `FIRMWARE_VERSION` wird automatisch aktualisiert.
+
+### 6. Config-Template (const.py)
 
 - **LAMBDA_WP_CONFIG_TEMPLATE** enthält einen kommentierten Abschnitt zu `modbus.int32_register_order` mit `"high_first"` / `"low_first"` und kurzer Erklärung (Register/Word Order, nicht Byte-Endianness).
 
-### 6. Migration (migration.py)
+### 7. Migration (migration.py)
 
 - **Funktion:** `migrate_to_register_order_terminology`
 - **Migration:** `modbus.int32_byte_order` → `modbus.int32_register_order` (Wert wird übernommen, Key umbenannt).
@@ -135,6 +171,6 @@ Anwender-FAQ: [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md)
 ## Referenzen
 
 - [Issue #22 (GitHub)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22)
+- [Release 2.7.0](../Releases/release-2-7-0.md) — Firmware-abhängiger Register-Order-Default
 - [modbus_wp_config.yaml – Modbus-Parameter](modbus-wp-config.md)
 - [FAQ – Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md)
-- Projekt-Dokumentation: `docs_md/issue22_endianness_fix.md`

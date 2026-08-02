@@ -92,6 +92,8 @@ modbus:
 - **"low_first"**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen (niedrigwertiges Register zuerst)
 - **Rückwärtskompatibilität**: Alte Config mit `int32_byte_order` oder alten Werten (`big`/`little`) wird automatisch erkannt und migriert
 
+**Seit V2.7.0:** Der Default wird automatisch anhand der in der Integration eingestellten Firmware-Version gesetzt — für die aktuell neuesten Versionen `V1.1.0-3K` und `V0.0.10-3K` ist das bereits `"low_first"`. Ein Eintrag in `lambda_wp_config.yaml` ist nur noch nötig, um diesen Default zu überschreiben.
+
 **Fehlerbehebung:**
 - Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung
 
