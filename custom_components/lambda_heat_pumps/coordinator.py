@@ -241,12 +241,9 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         """Refresh the whole controller, then attribute the energy it used."""
         self._polling = True
         try:
-            # The link does not re-establish itself, and a drop clears the
-            # backend client while leaving the unit handle usable — so a
-            # reconnect here is enough to carry on with the components probed at
-            # setup, without reloading the entry and rebuilding every entity.
-            if not self.connection.connected:
-                await self.connection.connect()
+            # The connection re-establishes itself: a request opens the link if
+            # it is down, over the same unit handles, so a drop costs at most the
+            # poll it happened on and nothing has to be rebuilt.
             await self.device.async_update()
         except BlockReadError as err:
             # The controller refused a block the probe found it serving, so what

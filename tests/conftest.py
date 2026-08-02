@@ -150,12 +150,7 @@ def controller() -> Iterator[Controller]:
         device._connections.append(connection)
 
         async def reconnect() -> None:
-            """Re-establish the link, as the real connection's connect() does.
-
-            The mock has no connect() of its own — it is born connected — so a
-            test that drops the link needs this to bring it back. A controller
-            that is offline refuses, exactly as an unreachable one does.
-            """
+            """Re-establish the link, as the real connection's connect() does."""
             if device._offline:
                 raise ModbusConnectionError("no route to host")
             connection._connected = True
@@ -174,6 +169,22 @@ def controller() -> Iterator[Controller]:
                 unit.fail_read(address, ModbusExceptionError(ILLEGAL_DATA_ADDRESS))
             if unit not in device._units:
                 device._units.append(unit)
+
+            # A real connection establishes the link on demand: a request over a
+            # dropped link reconnects and goes through. The mock does not model
+            # that — it stays down once lost — so wrap its reads to do it here,
+            # or nothing would exercise the recovery the integration relies on.
+            for name in ("read_holding_registers", "read_input_registers"):
+                base_read = getattr(unit, name)
+
+                def on_demand(address, count, _base=base_read):
+                    if not connection.connected:
+                        if device._offline:
+                            raise ModbusConnectionError("no route to host")
+                        connection._connected = True
+                    return _base(address, count)
+
+                setattr(unit, name, on_demand)
             return unit
 
         connection.for_unit = for_unit

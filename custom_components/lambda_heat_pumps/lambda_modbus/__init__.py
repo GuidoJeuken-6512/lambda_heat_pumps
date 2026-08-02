@@ -93,34 +93,6 @@ async def _probe_served(unit: ModbusUnit, ranges: tuple[Range, ...]) -> set[int]
     return served
 
 
-def _served_ranges(
-    ranges: tuple[Range, ...], served: set[int]
-) -> tuple[Range, ...]:
-    """Split each range into its runs of consecutive served addresses.
-
-    Narrowing the fields is not enough on its own: the planner merges the fields
-    inside one range into a single block read, which then spans the addresses
-    between them — so an unserved register sitting between two served ones would
-    still be read, and refuse the whole block. Splitting the range at every
-    address the controller would not serve keeps a block inside a run it answers
-    for. The declared ranges are only ever split, never merged, so the registers
-    that must be read on their own stay that way.
-    """
-    runs: list[Range] = []
-    for low, high in ranges:
-        start: int | None = None
-        for address in range(low, high + 1):
-            if address in served:
-                if start is None:
-                    start = address
-            elif start is not None:
-                runs.append((start, address - 1))
-                start = None
-        if start is not None:
-            runs.append((start, high))
-    return tuple(runs)
-
-
 class LambdaHeatPump:
     """A Lambda controller with the modules that are installed on it.
 
@@ -203,23 +175,28 @@ class LambdaHeatPump:
         the controller does not serve is dropped from the plan, so it is never
         read and reads as ``None``.
         """
-        ranges = tuple((base + low, base + high) for low, high in relative_ranges)
-        served = await _probe_served(self._unit, ranges)
+        # The probe talks to the wire, so it works in absolute addresses.
+        served = await _probe_served(
+            self._unit,
+            tuple((base + low, base + high) for low, high in relative_ranges),
+        )
 
         component = component_class(self._unit, index=index, base_offset=base)
-        # Plan reads only inside the runs the controller answers for, so a block
-        # never spans a register it would refuse.
-        component.register_ranges = _served_ranges(ranges, served)
-        # The plan is built lazily and then cached, so narrowing the field set
-        # has to happen before the first update — after that it would be fixed.
-        component._register_fields = {
-            name: field
-            for name, field in component_class._register_fields.items()
-            if all(
-                base + field.address + offset in served
-                for offset in range(field.count)
-            )
-        }
+        # Ranges are declared in the same coordinates as the field addresses, so
+        # they are stated relative to the block and the component shifts them.
+        component.register_ranges = relative_ranges
+        # Keeping only the fields the controller serves also splits the ranges
+        # around the ones it does not, so a block never spans a refused register.
+        component.restrict_fields(
+            [
+                name
+                for name, field in component_class._register_fields.items()
+                if all(
+                    base + field.address + offset in served
+                    for offset in range(field.count)
+                )
+            ]
+        )
         return component
 
     @property
