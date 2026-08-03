@@ -66,6 +66,7 @@ from .const import (
     SIGNAL_PERIOD_ROLLOVER,
     THERMAL_ENERGY_MODES,
 )
+from .firmware import default_register_order
 from .lambda_modbus import LambdaHeatPump
 from .lambda_modbus.ranges import base_address
 
@@ -141,12 +142,15 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         self.host = entry.data[CONF_HOST]
         self.firmware_version = entry.data[CONF_FIRMWARE_VERSION]
 
+        # Which way round a firmware writes its 32-bit counters is a property of
+        # the firmware, so that is what the setting defaults to; a controller
+        # that disagrees with its own documentation is why it stays settable.
+        order = entry.options.get(CONF_INT32_REGISTER_ORDER) or default_register_order(
+            self.firmware_version
+        )
         word_order = (
             "little"
-            if entry.options.get(
-                CONF_INT32_REGISTER_ORDER, DEFAULT_INT32_REGISTER_ORDER
-            )
-            == REGISTER_ORDER_LOW_FIRST
+            if (order or DEFAULT_INT32_REGISTER_ORDER) == REGISTER_ORDER_LOW_FIRST
             else "big"
         )
         self.device = LambdaHeatPump(

@@ -406,6 +406,27 @@ async def test_an_unreachable_controller_goes_unavailable_without_reloading(
     )
 
 
+async def test_the_register_order_defaults_to_what_the_firmware_uses(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Without the setting, the counters are read the way that firmware writes them.
+
+    V1.1.0-3K writes its 32-bit counters low word first, so a controller running
+    it reads correctly with nothing configured.
+    """
+    controller.registers[1020] = 0x86A0  # the same 100000 Wh, low word first
+    controller.registers[1021] = 0x0001
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V1.1.0-3K"}
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+
+
 async def test_only_the_totals_are_enabled_by_default(
     hass: HomeAssistant, controller: Controller
 ) -> None:
