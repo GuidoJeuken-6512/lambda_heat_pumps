@@ -6,7 +6,7 @@ platform module, not here.
 
 from __future__ import annotations
 
-from typing import Final
+from typing import Any, Final
 
 DOMAIN: Final = "lambda_heat_pumps"
 
@@ -18,7 +18,7 @@ ENTRY_VERSION: Final = 9
 # ordinal a sensor's `firmware_version` / `firmware_versions` is compared
 # against, and `reg_order` is how that firmware lays out its 32-bit counters,
 # which is what the register-order option defaults to.
-FIRMWARE_CONFIG: Final = {
+FIRMWARE_CONFIG: Final[dict[str, dict[str, Any]]] = {
     "V1.1.0-3K": {"version": 9, "reg_order": "low_first"},
     "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},

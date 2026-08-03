@@ -159,7 +159,7 @@ async def async_load(hass: HomeAssistant) -> LambdaFileConfig:
 
 def _salvage(config: dict) -> dict:
     """Keep the sections that are well formed, and drop the ones that are not."""
-    kept = {}
+    kept: dict[str, Any] = {}
     for section, value in config.items():
         try:
             kept |= _SCHEMA({section: value})

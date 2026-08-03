@@ -57,13 +57,13 @@ def firmware_level(entry) -> int:
     firmware = FIRMWARE_CONFIG.get(name)
     # An unknown name means an entry written by a newer version than this one, or
     # by hand; the oldest map is the one every controller serves.
-    return firmware["version"] if firmware else 1
+    return int(firmware["version"]) if firmware else 1
 
 
 def default_register_order(name: str) -> str | None:
     """How this firmware lays out its 32-bit counters, if it is known."""
     firmware = FIRMWARE_CONFIG.get(name)
-    return firmware["reg_order"] if firmware else None
+    return str(firmware["reg_order"]) if firmware else None
 
 
 def serves(description, level: int) -> bool:

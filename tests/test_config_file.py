@@ -93,7 +93,7 @@ async def test_a_broken_section_does_not_cost_the_others(
         "  hp1:\n"
         "    heating_energy_total: 12.5\n",
     )
-    entry = await setup_entry(hass, controller, legacy=True)
+    await setup_entry(hass, controller, legacy=True)
 
     assert state_of(hass, "eu08l_hp1_heating_energy_total") == "12.5"
     assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "0"
