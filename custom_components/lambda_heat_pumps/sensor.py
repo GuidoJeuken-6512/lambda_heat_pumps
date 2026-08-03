@@ -521,35 +521,37 @@ class LambdaSensor(LambdaEntity, SensorEntity):
         self._attr_translation_key = description.key
         self._component = component
         self._attribute = attribute or description.key
+        # Every state a state register can report. Home Assistant requires an
+        # enum sensor to declare them and refuses a state that is not among
+        # them, so they are resolved here: the labels come from the enum the
+        # field decodes to, which the class fixes once and for all.
+        if description.device_class is SensorDeviceClass.ENUM:
+            self._attr_options = [
+                state.label for state in self._field(coordinator).convert
+            ]
+
+    def _component_of(self, coordinator: LambdaCoordinator):
+        """The modelled sub-system this sensor reads from."""
+        if self._component is not None:
+            return getattr(coordinator.device, self._component)
+        return coordinator.component(self._module, self._index)
+
+    def _field(self, coordinator: LambdaCoordinator):
+        """The declared field behind this sensor.
+
+        `declared_fields` describes what the class declares, so it still has the
+        field even when the controller does not serve that register and it was
+        narrowed out of the read.
+        """
+        return self._component_of(coordinator).declared_fields[self._attribute]
 
     @property
     def native_value(self) -> float | str | None:
         """The decoded field, or its label if it is one of the state codes."""
-        if self._component is not None:
-            component = getattr(self.coordinator.device, self._component)
-        else:
-            component = self.coordinator.component(self._module, self._index)
-
-        value = getattr(component, self._attribute)
+        value = getattr(self._component_of(self.coordinator), self._attribute)
         if isinstance(value, LambdaState):
             return value.label
         return value
-
-    @property
-    def options(self) -> list[str] | None:
-        """Every label a state register can report."""
-        if self.entity_description.device_class is not SensorDeviceClass.ENUM:
-            return None
-        if self._component is not None:
-            component = getattr(self.coordinator.device, self._component)
-        else:
-            component = self.coordinator.component(self._module, self._index)
-        # declared_fields describes what the class declares, so it still has the
-        # field even when the controller does not serve that register and it was
-        # narrowed out of the read — the labels are the same either way.
-        field = component.declared_fields[self._attribute]
-        # The field's converter is the state enum it decodes to.
-        return [state.label for state in field.convert]
 
 
 class LambdaCounterSensor(LambdaEntity, RestoreSensor):
