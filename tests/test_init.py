@@ -131,6 +131,29 @@ async def test_unique_ids_are_unchanged(
     assert entry.state is ConfigEntryState.LOADED
 
 
+async def test_entity_ids_are_named_from_the_register_not_the_translation(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The entity id is the register's key, so it does not vary by language.
+
+    Home Assistant would otherwise build it from the translated name, which
+    makes the id depend on the language the instance runs in, and lets two names
+    that differ only by a sign collide.
+    """
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    for domain, unique_id in (
+        ("sensor", "eu08l_ambient_temperature"),
+        ("sensor", "eu08l_hp1_flow_line_temperature"),
+        ("sensor", "eu08l_boil1_actual_high_temperature"),
+        ("climate", "eu08l_boil1_hot_water"),
+        ("number", "eu08l_hc1_flow_line_offset_temperature_number"),
+    ):
+        entity_id = registry.async_get_entity_id(domain, DOMAIN, unique_id)
+        assert entity_id == f"{domain}.{unique_id}", unique_id
+
+
 async def test_modules_are_their_own_devices(
     hass: HomeAssistant, controller: Controller
 ) -> None:

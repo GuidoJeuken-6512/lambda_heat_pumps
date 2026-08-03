@@ -139,6 +139,8 @@ class LambdaSettingNumber(LambdaEntity, RestoreNumber):
     without going back through the state machine.
     """
 
+    _entity_domain = "number"
+
     entity_description: LambdaSettingDescription
 
     def __init__(
@@ -184,6 +186,8 @@ class LambdaFlowLineOffsetNumber(LambdaEntity, NumberEntity):
 
     A register, so there is nothing to restore — the controller remembers.
     """
+
+    _entity_domain = "number"
 
     entity_description = FLOW_LINE_OFFSET
 

@@ -486,6 +486,8 @@ async def async_setup_entry(
 class LambdaSensor(LambdaEntity, SensorEntity):
     """A value the controller holds, read off the device model."""
 
+    _entity_domain = "sensor"
+
     entity_description: LambdaSensorDescription
 
     def __init__(
@@ -542,6 +544,8 @@ class LambdaCounterSensor(LambdaEntity, RestoreSensor):
     adds on whatever the coordinator has counted since. A counter over a period
     drops back to zero when that period rolls over.
     """
+
+    _entity_domain = "sensor"
 
     entity_description: CounterDescription
 
@@ -618,6 +622,8 @@ class YesterdayCycleSensor(LambdaEntity, RestoreSensor):
     the way past zero.
     """
 
+    _entity_domain = "sensor"
+
     _attr_native_unit_of_measurement = _CYCLE_UNIT
     _attr_state_class = SensorStateClass.TOTAL
     _attr_suggested_display_precision = 0
@@ -656,6 +662,8 @@ class LambdaCopSensor(LambdaEntity, SensorEntity):
     Both are counters over the same period, so the coefficient is just their
     ratio — there is nothing of its own here to accumulate or restore.
     """
+
+    _entity_domain = "sensor"
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 2
@@ -702,6 +710,8 @@ class LambdaHeatingCurveSensor(LambdaEntity, SensorEntity):
     — and this reads today's outside temperature off it, then applies the
     corrections the circuit is configured for.
     """
+
+    _entity_domain = "sensor"
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS

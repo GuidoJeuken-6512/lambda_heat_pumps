@@ -158,7 +158,7 @@ async def test_a_counter_survives_a_restart(
         hass,
         (
             (
-                State("sensor.eu08l_hp1_heating_cycles_total", "7"),
+                State("sensor.eu08l_hp1_heating_cycling_total", "7"),
                 {"native_value": 7, "native_unit_of_measurement": "cycles"},
             ),
         ),

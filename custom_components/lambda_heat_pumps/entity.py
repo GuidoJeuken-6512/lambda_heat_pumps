@@ -26,6 +26,11 @@ class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
 
     _attr_has_entity_name = True
 
+    # The platform this entity belongs to, set by each platform's classes. It is
+    # only needed to propose an entity id, so a class that leaves it unset simply
+    # gets Home Assistant's own naming.
+    _entity_domain: str = ""
+
     def __init__(
         self,
         coordinator: LambdaCoordinator,
@@ -49,3 +54,18 @@ class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
         module_prefix = f"{module}{index}_" if module else ""
         self._attr_unique_id = f"{legacy}{module_prefix}{key}"
         self._attr_device_info = coordinator.device_info(module, index)
+
+        # Left alone, Home Assistant builds the entity id out of the entity's
+        # *translated* name: a German instance gets `sensor.eu08l_aussentemperatur`,
+        # and two names differing only by a sign ("Heizkurve-22°C" and
+        # "Heizkurve+22°C") slugify to the same id and are quietly suffixed `_2`.
+        # Proposing one built from the register's key instead keeps it the same in
+        # every language, and unambiguous, while the displayed name stays
+        # translated. It is a proposal, not a demand — an id already taken is
+        # still resolved by the registry, and an entity that already exists keeps
+        # the id it was registered with.
+        if self._entity_domain:
+            prefix = entry.data[CONF_NAME_PREFIX].lower()
+            self.entity_id = (
+                f"{self._entity_domain}.{prefix}_{module_prefix}{key}"
+            )

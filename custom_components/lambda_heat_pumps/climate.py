@@ -102,6 +102,8 @@ async def async_setup_entry(
 class LambdaClimate(LambdaEntity, ClimateEntity):
     """One temperature the user sets on the controller."""
 
+    _entity_domain = "climate"
+
     entity_description: LambdaClimateDescription
 
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
