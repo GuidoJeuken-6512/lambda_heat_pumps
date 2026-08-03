@@ -73,6 +73,11 @@ HOLDING: dict[int, int] = {
 ABSENT_BLOCKS = (1100, 2100, 3000, 4000, 5100)
 ILLEGAL_DATA_ADDRESS = 2
 
+# The controller's first register. The config flow probes it, and every poll
+# reads the ambient block it starts, so a read of it stands in for reaching the
+# controller at all.
+PROBE_REGISTER = 0
+
 
 @dataclass
 class Controller:
@@ -113,13 +118,22 @@ class Controller:
             connection.simulate_connection_lost()
 
     def go_offline(self) -> None:
-        """The controller becomes unreachable until `come_back_online`."""
+        """The controller becomes unreachable until `come_back_online`.
+
+        Reaching it raises a connection error rather than a refusal — the error
+        armed is the condition being simulated. Every poll reads the ambient
+        block first, so failing that one address fails the whole poll.
+        """
         self._offline = True
+        for unit in self._units:
+            unit.fail_read(PROBE_REGISTER, ModbusConnectionError("no route to host"))
         self.drop_the_link()
 
     def come_back_online(self) -> None:
-        """The controller answers again; the next reconnect succeeds."""
+        """The controller answers again."""
         self._offline = False
+        for unit in self._units:
+            unit.fail_read(PROBE_REGISTER, None)
 
 
 def _refuse_absent_modules(unit: MockModbusUnit) -> None:
@@ -159,20 +173,10 @@ def controller() -> Iterator[Controller]:
             _refuse_absent_modules(unit)
             for address in device._refused:
                 unit.fail_read(address, ModbusExceptionError(ILLEGAL_DATA_ADDRESS))
+            if device._offline:
+                unit.fail_read(PROBE_REGISTER, ModbusConnectionError("no route to host"))
             if unit not in device._units:
                 device._units.append(unit)
-
-            # An unreachable controller is the one thing the mock cannot express:
-            # a dropped link heals itself on the next request, as a real one does.
-            for name in ("read_holding_registers", "read_input_registers"):
-                base_read = getattr(unit, name)
-
-                def when_reachable(address, count, _base=base_read):
-                    if device._offline:
-                        raise ModbusConnectionError("no route to host")
-                    return _base(address, count)
-
-                setattr(unit, name, when_reachable)
             return unit
 
         connection.for_unit = for_unit
@@ -198,15 +202,11 @@ def unreachable() -> Iterator[None]:
 
     def build(params, **kwargs) -> MockModbusConnection:
         connection = MockModbusConnection()
+        base_for_unit = connection.for_unit
 
         def for_unit(unit_id: int) -> MockModbusUnit:
-            unit = MockModbusConnection().for_unit(unit_id)
-
-            async def refuse(*args, **kwargs):
-                raise ModbusConnectionError("no route to host")
-
-            unit.read_holding_registers = refuse
-            unit.read_input_registers = refuse
+            unit = base_for_unit(unit_id)
+            unit.fail_read(PROBE_REGISTER, ModbusConnectionError("no route to host"))
             return unit
 
         connection.for_unit = for_unit
