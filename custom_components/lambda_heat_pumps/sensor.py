@@ -65,6 +65,7 @@ from .const import (
 )
 from .coordinator import LambdaConfigEntry, LambdaCoordinator
 from .entity import LambdaEntity
+from .firmware import firmware_level, serves
 from .lambda_modbus.enums import HeatingCircuitOperatingState, LambdaState
 
 # --------------------------------------------------------------------------
@@ -83,6 +84,10 @@ class LambdaSensorDescription(SensorEntityDescription):
     # Which of the controller's own components to read it from, for the sensors
     # that do not belong to a module.
     component: str | None = None
+    # The firmware versions whose register map has this register. See
+    # `firmware.py`; unset means every firmware serves it.
+    firmware_version: int | None = None
+    firmware_versions: tuple[int | str, ...] | None = None
 
 
 def _temperature(key: str, **kwargs) -> LambdaSensorDescription:
@@ -145,7 +150,9 @@ def _energy_register(key: str) -> LambdaSensorDescription:
 CONTROLLER_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _count("ambient_error_number"),
     _state("ambient_operating_state"),
-    _temperature("ambient_temperature"),
+    # Readable only up to V0.0.9-3K; newer controllers answer the register but
+    # report nothing through it (0x8000).
+    _temperature("ambient_temperature", firmware_versions=("1-7",)),
     _temperature("ambient_temperature_1h"),
     _temperature("ambient_temperature_calculated"),
     _count("emgr_error_number"),
@@ -269,7 +276,7 @@ HC_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _temperature("set_flow_line_temperature"),
     _state("operating_mode"),
     _temperature("flow_line_temperature_setpoint"),
-    _temperature("target_temp_flow_line"),
+    _temperature("target_temp_flow_line", firmware_version=3),
     _temperature("set_flow_line_offset_temperature"),
     _temperature("target_room_temperature"),
     _temperature("set_cooling_mode_room_temperature"),
@@ -422,7 +429,14 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     entities: list[SensorEntity] = []
 
+    # A register the configured firmware is not known to serve is not modelled
+    # at all — probing finds what the controller answers for, not what it
+    # answers meaningfully.
+    level = firmware_level(entry)
+
     for description in CONTROLLER_SENSORS:
+        if not serves(description, level):
+            continue
         prefix = next(p for p in CONTROLLER_COMPONENTS if description.key.startswith(p))
         entities.append(
             LambdaSensor(
@@ -438,6 +452,7 @@ async def async_setup_entry(
             entities += [
                 LambdaSensor(coordinator, d, module=module, index=index)
                 for d in descriptions
+                if serves(d, level)
             ]
 
     for index in range(1, coordinator.counts["hp"] + 1):

@@ -14,19 +14,24 @@ DOMAIN: Final = "lambda_heat_pumps"
 # settings that used to live in lambda_wp_config.yaml into the entry.
 ENTRY_VERSION: Final = 9
 
-# Offered when setting up a controller. Only used to label the device — the
-# register map is the same across all of them.
-FIRMWARE_VERSIONS: Final = [
-    "V1.1.0-3K",
-    "V0.0.10-3K",
-    "V0.0.9-3K",
-    "V0.0.8-3K",
-    "V0.0.7-3K",
-    "V0.0.6-3K",
-    "V0.0.5-3K",
-    "V0.0.4-3K",
-    "V0.0.3-3K",
-]
+# Every firmware a controller can be running, newest first. `version` is the
+# ordinal a sensor's `firmware_version` / `firmware_versions` is compared
+# against, and `reg_order` is how that firmware lays out its 32-bit counters,
+# which is what the register-order option defaults to.
+FIRMWARE_CONFIG: Final = {
+    "V1.1.0-3K": {"version": 9, "reg_order": "low_first"},
+    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
+    "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},
+    "V0.0.8-3K": {"version": 6, "reg_order": "high_first"},
+    "V0.0.7-3K": {"version": 5, "reg_order": "high_first"},
+    "V0.0.6-3K": {"version": 4, "reg_order": "high_first"},
+    "V0.0.5-3K": {"version": 3, "reg_order": "high_first"},
+    "V0.0.4-3K": {"version": 2, "reg_order": "high_first"},
+    "V0.0.3-3K": {"version": 1, "reg_order": "high_first"},
+}
+
+# Offered when setting up a controller.
+FIRMWARE_VERSIONS: Final = list(FIRMWARE_CONFIG)
 
 # Connection.
 CONF_HOST: Final = "host"

@@ -154,6 +154,39 @@ async def test_entity_ids_are_named_from_the_register_not_the_translation(
         assert entity_id == f"{domain}.{unique_id}", unique_id
 
 
+async def test_a_register_its_firmware_withdrew_is_not_modelled(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A register only older firmware serves is left out on a newer controller.
+
+    The controller still answers for it — it just stops reporting anything
+    through it — so probing cannot tell, and the sensor says which versions it
+    is good on instead.
+    """
+    registry = er.async_get(hass)
+
+    # V0.0.8-3K is version 6, inside the register's 1-7 range.
+    entry = await setup_entry(hass, controller, legacy=True)
+    assert state_of(hass, "eu08l_ambient_temperature") == "4.2"
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # V1.1.0-3K is version 9, past it.
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V1.1.0-3K"}
+    newer = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    newer.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(newer.entry_id)
+    await hass.async_block_till_done()
+
+    assert not registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_ambient_temperature"
+    )
+    # Its neighbours in the same block are unaffected.
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_ambient_temperature_calculated"
+    )
+
+
 async def test_modules_are_their_own_devices(
     hass: HomeAssistant, controller: Controller
 ) -> None:
