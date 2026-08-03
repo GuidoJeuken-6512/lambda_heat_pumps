@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from modbus_connection.model import enum, gauge, int32, integer
+from modbus_connection.model import int32, integer
 
 from .enums import SolarOperatingState
-from .model import LambdaComponent
+from .model import LambdaComponent, enum, gauge
 
 
 class Solar(LambdaComponent):

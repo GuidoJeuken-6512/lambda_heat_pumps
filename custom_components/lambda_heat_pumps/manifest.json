@@ -18,7 +18,7 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues",
   "requirements": [
-    "modbus-connection[tmodbus]==4.0.0a2"
+    "modbus-connection[tmodbus]==4.0.0a3"
   ],
   "version": "3.1.0",
   "loggers": [

@@ -187,6 +187,31 @@ async def test_a_register_its_firmware_withdrew_is_not_modelled(
     )
 
 
+async def test_a_register_with_nothing_behind_it_reads_unknown(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The controller's "no value" codes are not read as measurements.
+
+    It answers 0x8000 for a register its firmware does not have and -3000 for a
+    sensor that is not connected. Scaled like readings those are -327.68 °C and
+    -300.0 °C, which look plausible enough to be recorded as real.
+    """
+    controller.registers[1008] = 0x8000  # energy source outlet: no such register
+    controller.registers[5003] = 0xF448  # hc return line: no sensor connected
+    controller.registers[5006] = 0xF448  # and its operating mode with it
+    await setup_entry(hass, controller, legacy=True)
+
+    for unique_id in (
+        "eu08l_hp1_energy_source_outlet_temperature",
+        "eu08l_hc1_return_line_temperature",
+        "eu08l_hc1_operating_mode",
+    ):
+        assert state_of(hass, unique_id) in ("unknown", "unavailable"), unique_id
+
+    # A real reading in the same block is untouched.
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
 async def test_modules_are_their_own_devices(
     hass: HomeAssistant, controller: Controller
 ) -> None:

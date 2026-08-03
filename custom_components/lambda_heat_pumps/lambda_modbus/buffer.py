@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from modbus_connection.model import enum, gauge, integer
+from modbus_connection.model import integer
 
 from .enums import BufferOperatingState, BufferRequestType
-from .model import LambdaComponent
+from .model import LambdaComponent, enum, gauge
 
 
 class Buffer(LambdaComponent):

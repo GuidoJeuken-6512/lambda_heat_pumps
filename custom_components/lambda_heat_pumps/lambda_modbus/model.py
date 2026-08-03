@@ -1,8 +1,46 @@
-"""Shared base for every Lambda sub-system."""
+"""Shared base for every Lambda sub-system, and its scaled measurements.
+
+The controller does not leave a register it has no value for empty — it answers
+with a code. `0x8000` says the register is not there on this firmware, and
+`-3000` says the sensor that feeds it is not connected. Scaled like readings
+they come out as -327.68 °C and -300.0 °C, which look entirely plausible next to
+a real temperature and are recorded into long-term statistics as if they were
+one. So a measurement declares them, and reads as unknown instead.
+
+They are declared on :func:`gauge` — every scaled measurement the controller
+reports — and not on plain integers, where the same raw value can be a real
+reading: 32768 W is a believable power, and a config parameter is whatever
+number the controller wants to put there.
+"""
 
 from __future__ import annotations
 
+from typing import Any
+
 from modbus_connection.model import Component
+from modbus_connection.model import enum as _enum, gauge as _gauge
+
+# What the controller answers with instead of a measurement.
+NO_REGISTER = 0x8000  # the firmware does not have this register
+NO_SENSOR = 0xF448  # -3000: nothing is connected to it
+SENTINELS = (NO_REGISTER, NO_SENSOR)
+
+
+def gauge(address: int, scale: float, /, **kwargs: Any):
+    """A scaled measurement, reading as unknown when the controller has none."""
+    kwargs.setdefault("nan", SENTINELS)
+    return _gauge(address, scale, **kwargs)
+
+
+def enum(address: int, states, /, **kwargs: Any):
+    """A state code, reading as unknown when the controller has none.
+
+    A state register reports the same codes, and while an unmapped one already
+    decodes to ``None``, it is warned about first — which for a sensor that is
+    simply not connected would be a warning on every poll.
+    """
+    kwargs.setdefault("nan", SENTINELS)
+    return _enum(address, states, **kwargs)
 
 
 class LambdaComponent(Component):
