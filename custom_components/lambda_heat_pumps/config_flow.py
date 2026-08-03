@@ -31,8 +31,8 @@ from homeassistant.helpers.selector import (
     TextSelector,
 )
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
-from modbus_connection import ModbusError
-from modbus_connection.tmodbus import connect_tcp
+from modbus_connection import ModbusError, ModbusTcpParams
+from modbus_connection.tmodbus import ModbusConnection
 
 from .const import (
     CONF_COOLING_MODE,
@@ -106,10 +106,10 @@ CONNECTION_SCHEMA = vol.Schema(
 
 async def async_can_connect(data: dict[str, Any]) -> bool:
     """Whether the controller answers where the user says it is."""
-    try:
-        connection = await connect_tcp(data[CONF_HOST], port=int(data[CONF_PORT]))
-    except ModbusError:
-        return False
+    # Building the connection does no I/O; the read below is what reaches out.
+    connection = ModbusConnection(
+        ModbusTcpParams(host=data[CONF_HOST], port=int(data[CONF_PORT]))
+    )
     try:
         unit = connection.for_unit(int(data[CONF_SLAVE_ID]))
         await unit.read_holding_registers(_PROBE_REGISTER, 1)

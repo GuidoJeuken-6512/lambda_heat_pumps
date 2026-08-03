@@ -7,10 +7,11 @@ integration for now because Home Assistant can only load what it ships; it is
 shaped to be lifted out into its own PyPI package unchanged, which is what Core
 would require.
 
-    from modbus_connection.tmodbus import connect_tcp
+    from modbus_connection import ModbusTcpParams
+    from modbus_connection.tmodbus import ModbusConnection
     from lambda_modbus import LambdaHeatPump
 
-    connection = await connect_tcp("192.168.1.50", port=502)
+    connection = ModbusConnection(ModbusTcpParams(host="192.168.1.50", port=502))
     try:
         controller = LambdaHeatPump(connection.for_unit(1), num_hps=2)
         await controller.async_setup()

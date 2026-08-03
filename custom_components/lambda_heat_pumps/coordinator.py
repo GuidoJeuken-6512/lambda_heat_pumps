@@ -388,7 +388,3 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             return 0.0
         return delta
 
-    async def async_shutdown(self) -> None:
-        """Close the Modbus link we own."""
-        await super().async_shutdown()
-        await self.connection.close()

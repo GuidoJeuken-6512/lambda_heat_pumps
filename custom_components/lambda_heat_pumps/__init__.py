@@ -17,8 +17,8 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry
-from modbus_connection import ModbusError
-from modbus_connection.tmodbus import connect_tcp
+from modbus_connection import ModbusError, ModbusTcpParams
+from modbus_connection.tmodbus import ModbusConnection
 
 from .const import (
     CONF_FIRMWARE_VERSION,
@@ -49,25 +49,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bo
     # entries were stored that way.
     port = int(entry.data[CONF_PORT])
     slave_id = int(entry.data[CONF_SLAVE_ID])
-    try:
-        connection = await connect_tcp(entry.data[CONF_HOST], port=port)
-    except ModbusError as err:
-        raise ConfigEntryNotReady(f"Could not connect to the controller: {err}") from err
+    # Building the connection does no I/O — the first read establishes the link,
+    # and re-establishes it after a drop. Registering the close here covers both
+    # a normal unload and every way the rest of this function can fail, so there
+    # is no path that leaks a connection on a setup that is about to be retried.
+    connection = ModbusConnection(
+        ModbusTcpParams(host=entry.data[CONF_HOST], port=port)
+    )
+    entry.async_on_unload(connection.close)
 
     unit = connection.for_unit(slave_id)
     try:
         counts = await async_detect_modules(unit)
     except ModbusError as err:
-        await connection.close()
-        raise ConfigEntryNotReady(f"Could not probe the controller: {err}") from err
-    except Exception:
-        # Anything else would leak the open connection, and setup retries — so it
-        # would leak one per attempt.
-        await connection.close()
-        raise
+        raise ConfigEntryNotReady(f"Could not reach the controller: {err}") from err
 
-    # From here the coordinator owns the connection: it closes it on unload, and
-    # Home Assistant unloads the entry even when this first refresh fails.
     coordinator = LambdaCoordinator(hass, entry, connection, unit, counts)
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator

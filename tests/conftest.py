@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
-from unittest.mock import AsyncMock, patch
+from unittest.mock import Mock, patch
 
 from modbus_connection import ModbusConnectionError, ModbusExceptionError
 from modbus_connection.mock import MockModbusConnection, MockModbusUnit
@@ -22,7 +22,7 @@ SLAVE_ID = 1
 
 # Where the controller is. Nothing dials it — the mock backend stands in for the
 # wire — but the config entry has to say something, and the integration hands
-# these to `connect_tcp`.
+# these to the connection it builds.
 HOST = "192.168.1.50"
 PORT = 502
 
@@ -138,14 +138,14 @@ def _refuse_absent_modules(unit: MockModbusUnit) -> None:
 def controller() -> Iterator[Controller]:
     """A Lambda controller, reached over the mock backend.
 
-    Every call to `connect_tcp` opens a fresh connection to the same controller,
-    as it would in life: the config flow closing the link it probed with does not
-    stop setup from opening its own.
+    Every connection built opens a fresh link to the same controller, as it
+    would in life: the config flow closing the link it probed with does not stop
+    setup from opening its own.
     """
     device = Controller(dict(HOLDING))
 
-    def connect(host: str, *, port: int) -> MockModbusConnection:
-        device.ports.append(port)
+    def build(params, **kwargs) -> MockModbusConnection:
+        device.ports.append(params.port)
         connection = MockModbusConnection()
         device._connections.append(connection)
 
@@ -190,25 +190,43 @@ def controller() -> Iterator[Controller]:
         connection.for_unit = for_unit
         return connection
 
-    connector: Callable[..., MockModbusConnection] = AsyncMock(side_effect=connect)
+    # Building a connection does no I/O now, so this stands in for the
+    # constructor rather than a connect factory.
+    connector: Callable[..., MockModbusConnection] = Mock(side_effect=build)
     with (
-        patch("custom_components.lambda_heat_pumps.connect_tcp", connector),
-        patch("custom_components.lambda_heat_pumps.config_flow.connect_tcp", connector),
+        patch("custom_components.lambda_heat_pumps.ModbusConnection", connector),
+        patch("custom_components.lambda_heat_pumps.config_flow.ModbusConnection", connector),
     ):
         yield device
 
 
 @pytest.fixture
 def unreachable() -> Iterator[None]:
-    """A controller that does not answer."""
+    """A controller that does not answer.
+
+    Building a connection no longer reaches out, so it is the read that fails —
+    which is exactly how an unreachable controller shows up now.
+    """
+
+    def build(params, **kwargs) -> MockModbusConnection:
+        connection = MockModbusConnection()
+
+        def for_unit(unit_id: int) -> MockModbusUnit:
+            unit = MockModbusConnection().for_unit(unit_id)
+
+            async def refuse(*args, **kwargs):
+                raise ModbusConnectionError("no route to host")
+
+            unit.read_holding_registers = refuse
+            unit.read_input_registers = refuse
+            return unit
+
+        connection.for_unit = for_unit
+        return connection
+
+    connector = Mock(side_effect=build)
     with (
-        patch(
-            "custom_components.lambda_heat_pumps.config_flow.connect_tcp",
-            AsyncMock(side_effect=ModbusConnectionError("no route to host")),
-        ),
-        patch(
-            "custom_components.lambda_heat_pumps.connect_tcp",
-            AsyncMock(side_effect=ModbusConnectionError("no route to host")),
-        ),
+        patch("custom_components.lambda_heat_pumps.ModbusConnection", connector),
+        patch("custom_components.lambda_heat_pumps.config_flow.ModbusConnection", connector),
     ):
         yield
