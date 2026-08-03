@@ -191,7 +191,7 @@ class LambdaHeatPump:
         component.restrict_fields(
             [
                 name
-                for name, field in component_class._register_fields.items()
+                for name, field in component_class.declared_fields.items()
                 if all(
                     base + field.address + offset in served
                     for offset in range(field.count)

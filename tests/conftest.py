@@ -106,15 +106,14 @@ class Controller:
     def drop_the_link(self) -> None:
         """The link goes down, as a momentary network blip takes it down.
 
-        The controller is still there, so reconnecting works — which is what
-        makes this different from `go_offline`.
+        The controller is still there, so the next request re-establishes it —
+        which is what makes this different from `go_offline`.
         """
         for connection in self._connections:
             connection.simulate_connection_lost()
 
     def go_offline(self) -> None:
-        """The controller becomes unreachable: the link drops, and re-establishing
-        it fails until `come_back_online`."""
+        """The controller becomes unreachable until `come_back_online`."""
         self._offline = True
         self.drop_the_link()
 
@@ -149,13 +148,6 @@ def controller() -> Iterator[Controller]:
         connection = MockModbusConnection()
         device._connections.append(connection)
 
-        async def reconnect() -> None:
-            """Re-establish the link, as the real connection's connect() does."""
-            if device._offline:
-                raise ModbusConnectionError("no route to host")
-            connection._connected = True
-
-        connection.connect = reconnect
         base_for_unit = connection.for_unit
 
         def for_unit(unit_id: int) -> MockModbusUnit:
@@ -170,21 +162,17 @@ def controller() -> Iterator[Controller]:
             if unit not in device._units:
                 device._units.append(unit)
 
-            # A real connection establishes the link on demand: a request over a
-            # dropped link reconnects and goes through. The mock does not model
-            # that — it stays down once lost — so wrap its reads to do it here,
-            # or nothing would exercise the recovery the integration relies on.
+            # An unreachable controller is the one thing the mock cannot express:
+            # a dropped link heals itself on the next request, as a real one does.
             for name in ("read_holding_registers", "read_input_registers"):
                 base_read = getattr(unit, name)
 
-                def on_demand(address, count, _base=base_read):
-                    if not connection.connected:
-                        if device._offline:
-                            raise ModbusConnectionError("no route to host")
-                        connection._connected = True
+                def when_reachable(address, count, _base=base_read):
+                    if device._offline:
+                        raise ModbusConnectionError("no route to host")
                     return _base(address, count)
 
-                setattr(unit, name, on_demand)
+                setattr(unit, name, when_reachable)
             return unit
 
         connection.for_unit = for_unit
