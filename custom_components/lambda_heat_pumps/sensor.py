@@ -42,6 +42,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
+    ATTR_APPLIED_OFFSET,
     CONF_ROOM_THERMOSTAT_CONTROL,
     CURVE_POINTS,
     CYCLE_MODES,
@@ -600,6 +601,10 @@ class LambdaCounterSensor(LambdaEntity, RestoreSensor):
         # How much of the coordinator's total is already in `_value`.
         self._counted = 0.0
         self._yesterday = yesterday
+        # How much of the configured offset is already in `_value`. Kept so that
+        # changing the offset moves the total by the difference rather than
+        # adding it again on every restart.
+        self._applied_offset = 0.0
 
     @property
     def native_value(self) -> float | int:
@@ -613,9 +618,14 @@ class LambdaCounterSensor(LambdaEntity, RestoreSensor):
 
         if (restored := await _restored_value(self)) is not None:
             self._value = restored
+        if (state := await self.async_get_last_state()) is not None:
+            self._applied_offset = float(
+                state.attributes.get(ATTR_APPLIED_OFFSET, 0.0)
+            )
         # Whatever the coordinator counted before this entity existed belongs to
         # the run that is starting, not to the value we just restored.
         self._counted = self._total()
+        self._apply_offset()
 
         if self.entity_description.period != PERIOD_TOTAL:
             self.async_on_remove(
@@ -628,6 +638,27 @@ class LambdaCounterSensor(LambdaEntity, RestoreSensor):
                     self._handle_rollover,
                 )
             )
+
+    def _apply_offset(self) -> None:
+        """Take up whatever the configured offset has moved by.
+
+        Only a lifetime total carries one: a counter over a period reports what
+        happened in that period, which nothing that came before changes.
+        """
+        if self.entity_description.period != PERIOD_TOTAL:
+            return
+        offset = self.coordinator.file_config.offset(
+            self._index, self.entity_description.key
+        )
+        self._value += offset - self._applied_offset
+        self._applied_offset = offset
+
+    @property
+    def extra_state_attributes(self) -> dict[str, float] | None:
+        """The offset already counted, so a changed one moves the total once."""
+        if not self._applied_offset:
+            return None
+        return {ATTR_APPLIED_OFFSET: self._applied_offset}
 
     def _total(self) -> float:
         """The coordinator's running total for this counter's mode."""

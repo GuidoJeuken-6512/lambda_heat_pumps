@@ -144,6 +144,11 @@ THERMAL_ENERGY_MODES: Final = (
     MODE_DEFROST,
 )
 
+# How much of a counter's total came from a manual offset in the config file,
+# kept on the entity so that changing the offset moves the total by the
+# difference instead of adding it again.
+ATTR_APPLIED_OFFSET: Final = "applied_offset"
+
 # A single poll can never legitimately add more than this; a larger jump means
 # the controller's counter was reset or replaced.
 MAX_ENERGY_DELTA_KWH: Final = 100.0

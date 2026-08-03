@@ -33,6 +33,7 @@ from .const import (
     REGISTER_ORDER_HIGH_FIRST,
     REGISTER_ORDER_LOW_FIRST,
 )
+from .config_file import FILENAME as CONFIG_FILENAME
 from .coordinator import LambdaConfigEntry, LambdaCoordinator
 from .module_auto_detect import async_detect_modules
 from .services import async_setup_services, async_setup_writers
@@ -137,7 +138,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> 
 
 async def _async_read_register_order(hass: HomeAssistant) -> str:
     """The 32-bit register order the retired YAML config file was set to."""
-    path = Path(hass.config.path("lambda_heat_pumps", "lambda_wp_config.yaml"))
+    # In the configuration folder itself, which is where it has always been.
+    path = Path(hass.config.path(CONFIG_FILENAME))
 
     def _read() -> str:
         if not path.is_file():

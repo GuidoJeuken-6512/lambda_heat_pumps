@@ -84,8 +84,7 @@ async def test_a_controller_that_is_not_there(hass: HomeAssistant) -> None:
 @pytest.fixture
 def old_config_file(hass: HomeAssistant):
     """The config file the integration used to keep, holding a register order."""
-    path = Path(hass.config.path("lambda_heat_pumps", "lambda_wp_config.yaml"))
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = Path(hass.config.path("lambda_wp_config.yaml"))
     path.write_text("modbus:\n  int32_register_order: low_first\n")
     yield path
     path.unlink()

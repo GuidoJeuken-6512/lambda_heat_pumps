@@ -66,6 +66,7 @@ from .const import (
     SIGNAL_PERIOD_ROLLOVER,
     THERMAL_ENERGY_MODES,
 )
+from .config_file import LambdaFileConfig, async_load as async_load_config
 from .firmware import default_register_order
 from .lambda_modbus import LambdaHeatPump
 from .lambda_modbus.ranges import base_address
@@ -186,6 +187,9 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         )
         self._polling = False
 
+        # What `lambda_wp_config.yaml` says, read in `_async_setup`.
+        self.file_config = LambdaFileConfig()
+
     def component(self, module: str, index: int):
         """The modelled sub-system for one module, by 1-based index."""
         return getattr(self.device, MODULES[module])[index - 1]
@@ -213,6 +217,8 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
 
     async def _async_setup(self) -> None:
         """Probe the register map, then arm the fast poll and period rollovers."""
+        self.file_config = await async_load_config(self.hass)
+
         # Which registers the controller serves depends on its firmware, so the
         # modules are built from what it answers for — probed once here, before
         # the first poll reads them.
@@ -345,25 +351,63 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         mode = OPERATING_STATE_MODE.get(int(operating_state), MODE_STBY)
 
         totals = self.totals[index]
-        for kind, reading, modes, bucket in (
+        for kind, thermal, register, modes, bucket in (
             (
                 "electrical",
+                False,
                 heat_pump.compressor_power_consumption_accumulated,
                 ELECTRICAL_ENERGY_MODES,
                 totals.electrical,
             ),
             (
                 "thermal",
+                True,
                 heat_pump.compressor_thermal_energy_output_accumulated,
                 THERMAL_ENERGY_MODES,
                 totals.thermal,
             ),
         ):
+            reading = self._meter_reading(index, thermal)
+            if reading is None:
+                reading = register
             delta = self._energy_delta(index, kind, reading)
             if delta and mode in modes:
                 bucket[mode] = bucket.get(mode, 0.0) + delta
 
-    def _energy_delta(self, index: int, kind: str, reading: int | None) -> float:
+    def _meter_reading(self, index: int, thermal: bool) -> float | None:
+        """What a heat pump's own meter reads, in Wh, if one is configured.
+
+        The controller's register counts what the heat pump itself measured,
+        which is not what an installation with a meter on it wants counted. The
+        meter reports a total that only climbs, like the register does, so it
+        drops straight into the same delta.
+        """
+        entity_id = self.file_config.meter(index, thermal)
+        if entity_id is None:
+            return None
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state in ("unknown", "unavailable"):
+            # Nothing to book this poll. Not falling back to the register, which
+            # counts something else and would jump the moment the meter returns.
+            return None
+        try:
+            value = float(state.state)
+        except ValueError:
+            _LOGGER.debug("%s does not read as a number: %r", entity_id, state.state)
+            return None
+        unit = state.attributes.get("unit_of_measurement")
+        factor = {"Wh": 1.0, "kWh": 1000.0, "MWh": 1_000_000.0}.get(unit)
+        if factor is None:
+            _LOGGER.warning(
+                "%s reports %r, which is not an energy this can count; "
+                "give it a sensor reading Wh, kWh or MWh",
+                entity_id,
+                unit,
+            )
+            return None
+        return value * factor
+
+    def _energy_delta(self, index: int, kind: str, reading: float | None) -> float:
         """How far one of the controller's Wh counters climbed, in kWh.
 
         Zero whenever the reading cannot be trusted as a continuation of the last
