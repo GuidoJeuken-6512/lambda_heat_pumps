@@ -10,6 +10,7 @@ from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
+    mock_restore_cache,
     mock_restore_cache_with_extra_data,
 )
 
@@ -228,3 +229,18 @@ async def test_a_period_that_ends_does_not_end_the_others(
     await hass.async_block_till_done()
     assert state_of(hass, "eu08l_hp1_heating_energy_hourly") == "1.0"
     assert state_of(hass, "eu08l_hp1_heating_energy_daily") == "4.0"
+
+
+async def test_a_counter_restores_from_an_older_installation(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An install upgrading from before typed restore data keeps its totals.
+
+    Those versions recorded only the state, with none of the extra data a sensor
+    restores from now — so without falling back to it, upgrading would quietly
+    start every cumulative counter again at zero.
+    """
+    mock_restore_cache(hass, (State("sensor.eu08l_hp1_heating_cycling_total", "42"),))
+    await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "42"

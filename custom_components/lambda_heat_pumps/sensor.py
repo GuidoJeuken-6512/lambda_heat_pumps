@@ -554,6 +554,25 @@ class LambdaSensor(LambdaEntity, SensorEntity):
         return value
 
 
+async def _restored_value(entity: RestoreSensor) -> float | None:
+    """What this counter was at before the restart.
+
+    A sensor stores its value as typed extra data, which is where it is read
+    from. An installation coming from a version that stored only the recorded
+    state has none of that, so fall back to the state itself — otherwise
+    upgrading would silently start every cumulative counter again at zero.
+    """
+    if (last := await entity.async_get_last_sensor_data()) is not None:
+        if last.native_value is not None:
+            return float(last.native_value)
+    if (state := await entity.async_get_last_state()) is not None:
+        try:
+            return float(state.state)
+        except (TypeError, ValueError):
+            return None  # it was unknown or unavailable when it was written
+    return None
+
+
 class LambdaCounterSensor(LambdaEntity, RestoreSensor):
     """A running total the coordinator keeps, over one period.
 
@@ -592,9 +611,8 @@ class LambdaCounterSensor(LambdaEntity, RestoreSensor):
         """Pick up where the last run left off, and arm the rollover."""
         await super().async_added_to_hass()
 
-        if (last := await self.async_get_last_sensor_data()) is not None:
-            if last.native_value is not None:
-                self._value = float(last.native_value)
+        if (restored := await _restored_value(self)) is not None:
+            self._value = restored
         # Whatever the coordinator counted before this entity existed belongs to
         # the run that is starting, not to the value we just restored.
         self._counted = self._total()
@@ -662,9 +680,8 @@ class YesterdayCycleSensor(LambdaEntity, RestoreSensor):
     async def async_added_to_hass(self) -> None:
         """Yesterday is still yesterday after a restart."""
         await super().async_added_to_hass()
-        if (last := await self.async_get_last_sensor_data()) is not None:
-            if last.native_value is not None:
-                self._value = float(last.native_value)
+        if (restored := await _restored_value(self)) is not None:
+            self._value = restored
 
     @callback
     def set_value(self, value: float) -> None:
