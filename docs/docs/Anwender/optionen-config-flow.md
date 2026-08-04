@@ -8,7 +8,7 @@ title: "Optionen des config_flow"
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
     <p>Nach der Initialkonfiguration können Sie erweiterte Einstellungen in den Integration-Optionen anpassen. Diese Optionen ermöglichen es, das Verhalten der Integration zu optimieren und erweiterte Funktionen zu aktivieren.</p>
