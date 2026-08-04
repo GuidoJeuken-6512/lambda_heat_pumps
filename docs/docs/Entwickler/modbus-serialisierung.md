@@ -4,7 +4,9 @@ title: "Modbus-Serialisierung - Technische Dokumentation"
 
 # Modbus-Serialisierung - Technische Dokumentation
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 25.07.2026*
+
+> **Update (V2.8.0 / Issue #105):** Diese Seite beschrieb ursprünglich **zwei** getrennte Locks (einen für Health-Checks, einen für alle übrigen Modbus-Operationen) als bewusstes Architektur-Feature. Das war ein Fehler: Ein Health-Check-Read konnte dadurch parallel zu einem echten Read/Write auf derselben Verbindung laufen und Modbus-Transaktionen auf der Leitung desynchronisieren — ein PV-Überschuss-/Raumtemperatur-Write konnte dadurch als erfolgreich geloggt werden, ohne das Gerät zu erreichen. Seit V2.8.0 gibt es nur noch **einen** gemeinsamen Lock; Details siehe [Release 2.8.0](../Releases/release-2-8-0.md). Die Seite wurde entsprechend korrigiert.
 
 Diese Dokumentation beschreibt die Serialisierung von Modbus-Operationen in der Lambda Heat Pumps Integration, um Transaction ID Mismatches zu vermeiden.
 
@@ -42,17 +44,13 @@ Dieser Fehler tritt auf, wenn:
 
 ### Implementierung
 
-Die Integration verwendet **zwei globale asyncio.Locks** zur Serialisierung:
+Die Integration verwendet **einen einzigen globalen asyncio.Lock** zur Serialisierung — seit V2.8.0 auch für Health-Checks (siehe Update-Hinweis oben):
 
-```12:14:custom_components/lambda_heat_pumps/modbus_utils.py
-# Globaler Lock für alle Modbus-Read-Operationen, um Transaction ID Mismatches zu vermeiden
-# Verhindert parallele Modbus-Requests, die zu Transaction ID Konflikten führen können
-_modbus_read_lock = asyncio.Lock()
-```
-
-```9:10:custom_components/lambda_heat_pumps/modbus_utils.py
-# Lock für Health-Checks, um Transaction ID Mismatches zu vermeiden
-_health_check_lock = asyncio.Lock()
+```python
+# custom_components/lambda_heat_pumps/modbus_utils.py
+# Shared by ALL Modbus operations (coordinator reads, connection health checks,
+# and writes) on a given connection.
+_modbus_read_lock: asyncio.Lock | None = None
 ```
 
 ### Verwendung des Locks
@@ -197,20 +195,22 @@ async def async_write_register(
             raise
 ```
 
-**Wichtig**: Der gleiche Lock (`_modbus_read_lock`) wird für **Read- und Write-Operationen** verwendet, um vollständige Serialisierung zu gewährleisten.
+**Wichtig**: Der gleiche Lock (`_modbus_read_lock`) wird für **Read-, Write- und Health-Check-Operationen** verwendet (seit V2.8.0), um vollständige Serialisierung zu gewährleisten.
 
 #### 3. Health-Check-Operationen
 
-```472:476:custom_components/lambda_heat_pumps/modbus_utils.py
+```python
 async def _test_connection_health(coordinator) -> bool:
     """Test if the Modbus connection is healthy with robust API compatibility.
-    
-    Uses a lock to prevent concurrent health checks that could cause
-    Transaction ID mismatches.
+
+    Uses the shared _modbus_read_lock (same lock as async_read_holding_registers/
+    async_write_registers) to strictly serialize against concurrent coordinator
+    reads and writes on the same connection - not just against other health
+    checks.
     """
 ```
 
-Health-Checks verwenden einen separaten Lock (`_health_check_lock`), um Konflikte mit normalen Modbus-Operationen zu vermeiden.
+**Seit V2.8.0** verwenden Health-Checks denselben `_modbus_read_lock` wie alle anderen Modbus-Operationen — nicht mehr einen separaten Lock. Vorher konnte ein Health-Check parallel zu einem echten Read/Write laufen, was zu genau der Race Condition führte, die dieser Mechanismus eigentlich verhindern sollte (Issue #105).
 
 ## Architektur
 
@@ -230,6 +230,12 @@ Health-Checks verwenden einen separaten Lock (`_health_check_lock`), um Konflikt
 │  │    └─ async with _modbus_read_lock:                  │  │
 │  │         └─ client.write_register()                    │  │
 │  └──────────────────────────────────────────────────────┘  │
+│                                                              │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  _test_connection_health() (seit V2.8.0)              │  │
+│  │    └─ async with _modbus_read_lock:                  │  │
+│  │         └─ client.read_holding_registers(0, ...)      │  │
+│  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -239,6 +245,7 @@ Health-Checks verwenden einen separaten Lock (`_health_check_lock`), um Konflikt
 │  │  Serialisiert ALLE Modbus-Operationen                │  │
 │  │  - Read-Operationen                                  │  │
 │  │  - Write-Operationen                                 │  │
+│  │  - Health-Check-Operationen (seit V2.8.0)            │  │
 │  │  - Eine Operation nach der anderen                   │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
@@ -256,24 +263,15 @@ Health-Checks verwenden einen separaten Lock (`_health_check_lock`), um Konflikt
 
 ### Lock-Strategie
 
-**Zwei separate Locks**:
+**Ein einziger Lock (`_modbus_read_lock`)**, seit V2.8.0 für **alle** Modbus-Operationen auf einer Verbindung:
 
-1. **`_modbus_read_lock`**: 
-   - Für alle normalen Modbus-Operationen (Read/Write)
-   - Global, wird von allen Modbus-Funktionen verwendet
-   - Verhindert parallele Requests
+- Read-Operationen (`async_read_holding_registers`, `async_read_input_registers`)
+- Write-Operationen (`async_write_register`, `async_write_registers`)
+- Health-Check-Operationen (`_test_connection_health`, aufgerufen aus `wait_for_stable_connection`)
 
-2. **`_health_check_lock`**:
-   - Für Health-Check-Operationen
-   - Separater Lock, um Konflikte mit normalen Operationen zu vermeiden
-   - Verhindert parallele Health-Checks
+**Warum nicht zwei Locks (frühere Architektur bis V2.7.0)?**
 
-**Warum zwei Locks?**
-
-- Health-Checks können während normaler Operationen laufen (ohne zu blockieren)
-- Normale Operationen können während Health-Checks laufen (ohne zu blockieren)
-- Nur gleichzeitige Health-Checks werden serialisiert
-- Nur gleichzeitige normale Operationen werden serialisiert
+Die ursprüngliche Begründung — "Health-Checks können parallel zu normalen Operationen laufen, ohne zu blockieren" — klingt nach einem Performance-Vorteil, war aber der **Kern von Issue #105**: Ein Health-Check-Read (eigener Lock) konnte tatsächlich *gleichzeitig* mit einem echten Coordinator-Read oder einem PV-Überschuss-/Raumtemperatur-Write (anderer Lock) auf derselben Verbindung laufen. Zwei parallele Requests auf derselben Modbus-Verbindung verletzen aber genau die Grundannahme, die dieses ganze Dokument beschreibt ("eine Verbindung = sequenziell", siehe oben) — mit dem Ergebnis, dass ein Write auf Protokollebene als erfolgreich zurückgemeldet werden konnte, während das Gerät den Wert nie tatsächlich übernahm. Seit V2.8.0 gibt es deshalb nur noch einen Lock: Der theoretische Geschwindigkeitsvorteil zweier Locks ist es nicht wert, die zentrale Garantie dieses Dokuments zu untergraben.
 
 ## Verhalten
 
@@ -326,7 +324,7 @@ Request 3 → Request gesendet ──────────→ Response erhalt
 - `async_write_registers()`
 
 **Health-Checks**:
-- `_test_connection_health()` (verwendet `_health_check_lock`)
+- `_test_connection_health()` (verwendet seit V2.8.0 ebenfalls `_modbus_read_lock`)
 
 ### Beispiel: Verwendung in Coordinator
 

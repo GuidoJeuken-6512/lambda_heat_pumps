@@ -4,7 +4,7 @@ title: "Anpassungen der Sensoren abhängig von der Firmware"
 
 # Anpassungen der Sensoren abhängig von der Firmware
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 25.07.2026*
 
 Die Lambda Heat Pumps Integration erstellt automatisch Sensoren basierend auf der erkannten Hardware und der konfigurierten Firmware-Version. Die Firmware-Version bestimmt, welche Sensoren verfügbar sind und welche Register gelesen werden können.
 
@@ -94,6 +94,8 @@ modbus:
 
 **Seit V2.7.0:** Der Default wird automatisch anhand der in der Integration eingestellten Firmware-Version gesetzt — für die aktuell neuesten Versionen `V1.1.0-3K` und `V0.0.10-3K` ist das bereits `"low_first"`. Ein Eintrag in `lambda_wp_config.yaml` ist nur noch nötig, um diesen Default zu überschreiben.
 
+**Achtung beim Ändern der Firmware-Version:** Da der Default aus der eingestellten Firmware-Version abgeleitet wird, kann ein Wechsel der Firmware-Version in den Integration-Optionen (z. B. beim Firmware-Update, siehe unten) auch die Register-Reihenfolge ändern — ohne YAML-Override. Bestehende 32-Bit-Sensoren wie Energiezähler können dadurch kurzzeitig einen unplausibel großen Wert anzeigen. Seit V2.8.0 verwirft die Integration einen solchen unplausiblen Sprung automatisch, statt ihn fälschlich als Verbrauch zu buchen — der Zähler setzt sich einfach auf den neuen, korrekten Wert zurück, ohne dass ein Sprung gebucht wird.
+
 **Fehlerbehebung:**
 - Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung
 
@@ -116,6 +118,8 @@ Wenn Sie die Firmware Ihrer Lambda-Wärmepumpe aktualisieren:
 4. **Überprüfen Sie die Sensoren:**
    - Überprüfen Sie, ob alle erwarteten Sensoren vorhanden sind
    - Überprüfen Sie, ob die Sensoren korrekte Werte anzeigen
+
+**Hinweis zu Energiezählern:** Falls sich durch die neue Firmware-Version auch die Register-Reihenfolge ändert (siehe oben), kann direkt nach dem Update ein einmaliger, unplausibler Wert im Log auftauchen. Das ist erwartetes Verhalten (seit V2.8.0 wird dieser verworfen statt gebucht) und kein Fehler — der Zähler zählt danach normal weiter.
 
 ## Häufige Probleme
 

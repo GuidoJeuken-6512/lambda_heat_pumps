@@ -49,9 +49,9 @@ Bei der Einrichtung müssen Sie folgende **Pflichtfelder** angeben:
 - **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren verfügbar sind
 - **So finden Sie die Firmware-Version:**
   1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
-  2. Klicken Sie auf die "i" Taste auf der linken Seite
-  3. Klicken Sie auf die Taste auf der rechten Seite, die wie ein Computerchip aussieht (letzte Taste)
-  4. Die Firmware-Version wird dort angezeigt
+  2. Die FW-Version wird in der unteren Statusleiste angezeigt.
+
+<img src="assets/find_fw_version.gif" alt="Firmware-Version auf der Lambda-Bedienoberfläche finden" style="width: 100%; height: auto; border-radius: 8px;">
 
 ### Schritt 3: Automatische Konfiguration
 
