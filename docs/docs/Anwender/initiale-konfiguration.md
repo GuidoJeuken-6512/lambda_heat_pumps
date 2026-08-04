@@ -51,7 +51,7 @@ Bei der Einrichtung müssen Sie folgende **Pflichtfelder** angeben:
   1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
   2. Die FW-Version wird in der unteren Statusleiste angezeigt.
 
-<img src="../../assets/find_fw_version.gif" alt="Firmware-Version auf der Lambda-Bedienoberfläche finden" style="width: 100%; height: auto; border-radius: 8px;">
+<img src="../assets/find_fw_version.gif" alt="Firmware-Version auf der Lambda-Bedienoberfläche finden" style="width: 100%; height: auto; border-radius: 8px;">
 
 ### Schritt 3: Automatische Konfiguration
 
