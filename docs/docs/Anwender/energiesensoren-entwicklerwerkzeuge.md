@@ -34,7 +34,7 @@ und ermitteln die Deltas für den jeweiligen zyklischen Sensor.
 
 **Die COP Sensoren zu den zeitlichen Zyklen nicht anpassen, die berechnen sich neu aus den beiden anderen Sensoren**
 
-<img src="../../assets/home_assistant_verlauf_de.png" alt="Home Assistant Verlauf" style="width: 100%; max-width: 600px; height: auto; border-radius: 8px;">
+<img src="../assets/home_assistant_verlauf_de.png" alt="Home Assistant Verlauf" style="width: 100%; max-width: 600px; height: auto; border-radius: 8px;">
 
 ## Sensoren über Entwicklerwerkzeuge anpassen
 
