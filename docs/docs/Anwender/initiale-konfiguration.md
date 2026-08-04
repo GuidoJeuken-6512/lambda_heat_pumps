@@ -4,7 +4,7 @@ title: "Initiale Konfiguration"
 
 # Initiale Konfiguration
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 04.08.2026*
 
 Nach der Installation der Lambda Heat Pumps Integration über HACS müssen Sie die Integration in Home Assistant einrichten. Dieser Abschnitt führt Sie durch den Konfigurationsprozess.
 
