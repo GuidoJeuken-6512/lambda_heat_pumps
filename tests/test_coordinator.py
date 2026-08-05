@@ -680,9 +680,10 @@ async def test_coordinator_use_legacy_modbus_names_true_from_entry(mock_hass, mo
 
 @pytest.mark.asyncio
 async def test_coordinator_energy_sensor_entity_id_uses_lowercase_name_prefix(mock_hass, mock_entry):
-    """Default-Energie-Sensor-Entity-ID muss kleingeschriebenen name_prefix verwenden.
-    Sensoren werden in sensor.py mit name_prefix.lower() erzeugt – sonst findet der
-    Coordinator den Sensor nicht und alle Daily-Werte bleiben 0.
+    """Fallback-Pfad (Entity noch nicht in der Registry): Die namensbasiert konstruierte
+    Entity-ID muss kleingeschriebenen name_prefix verwenden. Sensoren werden in sensor.py
+    mit name_prefix.lower() erzeugt – sonst findet der Coordinator den Sensor nicht und
+    alle Daily-Werte bleiben 0.
     """
     mock_entry.data["name"] = "EU08L"
     mock_entry.data.setdefault("num_hps", 1)
@@ -709,18 +710,26 @@ async def test_coordinator_energy_sensor_entity_id_uses_lowercase_name_prefix(mo
 
     increment_fn = AsyncMock()
 
-    await coordinator._track_hp_energy_type_consumption(
-        1,
-        1,
-        {},
-        "electrical",
-        "sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated",
-        unit_ok,
-        convert_kwh,
-        last_reading_dict,
-        first_value_seen_dict,
-        increment_fn,
-    )
+    # Registry kennt die Entity (noch) nicht -> namensbasierter Fallback greift
+    registry = Mock()
+    registry.async_get_entity_id = Mock(return_value=None)
+
+    with patch(
+        "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+        return_value=registry,
+    ):
+        await coordinator._track_hp_energy_type_consumption(
+            1,
+            1,
+            {},
+            "electrical",
+            "sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated",
+            unit_ok,
+            convert_kwh,
+            last_reading_dict,
+            first_value_seen_dict,
+            increment_fn,
+        )
 
     mock_hass.states.get.assert_called()
     call_args = mock_hass.states.get.call_args[0]
@@ -729,3 +738,211 @@ async def test_coordinator_energy_sensor_entity_id_uses_lowercase_name_prefix(mo
         "Entity-ID muss kleingeschriebenen name_prefix verwenden (eu08l), "
         "nicht Konfigurationswert (EU08L) – sonst wird der Sensor nicht gefunden."
     )
+
+
+class TestInternalEnergySensorResolution:
+    """Auflösung der eigenen Modbus-Energiesensoren über die Entity Registry.
+
+    Die entity_id wird nicht mehr aus dem Gerätenamen rekonstruiert, sondern über die
+    stabile unique_id in der Registry nachgeschlagen. Das behebt den Fall, dass ein
+    Gerätename Sonderzeichen enthält (z.B. "Lambda_EU10L"): die reale entity_id behält
+    den Unterstrich, die Namens-Slugifizierung entfernt ihn - der Lookup lief dadurch
+    bei jedem Poll ins Leere und die betriebsart-abhängigen Energiewerte blieben stehen.
+    """
+
+    ELECTRICAL_TEMPLATE = (
+        "sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+    )
+    THERMAL_TEMPLATE = (
+        "sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+    )
+
+    def _make_coordinator(self, mock_hass, mock_entry, device_name):
+        mock_entry.data["name"] = device_name
+        mock_entry.data["use_legacy_modbus_names"] = True
+        coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+        coordinator._energy_sensor_configs = {}
+        return coordinator
+
+    def test_resolves_underscore_device_name_via_registry(self, mock_hass, mock_entry):
+        """Regression: Gerätename mit Unterstrich ("Lambda_EU10L").
+
+        unique_id (stabil, via normalize_name_prefix) -> lambda_eu10l_hp1_...
+        reale entity_id -> sensor.lambda_eu10l_hp1_... (mit Unterstrich)
+        Die namensbasierte Konstruktion würde sensor.lambdaeu10l_hp1_... liefern.
+        """
+        coordinator = self._make_coordinator(mock_hass, mock_entry, "Lambda_EU10L")
+        real_entity_id = "sensor.lambda_eu10l_hp1_compressor_power_consumption_accumulated"
+
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=real_entity_id)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            return_value=registry,
+        ):
+            resolved = coordinator._resolve_internal_energy_sensor_entity_id(
+                1, "electrical", self.ELECTRICAL_TEMPLATE
+            )
+
+        assert resolved == real_entity_id
+
+        # Nachgeschlagen wird mit der stabilen unique_id (nicht der slugifizierten Form)
+        registry.async_get_entity_id.assert_called_once_with(
+            "sensor",
+            "lambda_heat_pumps",
+            "lambda_eu10l_hp1_compressor_power_consumption_accumulated",
+        )
+
+    def test_unique_id_matches_sensor_py_generation(self, mock_hass, mock_entry):
+        """Die zum Lookup gebildete unique_id muss exakt der entsprechen, mit der
+        sensor.py die Entity angelegt hat - sonst findet die Registry nichts."""
+        from custom_components.lambda_heat_pumps.utils import (
+            generate_sensor_names,
+            normalize_name_prefix,
+        )
+        from custom_components.lambda_heat_pumps.const import HP_SENSOR_TEMPLATES
+
+        device_name = "Lambda_EU10L"
+        coordinator = self._make_coordinator(mock_hass, mock_entry, device_name)
+
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=None)
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            return_value=registry,
+        ):
+            coordinator._resolve_internal_energy_sensor_entity_id(
+                1, "electrical", self.ELECTRICAL_TEMPLATE
+            )
+
+        used_unique_id = registry.async_get_entity_id.call_args[0][2]
+
+        # So erzeugt sensor.py die Entity (inkl. echtem Anzeigenamen aus dem Template)
+        sensor_id = "compressor_power_consumption_accumulated"
+        expected = generate_sensor_names(
+            "hp1",
+            HP_SENSOR_TEMPLATES[sensor_id]["name"],
+            sensor_id,
+            normalize_name_prefix(device_name),
+            True,
+        )["unique_id"]
+
+        assert used_unique_id == expected
+
+    def test_resolves_thermal_sensor(self, mock_hass, mock_entry):
+        """Thermik-Sensor wird über seine eigene unique_id aufgelöst."""
+        coordinator = self._make_coordinator(mock_hass, mock_entry, "Lambda_EU10L")
+        real_entity_id = (
+            "sensor.lambda_eu10l_hp1_compressor_thermal_energy_output_accumulated"
+        )
+
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=real_entity_id)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            return_value=registry,
+        ):
+            resolved = coordinator._resolve_internal_energy_sensor_entity_id(
+                1, "thermal", self.THERMAL_TEMPLATE
+            )
+
+        assert resolved == real_entity_id
+        assert (
+            registry.async_get_entity_id.call_args[0][2]
+            == "lambda_eu10l_hp1_compressor_thermal_energy_output_accumulated"
+        )
+
+    def test_follows_manually_renamed_entity(self, mock_hass, mock_entry):
+        """Hat der Nutzer die Entity im UI umbenannt, bleibt die unique_id gleich -
+        der Registry-Lookup folgt der Umbenennung, jede Namenskonstruktion nicht."""
+        coordinator = self._make_coordinator(mock_hass, mock_entry, "EU08L")
+        renamed = "sensor.mein_eigener_name"
+
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=renamed)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            return_value=registry,
+        ):
+            resolved = coordinator._resolve_internal_energy_sensor_entity_id(
+                1, "electrical", self.ELECTRICAL_TEMPLATE
+            )
+
+        assert resolved == renamed
+
+    def test_falls_back_when_entity_not_in_registry(self, mock_hass, mock_entry):
+        """Ist die Entity noch nicht registriert (z.B. erster Zyklus nach Start),
+        greift die bisherige namensbasierte Konstruktion - Verhalten wie bisher."""
+        coordinator = self._make_coordinator(mock_hass, mock_entry, "EU08L")
+
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=None)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            return_value=registry,
+        ):
+            resolved = coordinator._resolve_internal_energy_sensor_entity_id(
+                1, "electrical", self.ELECTRICAL_TEMPLATE
+            )
+
+        assert resolved == "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+
+    def test_falls_back_when_registry_raises(self, mock_hass, mock_entry):
+        """Ein Registry-Fehler darf den Poll-Zyklus nicht abbrechen."""
+        coordinator = self._make_coordinator(mock_hass, mock_entry, "EU08L")
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            side_effect=RuntimeError("registry unavailable"),
+        ):
+            resolved = coordinator._resolve_internal_energy_sensor_entity_id(
+                1, "electrical", self.ELECTRICAL_TEMPLATE
+            )
+
+        assert resolved == "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+
+    @pytest.mark.asyncio
+    async def test_end_to_end_underscore_name_reaches_state_lookup(self, mock_hass, mock_entry):
+        """Ende-zu-Ende: Mit Unterstrich-Namen muss hass.states.get() mit der REALEN
+        entity_id aufgerufen werden - vorher lief der Lookup ins Leere (state=None)."""
+        coordinator = self._make_coordinator(mock_hass, mock_entry, "Lambda_EU10L")
+        coordinator._energy_unit_cache_all = {"electrical_hp1": "kWh"}
+        coordinator._persist_counters = AsyncMock()
+
+        real_entity_id = "sensor.lambda_eu10l_hp1_compressor_power_consumption_accumulated"
+
+        mock_state = Mock()
+        mock_state.state = "100.5"
+        mock_state.attributes = {"unit_of_measurement": "kWh"}
+        mock_hass.states.get = Mock(return_value=mock_state)
+
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=real_entity_id)
+
+        increment_fn = AsyncMock()
+
+        with patch(
+            "custom_components.lambda_heat_pumps.coordinator.async_get_entity_registry",
+            return_value=registry,
+        ):
+            await coordinator._track_hp_energy_type_consumption(
+                1,
+                1,
+                {},
+                "electrical",
+                self.ELECTRICAL_TEMPLATE,
+                lambda unit: unit == "kWh",
+                lambda val, unit: float(val),
+                {"hp1": 99.0},
+                {"hp1": True},
+                increment_fn,
+            )
+
+        assert mock_hass.states.get.call_args[0][0] == real_entity_id
+        increment_fn.assert_called_once()
+        assert increment_fn.call_args[0][1] == "heating"
+        assert increment_fn.call_args[0][2] == pytest.approx(1.5)

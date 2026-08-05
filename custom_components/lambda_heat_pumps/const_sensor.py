@@ -1204,12 +1204,13 @@ SENSOR_TYPES = {
         "scale": 0.1,
         "precision": 1,
         "data_type": "int16",
-        # W-only ab neuerer Steuerungsgeneration - Register nur bis V0.0.9-3K (Version 7)
-        # lesbar; danach liefert es keinen Wert mehr (0x8000).
-        "firmware_versions": ["1-7"],
-        # 0xFFFF (-1) = -300°C ist auf allen FW-Versionen bis Version 7 kein gueltiger
-        # Messwert, sondern "kein externer Sensor eingespeist" - opt-in, da -1 bei
-        # anderen Sensoren (z.B. Temperatur-Offsets) ein gueltiger Wert sein kann.
+        # Register ist bis einschliesslich V1.1.0-3K (Version 9) lesbar (Issue #108).
+        # Ungueltige Werte werden nicht ueber die FW-Range, sondern ueber
+        # sentinel_values/is_sentinel_value() abgefangen.
+        "firmware_versions": ["1-9"],
+        # 0xFFFF (-1) = -300°C ist kein gueltiger Messwert, sondern "kein externer
+        # Sensor eingespeist" - opt-in, da -1 bei anderen Sensoren (z.B.
+        # Temperatur-Offsets) ein gueltiger Wert sein kann.
         "sentinel_values": [65535],
         "device_type": "main",
         "writeable": False,
