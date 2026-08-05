@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.event import async_track_time_interval, async_call_later
 from .const import (
+    DOMAIN,
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
     BOIL_SENSOR_TEMPLATES,
@@ -41,6 +42,7 @@ from .utils import (
     get_compatible_sensors,
     normalize_name_prefix,
     slugify_name_prefix_for_lookup,
+    generate_sensor_names,
     detect_sensor_change,
     get_stored_sensor_id,
     store_sensor_id,
@@ -53,6 +55,14 @@ import time
 
 _LOGGER = logging.getLogger(__name__)
 SCAN_INTERVAL = timedelta(seconds=30)
+
+# sensor_id (Schlüssel aus HP_SENSOR_TEMPLATES) je Energie-Typ. Wird gebraucht, um die
+# unique_id unserer eigenen Modbus-Energiesensoren zu rekonstruieren und darüber die
+# tatsächliche entity_id aus der Entity Registry aufzulösen.
+INTERNAL_ENERGY_SENSOR_IDS = {
+    "electrical": "compressor_power_consumption_accumulated",
+    "thermal": "compressor_thermal_energy_output_accumulated",
+}
 
 # Sensor-Wechsel-Erkennung läuft bei jedem Start, um alle Sensor-Wechsel zu erkennen
 
@@ -2060,6 +2070,53 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as ex:
             _LOGGER.error("Error tracking energy consumption for HP%s: %s", hp_idx, ex)
 
+    def _resolve_internal_energy_sensor_entity_id(
+        self, hp_idx, sensor_type, default_sensor_id_template
+    ):
+        """Ermittelt die entity_id unseres eigenen akkumulierten Energie-Sensors.
+
+        Die entity_id wird NICHT aus dem Gerätenamen rekonstruiert, sondern über die
+        unique_id in der Entity Registry nachgeschlagen. Grund: die unique_id wird seit
+        jeher mit normalize_name_prefix() gebildet und ist damit stabil, während die
+        tatsächliche entity_id je nach Anlagezeitpunkt (bzw. nach manueller Umbenennung
+        durch den Nutzer) abweichen kann. Ein Rekonstruieren aus dem Namen schlägt bei
+        Sonderzeichen im Gerätenamen fehl (z.B. "Lambda_EU10L" -> entity_id enthält den
+        Unterstrich, die Namens-Slugifizierung aber nicht).
+
+        Fällt auf die bisherige namensbasierte Konstruktion zurück, wenn die Entity
+        (noch) nicht in der Registry steht - z.B. im ersten Zyklus nach dem Start.
+        """
+        sensor_id = INTERNAL_ENERGY_SENSOR_IDS.get(sensor_type)
+        if sensor_id:
+            try:
+                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
+                names = generate_sensor_names(
+                    f"hp{hp_idx}",
+                    sensor_id,  # display name irrelevant für die unique_id
+                    sensor_id,
+                    name_prefix,
+                    self._use_legacy_names,
+                )
+                registry = self._entity_registry or async_get_entity_registry(self.hass)
+                resolved = registry.async_get_entity_id(
+                    "sensor", DOMAIN, names["unique_id"]
+                )
+                if resolved:
+                    return resolved
+                _LOGGER.debug(
+                    "[Energy] HP%s %s: unique_id '%s' (noch) nicht in der Entity Registry, "
+                    "verwende namensbasierten Fallback",
+                    hp_idx, sensor_type, names["unique_id"],
+                )
+            except Exception as ex:  # pragma: no cover - defensiv, Registry darf nie den Poll killen
+                _LOGGER.debug(
+                    "[Energy] HP%s %s: Registry-Lookup fehlgeschlagen (%s), verwende Fallback",
+                    hp_idx, sensor_type, ex,
+                )
+
+        name_prefix = slugify_name_prefix_for_lookup(self.entry.data.get("name", "")) or "eu08l"
+        return default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
+
     async def _track_hp_energy_type_consumption(
         self, hp_idx, current_state, data, sensor_type, default_sensor_id_template,
         unit_check_fn, convert_to_kwh_fn, last_reading_dict, first_value_seen_dict, increment_fn
@@ -2073,9 +2130,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             # Fallback: generischer sensor_entity_id aus Config (nur für elektrisch)
             sensor_entity_id = sensor_config.get("sensor_entity_id")
         if not sensor_entity_id:
-            # Entity-IDs der Sensoren werden in sensor.py mit kleingeschriebenem name_prefix erzeugt
-            name_prefix = slugify_name_prefix_for_lookup(self.entry.data.get("name", "")) or "eu08l"
-            sensor_entity_id = default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
+            sensor_entity_id = self._resolve_internal_energy_sensor_entity_id(
+                hp_idx, sensor_type, default_sensor_id_template
+            )
             _LOGGER.debug(
                 "[Energy] HP%s %s: Verwende Modbus-Sensor %s",
                 hp_idx, sensor_type, sensor_entity_id,
