@@ -131,18 +131,21 @@ def test_is_sentinel_value_extra_sentinels_does_not_override_normal_values():
 
 
 def test_get_compatible_sensors_ambient_temperature_fw_range():
-    """ambient_temperature (Reg 0002) is only readable up to V0.0.9-3K (fw int 7);
-    newer controllers (fw int 8+) don't have it (see issue100)."""
+    """ambient_temperature (Reg 0002) is readable up to and including V1.1.0-3K
+    (fw int 9) - see issue108. The range was originally "1-7" (issue100), which
+    hid the sensor on V0.0.10-3K and V1.1.0-3K although the register returns
+    valid readings there. Invalid readings are caught by sentinel_values, not
+    by the firmware range."""
     from custom_components.lambda_heat_pumps.const_sensor import SENSOR_TYPES
 
     assert "firmware_versions" in SENSOR_TYPES["ambient_temperature"]
     assert SENSOR_TYPES["ambient_temperature"]["sentinel_values"] == [65535]
 
-    compatible_old = get_compatible_sensors(SENSOR_TYPES, 7)
-    assert "ambient_temperature" in compatible_old
-
-    compatible_new = get_compatible_sensors(SENSOR_TYPES, 8)
-    assert "ambient_temperature" not in compatible_new
+    # V0.0.9-3K (7), V0.0.10-3K (8) und V1.1.0-3K (9) muessen den Sensor haben
+    for fw_int in (7, 8, 9):
+        assert "ambient_temperature" in get_compatible_sensors(SENSOR_TYPES, fw_int), (
+            f"ambient_temperature fehlt bei Firmware-Version {fw_int}"
+        )
 
 
 def test_buffer_request_registers_opt_in_sentinel():

@@ -101,6 +101,7 @@ nav = [
     { "Migrationssystem" = "Entwickler/migration-system.md" },
     { "Offset-System" = "Entwickler/offset-system.md" },
     { "unique_id – Kopplung an name_prefix" = "Entwickler/unique-id-name-prefix-kopplung.md" },
+    { "Energie-Sensor-Lookup über die Entity Registry" = "Entwickler/energie-sensor-lookup-registry.md" },
   ] },
   { "FAQ" = [
     { "FAQ" = "FAQ/FAQ.md" },
