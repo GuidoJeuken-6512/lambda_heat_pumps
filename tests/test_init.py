@@ -514,3 +514,38 @@ async def test_a_float_unit_id_is_coerced_to_int(
     # Never a float — that is what tmodbus's struct.pack rejects.
     assert controller.ports and all(type(p) is int for p in controller.ports)
     assert controller.unit_ids and all(type(u) is int for u in controller.unit_ids)
+
+
+async def test_a_busy_controller_is_not_read_as_a_smaller_one(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Being too busy to answer is not the same as having nothing to say.
+
+    The module count is taken once and kept for the life of the entry, so a
+    controller that is merely busy while it is being probed must not come up
+    with modules missing. Setup fails instead, and Home Assistant retries it.
+    """
+    controller.answer_busy(2000)  # the boiler's own probe register
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=entry_data())
+    entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_a_busy_controller_is_not_read_as_a_shorter_register_map(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The same, for the registers a module serves rather than the modules.
+
+    The map is probed once. A busy answer recorded as "no such register" would
+    leave those entities unavailable until someone reloaded the integration.
+    """
+    controller.answer_busy(1024)  # inside the heat pump's block, past the probe
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=entry_data())
+    entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY

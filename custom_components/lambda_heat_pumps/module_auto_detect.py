@@ -17,6 +17,7 @@ from modbus_connection import (
     ModbusUnit,
 )
 
+from .lambda_modbus import ILLEGAL_DATA_ADDRESS
 from .lambda_modbus.ranges import base_address
 
 _LOGGER = logging.getLogger(__name__)
@@ -51,14 +52,22 @@ async def async_detect_modules(unit: ModbusUnit) -> dict[str, int]:
 async def _count(unit: ModbusUnit, module: str, maximum: int) -> int:
     """How many of one module type answer, counting up from the first.
 
-    A module that is not installed either refuses the read or stays silent. A
-    connection that is down raises instead — that is not an answer about the
-    hardware, and the caller must not read it as one.
+    A module that is not installed says there is nothing at its address, or
+    stays silent. Anything else is the controller declining to answer rather
+    than telling us what it has: a busy or faulted controller would otherwise be
+    read as a system with fewer modules than it has, and the count is kept for
+    the life of the config entry. So it propagates, and setup is retried.
     """
     for index in range(1, maximum + 1):
         register = base_address(module, index) + _PROBE_REGISTER
         try:
             await unit.read_holding_registers(register, 1)
-        except (ModbusExceptionError, ModbusTimeoutError):
+        except ModbusExceptionError as err:
+            if err.exception_code != ILLEGAL_DATA_ADDRESS:
+                raise
+            return index - 1
+        except ModbusTimeoutError:
+            # Silence is how some controllers answer for a module they do not
+            # have, so it still ends the count.
             return index - 1
     return maximum

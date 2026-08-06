@@ -72,6 +72,10 @@ HOLDING: dict[int, int] = {
 # there — and how the probe counts the ones that are.
 ABSENT_BLOCKS = (1100, 2100, 3000, 4000, 5100)
 ILLEGAL_DATA_ADDRESS = 2
+# What a controller answers while it is too busy to serve a read. It is saying
+# "not now", not "there is nothing here", and the difference matters: the
+# register map is read once and kept.
+SERVER_DEVICE_BUSY = 6
 
 # The controller's first register. The config flow probes it, and every poll
 # reads the ambient block it starts, so a read of it stands in for reaching the
@@ -98,6 +102,7 @@ class Controller:
     _refused: set[int] = field(default_factory=set)
 
     _connections: list[MockModbusConnection] = field(default_factory=list)
+    _busy: set[int] = field(default_factory=set)
 
     def refuse(self, address: int) -> None:
         """Stop answering for any block covering this register, as a controller
@@ -116,6 +121,16 @@ class Controller:
         """
         for connection in self._connections:
             connection.simulate_connection_lost()
+
+    def answer_busy(self, address: int) -> None:
+        """Be too busy to serve any block covering this register.
+
+        Applied to the connections opened later too, so a test can arm it before
+        setup — which is when being busy does the damage.
+        """
+        self._busy.add(address)
+        for unit in self._units:
+            unit.fail_read(address, ModbusExceptionError(SERVER_DEVICE_BUSY))
 
     def go_offline(self) -> None:
         """The controller becomes unreachable until `come_back_online`.
@@ -173,6 +188,8 @@ def controller() -> Iterator[Controller]:
             _refuse_absent_modules(unit)
             for address in device._refused:
                 unit.fail_read(address, ModbusExceptionError(ILLEGAL_DATA_ADDRESS))
+            for address in device._busy:
+                unit.fail_read(address, ModbusExceptionError(SERVER_DEVICE_BUSY))
             if device._offline:
                 unit.fail_read(PROBE_REGISTER, ModbusConnectionError("no route to host"))
             if unit not in device._units:
