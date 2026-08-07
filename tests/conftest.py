@@ -122,6 +122,27 @@ class Controller:
         for connection in self._connections:
             connection.simulate_connection_lost()
 
+    @property
+    def reads(self) -> list[tuple[int, int]]:
+        """Every holding-register read made of this controller, (address, count).
+
+        The mock logs them, so a test can assert not just what was decoded but
+        where the planner actually went and how wide — which is the only way to
+        see pooling quietly collapse into one read per field, since the values
+        come out correct either way.
+        """
+        return [
+            (event.address, event.count)
+            for unit in self._units
+            for event in unit.read_events
+            if event.register_type == "holding"
+        ]
+
+    def forget_reads(self) -> None:
+        """Start counting reads again."""
+        for unit in self._units:
+            unit.read_events.clear()
+
     def answer_busy(self, address: int) -> None:
         """Be too busy to serve any block covering this register.
 
