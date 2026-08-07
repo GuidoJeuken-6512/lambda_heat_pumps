@@ -12,6 +12,7 @@ installation's entities attached to their history.
 from __future__ import annotations
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .const import CONF_NAME_PREFIX, CONF_USE_LEGACY_MODBUS_NAMES
 from .coordinator import LambdaCoordinator
@@ -45,12 +46,14 @@ class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
 
         entry = coordinator.config_entry
         # Installations created before Home Assistant named entities from their
-        # device prefix every unique id with the entry's name.
-        legacy = (
-            f"{entry.data[CONF_NAME_PREFIX].lower()}_"
-            if entry.data[CONF_USE_LEGACY_MODBUS_NAMES]
-            else ""
-        )
+        # device prefix every unique id with the entry's name. The name is free
+        # text, and the shape the entities were registered under folds it to
+        # lower case and drops its spaces — so "Lambda EU10L" is `lambdaeu10l`.
+        # This has to match that exactly: a unique id that does not is a
+        # different entity as far as Home Assistant is concerned, and the one it
+        # replaces is orphaned along with its history and its settings.
+        prefix = entry.data[CONF_NAME_PREFIX].lower().replace(" ", "")
+        legacy = f"{prefix}_" if entry.data[CONF_USE_LEGACY_MODBUS_NAMES] else ""
         module_prefix = f"{module}{index}_" if module else ""
         self._attr_unique_id = f"{legacy}{module_prefix}{key}"
         self._attr_device_info = coordinator.device_info(module, index)
@@ -64,8 +67,11 @@ class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
         # translated. It is a proposal, not a demand — an id already taken is
         # still resolved by the registry, and an entity that already exists keeps
         # the id it was registered with.
+        # Slugified, unlike the unique id: that one has to keep whatever shape an
+        # existing installation registered it under, while this one has to be a
+        # valid entity id. A name Home Assistant would not accept — anything
+        # accented, say — differs between the two for that reason, and a plain
+        # one does not differ at all.
         if self._entity_domain:
-            prefix = entry.data[CONF_NAME_PREFIX].lower()
-            self.entity_id = (
-                f"{self._entity_domain}.{prefix}_{module_prefix}{key}"
-            )
+            object_id = slugify(f"{prefix}_{module_prefix}{key}")
+            self.entity_id = f"{self._entity_domain}.{object_id}"

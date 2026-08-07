@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, valid_entity_id
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -549,3 +549,38 @@ async def test_a_busy_controller_is_not_read_as_a_shorter_register_map(
     assert not await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+@pytest.mark.parametrize(
+    ("name", "unique_prefix", "id_prefix"),
+    [
+        ("EU08L", "eu08l", "eu08l"),
+        # A name with spaces: the shape the entities were registered under drops
+        # them, so the unique id has to as well or every entity is a new one.
+        ("Lambda EU10L", "lambdaeu10l", "lambdaeu10l"),
+        ("Meine WP", "meinewp", "meinewp"),
+        # An accented name keeps its accents in the unique id, because that is
+        # what the installation registered — but an entity id cannot have them.
+        ("Wärmepumpe Süd", "wärmepumpesüd", "warmepumpesud"),
+    ],
+)
+async def test_a_device_name_is_folded_the_way_it_always_was(
+    hass: HomeAssistant,
+    controller: Controller,
+    name: str,
+    unique_prefix: str,
+    id_prefix: str,
+) -> None:
+    """The device name is free text, and both ids have to cope with it."""
+    data = entry_data(legacy=True) | {CONF_NAME: name}
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{unique_prefix}_hp1_flow_line_temperature"
+    )
+    assert entity_id == f"sensor.{id_prefix}_hp1_flow_line_temperature"
+    assert valid_entity_id(entity_id)
