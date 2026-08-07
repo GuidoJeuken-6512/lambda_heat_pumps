@@ -584,3 +584,17 @@ async def test_a_device_name_is_folded_the_way_it_always_was(
     )
     assert entity_id == f"sensor.{id_prefix}_hp1_flow_line_temperature"
     assert valid_entity_id(entity_id)
+
+
+async def test_the_lifetime_coefficient_is_still_there(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The controller's own lifetime COP, from its two accumulated counters.
+
+    It is the one sensor the rewrite dropped; existing installations have it,
+    with its history.
+    """
+    await setup_entry(hass, controller, legacy=True)
+
+    # 400000 Wh of heat for 100000 Wh of electricity.
+    assert state_of(hass, "eu08l_hp1_cop_calc") == "4.0"

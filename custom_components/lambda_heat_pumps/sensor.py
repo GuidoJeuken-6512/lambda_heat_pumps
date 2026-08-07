@@ -492,6 +492,11 @@ async def async_setup_entry(
             ]
 
     entities += [
+        LambdaLifetimeCopSensor(coordinator, index)
+        for index in range(1, coordinator.counts["hp"] + 1)
+    ]
+
+    entities += [
         LambdaHeatingCurveSensor(coordinator, index)
         for index in range(1, coordinator.counts["hc"] + 1)
     ]
@@ -765,6 +770,36 @@ class LambdaCopSensor(LambdaEntity, SensorEntity):
         if not electrical:
             return None
         return round(self._thermal.native_value / electrical, 2)
+
+
+class LambdaLifetimeCopSensor(LambdaEntity, SensorEntity):
+    """The coefficient of performance over the controller's own lifetime.
+
+    Not one of the coefficients beside it: those divide what this integration
+    has counted since it started watching, mode by mode. This divides the two
+    totals the controller has kept for itself since it was installed, which is
+    every mode together and everything that happened before Home Assistant did.
+    """
+
+    _entity_domain = "sensor"
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 2
+    _attr_translation_key = "cop_calc"
+
+    def __init__(self, coordinator: LambdaCoordinator, index: int) -> None:
+        """Bind it to one heat pump's pair of lifetime counters."""
+        super().__init__(coordinator, "cop_calc", "hp", index)
+
+    @property
+    def native_value(self) -> float | None:
+        """Heat out over electricity in, or nothing yet."""
+        heat_pump = self.coordinator.component("hp", self._index)
+        electrical = heat_pump.compressor_power_consumption_accumulated
+        thermal = heat_pump.compressor_thermal_energy_output_accumulated
+        if not electrical or thermal is None:
+            return None
+        return round(thermal / electrical, 2)
 
 
 class LambdaHeatingCurveSensor(LambdaEntity, SensorEntity):
