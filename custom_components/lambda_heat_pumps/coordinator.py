@@ -35,6 +35,7 @@ from modbus_connection import (
     BlockReadError,
     ModbusConnection,
     ModbusError,
+    ModbusTimeoutError,
     ModbusUnit,
 )
 
@@ -78,6 +79,11 @@ type LambdaConfigEntry = ConfigEntry[LambdaCoordinator]
 # The two registers the fast poll reads, relative to a heat pump's block.
 _OPERATING_STATE_REGISTER = 3
 _COMPRESSOR_RATING_REGISTER = 10
+
+# How many polls in a row may go unanswered before the link is thrown away and
+# reopened. One is a slow reply and two is bad luck; past that the link itself is
+# the likely problem.
+_TIMEOUTS_BEFORE_RECYCLING = 3
 
 # The controller reports both energy counters in Wh; the sensors are in kWh.
 _WH_PER_KWH = 1000.0
@@ -186,6 +192,8 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             )
         )
         self._polling = False
+        # Consecutive polls the controller has not answered.
+        self._timeouts = 0
 
         # What `lambda_wp_config.yaml` says, read in `_async_setup`.
         self.file_config = LambdaFileConfig()
@@ -255,6 +263,18 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             # it is down, over the same unit handles, so a drop costs at most the
             # poll it happened on and nothing has to be rebuilt.
             await self.device.async_update()
+        except ModbusTimeoutError as err:
+            # A link can be up and useless: the socket stays open and the
+            # controller stops answering, which happens with the serial-to-network
+            # bridges these are often reached through. One timeout is a slow
+            # reply, several in a row is a link worth throwing away — the next
+            # poll opens a fresh one over the same handles, and nothing is rebuilt.
+            self._timeouts += 1
+            if self._timeouts >= _TIMEOUTS_BEFORE_RECYCLING:
+                self._timeouts = 0
+                _LOGGER.debug("No answer in a while; dropping the link to reopen it")
+                await self.connection.disconnect()
+            raise UpdateFailed(f"The controller did not answer: {err}") from err
         except BlockReadError as err:
             # The controller refused a block the probe found it serving, so what
             # was read off it at setup no longer describes it — a module was
@@ -271,6 +291,8 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             ) from err
         except ModbusError as err:
             raise UpdateFailed(f"Error reading the controller: {err}") from err
+        else:
+            self._timeouts = 0
         finally:
             self._polling = False
 

@@ -598,3 +598,35 @@ async def test_the_lifetime_coefficient_is_still_there(
 
     # 400000 Wh of heat for 100000 Wh of electricity.
     assert state_of(hass, "eu08l_hp1_cop_calc") == "4.0"
+
+
+async def test_a_link_that_stops_answering_is_thrown_away(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A link can be up and useless; after a few silent polls it is reopened.
+
+    The socket stays open and the controller stops answering — the failure mode
+    of the serial-to-network bridges these are often reached through. Reopening
+    costs nothing: the same handles are used and nothing is rebuilt.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    connection = coordinator.connection
+
+    controller.stop_answering()
+    for _ in range(2):
+        await coordinator.async_refresh()
+    # Two silent polls are bad luck, not a wedged link.
+    assert connection.connected
+    assert not coordinator.last_update_success
+
+    await coordinator.async_refresh()
+    # The third throws the link away, to be reopened by the next request.
+    assert not connection.connected
+
+    controller.answer_again()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.last_update_success
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"

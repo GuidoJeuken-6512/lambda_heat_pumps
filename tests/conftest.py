@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 from modbus_connection import (
     IllegalDataAddressError,
     ModbusConnectionError,
+    ModbusTimeoutError,
     ServerDeviceBusyError,
 )
 from modbus_connection.mock import MockModbusConnection, MockModbusUnit
@@ -149,6 +150,16 @@ class Controller:
         self._busy.add(address)
         for unit in self._units:
             unit.fail_read(address, ServerDeviceBusyError())
+
+    def stop_answering(self) -> None:
+        """Keep the link up but answer nothing, as a wedged bridge does."""
+        for unit in self._units:
+            unit.fail_requests(ModbusTimeoutError("no answer"))
+
+    def answer_again(self) -> None:
+        """Start answering again."""
+        for unit in self._units:
+            unit.fail_requests(None)
 
     def go_offline(self) -> None:
         """The controller becomes unreachable until `come_back_online`.
