@@ -114,6 +114,9 @@ def _make_coordinator(name="eu08l"):
     coord._persist_counters = AsyncMock()
     # Binde die echten Methoden
     from custom_components.lambda_heat_pumps.coordinator import LambdaDataUpdateCoordinator
+    coord._default_internal_energy_entity_id = (
+        LambdaDataUpdateCoordinator._default_internal_energy_entity_id.__get__(coord)
+    )
     coord._handle_sensor_change = LambdaDataUpdateCoordinator._handle_sensor_change.__get__(coord)
     coord._handle_thermal_sensor_change = LambdaDataUpdateCoordinator._handle_thermal_sensor_change.__get__(coord)
     coord._detect_and_handle_sensor_changes = LambdaDataUpdateCoordinator._detect_and_handle_sensor_changes.__get__(coord)
