@@ -214,14 +214,15 @@ class TestIncrementCyclingCounterNoOffset:
                 received_values.append(value)
 
         entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+        unique_id = "eu08l_hp1_heating_cycling_total"
         fake_entity = FakeCyclingEntity()
 
-        # Wire up hass mock
+        # Wire up hass mock (cycling_entities ist ueber unique_id geschluesselt)
         hass = Mock()
         hass.data = {
             "lambda_heat_pumps": {
                 "test_entry": {
-                    "cycling_entities": {entity_id: fake_entity}
+                    "cycling_entities": {unique_id: fake_entity}
                 }
             }
         }
@@ -235,6 +236,9 @@ class TestIncrementCyclingCounterNoOffset:
 
         mock_entity_registry = Mock()
         mock_entity_registry.async_get = Mock(return_value=Mock())  # entity exists
+        # unique_id-Lookup soll hier "nicht gefunden" simulieren, damit auf die
+        # uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_entity_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -664,7 +668,7 @@ class TestEnergyOffsetIncrementDifferential:
         hass.states.get = Mock(return_value=state_obj)
         hass.data = {
             "lambda_heat_pumps": {
-                "test_entry": {"energy_entities": {total_entity_id: fake_entity}}
+                "test_entry": {"energy_entities": {"test": fake_entity}}  # Schluessel = unique_id (hier von generate_sensor_names-Mock fest auf "test" gesetzt)
             }
         }
         hass.async_add_executor_job = AsyncMock()
@@ -679,7 +683,7 @@ class TestEnergyOffsetIncrementDifferential:
             return_value={"entity_id": total_entity_id, "name": "Heating Energy Total", "unique_id": "test"},
         ), patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
-            return_value=Mock(async_get=Mock(return_value=Mock())),
+            return_value=Mock(async_get=Mock(return_value=Mock()), async_get_entity_id=Mock(return_value=None)),
         ):
             await increment_energy_consumption_counter(
                 hass=hass,
@@ -719,7 +723,7 @@ class TestEnergyOffsetIncrementDifferential:
         hass.states.get = Mock(return_value=state_obj)
         hass.data = {
             "lambda_heat_pumps": {
-                "test_entry": {"energy_entities": {total_entity_id: fake_entity}}
+                "test_entry": {"energy_entities": {"test": fake_entity}}  # Schluessel = unique_id (hier von generate_sensor_names-Mock fest auf "test" gesetzt)
             }
         }
         hass.async_add_executor_job = AsyncMock()
@@ -734,7 +738,7 @@ class TestEnergyOffsetIncrementDifferential:
             return_value={"entity_id": total_entity_id, "name": "Heating Energy Total", "unique_id": "test"},
         ), patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
-            return_value=Mock(async_get=Mock(return_value=Mock())),
+            return_value=Mock(async_get=Mock(return_value=Mock()), async_get_entity_id=Mock(return_value=None)),
         ):
             await increment_energy_consumption_counter(
                 hass=hass,

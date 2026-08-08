@@ -397,11 +397,15 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
          patch("custom_components.lambda_heat_pumps.reset_manager.ResetManager") as mock_reset_manager_class:
         
         # Create mock sensor instances
+        # cycling_entities wird jetzt ueber unique_id (nicht entity_id) geschluesselt -
+        # siehe sensor.py. unique_id entspricht hier entity_id ohne "sensor."-Praefix
+        # (name_prefix "test" ist bereits ASCII/lowercase, keine Transliteration noetig).
         mock_cycling_sensor = Mock()
         mock_cycling_sensor.entity_id = "sensor.test_heating_cycling_total"
+        mock_cycling_sensor.unique_id = "test_heating_cycling_total"
         mock_cycling_sensor._sensor_id = "heating_cycling_total"
         mock_cycling_class.return_value = mock_cycling_sensor
-        
+
         # Create mock sensors with correct entity_id format (including hp_index)
         # Make yesterday_class return sensors with proper entity_id format
         def yesterday_sensor_side_effect(*args, **kwargs):
@@ -410,38 +414,43 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
             mode = sensor_id.replace('_cycling_yesterday', '')
             mock_yesterday = Mock()
             mock_yesterday.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_yesterday"
+            mock_yesterday.unique_id = f"test_hp{hp_idx}_{mode}_cycling_yesterday"
             mock_yesterday._sensor_id = sensor_id
             return mock_yesterday
-        
+
         mock_yesterday_class.side_effect = yesterday_sensor_side_effect
-        
+
         # Make cycling_class return different sensors based on sensor_id with proper entity_id format
         def cycling_sensor_side_effect(*args, **kwargs):
             sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
             hp_idx = kwargs.get('hp_index', args[-1] if len(args) >= 8 else 1)
-            
+
             if 'daily' in sensor_id:
                 mode = sensor_id.replace('_cycling_daily', '')
                 mock_daily = Mock()
                 mock_daily.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_daily"
+                mock_daily.unique_id = f"test_hp{hp_idx}_{mode}_cycling_daily"
                 mock_daily._sensor_id = sensor_id
                 return mock_daily
             elif '2h' in sensor_id:
                 mode = sensor_id.replace('_cycling_2h', '')
                 mock_2h = Mock()
                 mock_2h.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_2h"
+                mock_2h.unique_id = f"test_hp{hp_idx}_{mode}_cycling_2h"
                 mock_2h._sensor_id = sensor_id
                 return mock_2h
             elif '4h' in sensor_id:
                 mode = sensor_id.replace('_cycling_4h', '')
                 mock_4h = Mock()
                 mock_4h.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_4h"
+                mock_4h.unique_id = f"test_hp{hp_idx}_{mode}_cycling_4h"
                 mock_4h._sensor_id = sensor_id
                 return mock_4h
             elif 'monthly' in sensor_id:
                 mode = sensor_id.replace('_cycling_monthly', '')
                 mock_monthly = Mock()
                 mock_monthly.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_monthly"
+                mock_monthly.unique_id = f"test_hp{hp_idx}_{mode}_cycling_monthly"
                 mock_monthly._sensor_id = sensor_id
                 return mock_monthly
             else:
@@ -449,38 +458,40 @@ async def test_cycling_entities_registration(mock_hass, mock_entry, mock_coordin
                 mode = sensor_id.replace('_cycling_total', '')
                 mock_total = Mock()
                 mock_total.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_total"
+                mock_total.unique_id = f"test_hp{hp_idx}_{mode}_cycling_total"
                 mock_total._sensor_id = sensor_id
                 return mock_total
-        
+
         mock_cycling_class.side_effect = cycling_sensor_side_effect
-        
+
         # Mock regular sensor
         mock_regular_sensor = Mock()
         mock_regular_sensor.entity_id = "sensor.test_hp1_temperature"
+        mock_regular_sensor.unique_id = "test_hp1_temperature"
         mock_sensor_class.return_value = mock_regular_sensor
-        
+
         await async_setup_entry(mock_hass, mock_entry, mock_add_entities)
-        
+
         # Verify that cycling_entities was set up
         assert "lambda_heat_pumps" in mock_hass.data
         assert mock_entry.entry_id in mock_hass.data["lambda_heat_pumps"]
         assert "cycling_entities" in mock_hass.data["lambda_heat_pumps"][mock_entry.entry_id]
-        
+
         cycling_entities = mock_hass.data["lambda_heat_pumps"][mock_entry.entry_id]["cycling_entities"]
-        
-        # Verify that all cycling sensor types are registered
-        assert "sensor.test_hp1_heating_cycling_total" in cycling_entities
-        assert "sensor.test_hp1_heating_cycling_yesterday" in cycling_entities
-        assert "sensor.test_hp1_heating_cycling_daily" in cycling_entities
-        assert "sensor.test_hp1_heating_cycling_2h" in cycling_entities
-        assert "sensor.test_hp1_heating_cycling_4h" in cycling_entities
-        
+
+        # Verify that all cycling sensor types are registered (Schluessel = unique_id)
+        assert "test_hp1_heating_cycling_total" in cycling_entities
+        assert "test_hp1_heating_cycling_yesterday" in cycling_entities
+        assert "test_hp1_heating_cycling_daily" in cycling_entities
+        assert "test_hp1_heating_cycling_2h" in cycling_entities
+        assert "test_hp1_heating_cycling_4h" in cycling_entities
+
         # Verify compressor_start sensors are registered
-        assert "sensor.test_hp1_compressor_start_cycling_total" in cycling_entities
-        assert "sensor.test_hp1_compressor_start_cycling_daily" in cycling_entities
-        assert "sensor.test_hp1_compressor_start_cycling_2h" in cycling_entities
-        assert "sensor.test_hp1_compressor_start_cycling_4h" in cycling_entities
-        assert "sensor.test_hp1_compressor_start_cycling_monthly" in cycling_entities
+        assert "test_hp1_compressor_start_cycling_total" in cycling_entities
+        assert "test_hp1_compressor_start_cycling_daily" in cycling_entities
+        assert "test_hp1_compressor_start_cycling_2h" in cycling_entities
+        assert "test_hp1_compressor_start_cycling_4h" in cycling_entities
+        assert "test_hp1_compressor_start_cycling_monthly" in cycling_entities
 
 
 @pytest.mark.asyncio
@@ -496,39 +507,43 @@ async def test_yesterday_sensors_in_cycling_entities(mock_hass, mock_entry, mock
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
          patch("custom_components.lambda_heat_pumps.reset_manager.ResetManager") as mock_reset_manager_class:
         
-        # Create mock yesterday sensor with proper entity_id format
+        # Create mock yesterday sensor with proper entity_id/unique_id format
+        # (cycling_entities ist ueber unique_id geschluesselt, siehe sensor.py)
         def yesterday_sensor_side_effect(*args, **kwargs):
             sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
             hp_idx = kwargs.get('hp_index', args[-2] if len(args) >= 8 else 1)
             mode = sensor_id.replace('_cycling_yesterday', '')
             mock_yesterday = Mock()
             mock_yesterday.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_yesterday"
+            mock_yesterday.unique_id = f"test_hp{hp_idx}_{mode}_cycling_yesterday"
             mock_yesterday._sensor_id = sensor_id
             return mock_yesterday
-        
+
         mock_yesterday_class.side_effect = yesterday_sensor_side_effect
-        
+
         # Mock other sensors
         mock_cycling_sensor = Mock()
         mock_cycling_sensor.entity_id = "sensor.test_heating_cycling_total"
+        mock_cycling_sensor.unique_id = "test_heating_cycling_total"
         mock_cycling_sensor._sensor_id = "heating_cycling_total"
         mock_cycling_class.return_value = mock_cycling_sensor
-        
+
         mock_regular_sensor = Mock()
         mock_regular_sensor.entity_id = "sensor.test_hp1_temperature"
+        mock_regular_sensor.unique_id = "test_hp1_temperature"
         mock_sensor_class.return_value = mock_regular_sensor
-        
+
         await async_setup_entry(mock_hass, mock_entry, mock_add_entities)
-        
+
         # Verify that yesterday sensors are in cycling_entities
         cycling_entities = mock_hass.data["lambda_heat_pumps"][mock_entry.entry_id]["cycling_entities"]
-        
+
         # This test specifically checks that yesterday sensors are included
-        yesterday_entities = [entity_id for entity_id in cycling_entities.keys() if "yesterday" in entity_id]
+        yesterday_entities = [unique_id for unique_id in cycling_entities.keys() if "yesterday" in unique_id]
         assert len(yesterday_entities) > 0, "Yesterday sensors should be included in cycling_entities"
-        
-        # Verify the specific yesterday sensor is there
-        assert "sensor.test_hp1_heating_cycling_yesterday" in cycling_entities
+
+        # Verify the specific yesterday sensor is there (Schluessel = unique_id)
+        assert "test_hp1_heating_cycling_yesterday" in cycling_entities
 
 
 # Tests für _update_yesterday_sensors Funktion
@@ -537,25 +552,28 @@ async def test_update_yesterday_sensors_function(mock_hass, mock_entry):
     """Test the _update_yesterday_sensors_async function from automations."""
     from custom_components.lambda_heat_pumps.automations import _update_yesterday_sensors_async
     
-    # Mock cycling entities - use proper entity_id format with hp1
+    # Mock cycling entities - cycling_entities ist ueber unique_id geschluesselt (siehe
+    # sensor.py); die reale entity_id kommt von der Entity-Instanz selbst.
     mock_daily_sensor = Mock()
     mock_daily_sensor.entity_id = "sensor.test_hp1_heating_cycling_daily"
+    mock_daily_sensor.unique_id = "test_hp1_heating_cycling_daily"
     mock_daily_sensor._sensor_id = "heating_cycling_daily"
-    
+
     mock_yesterday_sensor = Mock()
     mock_yesterday_sensor.entity_id = "sensor.test_hp1_heating_cycling_yesterday"
+    mock_yesterday_sensor.unique_id = "test_hp1_heating_cycling_yesterday"
     mock_yesterday_sensor._sensor_id = "heating_cycling_yesterday"
     # set_cycling_value is async, so use AsyncMock
     from unittest.mock import AsyncMock
     mock_yesterday_sensor.set_cycling_value = AsyncMock()
-    
-    # Mock hass.data structure
+
+    # Mock hass.data structure (Schluessel = unique_id)
     mock_hass.data = {
         "lambda_heat_pumps": {
             mock_entry.entry_id: {
                 "cycling_entities": {
-                    "sensor.test_hp1_heating_cycling_daily": mock_daily_sensor,
-                    "sensor.test_hp1_heating_cycling_yesterday": mock_yesterday_sensor,
+                    "test_hp1_heating_cycling_daily": mock_daily_sensor,
+                    "test_hp1_heating_cycling_yesterday": mock_yesterday_sensor,
                 }
             }
         }
@@ -588,46 +606,49 @@ async def test_yesterday_sensor_problem_detection(mock_hass, mock_entry, mock_co
          patch("custom_components.lambda_heat_pumps.sensor.LambdaSensor") as mock_sensor_class, \
          patch("custom_components.lambda_heat_pumps.reset_manager.ResetManager") as mock_reset_manager_class:
         
-        # Create mock sensors with proper entity_id format
+        # Create mock sensors with proper entity_id/unique_id format
         def yesterday_sensor_side_effect(*args, **kwargs):
             sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
             hp_idx = kwargs.get('hp_index', args[-2] if len(args) >= 8 else 1)
             mode = sensor_id.replace('_cycling_yesterday', '')
             mock_yesterday = Mock()
             mock_yesterday.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_yesterday"
+            mock_yesterday.unique_id = f"test_hp{hp_idx}_{mode}_cycling_yesterday"
             mock_yesterday._sensor_id = sensor_id
             return mock_yesterday
-        
+
         mock_yesterday_class.side_effect = yesterday_sensor_side_effect
-        
+
         def cycling_sensor_side_effect(*args, **kwargs):
             sensor_id = kwargs.get('sensor_id', args[2] if len(args) > 2 else 'unknown')
             hp_idx = kwargs.get('hp_index', args[-1] if len(args) >= 8 else 1)
             mode = sensor_id.replace('_cycling_total', '')
             mock_total = Mock()
             mock_total.entity_id = f"sensor.test_hp{hp_idx}_{mode}_cycling_total"
+            mock_total.unique_id = f"test_hp{hp_idx}_{mode}_cycling_total"
             mock_total._sensor_id = sensor_id
             return mock_total
-        
+
         mock_cycling_class.side_effect = cycling_sensor_side_effect
-        
+
         mock_regular_sensor = Mock()
         mock_regular_sensor.entity_id = "sensor.test_hp1_temperature"
+        mock_regular_sensor.unique_id = "test_hp1_temperature"
         mock_sensor_class.return_value = mock_regular_sensor
-        
+
         await async_setup_entry(mock_hass, mock_entry, mock_add_entities)
-        
+
         # This test verifies that the fix is working
         cycling_entities = mock_hass.data["lambda_heat_pumps"][mock_entry.entry_id]["cycling_entities"]
-        
-        # Count yesterday sensors
-        yesterday_count = sum(1 for entity_id in cycling_entities.keys() if "yesterday" in entity_id)
-        
+
+        # Count yesterday sensors (Schluessel = unique_id)
+        yesterday_count = sum(1 for unique_id in cycling_entities.keys() if "yesterday" in unique_id)
+
         # With the fix, we should have yesterday sensors in cycling_entities
         assert yesterday_count > 0, "Yesterday sensors should be present in cycling_entities after the fix"
-        
+
         # Verify specific yesterday sensor is there
-        assert "sensor.test_hp1_heating_cycling_yesterday" in cycling_entities
+        assert "test_hp1_heating_cycling_yesterday" in cycling_entities
 
 
 @pytest.mark.asyncio
@@ -729,13 +750,21 @@ async def test_cycling_offset_no_config(mock_entry, mock_coordinator):
 # call, so the same edge was re-detected every 2 s indefinitely.
 # ===========================================================================
 
-def _make_increment_hass(entity_id, fake_entity, state_value="0"):
-    """Return a minimal hass mock wired up for increment_cycling_counter tests."""
+def _make_increment_hass(entity_id, fake_entity, state_value="0", unique_id=None):
+    """Return a minimal hass mock wired up for increment_cycling_counter tests.
+
+    cycling_entities ist ueber unique_id geschluesselt (siehe sensor.py). Ohne expliziten
+    unique_id wird er aus entity_id abgeleitet (Praefix "sensor." entfernt) - passt fuer
+    alle Tests hier, da name_prefix="eu08l" bereits ASCII/lowercase ist und Test-entity_id/
+    unique_id sich nur um das "sensor."-Praefix unterscheiden.
+    """
+    if unique_id is None:
+        unique_id = entity_id.removeprefix("sensor.")
     hass = Mock()
     hass.data = {
         "lambda_heat_pumps": {
             "test_entry": {
-                "cycling_entities": {entity_id: fake_entity}
+                "cycling_entities": {unique_id: fake_entity}
             }
         }
     }
@@ -774,6 +803,9 @@ class TestIncrementCyclingCounterEntityLookupOrder:
 
         mock_registry = Mock()
         mock_registry.async_get = Mock(return_value=Mock())
+        # Registry-Lookup ueber unique_id soll hier "nicht gefunden" simulieren,
+        # damit auf die uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -821,6 +853,9 @@ class TestIncrementCyclingCounterEntityLookupOrder:
 
         mock_registry = Mock()
         mock_registry.async_get = Mock(return_value=Mock())
+        # Registry-Lookup ueber unique_id soll hier "nicht gefunden" simulieren,
+        # damit auf die uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -863,6 +898,9 @@ class TestIncrementCyclingCounterEntityLookupOrder:
 
         mock_registry = Mock()
         mock_registry.async_get = Mock(return_value=Mock())
+        # Registry-Lookup ueber unique_id soll hier "nicht gefunden" simulieren,
+        # damit auf die uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -882,6 +920,76 @@ class TestIncrementCyclingCounterEntityLookupOrder:
         assert any(v == 301 for v in received_values), (
             f"Expected 301 (HA state 300 + 1) but got {received_values}."
         )
+
+
+class TestIncrementCyclingCounterUniqueIdLookupIssue107:
+    """Regression tests for Issue #107: increment_cycling_counter() must resolve its
+    target entity via unique_id in the entity registry instead of trusting the
+    text-reconstructed entity_id from generate_sensor_names(). Before this fix, any
+    mismatch between the two (e.g. a device name with a special character, or a
+    manually renamed entity) caused the increment to be silently skipped - exactly
+    the symptom reported in Issue #107 (name "Lambda_EU10L").
+    """
+
+    @pytest.mark.asyncio
+    async def test_uses_registry_resolved_entity_id_not_reconstructed_text(self, mock_entry, mock_coordinator):
+        """The real, registered entity_id may differ from the text generate_sensor_names()
+        would construct. The registry-resolved entity_id must win.
+        """
+        from custom_components.lambda_heat_pumps.utils import increment_cycling_counter
+
+        received_values = []
+
+        class FakeCyclingEntity:
+            _cycling_value = 10
+            def set_cycling_value(self, value):
+                received_values.append(value)
+
+        # generate_sensor_names() would construct this...
+        reconstructed_entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+        # ...but the entity is actually registered under a different entity_id. unique_id
+        # never changes though - cycling_entities is keyed by it (see sensor.py), so the
+        # in-memory entity lookup is immune to this mismatch by construction.
+        real_entity_id = "sensor.custom_renamed_heating_cycling_total"
+        stable_unique_id = "eu08l_hp1_heating_cycling_total"
+
+        hass, _ = _make_increment_hass(
+            real_entity_id, FakeCyclingEntity(), state_value="10", unique_id=stable_unique_id
+        )
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+
+        def fake_async_get_entity_id(domain, platform, unique_id):
+            if unique_id.endswith("heating_cycling_total"):
+                return real_entity_id
+            return None
+
+        mock_registry.async_get_entity_id = Mock(side_effect=fake_async_get_entity_id)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils._get_coordinator",
+            return_value=None,
+        ):
+            await increment_cycling_counter(
+                hass=hass, mode="heating", hp_index=1,
+                name_prefix="eu08l", use_legacy_modbus_names=True,
+            )
+
+        assert any(v == 11 for v in received_values), (
+            f"Expected 11 (entity found via unique_id, _cycling_value=10 + 1) but got "
+            f"{received_values}. Regression: increment silently skipped because the "
+            "reconstructed entity_id text didn't match the real one."
+        )
+        # Sanity: the reconstructed (wrong) entity_id must never have been used to
+        # look up a fake entity - there is none registered under it in this test.
+        assert reconstructed_entity_id not in hass.data["lambda_heat_pumps"]["test_entry"]["cycling_entities"]
 
 
 class TestEdgeDetectionStateUpdate:
@@ -970,3 +1078,83 @@ class TestEdgeDetectionStateUpdate:
         assert not mock_increment.called, (
             "increment_cycling_counter fired without a mode transition."
         )
+
+class TestHandleResetIntervalMatching:
+    """Deckt alle Kombinationen von reset_interval/sensor_id-Suffix ab.
+
+    Haelt das Verhalten der frueheren fuenf einzelnen if/elif-Zweige fest, die zu
+    einer gemeinsamen Bedingung zusammengefasst wurden.
+    """
+
+    @staticmethod
+    def _make_sensor(mock_entry, mock_coordinator, sensor_id):
+        sensor = LambdaCyclingSensor(
+            hass=mock_coordinator.hass,
+            entry=mock_entry,
+            sensor_id=sensor_id,
+            name=sensor_id,
+            entity_id=f"sensor.test_{sensor_id}",
+            unique_id=f"test_{sensor_id}",
+            unit="cycles",
+            state_class="measurement",
+            device_class=None,
+            device_type="hp",
+            hp_index=1,
+        )
+        sensor.async_write_ha_state = Mock()
+        sensor._cycling_value = 50
+        return sensor
+
+    @pytest.mark.parametrize(
+        "sensor_id",
+        [
+            "heating_cycling_daily",
+            "heating_cycling_2h",
+            "heating_cycling_4h",
+            "heating_cycling_monthly",
+            "heating_cycling_yearly",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_matching_interval_resets(self, mock_entry, mock_coordinator, sensor_id):
+        sensor = self._make_sensor(mock_entry, mock_coordinator, sensor_id)
+        assert sensor._reset_interval == sensor_id.rsplit("_", 1)[1]
+
+        await sensor._handle_reset("test_entry")
+
+        assert sensor._cycling_value == 0
+        sensor.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "sensor_id", ["heating_cycling_total", "heating_cycling_yesterday"]
+    )
+    @pytest.mark.asyncio
+    async def test_total_and_yesterday_are_never_reset(
+        self, mock_entry, mock_coordinator, sensor_id
+    ):
+        sensor = self._make_sensor(mock_entry, mock_coordinator, sensor_id)
+
+        await sensor._handle_reset("test_entry")
+
+        assert sensor._cycling_value == 50
+        sensor.async_write_ha_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mismatched_suffix_does_not_reset(self, mock_entry, mock_coordinator):
+        """reset_interval passt nicht zum Suffix -> kein Reset (wie zuvor)."""
+        sensor = self._make_sensor(mock_entry, mock_coordinator, "heating_cycling_daily")
+        sensor._reset_interval = "2h"
+
+        await sensor._handle_reset("test_entry")
+
+        assert sensor._cycling_value == 50
+        sensor.async_write_ha_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_foreign_entry_id_is_ignored(self, mock_entry, mock_coordinator):
+        sensor = self._make_sensor(mock_entry, mock_coordinator, "heating_cycling_daily")
+
+        await sensor._handle_reset("wrong_entry")
+
+        assert sensor._cycling_value == 50
+        sensor.async_write_ha_state.assert_not_called()

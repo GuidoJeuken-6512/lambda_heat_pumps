@@ -55,6 +55,7 @@ from .utils import (
     get_entity_icon,
     normalize_name_prefix,
     restore_energy_period_state,
+    resolve_entity_id_by_unique_id,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
 from .const_mapping import HP_STATE  # noqa: F401
@@ -74,6 +75,11 @@ from .const_mapping import MAIN_AMBIENT_OPERATING_STATE  # noqa: F401
 from .const_mapping import MAIN_E_MANAGER_OPERATING_STATE  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
+
+# Reset-Intervalle der Cycling-Sensoren. Das Intervall ist zugleich das Suffix der
+# sensor_id (z.B. "heating_cycling_daily" mit reset_interval "daily") - nur bei
+# Uebereinstimmung wird der Zaehler auf 0 zurueckgesetzt.
+CYCLING_RESET_INTERVALS = ("daily", "2h", "4h", "monthly", "yearly")
 
 
 async def async_setup_entry(
@@ -350,7 +356,11 @@ async def async_setup_entry(
             )
 
             sensors.append(cycling_sensor)
-            cycling_entities[names["entity_id"]] = cycling_sensor
+            # Cache-Schluessel = unique_id, nicht entity_id: zu diesem Zeitpunkt ist die
+            # Entity noch nicht bei HA registriert, die reale entity_id kann bei bereits
+            # bestehenden Entities (z.B. unter aelterem Code angelegt oder manuell
+            # umbenannt) davon abweichen. unique_id ist stabil.
+            cycling_entities[names["unique_id"]] = cycling_sensor
             cycling_sensor_count += 1
 
     # --- Yesterday Cycling Sensors (echte Entities - speichern gestern Werte) ---
@@ -566,33 +576,24 @@ async def async_setup_entry(
         hass.data["lambda_heat_pumps"][entry.entry_id] = {}
     
     # Erweitere cycling_entities um alle neuen Sensor-Typen
+    # Cache-Schluessel = unique_id (stabil), die *_sensor_ids-Listen (entity_id-basiert)
+    # dienen hier nur noch zur Klassifikation "gehoert dieser Sensor zu Yesterday/Daily/
+    # etc.", nicht als Speicherschluessel - siehe Begruendung oben bei cycling_entities.
     all_cycling_entities = cycling_entities.copy()
-    
-    # Füge Yesterday-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in yesterday_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
-    # Füge Daily-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in daily_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
-    # Füge 2H-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in two_hour_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
-    # Füge 4H-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in four_hour_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
-    # Füge Monthly-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in monthly_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
+
+    # Yesterday-, Daily-, 2H-, 4H- und Monthly-Sensoren aufnehmen
+    for period_sensor_ids in (
+        yesterday_sensor_ids,
+        daily_sensor_ids,
+        two_hour_sensor_ids,
+        four_hour_sensor_ids,
+        monthly_sensor_ids,
+    ):
+        for sensor in sensors:
+            if hasattr(sensor, 'entity_id') and sensor.entity_id in period_sensor_ids:
+                all_cycling_entities[sensor.unique_id] = sensor
+
+
     hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = all_cycling_entities
     _LOGGER.info(
         "Total-Cycling-Sensoren erzeugt: %d, Entity-IDs: %s",
@@ -628,7 +629,12 @@ async def async_setup_entry(
                 sensor_id = f"{mode}_energy_{period}"
                 sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
                 if not sensor_template:
-                    _LOGGER.warning("Template not found for %s", sensor_id)
+                    # Erwartet, kein Fehler: ENERGY_CONSUMPTION_PERIODS ist modus-uebergreifend
+                    # (z.B. "hourly" existiert nur fuer heating), daher landen hier bei jedem
+                    # Setup auch Modus/Periode-Kombinationen ohne Template (z.B.
+                    # cooling_energy_hourly). Kein fehlender Sensor, nur DEBUG statt WARNING,
+                    # damit normale Nutzer das nicht als Fehler im Log sehen.
+                    _LOGGER.debug("Template not found for %s", sensor_id)
                     continue
                 
                 device_prefix = f"hp{hp_idx}"
@@ -705,6 +711,7 @@ async def async_setup_entry(
     # COP sensors (per HP, per mode, per period)
     # COP_MODES: heating, hot_water, cooling (ohne defrost)
     # COP_PERIODS: daily, monthly, yearly, total, hourly (hourly nur für heating)
+    cop_entity_registry = async_get_entity_registry(hass)
     for hp_idx in range(1, num_hps + 1):
         for mode in COP_MODES:
             for period in COP_PERIODS:
@@ -749,9 +756,23 @@ async def async_setup_entry(
                     translations=sensor_translations,
                 )
                 
-                thermal_entity_id = thermal_names["entity_id"]
-                electrical_entity_id = electrical_names["entity_id"]
-                
+                # Reale entity_id ueber unique_id in der Registry aufloesen, statt der
+                # frisch berechneten Text-Form zu vertrauen (gleiches Prinzip wie bei
+                # increment_energy_consumption_counter/increment_cycling_counter,
+                # siehe Issue #107): weicht die tatsaechlich registrierte entity_id der
+                # Quell-Sensoren ab (z.B. bei einem Geraet, das unter aelterem/fehler-
+                # haftem Code angelegt wurde), muss der COP-Sensor trotzdem den
+                # richtigen State finden. Fallback auf die Text-Form, falls die
+                # Quell-Entity (noch) nicht registriert ist - heilt sich selbst.
+                thermal_entity_id = resolve_entity_id_by_unique_id(
+                    hass, thermal_names["unique_id"], thermal_names["entity_id"],
+                    entity_registry=cop_entity_registry,
+                )
+                electrical_entity_id = resolve_entity_id_by_unique_id(
+                    hass, electrical_names["unique_id"], electrical_names["entity_id"],
+                    entity_registry=cop_entity_registry,
+                )
+
                 # Erstelle COP-Sensor
                 cop_sensor = LambdaCOPSensor(
                     hass,
@@ -782,10 +803,15 @@ async def async_setup_entry(
     async_add_entities(sensors, update_before_add=False)
     
     # Registriere Energy Consumption Entities in hass.data für direkten Zugriff
+    # Cache-Schluessel = unique_id, nicht entity_id: sensor.entity_id ist hier noch der
+    # zum Setup-Zeitpunkt frisch berechnete Wert (Entity ist noch nicht bei HA
+    # registriert). Bei bereits bestehenden Entities mit abweichender realer entity_id
+    # (aelterer/fehlerhafter Code, manuelle Umbenennung) wuerde ein entity_id-Lookup in
+    # increment_energy_consumption_counter() sonst leer laufen. unique_id ist stabil.
     energy_entities = {}
     for sensor in sensors:
         if isinstance(sensor, LambdaEnergyConsumptionSensor):
-            energy_entities[sensor.entity_id] = sensor
+            energy_entities[sensor.unique_id] = sensor
     
     # Speichere Energy Entities in hass.data
     if "energy_entities" not in coordinator_data:
@@ -1095,36 +1121,13 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         old_value = self._cycling_value if self._cycling_value is not None else 0
         new_value = 0
 
-        # Prüfe Periode basierend auf sensor_id und reset_interval
-        if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
+        # Zurückgesetzt wird nur, wenn das Reset-Intervall des Sensors zum Suffix seiner
+        # sensor_id passt. "total"/"yesterday" haben kein passendes Intervall und bleiben
+        # damit - wie bisher - unberührt.
+        if (
+            self._reset_interval in CYCLING_RESET_INTERVALS
+            and self._sensor_id.endswith(f"_{self._reset_interval}")
+        ):
             self._cycling_value = new_value
             self.async_write_ha_state()
             _LOGGER.info(

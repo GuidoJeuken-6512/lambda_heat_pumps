@@ -5,17 +5,27 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.const import STATE_UNKNOWN
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_component import async_update_entity
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.translation import async_get_translations
-from homeassistant.util import slugify as ha_slugify
+
+# Transliterations-Baustein, den homeassistant.util.slugify() intern selbst nutzt
+# (python-slugify -> unidecode, mit text_unidecode als Fallback). Kein neuer Dependency,
+# sondern Wiederverwendung derselben Bibliothek, auf die HA schon aufbaut - siehe
+# slugify_name_prefix_for_lookup() unten für den Grund, warum wir sie hier direkt statt
+# über homeassistant.util.slugify() nutzen.
+try:
+    import unidecode
+except ImportError:  # pragma: no cover - identischer Fallback wie im slugify-Package
+    import text_unidecode as unidecode
 
 from .const import (
     BASE_ADDRESSES,
@@ -726,10 +736,20 @@ def slugify_name_prefix_for_lookup(raw: str) -> str:
     unique_id oder andere persistierte Vergleichswerte (das würde bestehende
     unique_ids ändern und Entities verwaisen lassen).
     Für reine ASCII-Namen identisch zu normalize_name_prefix().
+
+    WICHTIG: Nutzt bewusst NICHT ha_slugify(raw, separator=...) direkt. HA's slugify()
+    behandelt jedes Trennzeichen (Leerzeichen, "_", "-", ".", Klammern) einheitlich und
+    kollabiert sie alle zum gewählten separator - das passt nicht zu
+    normalize_name_prefix(), die nur Leerzeichen entfernt und "_" unangetastet lässt
+    (Regression aus Issue #107: "Lambda_EU10L" wurde mit separator="" zu "lambdaeu10l"
+    statt "lambda_eu10l"; ein einfacher Wechsel auf separator="_" hätte stattdessen den
+    Leerzeichen-Fall gebrochen, z.B. "Lambda WP" -> "lambda_wp" statt "lambdawp").
+    Deshalb: nur die Unicode-Transliteration (Umlaute etc.) hier übernehmen, die
+    eigentliche Trennzeichen-Regel bleibt bei normalize_name_prefix().
     """
     if not raw or not isinstance(raw, str):
         return ""
-    return ha_slugify(raw, separator="")
+    return normalize_name_prefix(unidecode.unidecode(raw))
 
 
 def generate_sensor_names(
@@ -798,6 +818,137 @@ def generate_sensor_names(
             unique_id = f"{device_prefix}_{sensor_id}"
 
     return {"name": display_name, "entity_id": entity_id, "unique_id": unique_id}
+
+
+def resolve_entity_id_by_unique_id(
+    hass: HomeAssistant,
+    unique_id: str,
+    fallback_entity_id: str,
+    domain: str = "sensor",
+    entity_registry=None,
+) -> str:
+    """Löst eine entity_id robust über die unique_id in der Entity Registry auf.
+
+    Die entity_id wird NICHT aus dem Gerätenamen rekonstruiert (das schlägt bei
+    Sonderzeichen im Gerätenamen fehl, siehe Issue #107 - generate_sensor_names() liefert
+    für Anzeige-/Vergleichszwecke ohnehin nur eine von mehreren möglichen entity_id-Formen,
+    während die tatsächlich registrierte je nach Anlagezeitpunkt bzw. nach manueller
+    Umbenennung durch den Nutzer abweichen kann), sondern über die stabile unique_id
+    nachgeschlagen (wird seit jeher mit normalize_name_prefix() gebildet, unabhängig von
+    Sonderzeichen).
+
+    Fällt auf fallback_entity_id zurück, wenn die Entity (noch) nicht in der Registry
+    steht - z.B. im ersten Zyklus nach dem Start; das heilt sich im nächsten Zyklus selbst,
+    sobald die Entity registriert ist.
+    """
+    try:
+        registry = entity_registry or async_get_entity_registry(hass)
+        resolved = registry.async_get_entity_id(domain, DOMAIN, unique_id)
+        if resolved:
+            return resolved
+        _LOGGER.debug(
+            "unique_id '%s' (noch) nicht in der Entity Registry, verwende Fallback %s",
+            unique_id, fallback_entity_id,
+        )
+    except Exception as ex:  # pragma: no cover - defensiv, Registry darf nie den Poll killen
+        _LOGGER.debug(
+            "Registry-Lookup für unique_id '%s' fehlgeschlagen (%s), verwende Fallback %s",
+            unique_id, ex, fallback_entity_id,
+        )
+    return fallback_entity_id
+
+
+def resolve_sensor_entity_id(
+    hass: HomeAssistant,
+    device_prefix: str,
+    sensor_id: str,
+    name_prefix: str,
+    use_legacy_modbus_names: bool,
+    domain: str = "sensor",
+    unique_id_suffix: str = "",
+    entity_registry=None,
+) -> str:
+    """Ermittelt die reale entity_id eines Lambda-Sensors über die Entity Registry.
+
+    Bündelt das wiederkehrende Muster "Namen erzeugen -> Domain anpassen -> über die
+    unique_id in der Registry auflösen" an einer Stelle (Issue #107). Der aus
+    generate_sensor_names() erzeugte Name dient dabei nur noch als Fallback, falls die
+    Entity (noch) nicht registriert ist.
+
+    Args:
+        device_prefix: z.B. "hp1", "hc2"; für General Sensors identisch zu sensor_id
+        sensor_id: z.B. "operating_state", "eco_temp_reduction"
+        name_prefix: Namenspräfix aus der Konfiguration (bereits normalisiert)
+        use_legacy_modbus_names: Legacy-Namensschema aktiv?
+        domain: Ziel-Domain der gesuchten Entity ("sensor", "number", ...)
+        unique_id_suffix: Suffix, das die Ziel-Plattform an die unique_id anhängt
+            (number.py hängt z.B. "_number" an)
+        entity_registry: optional vorhandene Registry-Instanz (spart Lookups)
+    """
+    names = generate_sensor_names(
+        device_prefix, sensor_id, sensor_id, name_prefix, use_legacy_modbus_names
+    )
+    fallback_entity_id = names["entity_id"]
+    if domain != "sensor":
+        fallback_entity_id = f"{domain}.{fallback_entity_id.split('.', 1)[1]}"
+
+    return resolve_entity_id_by_unique_id(
+        hass,
+        f"{names['unique_id']}{unique_id_suffix}",
+        fallback_entity_id,
+        domain=domain,
+        entity_registry=entity_registry,
+    )
+
+
+def resolve_template_entity_ids(
+    hass: HomeAssistant,
+    template_str: str,
+    name_prefix: str,
+    entity_registry=None,
+) -> str:
+    """Ersetzt in einem Template textuell konstruierte entity_ids durch die registrierten.
+
+    Template-Strings referenzieren Nachbar-Entities über states('<domain>.<object_id>'),
+    wobei die object_id aus dem Gerätenamen zusammengesetzt wird. Weicht die real
+    registrierte entity_id davon ab (Sonderzeichen im Namen, Anlage unter einer älteren
+    Version, manuelle Umbenennung), liefert das Template dauerhaft den Fallback-Wert -
+    siehe Issue #107.
+
+    Die unique_id wird aus der object_id abgeleitet (unique_id nutzt den rohen
+    Kleinbuchstaben-Präfix, entity_id den ASCII-Slug) und über die Registry aufgelöst.
+    Schlägt die Auflösung fehl, bleibt die Referenz unverändert - das Verhalten ist
+    dann exakt wie bisher.
+    """
+    if not template_str or not name_prefix:
+        return template_str
+
+    name_prefix_lc = name_prefix.lower()
+    name_prefix_slug = slugify_name_prefix_for_lookup(name_prefix)
+    if not name_prefix_slug:
+        return template_str
+
+    def _replace(match: "re.Match[str]") -> str:
+        entity_id = match.group(1)
+        if "." not in entity_id:
+            return match.group(0)
+        domain, object_id = entity_id.split(".", 1)
+        if not object_id.startswith(f"{name_prefix_slug}_"):
+            # Kein Legacy-Präfix (oder fremde Entity) - unique_id nicht ableitbar
+            return match.group(0)
+
+        unique_id = f"{name_prefix_lc}_{object_id[len(name_prefix_slug) + 1:]}"
+        if domain == "number":
+            unique_id = f"{unique_id}_number"
+
+        resolved = resolve_entity_id_by_unique_id(
+            hass, unique_id, entity_id, domain=domain, entity_registry=entity_registry
+        )
+        if resolved == entity_id:
+            return match.group(0)
+        return match.group(0).replace(entity_id, resolved)
+
+    return re.sub(r"states\(['\"]([^'\"]+)['\"]\)", _replace, template_str)
 
 
 def get_entity_icon(spec: dict[str, Any] | None, default_icon: str | None = None) -> str | None:
@@ -877,6 +1028,8 @@ async def increment_cycling_counter(
     if mode == "compressor_start":
         sensor_types.append(f"{mode}_cycling_monthly")
     
+    entity_registry = async_get_entity_registry(hass)
+
     for sensor_id in sensor_types:
         names = generate_sensor_names(
             device_prefix,
@@ -885,10 +1038,11 @@ async def increment_cycling_counter(
             name_prefix,
             use_legacy_modbus_names,
         )
-        entity_id = names["entity_id"]
+        entity_id = resolve_entity_id_by_unique_id(
+            hass, names["unique_id"], names["entity_id"], entity_registry=entity_registry
+        )
 
         # Check if entity is already registered
-        entity_registry = async_get_entity_registry(hass)
         entity_entry = entity_registry.async_get(entity_id)
         if entity_entry is None:
             # Dynamische Meldungsunterdrückung
@@ -945,12 +1099,14 @@ async def increment_cycling_counter(
                 del coordinator._cycling_warnings[state_warning_key]
 
         # Versuche die Entity-Instanz zu finden
+        # WICHTIG: Cache-Lookup ueber unique_id, nicht entity_id - siehe Begruendung in
+        # increment_energy_consumption_counter() weiter oben in dieser Datei.
         cycling_entity = None
         try:
             # Suche in der neuen Cycling-Entities-Struktur
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
                 if isinstance(comp_data, dict) and "cycling_entities" in comp_data:
-                    cycling_entity = comp_data["cycling_entities"].get(entity_id)
+                    cycling_entity = comp_data["cycling_entities"].get(names["unique_id"])
                     if cycling_entity:
                         break
         except Exception as e:
@@ -1471,10 +1627,12 @@ async def increment_energy_consumption_counter(
         names = generate_sensor_names(
             device_prefix, sensor_name, sensor_id, name_prefix, use_legacy_modbus_names
         )
-        entity_id = names["entity_id"]
+        entity_registry = async_get_entity_registry(hass)
+        entity_id = resolve_entity_id_by_unique_id(
+            hass, names["unique_id"], names["entity_id"], entity_registry=entity_registry
+        )
 
         # Prüfe ob Entity registriert ist
-        entity_registry = async_get_entity_registry(hass)
         entity_entry = entity_registry.async_get(entity_id)
         if entity_entry is None:
             coordinator = _get_coordinator(hass)
@@ -1500,11 +1658,18 @@ async def increment_energy_consumption_counter(
             del coordinator._energy_warnings[entity_id]
 
         # Finde die Entity-Instanz ZUERST (vor der current_value Berechnung)
+        # WICHTIG: Cache-Lookup ueber unique_id, nicht entity_id. sensor.py befuellt
+        # energy_entities[] mit der zum Setup-Zeitpunkt frisch berechneten entity_id -
+        # bevor die Entity bei HA registriert wurde. Weicht die tatsaechlich registrierte
+        # entity_id davon ab (z.B. eine Entity, die unter aelterem/fehlerhaftem Code
+        # angelegt wurde, oder vom Nutzer manuell umbenannt), faende ein Lookup ueber
+        # die (oben per Registry aufgeloeste) entity_id hier nichts - obwohl die Entity
+        # existiert. unique_id aendert sich nie und ist in beiden Faellen identisch.
         energy_entity = None
         try:
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
                 if isinstance(comp_data, dict) and "energy_entities" in comp_data:
-                    energy_entity = comp_data["energy_entities"].get(entity_id)
+                    energy_entity = comp_data["energy_entities"].get(names["unique_id"])
                     if energy_entity:
                         break
         except Exception as e:

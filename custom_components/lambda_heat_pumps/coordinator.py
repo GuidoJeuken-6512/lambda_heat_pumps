@@ -17,7 +17,6 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.event import async_track_time_interval, async_call_later
 from .const import (
-    DOMAIN,
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
     BOIL_SENSOR_TEMPLATES,
@@ -43,6 +42,7 @@ from .utils import (
     normalize_name_prefix,
     slugify_name_prefix_for_lookup,
     generate_sensor_names,
+    resolve_entity_id_by_unique_id,
     detect_sensor_change,
     get_stored_sensor_id,
     store_sensor_id,
@@ -387,8 +387,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             comp = self.hass.data.get("lambda_heat_pumps", {}).get(self.entry.entry_id, {})
             entities = comp.get("energy_entities", {})
-            for entity_id, ent in entities.items():
+            # energy_entities ist ueber unique_id geschluesselt (stabil, siehe
+            # increment_energy_consumption_counter()); fuer die Persist-Datei wird aber
+            # die reale entity_id gebraucht (get_energy_sensor_persisted_state() wird mit
+            # self.entity_id aufgerufen) - die kommt direkt von der Entity-Instanz.
+            for _unique_id, ent in entities.items():
                 if not hasattr(ent, "_energy_value"):
+                    continue
+                entity_id = getattr(ent, "entity_id", None)
+                if not entity_id:
                     continue
                 state_val = ent.native_value
                 if state_val is None:
@@ -497,8 +504,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if hp_key in self._energy_sensor_configs:
                 current_sensor_id = self._energy_sensor_configs[hp_key].get("sensor_entity_id")
             if not current_sensor_id:
-                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-                current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+                current_sensor_id = self._default_internal_energy_entity_id(
+                    hp_idx, "electrical"
+                )
             stored_sensor_id = get_stored_sensor_id(persist_data, hp_idx)
             if detect_sensor_change(stored_sensor_id, current_sensor_id):
                 corrected_last[hp_key] = None
@@ -521,8 +529,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
             if hp_key in self._energy_sensor_configs:
                 current_thermal_id = self._energy_sensor_configs[hp_key].get("thermal_sensor_entity_id")
             if not current_thermal_id:
-                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-                current_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+                current_thermal_id = self._default_internal_energy_entity_id(
+                    hp_idx, "thermal"
+                )
             stored_thermal_id = get_stored_thermal_sensor_id(persist_data, hp_idx)
             if detect_sensor_change(stored_thermal_id, current_thermal_id):
                 corrected_thermal_last[hp_key] = None
@@ -587,8 +596,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 
                 # Falls kein Custom-Sensor, verwende Default-Sensor (lowercase wie entity_id)
                 if not current_sensor_id:
-                    name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-                    current_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
+                    current_sensor_id = self._default_internal_energy_entity_id(
+                        hp_idx, "electrical"
+                    )
                     _LOGGER.info("SENSOR-CHANGE-DETECTION: %s - Default-Sensor: %s", hp_key, current_sensor_id)
                 
                 _LOGGER.info("SENSOR-CHANGE-DETECTION: Prüfe %s - aktueller Sensor: %s", hp_key, current_sensor_id)
@@ -615,8 +625,9 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                 if hp_key in self._energy_sensor_configs:
                     current_thermal_id = self._energy_sensor_configs[hp_key].get("thermal_sensor_entity_id")
                 if not current_thermal_id:
-                    name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-                    current_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+                    current_thermal_id = self._default_internal_energy_entity_id(
+                        hp_idx, "thermal"
+                    )
                 stored_thermal_id = get_stored_thermal_sensor_id(persist_data, hp_idx)
                 if detect_sensor_change(stored_thermal_id, current_thermal_id):
                     _LOGGER.info(
@@ -654,9 +665,8 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         hp_key = f"hp{hp_idx}"
         
         # Prüfe ob es ein Default-Sensor ist (interner Modbus-Sensor)
-        name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-        default_sensor_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_power_consumption_accumulated"
-        
+        default_sensor_id = self._default_internal_energy_entity_id(hp_idx, "electrical")
+
         is_default_sensor = (new_sensor_id == default_sensor_id)
         _LOGGER.info("SENSOR-CHANGE: Erwarteter Default-Sensor: %s", default_sensor_id)
         _LOGGER.info("SENSOR-CHANGE: Ist Default-Sensor: %s", is_default_sensor)
@@ -723,8 +733,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         """Behandle Thermik-Sensor-Wechsel (analog zu _handle_sensor_change)."""
         _LOGGER.info("SENSOR-CHANGE: === THERMIK-SENSOR-WECHSEL HP%s === Neuer Sensor: %s", hp_idx, new_sensor_id)
         hp_key = f"hp{hp_idx}"
-        name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-        default_thermal_id = f"sensor.{name_prefix}_hp{hp_idx}_compressor_thermal_energy_output_accumulated"
+        default_thermal_id = self._default_internal_energy_entity_id(hp_idx, "thermal")
         is_default = new_sensor_id == default_thermal_id
         if is_default:
             db_state = self.hass.states.get(new_sensor_id)
@@ -2070,6 +2079,22 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as ex:
             _LOGGER.error("Error tracking energy consumption for HP%s: %s", hp_idx, ex)
 
+    def _default_internal_energy_entity_id(self, hp_idx, sensor_type):
+        """Namensbasierte entity_id unseres eigenen akkumulierten Energie-Sensors.
+
+        Bewusst OHNE Registry-Auflösung: dieser Wert wird mit der persistierten
+        sensor_id verglichen (detect_sensor_change) und wieder persistiert. Würde er
+        über die Registry aufgelöst, meldeten Bestandsanlagen, deren real registrierte
+        entity_id vom Namen abweicht, beim ersten Start nach dem Update einen
+        Sensor-Wechsel und setzten damit die Energie-Basislinie neu.
+
+        Für den Lesepfad (dort ist die reale entity_id nötig) gibt es
+        _resolve_internal_energy_sensor_entity_id().
+        """
+        name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
+        sensor_id = INTERNAL_ENERGY_SENSOR_IDS[sensor_type]
+        return f"sensor.{name_prefix}_hp{hp_idx}_{sensor_id}"
+
     def _resolve_internal_energy_sensor_entity_id(
         self, hp_idx, sensor_type, default_sensor_id_template
     ):
@@ -2086,36 +2111,34 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         Fällt auf die bisherige namensbasierte Konstruktion zurück, wenn die Entity
         (noch) nicht in der Registry steht - z.B. im ersten Zyklus nach dem Start.
         """
-        sensor_id = INTERNAL_ENERGY_SENSOR_IDS.get(sensor_type)
-        if sensor_id:
-            try:
-                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-                names = generate_sensor_names(
-                    f"hp{hp_idx}",
-                    sensor_id,  # display name irrelevant für die unique_id
-                    sensor_id,
-                    name_prefix,
-                    self._use_legacy_names,
-                )
-                registry = self._entity_registry or async_get_entity_registry(self.hass)
-                resolved = registry.async_get_entity_id(
-                    "sensor", DOMAIN, names["unique_id"]
-                )
-                if resolved:
-                    return resolved
-                _LOGGER.debug(
-                    "[Energy] HP%s %s: unique_id '%s' (noch) nicht in der Entity Registry, "
-                    "verwende namensbasierten Fallback",
-                    hp_idx, sensor_type, names["unique_id"],
-                )
-            except Exception as ex:  # pragma: no cover - defensiv, Registry darf nie den Poll killen
-                _LOGGER.debug(
-                    "[Energy] HP%s %s: Registry-Lookup fehlgeschlagen (%s), verwende Fallback",
-                    hp_idx, sensor_type, ex,
-                )
-
         name_prefix = slugify_name_prefix_for_lookup(self.entry.data.get("name", "")) or "eu08l"
-        return default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
+        fallback_entity_id = default_sensor_id_template.format(
+            name_prefix=name_prefix, hp_idx=hp_idx
+        )
+
+        sensor_id = INTERNAL_ENERGY_SENSOR_IDS.get(sensor_type)
+        if not sensor_id:
+            return fallback_entity_id
+
+        try:
+            unique_id_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
+            names = generate_sensor_names(
+                f"hp{hp_idx}",
+                sensor_id,  # display name irrelevant für die unique_id
+                sensor_id,
+                unique_id_prefix,
+                self._use_legacy_names,
+            )
+            registry = self._entity_registry or async_get_entity_registry(self.hass)
+            return resolve_entity_id_by_unique_id(
+                self.hass, names["unique_id"], fallback_entity_id, entity_registry=registry
+            )
+        except Exception as ex:  # pragma: no cover - defensiv, Registry darf nie den Poll killen
+            _LOGGER.debug(
+                "[Energy] HP%s %s: Registry-Lookup fehlgeschlagen (%s), verwende Fallback",
+                hp_idx, sensor_type, ex,
+            )
+            return fallback_entity_id
 
     async def _track_hp_energy_type_consumption(
         self, hp_idx, current_state, data, sensor_type, default_sensor_id_template,

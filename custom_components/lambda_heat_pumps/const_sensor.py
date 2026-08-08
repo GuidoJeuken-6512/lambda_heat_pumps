@@ -2,6 +2,13 @@ from __future__ import annotations
 
 """Sensor and device templates for Lambda Heat Pumps integration."""
 
+# Rohwert 65535 (0xFFFF, entspricht -1) bedeutet bei einigen Registern "keine
+# Anforderung"/"nicht verfuegbar" statt eines gueltigen Messwerts. Opt-in pro Sensor
+# ueber das Feld "sentinel_values", ausgewertet von utils.is_sentinel_value().
+# Wird ausschliesslich lesend verwendet (Pruefung "raw_value in ..."), daher koennen
+# sich alle Templates dieselbe Liste teilen.
+SENTINEL_NO_REQUEST = [65535]
+
 # Sensor Templates
 
 # Heat Pump Sensors
@@ -725,7 +732,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "txt_mapping": True,
         # -1 (0xFFFF) = "keine Anforderung" - Sentinel nur fuer dieses Anforderungsregister
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
     },
     "request_flow_line_temp_setpoint": {
         "relative_address": 6,
@@ -739,7 +746,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
         "device_class": "temperature",
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
     },
     "request_return_line_temp_setpoint": {
         "relative_address": 7,
@@ -753,7 +760,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
         "device_class": "temperature",
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
     },
     "request_heat_sink_temp_diff_setpoint": {
         "relative_address": 8,
@@ -766,7 +773,7 @@ BUFF_SENSOR_TEMPLATES = {
         "device_type": "buff",
         "writeable": False,
         "state_class": "measurement",
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
     },
     "modbus_request_heating_capacity": {
         "relative_address": 9,
@@ -780,7 +787,7 @@ BUFF_SENSOR_TEMPLATES = {
         "writeable": False,
         "state_class": "measurement",
         "device_class": "power",
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
     },
     "maximum_buffer_temp": {
         "relative_address": 50,
@@ -993,7 +1000,7 @@ HC_SENSOR_TEMPLATES = {
         "writeable": True,
         "txt_mapping": True,
         # -1 (0xFFFF) = "keine Anforderung" - Sentinel nur fuer dieses Anforderungsregister
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
     },
     "flow_line_temperature_setpoint": {
         "relative_address": 7,
@@ -1211,7 +1218,7 @@ SENSOR_TYPES = {
         # 0xFFFF (-1) = -300°C ist kein gueltiger Messwert, sondern "kein externer
         # Sensor eingespeist" - opt-in, da -1 bei anderen Sensoren (z.B.
         # Temperatur-Offsets) ein gueltiger Wert sein kann.
-        "sentinel_values": [65535],
+        "sentinel_values": SENTINEL_NO_REQUEST,
         "device_type": "main",
         "writeable": False,
         "state_class": "measurement",
