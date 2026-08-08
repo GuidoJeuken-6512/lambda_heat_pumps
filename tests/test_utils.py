@@ -22,6 +22,8 @@ from custom_components.lambda_heat_pumps.utils import (
     load_sensor_translations,
     restore_energy_period_state,
     resolve_entity_id_by_unique_id,
+    resolve_sensor_entity_id,
+    resolve_template_entity_ids,
     store_thermal_sensor_id,
     to_signed_16bit,
     to_signed_32bit,
@@ -887,6 +889,158 @@ class TestResolveEntityIdByUniqueId:
 
         mock_get_registry.assert_called_once_with(hass)
         assert result == "sensor.resolved"
+
+
+class TestResolveSensorEntityId:
+    """Tests für resolve_sensor_entity_id() - zentraler Helper (Issue #107).
+
+    Bündelt "Namen erzeugen -> Domain anpassen -> über unique_id auflösen".
+    """
+
+    def test_resolves_sensor_via_registry(self):
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(
+            return_value="sensor.lambdaeu10l_hc2_operating_state"
+        )
+
+        result = resolve_sensor_entity_id(
+            hass, "hc2", "operating_state", "lambda_eu10l", True,
+            entity_registry=registry,
+        )
+
+        assert result == "sensor.lambdaeu10l_hc2_operating_state"
+        registry.async_get_entity_id.assert_called_once_with(
+            "sensor", "lambda_heat_pumps", "lambda_eu10l_hc2_operating_state"
+        )
+
+    def test_number_domain_uses_number_suffix_and_domain(self):
+        """number.py hängt '_number' an die unique_id an - muss berücksichtigt werden."""
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(
+            return_value="number.lambdaeu10l_hc2_eco_temp_reduction"
+        )
+
+        result = resolve_sensor_entity_id(
+            hass, "hc2", "eco_temp_reduction", "lambda_eu10l", True,
+            domain="number", unique_id_suffix="_number", entity_registry=registry,
+        )
+
+        assert result == "number.lambdaeu10l_hc2_eco_temp_reduction"
+        registry.async_get_entity_id.assert_called_once_with(
+            "number", "lambda_heat_pumps", "lambda_eu10l_hc2_eco_temp_reduction_number"
+        )
+
+    def test_falls_back_to_generated_name_with_correct_domain(self):
+        """Ohne Registry-Treffer bleibt das bisherige Verhalten exakt erhalten."""
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=None)
+
+        assert resolve_sensor_entity_id(
+            hass, "hc2", "operating_state", "lambda_eu10l", True,
+            entity_registry=registry,
+        ) == "sensor.lambda_eu10l_hc2_operating_state"
+
+        assert resolve_sensor_entity_id(
+            hass, "hc2", "eco_temp_reduction", "lambda_eu10l", True,
+            domain="number", unique_id_suffix="_number", entity_registry=registry,
+        ) == "number.lambda_eu10l_hc2_eco_temp_reduction"
+
+    def test_general_sensor_without_device_prefix(self):
+        """General Sensors: device_prefix == sensor_id, kein doppeltes Präfix."""
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=None)
+
+        result = resolve_sensor_entity_id(
+            hass,
+            "ambient_temperature_calculated",
+            "ambient_temperature_calculated",
+            "lambda_eu10l",
+            True,
+            entity_registry=registry,
+        )
+
+        assert result == "sensor.lambda_eu10l_ambient_temperature_calculated"
+
+
+class TestResolveTemplateEntityIds:
+    """Tests für resolve_template_entity_ids() - Issue #107 für Template-Strings."""
+
+    TEMPLATE = (
+        "{% set thermal = states('sensor.lambda_eu10l_hp2_compressor_thermal_energy_output_accumulated') | float(0) %}"
+        "{% set power = states('sensor.lambda_eu10l_hp2_compressor_power_consumption_accumulated') | float(1) %}"
+        "{{ (thermal / power) | round(2) if power > 0 else 0 }}"
+    )
+
+    def test_replaces_references_with_registered_entity_ids(self):
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(
+            side_effect=lambda domain, platform, unique_id: (
+                f"{domain}.lambdaeu10l_{unique_id[len('lambda_eu10l_'):]}"
+            )
+        )
+
+        result = resolve_template_entity_ids(
+            hass, self.TEMPLATE, "lambda_eu10l", entity_registry=registry
+        )
+
+        assert "sensor.lambdaeu10l_hp2_compressor_thermal_energy_output_accumulated" in result
+        assert "sensor.lambdaeu10l_hp2_compressor_power_consumption_accumulated" in result
+        assert "sensor.lambda_eu10l_hp2_compressor" not in result
+        # Restliches Template bleibt unangetastet
+        assert "| round(2) if power > 0 else 0" in result
+
+    def test_template_unchanged_when_registry_has_no_match(self):
+        """Kein Treffer -> Template exakt wie bisher (kein Verhaltenswechsel)."""
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=None)
+
+        result = resolve_template_entity_ids(
+            hass, self.TEMPLATE, "lambda_eu10l", entity_registry=registry
+        )
+
+        assert result == self.TEMPLATE
+
+    def test_number_domain_reference_gets_number_suffix(self):
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value="number.real_id")
+
+        result = resolve_template_entity_ids(
+            hass,
+            "{% set x = states('number.lambda_eu10l_hc2_eco_temp_reduction') %}",
+            "lambda_eu10l",
+            entity_registry=registry,
+        )
+
+        assert "number.real_id" in result
+        registry.async_get_entity_id.assert_called_once_with(
+            "number", "lambda_heat_pumps", "lambda_eu10l_hc2_eco_temp_reduction_number"
+        )
+
+    def test_foreign_entities_are_left_alone(self):
+        """Entities ohne unser Namenspräfix werden nicht angefasst."""
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value="sensor.should_not_be_used")
+
+        template = "{% set x = states('sensor.some_other_integration_value') %}"
+        result = resolve_template_entity_ids(
+            hass, template, "lambda_eu10l", entity_registry=registry
+        )
+
+        assert result == template
+        registry.async_get_entity_id.assert_not_called()
+
+    def test_empty_inputs_are_safe(self):
+        hass = Mock()
+        assert resolve_template_entity_ids(hass, "", "lambda_eu10l") == ""
+        assert resolve_template_entity_ids(hass, "abc", "") == "abc"
 
 
 def test_get_coordinator():

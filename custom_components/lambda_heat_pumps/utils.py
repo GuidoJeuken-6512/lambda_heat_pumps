@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import yaml
 from datetime import datetime
 from pathlib import Path
@@ -855,6 +856,99 @@ def resolve_entity_id_by_unique_id(
             unique_id, ex, fallback_entity_id,
         )
     return fallback_entity_id
+
+
+def resolve_sensor_entity_id(
+    hass: HomeAssistant,
+    device_prefix: str,
+    sensor_id: str,
+    name_prefix: str,
+    use_legacy_modbus_names: bool,
+    domain: str = "sensor",
+    unique_id_suffix: str = "",
+    entity_registry=None,
+) -> str:
+    """Ermittelt die reale entity_id eines Lambda-Sensors über die Entity Registry.
+
+    Bündelt das wiederkehrende Muster "Namen erzeugen -> Domain anpassen -> über die
+    unique_id in der Registry auflösen" an einer Stelle (Issue #107). Der aus
+    generate_sensor_names() erzeugte Name dient dabei nur noch als Fallback, falls die
+    Entity (noch) nicht registriert ist.
+
+    Args:
+        device_prefix: z.B. "hp1", "hc2"; für General Sensors identisch zu sensor_id
+        sensor_id: z.B. "operating_state", "eco_temp_reduction"
+        name_prefix: Namenspräfix aus der Konfiguration (bereits normalisiert)
+        use_legacy_modbus_names: Legacy-Namensschema aktiv?
+        domain: Ziel-Domain der gesuchten Entity ("sensor", "number", ...)
+        unique_id_suffix: Suffix, das die Ziel-Plattform an die unique_id anhängt
+            (number.py hängt z.B. "_number" an)
+        entity_registry: optional vorhandene Registry-Instanz (spart Lookups)
+    """
+    names = generate_sensor_names(
+        device_prefix, sensor_id, sensor_id, name_prefix, use_legacy_modbus_names
+    )
+    fallback_entity_id = names["entity_id"]
+    if domain != "sensor":
+        fallback_entity_id = f"{domain}.{fallback_entity_id.split('.', 1)[1]}"
+
+    return resolve_entity_id_by_unique_id(
+        hass,
+        f"{names['unique_id']}{unique_id_suffix}",
+        fallback_entity_id,
+        domain=domain,
+        entity_registry=entity_registry,
+    )
+
+
+def resolve_template_entity_ids(
+    hass: HomeAssistant,
+    template_str: str,
+    name_prefix: str,
+    entity_registry=None,
+) -> str:
+    """Ersetzt in einem Template textuell konstruierte entity_ids durch die registrierten.
+
+    Template-Strings referenzieren Nachbar-Entities über states('<domain>.<object_id>'),
+    wobei die object_id aus dem Gerätenamen zusammengesetzt wird. Weicht die real
+    registrierte entity_id davon ab (Sonderzeichen im Namen, Anlage unter einer älteren
+    Version, manuelle Umbenennung), liefert das Template dauerhaft den Fallback-Wert -
+    siehe Issue #107.
+
+    Die unique_id wird aus der object_id abgeleitet (unique_id nutzt den rohen
+    Kleinbuchstaben-Präfix, entity_id den ASCII-Slug) und über die Registry aufgelöst.
+    Schlägt die Auflösung fehl, bleibt die Referenz unverändert - das Verhalten ist
+    dann exakt wie bisher.
+    """
+    if not template_str or not name_prefix:
+        return template_str
+
+    name_prefix_lc = name_prefix.lower()
+    name_prefix_slug = slugify_name_prefix_for_lookup(name_prefix)
+    if not name_prefix_slug:
+        return template_str
+
+    def _replace(match: "re.Match[str]") -> str:
+        entity_id = match.group(1)
+        if "." not in entity_id:
+            return match.group(0)
+        domain, object_id = entity_id.split(".", 1)
+        if not object_id.startswith(f"{name_prefix_slug}_"):
+            # Kein Legacy-Präfix (oder fremde Entity) - unique_id nicht ableitbar
+            return match.group(0)
+
+        unique_id = f"{name_prefix_lc}_{object_id[len(name_prefix_slug) + 1:]}"
+        if domain == "number":
+            unique_id = f"{unique_id}_number"
+
+        resolved = resolve_entity_id_by_unique_id(
+            hass, unique_id, entity_id, domain=domain, entity_registry=entity_registry
+        )
+        if resolved == entity_id:
+            return match.group(0)
+        return match.group(0).replace(entity_id, resolved)
+
+    return re.sub(r"states\(['\"]([^'\"]+)['\"]\)", _replace, template_str)
 
 
 def get_entity_icon(spec: dict[str, Any] | None, default_icon: str | None = None) -> str | None:

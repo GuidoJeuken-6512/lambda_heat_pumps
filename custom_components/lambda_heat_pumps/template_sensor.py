@@ -37,7 +37,10 @@ from .utils import (
     get_firmware_version_int,
     get_compatible_sensors,
     normalize_name_prefix,
+    resolve_sensor_entity_id,
+    resolve_template_entity_ids,
 )
+from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,6 +74,8 @@ async def async_setup_entry(
     name_prefix = normalize_name_prefix(entry.data.get("name", ""))
     room_thermostat_enabled = entry.options.get("room_thermostat_control", False)
     sensor_translations = await load_sensor_translations(hass)
+    # Einmalig holen: alle entity_id-Auflösungen unten nutzen dieselbe Registry-Instanz
+    entity_registry = async_get_entity_registry(hass)
 
     # Lade cycling_offsets aus der Konfiguration
     lambda_config = await load_lambda_config(hass)
@@ -151,12 +156,15 @@ async def async_setup_entry(
                         format_kwargs.update(sensor_info["format_params"])
                     if is_heating_curve_sensor:
                         ambient_suffix = "ambient_temperature_calculated"
-                        if use_legacy_modbus_names and name_prefix:
-                            ambient_sensor_entity = (
-                                f"sensor.{name_prefix}_{ambient_suffix}"
-                            )
-                        else:
-                            ambient_sensor_entity = f"sensor.{ambient_suffix}"
+                        # Registry-Auflösung statt Namens-Rekonstruktion (Issue #107)
+                        ambient_sensor_entity = resolve_sensor_entity_id(
+                            hass,
+                            ambient_suffix,
+                            ambient_suffix,
+                            name_prefix,
+                            use_legacy_modbus_names,
+                            entity_registry=entity_registry,
+                        )
                         format_kwargs["ambient_sensor"] = ambient_sensor_entity
 
                         number_entities = {}
@@ -167,42 +175,32 @@ async def async_setup_entry(
                             "heating_curve_warm_outside_temp",
                         ]:
                             number_spec = HC_HEATING_CURVE_NUMBER_CONFIG[key]
-                            number_names = generate_sensor_names(
-                                device_prefix=device_prefix,
-                                sensor_name=number_spec["name"],
-                                sensor_id=key,
-                                name_prefix=name_prefix,
-                                use_legacy_modbus_names=use_legacy_modbus_names,
-                                translations=sensor_translations,
+                            # Registry-Auflösung statt Namens-Rekonstruktion (Issue #107);
+                            # number.py hängt "_number" an die unique_id an.
+                            number_entities[key] = resolve_sensor_entity_id(
+                                hass,
+                                device_prefix,
+                                key,
+                                name_prefix,
+                                use_legacy_modbus_names,
+                                domain="number",
+                                unique_id_suffix="_number",
+                                entity_registry=entity_registry,
                             )
-                            number_entity_id = number_names["entity_id"].replace(
-                                "sensor.", "number.", 1
-                            )
-                            number_entities[key] = number_entity_id
                             defaults[key] = number_spec["default"]
 
                         if room_thermostat_enabled:
                             for key, number_spec in HC_ROOM_THERMOSTAT_NUMBER_CONFIG.items():
-                                number_names = generate_sensor_names(
-                                    device_prefix=device_prefix,
-                                    sensor_name=number_spec["name"],
-                                    sensor_id=key,
-                                    name_prefix=name_prefix,
-                                    use_legacy_modbus_names=use_legacy_modbus_names,
-                                    translations=sensor_translations,
+                                number_entities[key] = resolve_sensor_entity_id(
+                                    hass,
+                                    device_prefix,
+                                    key,
+                                    name_prefix,
+                                    use_legacy_modbus_names,
+                                    domain="number",
+                                    unique_id_suffix="_number",
+                                    entity_registry=entity_registry,
                                 )
-                                base_entity_id = number_names["entity_id"]
-                                if base_entity_id.startswith("sensor."):
-                                    number_entity_id = base_entity_id.replace(
-                                        "sensor.", "number.", 1
-                                    )
-                                elif "." in base_entity_id:
-                                    number_entity_id = (
-                                        f"number.{base_entity_id.split('.', 1)[1]}"
-                                    )
-                                else:
-                                    number_entity_id = f"number.{base_entity_id}"
-                                number_entities[key] = number_entity_id
                                 defaults[key] = number_spec["default"]
 
                         template_sensors.append(
@@ -241,6 +239,11 @@ async def async_setup_entry(
                         continue
 
                     template_str = sensor_info["template"].format(**format_kwargs)
+                    # Im Template referenzierte Nachbar-Entities über die Registry
+                    # auflösen, statt sie aus dem Gerätenamen zu rekonstruieren (Issue #107)
+                    template_str = resolve_template_entity_ids(
+                        hass, template_str, name_prefix, entity_registry=entity_registry
+                    )
                     _LOGGER.debug(
                         "Creating template sensor %s with template: %s",
                         naming["entity_id"],
@@ -575,14 +578,21 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         self._device_type = (device_type or parsed_type or "").lower()
         self._device_index = parsed_index
         
-        # Konstruiere Entity-IDs für operating_state und eco_temp_reduction
-        use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-        name_prefix = normalize_name_prefix(entry.data.get("name", ""))
+        # Entity-IDs für operating_state und eco_temp_reduction: hier zunächst nur die
+        # namensbasierte Form als Fallback; die echte Auflösung über die Entity Registry
+        # passiert in async_added_to_hass(), sobald self.hass verfügbar ist (Issue #107).
+        self._use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
+        self._name_prefix = normalize_name_prefix(entry.data.get("name", ""))
         device_prefix = f"{self._device_type}{self._device_index}" if self._device_index else ""
-        
-        if use_legacy_modbus_names and name_prefix:
-            self._operating_state_entity = f"sensor.{name_prefix}_{device_prefix}_operating_state"
-            self._eco_temp_reduction_entity = f"number.{name_prefix}_{device_prefix}_eco_temp_reduction"
+        self._source_device_prefix = device_prefix
+
+        if self._use_legacy_modbus_names and self._name_prefix:
+            self._operating_state_entity = (
+                f"sensor.{self._name_prefix}_{device_prefix}_operating_state"
+            )
+            self._eco_temp_reduction_entity = (
+                f"number.{self._name_prefix}_{device_prefix}_eco_temp_reduction"
+            )
         else:
             self._operating_state_entity = f"sensor.{device_prefix}_operating_state"
             self._eco_temp_reduction_entity = f"number.{device_prefix}_eco_temp_reduction"
@@ -903,7 +913,31 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
-        
+
+        # Quell-Entities über die Registry auflösen statt aus dem Gerätenamen zu
+        # rekonstruieren (Issue #107). Bleibt beim namensbasierten Fallback, solange
+        # die Entity noch nicht registriert ist - heilt sich beim nächsten Start.
+        if self._source_device_prefix:
+            entity_registry = async_get_entity_registry(self.hass)
+            self._operating_state_entity = resolve_sensor_entity_id(
+                self.hass,
+                self._source_device_prefix,
+                "operating_state",
+                self._name_prefix,
+                self._use_legacy_modbus_names,
+                entity_registry=entity_registry,
+            )
+            self._eco_temp_reduction_entity = resolve_sensor_entity_id(
+                self.hass,
+                self._source_device_prefix,
+                "eco_temp_reduction",
+                self._name_prefix,
+                self._use_legacy_modbus_names,
+                domain="number",
+                unique_id_suffix="_number",
+                entity_registry=entity_registry,
+            )
+
         # Sammle alle Entity-IDs, die getrackt werden müssen
         track_entities = [self._ambient_sensor]
         track_entities.extend(self._number_entities.values())
