@@ -350,7 +350,11 @@ async def async_setup_entry(
             )
 
             sensors.append(cycling_sensor)
-            cycling_entities[names["entity_id"]] = cycling_sensor
+            # Cache-Schluessel = unique_id, nicht entity_id: zu diesem Zeitpunkt ist die
+            # Entity noch nicht bei HA registriert, die reale entity_id kann bei bereits
+            # bestehenden Entities (z.B. unter aelterem Code angelegt oder manuell
+            # umbenannt) davon abweichen. unique_id ist stabil.
+            cycling_entities[names["unique_id"]] = cycling_sensor
             cycling_sensor_count += 1
 
     # --- Yesterday Cycling Sensors (echte Entities - speichern gestern Werte) ---
@@ -566,32 +570,35 @@ async def async_setup_entry(
         hass.data["lambda_heat_pumps"][entry.entry_id] = {}
     
     # Erweitere cycling_entities um alle neuen Sensor-Typen
+    # Cache-Schluessel = unique_id (stabil), die *_sensor_ids-Listen (entity_id-basiert)
+    # dienen hier nur noch zur Klassifikation "gehoert dieser Sensor zu Yesterday/Daily/
+    # etc.", nicht als Speicherschluessel - siehe Begruendung oben bei cycling_entities.
     all_cycling_entities = cycling_entities.copy()
-    
+
     # Füge Yesterday-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in yesterday_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
+            all_cycling_entities[sensor.unique_id] = sensor
+
     # Füge Daily-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in daily_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
+            all_cycling_entities[sensor.unique_id] = sensor
+
     # Füge 2H-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in two_hour_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
+            all_cycling_entities[sensor.unique_id] = sensor
+
     # Füge 4H-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in four_hour_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
-    
+            all_cycling_entities[sensor.unique_id] = sensor
+
     # Füge Monthly-Sensoren hinzu
     for sensor in sensors:
         if hasattr(sensor, 'entity_id') and sensor.entity_id in monthly_sensor_ids:
-            all_cycling_entities[sensor.entity_id] = sensor
+            all_cycling_entities[sensor.unique_id] = sensor
     
     hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = all_cycling_entities
     _LOGGER.info(
@@ -787,10 +794,15 @@ async def async_setup_entry(
     async_add_entities(sensors, update_before_add=False)
     
     # Registriere Energy Consumption Entities in hass.data für direkten Zugriff
+    # Cache-Schluessel = unique_id, nicht entity_id: sensor.entity_id ist hier noch der
+    # zum Setup-Zeitpunkt frisch berechnete Wert (Entity ist noch nicht bei HA
+    # registriert). Bei bereits bestehenden Entities mit abweichender realer entity_id
+    # (aelterer/fehlerhafter Code, manuelle Umbenennung) wuerde ein entity_id-Lookup in
+    # increment_energy_consumption_counter() sonst leer laufen. unique_id ist stabil.
     energy_entities = {}
     for sensor in sensors:
         if isinstance(sensor, LambdaEnergyConsumptionSensor):
-            energy_entities[sensor.entity_id] = sensor
+            energy_entities[sensor.unique_id] = sensor
     
     # Speichere Energy Entities in hass.data
     if "energy_entities" not in coordinator_data:

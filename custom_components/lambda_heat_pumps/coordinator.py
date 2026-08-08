@@ -387,8 +387,15 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             comp = self.hass.data.get("lambda_heat_pumps", {}).get(self.entry.entry_id, {})
             entities = comp.get("energy_entities", {})
-            for entity_id, ent in entities.items():
+            # energy_entities ist ueber unique_id geschluesselt (stabil, siehe
+            # increment_energy_consumption_counter()); fuer die Persist-Datei wird aber
+            # die reale entity_id gebraucht (get_energy_sensor_persisted_state() wird mit
+            # self.entity_id aufgerufen) - die kommt direkt von der Entity-Instanz.
+            for _unique_id, ent in entities.items():
                 if not hasattr(ent, "_energy_value"):
+                    continue
+                entity_id = getattr(ent, "entity_id", None)
+                if not entity_id:
                     continue
                 state_val = ent.native_value
                 if state_val is None:

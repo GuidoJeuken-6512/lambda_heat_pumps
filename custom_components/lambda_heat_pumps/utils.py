@@ -1005,12 +1005,14 @@ async def increment_cycling_counter(
                 del coordinator._cycling_warnings[state_warning_key]
 
         # Versuche die Entity-Instanz zu finden
+        # WICHTIG: Cache-Lookup ueber unique_id, nicht entity_id - siehe Begruendung in
+        # increment_energy_consumption_counter() weiter oben in dieser Datei.
         cycling_entity = None
         try:
             # Suche in der neuen Cycling-Entities-Struktur
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
                 if isinstance(comp_data, dict) and "cycling_entities" in comp_data:
-                    cycling_entity = comp_data["cycling_entities"].get(entity_id)
+                    cycling_entity = comp_data["cycling_entities"].get(names["unique_id"])
                     if cycling_entity:
                         break
         except Exception as e:
@@ -1562,11 +1564,18 @@ async def increment_energy_consumption_counter(
             del coordinator._energy_warnings[entity_id]
 
         # Finde die Entity-Instanz ZUERST (vor der current_value Berechnung)
+        # WICHTIG: Cache-Lookup ueber unique_id, nicht entity_id. sensor.py befuellt
+        # energy_entities[] mit der zum Setup-Zeitpunkt frisch berechneten entity_id -
+        # bevor die Entity bei HA registriert wurde. Weicht die tatsaechlich registrierte
+        # entity_id davon ab (z.B. eine Entity, die unter aelterem/fehlerhaftem Code
+        # angelegt wurde, oder vom Nutzer manuell umbenannt), faende ein Lookup ueber
+        # die (oben per Registry aufgeloeste) entity_id hier nichts - obwohl die Entity
+        # existiert. unique_id aendert sich nie und ist in beiden Faellen identisch.
         energy_entity = None
         try:
             for entry_id, comp_data in hass.data.get("lambda_heat_pumps", {}).items():
                 if isinstance(comp_data, dict) and "energy_entities" in comp_data:
-                    energy_entity = comp_data["energy_entities"].get(entity_id)
+                    energy_entity = comp_data["energy_entities"].get(names["unique_id"])
                     if energy_entity:
                         break
         except Exception as e:

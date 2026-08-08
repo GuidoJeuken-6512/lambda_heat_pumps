@@ -214,14 +214,15 @@ class TestIncrementCyclingCounterNoOffset:
                 received_values.append(value)
 
         entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+        unique_id = "eu08l_hp1_heating_cycling_total"
         fake_entity = FakeCyclingEntity()
 
-        # Wire up hass mock
+        # Wire up hass mock (cycling_entities ist ueber unique_id geschluesselt)
         hass = Mock()
         hass.data = {
             "lambda_heat_pumps": {
                 "test_entry": {
-                    "cycling_entities": {entity_id: fake_entity}
+                    "cycling_entities": {unique_id: fake_entity}
                 }
             }
         }
@@ -667,7 +668,7 @@ class TestEnergyOffsetIncrementDifferential:
         hass.states.get = Mock(return_value=state_obj)
         hass.data = {
             "lambda_heat_pumps": {
-                "test_entry": {"energy_entities": {total_entity_id: fake_entity}}
+                "test_entry": {"energy_entities": {"test": fake_entity}}  # Schluessel = unique_id (hier von generate_sensor_names-Mock fest auf "test" gesetzt)
             }
         }
         hass.async_add_executor_job = AsyncMock()
@@ -722,7 +723,7 @@ class TestEnergyOffsetIncrementDifferential:
         hass.states.get = Mock(return_value=state_obj)
         hass.data = {
             "lambda_heat_pumps": {
-                "test_entry": {"energy_entities": {total_entity_id: fake_entity}}
+                "test_entry": {"energy_entities": {"test": fake_entity}}  # Schluessel = unique_id (hier von generate_sensor_names-Mock fest auf "test" gesetzt)
             }
         }
         hass.async_add_executor_job = AsyncMock()

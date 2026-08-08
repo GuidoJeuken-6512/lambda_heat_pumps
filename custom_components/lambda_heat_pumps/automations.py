@@ -35,31 +35,41 @@ async def _update_yesterday_sensors_async(hass: HomeAssistant, entry_id: str) ->
 
     cycling_entities = hass.data["lambda_heat_pumps"][entry_id]["cycling_entities"]
 
-    # Für jeden Daily-Sensor den entsprechenden Yesterday-Sensor aktualisieren
-    for entity_id, entity in cycling_entities.items():
-        if entity_id.endswith("_daily"):
-            parts = entity_id.split("_")
-            if len(parts) >= 4:
-                yesterday_entity_id = entity_id.replace("_daily", "_yesterday")
+    # WICHTIG: cycling_entities ist ueber unique_id geschluesselt (stabil), nicht ueber
+    # entity_id (kann von der realen, registrierten entity_id abweichen - siehe
+    # increment_cycling_counter()). Die tatsaechliche entity_id fuer den State-Zugriff
+    # kommt deshalb von der Entity-Instanz selbst (entity.entity_id, zur Laufzeit immer
+    # der reale Wert); fuer die Yesterday-Zuordnung wird weiterhin der stabile
+    # unique_id-Schluessel verwendet.
+    for unique_id, entity in cycling_entities.items():
+        if not unique_id.endswith("_daily"):
+            continue
+        entity_id = getattr(entity, "entity_id", None)
+        if not entity_id:
+            continue
+        parts = unique_id.split("_")
+        if len(parts) >= 4:
+            yesterday_unique_id = unique_id.replace("_daily", "_yesterday")
 
-                daily_state = hass.states.get(entity_id)
-                if daily_state and daily_state.state not in ("unknown", "unavailable"):
-                    try:
-                        daily_value = int(float(daily_state.state))
+            daily_state = hass.states.get(entity_id)
+            if daily_state and daily_state.state not in ("unknown", "unavailable"):
+                try:
+                    daily_value = int(float(daily_state.state))
 
-                        yesterday_entity = cycling_entities.get(yesterday_entity_id)
-                        if yesterday_entity and hasattr(yesterday_entity, "set_cycling_value"):
-                            await yesterday_entity.set_cycling_value(daily_value)
-                            _LOGGER.info(
-                                "Yesterday sensor %s updated to %d from %s",
-                                yesterday_entity_id, daily_value, entity_id,
-                            )
-                        else:
-                            _LOGGER.warning(
-                                "Yesterday entity %s not found", yesterday_entity_id
-                            )
-                    except (ValueError, TypeError) as e:
-                        _LOGGER.warning(
-                            "Could not update yesterday sensor %s: %s",
-                            yesterday_entity_id, e,
+                    yesterday_entity = cycling_entities.get(yesterday_unique_id)
+                    if yesterday_entity and hasattr(yesterday_entity, "set_cycling_value"):
+                        await yesterday_entity.set_cycling_value(daily_value)
+                        _LOGGER.info(
+                            "Yesterday sensor %s updated to %d from %s",
+                            getattr(yesterday_entity, "entity_id", yesterday_unique_id),
+                            daily_value, entity_id,
                         )
+                    else:
+                        _LOGGER.warning(
+                            "Yesterday entity %s not found", yesterday_unique_id
+                        )
+                except (ValueError, TypeError) as e:
+                    _LOGGER.warning(
+                        "Could not update yesterday sensor %s: %s",
+                        yesterday_unique_id, e,
+                    )

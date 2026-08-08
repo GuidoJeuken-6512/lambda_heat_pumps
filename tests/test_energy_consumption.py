@@ -369,7 +369,7 @@ class TestIncrementEnergyConsumptionCounter:
             mock_ent = Mock()
             mock_ent._energy_value = 100.5
             mock_ent.set_energy_value = Mock()
-            energy_entities[names["entity_id"]] = mock_ent
+            energy_entities[names["unique_id"]] = mock_ent
         mock_hass.data["lambda_heat_pumps"] = {"test_entry_id": {"energy_entities": energy_entities}}
 
         with patch('custom_components.lambda_heat_pumps.utils.async_get_entity_registry', return_value=mock_entity_registry):
@@ -470,7 +470,7 @@ class TestIncrementEnergyConsumptionCounter:
             mock_ent._energy_value = 100.5
             mock_ent._applied_offset = 0.0
             mock_ent.set_energy_value = Mock()
-            energy_entities[names["entity_id"]] = mock_ent
+            energy_entities[names["unique_id"]] = mock_ent
         mock_hass.data["lambda_heat_pumps"] = {"test_entry_id": {"energy_entities": energy_entities}}
 
         energy_offsets = {
@@ -524,7 +524,10 @@ class TestIncrementEnergyConsumptionCounterUniqueIdLookupIssue107:
         # generate_sensor_names() would construct this from name_prefix/device_prefix/sensor_id...
         reconstructed_entity_id = "sensor.eu08l_hp1_heating_energy_total"
         # ...but the entity actually registered under that unique_id has a different id.
+        # unique_id never changes though - energy_entities is keyed by it (see sensor.py),
+        # so the in-memory entity lookup is immune to this mismatch by construction.
         real_entity_id = "sensor.custom_renamed_heating_energy_total"
+        stable_unique_id = "eu08l_hp1_heating_energy_total"
 
         state_obj = Mock()
         state_obj.state = "100.5"
@@ -535,7 +538,7 @@ class TestIncrementEnergyConsumptionCounterUniqueIdLookupIssue107:
         fake_entity._energy_value = 100.5
         fake_entity.set_energy_value = Mock()
         mock_hass.data["lambda_heat_pumps"] = {
-            "test_entry_id": {"energy_entities": {real_entity_id: fake_entity}}
+            "test_entry_id": {"energy_entities": {stable_unique_id: fake_entity}}
         }
 
         mock_registry = Mock()
@@ -578,6 +581,7 @@ class TestIncrementEnergyConsumptionCounterUniqueIdLookupIssue107:
         cycle right after startup), the previous text-based construction is used.
         """
         reconstructed_entity_id = "sensor.eu08l_hp1_heating_energy_total"
+        stable_unique_id = "eu08l_hp1_heating_energy_total"
 
         state_obj = Mock()
         state_obj.state = "100.5"
@@ -588,7 +592,7 @@ class TestIncrementEnergyConsumptionCounterUniqueIdLookupIssue107:
         fake_entity._energy_value = 100.5
         fake_entity.set_energy_value = Mock()
         mock_hass.data["lambda_heat_pumps"] = {
-            "test_entry_id": {"energy_entities": {reconstructed_entity_id: fake_entity}}
+            "test_entry_id": {"energy_entities": {stable_unique_id: fake_entity}}
         }
 
         mock_registry = Mock()
