@@ -355,3 +355,71 @@ class TestDetectAndHandleSensorChanges:
         await coord._detect_and_handle_sensor_changes()
         # Kein Absturz, kein Eintrag in last_energy_reading
         assert coord._last_energy_reading == {}
+
+
+# ---------------------------------------------------------------------------
+# Coordinator._default_internal_energy_entity_id (Refactoring, V2.8.3)
+# ---------------------------------------------------------------------------
+
+
+class TestDefaultInternalEnergyEntityId:
+    """Direkte Tests für den in V2.8.3 aus sechs Duplikaten extrahierten Helper.
+
+    Bewusst OHNE Registry-Aufloesung (siehe Docstring der Methode) - muss exakt
+    dieselben Strings liefern wie die vorherige, sechsfach duplizierte
+    Inline-Konstruktion `f"sensor.{name_prefix}_hp{hp_idx}_{sensor_id}"`.
+    """
+
+    @staticmethod
+    def _make_coord(name):
+        coord = _make_coordinator(name=name)
+        return coord
+
+    def test_electrical_sensor_id_for_normal_name(self):
+        coord = self._make_coord("eu08l")
+        assert (
+            coord._default_internal_energy_entity_id(1, "electrical")
+            == "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+        )
+
+    def test_thermal_sensor_id_for_normal_name(self):
+        coord = self._make_coord("eu08l")
+        assert (
+            coord._default_internal_energy_entity_id(1, "thermal")
+            == "sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated"
+        )
+
+    def test_underscore_in_device_name_is_preserved(self):
+        """Issue #107: 'Lambda_EU10L' -> normalize_name_prefix() -> 'lambda_eu10l',
+        der Unterstrich muss erhalten bleiben (kein slugify-basierter Verlust)."""
+        coord = self._make_coord("Lambda_EU10L")
+        assert (
+            coord._default_internal_energy_entity_id(2, "electrical")
+            == "sensor.lambda_eu10l_hp2_compressor_power_consumption_accumulated"
+        )
+
+    def test_empty_name_falls_back_to_eu08l(self):
+        coord = self._make_coord("")
+        assert (
+            coord._default_internal_energy_entity_id(1, "electrical")
+            == "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+        )
+
+    def test_hp_index_is_embedded_correctly(self):
+        coord = self._make_coord("eu08l")
+        assert (
+            coord._default_internal_energy_entity_id(3, "thermal")
+            == "sensor.eu08l_hp3_compressor_thermal_energy_output_accumulated"
+        )
+
+    def test_uses_internal_energy_sensor_ids_constant(self):
+        """sensor_id-Teil muss aus INTERNAL_ENERGY_SENSOR_IDS stammen, nicht aus
+        einer zweiten, eigenen Formel - sonst laufen beide Stellen wieder auseinander."""
+        from custom_components.lambda_heat_pumps.coordinator import (
+            INTERNAL_ENERGY_SENSOR_IDS,
+        )
+
+        coord = self._make_coord("eu08l")
+        for sensor_type, sensor_id in INTERNAL_ENERGY_SENSOR_IDS.items():
+            result = coord._default_internal_energy_entity_id(1, sensor_type)
+            assert result == f"sensor.eu08l_hp1_{sensor_id}"
