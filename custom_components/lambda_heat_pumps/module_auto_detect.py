@@ -12,12 +12,11 @@ import logging
 
 from modbus_connection import (
     ModbusError,
-    ModbusExceptionError,
+    IllegalDataAddressError,
     ModbusTimeoutError,
     ModbusUnit,
 )
 
-from .lambda_modbus import ILLEGAL_DATA_ADDRESS
 from .lambda_modbus.ranges import base_address
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,12 +61,9 @@ async def _count(unit: ModbusUnit, module: str, maximum: int) -> int:
         register = base_address(module, index) + _PROBE_REGISTER
         try:
             await unit.read_holding_registers(register, 1)
-        except ModbusExceptionError as err:
-            if err.exception_code != ILLEGAL_DATA_ADDRESS:
-                raise
-            return index - 1
-        except ModbusTimeoutError:
-            # Silence is how some controllers answer for a module they do not
-            # have, so it still ends the count.
+        except (IllegalDataAddressError, ModbusTimeoutError):
+            # Nothing at that address, or nothing said at all — silence is how
+            # some controllers answer for a module they do not have. Any other
+            # refusal is the controller declining to answer, and propagates.
             return index - 1
     return maximum

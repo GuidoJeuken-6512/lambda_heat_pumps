@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from modbus_connection import ModbusExceptionError
+from modbus_connection import IllegalDataAddressError
 
 from .boiler import Boiler
 from .buffer import Buffer
@@ -57,14 +57,7 @@ from .solar import Solar, SolarLowFirst
 if TYPE_CHECKING:
     from modbus_connection import ModbusUnit, WordOrder
 
-# The one exception code that answers a question about the register map: there
-# is nothing at that address. Every other code says the controller cannot answer
-# just now — busy, or faulted — which is not the same thing, and must not be
-# recorded as though the register did not exist.
-ILLEGAL_DATA_ADDRESS = 2
-
 __all__ = [
-    "ILLEGAL_DATA_ADDRESS",
     "Ambient",
     "Boiler",
     "Buffer",
@@ -84,25 +77,22 @@ async def _probe_served(unit: ModbusUnit, ranges: tuple[Range, ...]) -> set[int]
     at is retried one register at a time, so the served registers in it are still
     found.
 
-    Only the one answer that describes the register map is taken as one. A
-    controller that is busy or has faulted is refusing to answer *now*, which
-    tells us nothing about what it has — and since this map is kept for the life
-    of the config entry, believing it would leave registers missing until someone
-    reloaded. So anything else propagates and setup is retried.
+    Only the one answer that describes the register map is taken as one — the
+    controller saying it has nothing at that address. A controller that is busy
+    or has faulted is refusing to answer *now*, which tells us nothing about what
+    it has; since this map is kept for the life of the config entry, believing it
+    would leave registers missing until someone reloaded. Those propagate, and
+    setup is retried.
     """
     served: set[int] = set()
     for low, high in ranges:
         try:
             await unit.read_holding_registers(low, high - low + 1)
-        except ModbusExceptionError as err:
-            if err.exception_code != ILLEGAL_DATA_ADDRESS:
-                raise
+        except IllegalDataAddressError:
             for address in range(low, high + 1):
                 try:
                     await unit.read_holding_registers(address, 1)
-                except ModbusExceptionError as err:
-                    if err.exception_code != ILLEGAL_DATA_ADDRESS:
-                        raise
+                except IllegalDataAddressError:
                     continue  # a register the controller does not have
                 served.add(address)
         else:
