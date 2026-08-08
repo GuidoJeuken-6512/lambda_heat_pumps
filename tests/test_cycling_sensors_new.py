@@ -1078,3 +1078,83 @@ class TestEdgeDetectionStateUpdate:
         assert not mock_increment.called, (
             "increment_cycling_counter fired without a mode transition."
         )
+
+class TestHandleResetIntervalMatching:
+    """Deckt alle Kombinationen von reset_interval/sensor_id-Suffix ab.
+
+    Haelt das Verhalten der frueheren fuenf einzelnen if/elif-Zweige fest, die zu
+    einer gemeinsamen Bedingung zusammengefasst wurden.
+    """
+
+    @staticmethod
+    def _make_sensor(mock_entry, mock_coordinator, sensor_id):
+        sensor = LambdaCyclingSensor(
+            hass=mock_coordinator.hass,
+            entry=mock_entry,
+            sensor_id=sensor_id,
+            name=sensor_id,
+            entity_id=f"sensor.test_{sensor_id}",
+            unique_id=f"test_{sensor_id}",
+            unit="cycles",
+            state_class="measurement",
+            device_class=None,
+            device_type="hp",
+            hp_index=1,
+        )
+        sensor.async_write_ha_state = Mock()
+        sensor._cycling_value = 50
+        return sensor
+
+    @pytest.mark.parametrize(
+        "sensor_id",
+        [
+            "heating_cycling_daily",
+            "heating_cycling_2h",
+            "heating_cycling_4h",
+            "heating_cycling_monthly",
+            "heating_cycling_yearly",
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_matching_interval_resets(self, mock_entry, mock_coordinator, sensor_id):
+        sensor = self._make_sensor(mock_entry, mock_coordinator, sensor_id)
+        assert sensor._reset_interval == sensor_id.rsplit("_", 1)[1]
+
+        await sensor._handle_reset("test_entry")
+
+        assert sensor._cycling_value == 0
+        sensor.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "sensor_id", ["heating_cycling_total", "heating_cycling_yesterday"]
+    )
+    @pytest.mark.asyncio
+    async def test_total_and_yesterday_are_never_reset(
+        self, mock_entry, mock_coordinator, sensor_id
+    ):
+        sensor = self._make_sensor(mock_entry, mock_coordinator, sensor_id)
+
+        await sensor._handle_reset("test_entry")
+
+        assert sensor._cycling_value == 50
+        sensor.async_write_ha_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_mismatched_suffix_does_not_reset(self, mock_entry, mock_coordinator):
+        """reset_interval passt nicht zum Suffix -> kein Reset (wie zuvor)."""
+        sensor = self._make_sensor(mock_entry, mock_coordinator, "heating_cycling_daily")
+        sensor._reset_interval = "2h"
+
+        await sensor._handle_reset("test_entry")
+
+        assert sensor._cycling_value == 50
+        sensor.async_write_ha_state.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_foreign_entry_id_is_ignored(self, mock_entry, mock_coordinator):
+        sensor = self._make_sensor(mock_entry, mock_coordinator, "heating_cycling_daily")
+
+        await sensor._handle_reset("wrong_entry")
+
+        assert sensor._cycling_value == 50
+        sensor.async_write_ha_state.assert_not_called()

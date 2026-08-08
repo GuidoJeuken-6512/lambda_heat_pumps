@@ -76,6 +76,11 @@ from .const_mapping import MAIN_E_MANAGER_OPERATING_STATE  # noqa: F401
 
 _LOGGER = logging.getLogger(__name__)
 
+# Reset-Intervalle der Cycling-Sensoren. Das Intervall ist zugleich das Suffix der
+# sensor_id (z.B. "heating_cycling_daily" mit reset_interval "daily") - nur bei
+# Uebereinstimmung wird der Zaehler auf 0 zurueckgesetzt.
+CYCLING_RESET_INTERVALS = ("daily", "2h", "4h", "monthly", "yearly")
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -576,31 +581,19 @@ async def async_setup_entry(
     # etc.", nicht als Speicherschluessel - siehe Begruendung oben bei cycling_entities.
     all_cycling_entities = cycling_entities.copy()
 
-    # Füge Yesterday-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in yesterday_sensor_ids:
-            all_cycling_entities[sensor.unique_id] = sensor
+    # Yesterday-, Daily-, 2H-, 4H- und Monthly-Sensoren aufnehmen
+    for period_sensor_ids in (
+        yesterday_sensor_ids,
+        daily_sensor_ids,
+        two_hour_sensor_ids,
+        four_hour_sensor_ids,
+        monthly_sensor_ids,
+    ):
+        for sensor in sensors:
+            if hasattr(sensor, 'entity_id') and sensor.entity_id in period_sensor_ids:
+                all_cycling_entities[sensor.unique_id] = sensor
 
-    # Füge Daily-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in daily_sensor_ids:
-            all_cycling_entities[sensor.unique_id] = sensor
 
-    # Füge 2H-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in two_hour_sensor_ids:
-            all_cycling_entities[sensor.unique_id] = sensor
-
-    # Füge 4H-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in four_hour_sensor_ids:
-            all_cycling_entities[sensor.unique_id] = sensor
-
-    # Füge Monthly-Sensoren hinzu
-    for sensor in sensors:
-        if hasattr(sensor, 'entity_id') and sensor.entity_id in monthly_sensor_ids:
-            all_cycling_entities[sensor.unique_id] = sensor
-    
     hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = all_cycling_entities
     _LOGGER.info(
         "Total-Cycling-Sensoren erzeugt: %d, Entity-IDs: %s",
@@ -1128,36 +1121,13 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
         old_value = self._cycling_value if self._cycling_value is not None else 0
         new_value = 0
 
-        # Prüfe Periode basierend auf sensor_id und reset_interval
-        if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
-            self._cycling_value = new_value
-            self.async_write_ha_state()
-            _LOGGER.info(
-                "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
-                self.entity_id, old_value, new_value, self._reset_interval,
-            )
-        elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
+        # Zurückgesetzt wird nur, wenn das Reset-Intervall des Sensors zum Suffix seiner
+        # sensor_id passt. "total"/"yesterday" haben kein passendes Intervall und bleiben
+        # damit - wie bisher - unberührt.
+        if (
+            self._reset_interval in CYCLING_RESET_INTERVALS
+            and self._sensor_id.endswith(f"_{self._reset_interval}")
+        ):
             self._cycling_value = new_value
             self.async_write_ha_state()
             _LOGGER.info(
