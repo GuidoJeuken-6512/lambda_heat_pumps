@@ -630,3 +630,26 @@ async def test_a_link_that_stops_answering_is_thrown_away(
 
     assert coordinator.last_update_success
     assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
+async def test_a_busy_answer_mid_poll_does_not_re_probe_the_controller(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Being busy is not the controller telling us it has changed.
+
+    A block it will not serve any more means the map read at setup is stale, and
+    the integration sets itself up again to find out what it has now. A block it
+    cannot serve *at this moment* means nothing of the sort — re-probing on that
+    would tear down every entity because the controller was briefly busy.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+
+    controller.answer_busy(1004)  # inside a block the heat pump serves
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert not coordinator.last_update_success
+    # The entry was not reloaded: it is still the same coordinator.
+    assert entry.runtime_data is coordinator
+    assert entry.state is ConfigEntryState.LOADED
