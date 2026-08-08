@@ -8,7 +8,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 from homeassistant.helpers.event import async_track_state_change_event
 
-from custom_components.lambda_heat_pumps.sensor import LambdaCOPSensor
+from custom_components.lambda_heat_pumps.sensor import LambdaCOPSensor, async_setup_entry
 from tests.conftest import DummyLoop
 
 
@@ -736,4 +736,157 @@ class TestLambdaCOPSensor:
         assert sensor._attr_unique_id == "eu08l_hp1_heating_cop_daily"
         assert sensor._thermal_energy_entity_id == "sensor.eu08l_hp1_heating_thermal_energy_daily"
         assert sensor._electrical_energy_entity_id == "sensor.eu08l_hp1_heating_energy_daily"
+
+
+class TestCOPSourceEntityIdResolutionIssue107:
+    """Regression tests: async_setup_entry() must resolve the COP sensor's thermal/
+    electrical source entity_id via unique_id in the entity registry instead of
+    trusting the text generate_sensor_names() would construct fresh. Before this fix,
+    a heat pump whose source energy sensors are registered under a different entity_id
+    than what's freshly computed now (e.g. a second heat pump discovered by
+    auto-detection while an older/buggy version was still running) got a COP sensor
+    that could never find its own source states - permanently "unknown", even though
+    the underlying energy sensors themselves were updating correctly.
+    """
+
+    @pytest.fixture
+    def mock_hass(self):
+        hass = Mock()
+        hass.config = Mock()
+        hass.config.config_dir = "/tmp/test_config"
+        hass.config.language = "en"
+        hass.config.locale = SimpleNamespace(language="en")
+        hass.config_entries = Mock()
+        hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+        hass.data = {}
+        hass.states = Mock()
+        hass.states.async_all = AsyncMock(return_value=[])
+        hass.states.get = Mock()
+        hass.loop = DummyLoop()
+        return hass
+
+    @pytest.fixture
+    def mock_entry(self):
+        entry = Mock()
+        entry.entry_id = "test_entry"
+        entry.data = {
+            "host": "192.168.1.100",
+            "port": 502,
+            "slave_id": 1,
+            "firmware_version": "V0.0.3-3K",
+            "num_hps": 1,
+            "num_boil": 1,
+            "num_hc": 1,
+            "num_buffer": 0,
+            "num_solar": 0,
+            "update_interval": 30,
+            "write_interval": 30,
+            "heating_circuit_min_temp": 15,
+            "heating_circuit_max_temp": 35,
+            "heating_circuit_temp_step": 0.5,
+            "room_thermostat_control": False,
+            "pv_surplus": False,
+            "use_legacy_modbus_names": True,
+            "name": "eu08l",
+        }
+        return entry
+
+    @pytest.fixture
+    def mock_coordinator(self):
+        coordinator = Mock()
+        coordinator.data = {"hp1_temperature": 20.5, "hp1_state": 1, "hp1_operating_state": 2}
+        coordinator.sensor_overrides = {}
+        coordinator.is_register_disabled = Mock(return_value=False)
+        coordinator.hass = Mock()
+        return coordinator
+
+    @pytest.mark.asyncio
+    async def test_cop_sensor_uses_registry_resolved_source_entity_ids(
+        self, mock_hass, mock_entry, mock_coordinator
+    ):
+        """The real, registered entity_id of the thermal/electrical source sensors may
+        differ from the text generate_sensor_names() would construct (the hp2 case from
+        Issue #107's follow-up). The COP sensor must be built with the registry-resolved
+        entity_id, not the reconstructed one.
+        """
+        from custom_components.lambda_heat_pumps.const import DOMAIN
+
+        mock_add_entities = AsyncMock()
+        mock_hass.data[DOMAIN] = {mock_entry.entry_id: {"coordinator": mock_coordinator}}
+
+        # generate_sensor_names() would construct this for the heating_thermal_energy_daily
+        # source sensor...
+        reconstructed_thermal_id = "sensor.eu08l_hp1_heating_thermal_energy_daily"
+        # ...but it's actually registered under a different entity_id.
+        real_thermal_id = "sensor.custom_renamed_heating_thermal_energy_daily"
+
+        def fake_async_get_entity_id(domain, platform, unique_id):
+            if unique_id == "eu08l_hp1_heating_thermal_energy_daily":
+                return real_thermal_id
+            return None  # everything else (incl. the electrical source) not yet in registry
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+        mock_registry.async_get_entity_id = Mock(side_effect=fake_async_get_entity_id)
+
+        # LambdaCOPSensor(hass, entry, sensor_id, name, entity_id, unique_id, unit,
+        # state_class, device_class, device_type, hp_index, mode, period,
+        # thermal_energy_entity_id, electrical_energy_entity_id) - alles positional.
+        captured_calls = []
+
+        def cop_side_effect(*args, **kwargs):
+            captured_calls.append(
+                {
+                    "mode": args[11],
+                    "period": args[12],
+                    "thermal_energy_entity_id": args[13],
+                    "electrical_energy_entity_id": args[14],
+                }
+            )
+            return Mock()
+
+        with patch(
+            "custom_components.lambda_heat_pumps.sensor.LambdaCOPSensor",
+            side_effect=cop_side_effect,
+        ), patch(
+            "custom_components.lambda_heat_pumps.sensor.LambdaCyclingSensor"
+        ) as mock_cycling_class, patch(
+            "custom_components.lambda_heat_pumps.sensor.LambdaYesterdaySensor"
+        ) as mock_yesterday_class, patch(
+            "custom_components.lambda_heat_pumps.sensor.LambdaSensor"
+        ) as mock_sensor_class, patch(
+            "custom_components.lambda_heat_pumps.reset_manager.ResetManager"
+        ), patch(
+            "custom_components.lambda_heat_pumps.sensor.async_get_entity_registry",
+            return_value=mock_registry,
+        ):
+            mock_cycling_class.side_effect = lambda *a, **k: Mock(
+                entity_id="sensor.eu08l_hp1_x", unique_id="eu08l_hp1_x"
+            )
+            mock_yesterday_class.side_effect = lambda *a, **k: Mock(
+                entity_id="sensor.eu08l_hp1_y", unique_id="eu08l_hp1_y"
+            )
+            mock_sensor_class.return_value = Mock(
+                entity_id="sensor.eu08l_hp1_temperature", unique_id="eu08l_hp1_temperature"
+            )
+
+            await async_setup_entry(mock_hass, mock_entry, mock_add_entities)
+
+        heating_daily_calls = [
+            kw for kw in captured_calls
+            if kw.get("mode") == "heating" and kw.get("period") == "daily"
+        ]
+        assert len(heating_daily_calls) == 1, (
+            f"Expected exactly one heating/daily COP sensor, got {len(heating_daily_calls)}"
+        )
+        call_kwargs = heating_daily_calls[0]
+
+        assert call_kwargs["thermal_energy_entity_id"] == real_thermal_id, (
+            f"COP sensor was built with '{call_kwargs['thermal_energy_entity_id']}', "
+            f"expected the registry-resolved '{real_thermal_id}' - not the reconstructed "
+            f"text '{reconstructed_thermal_id}'. Regression: COP source resolution "
+            "trusts generate_sensor_names() text instead of the entity registry."
+        )
+        # Electrical source not in the (mocked) registry yet -> self-healing text fallback.
+        assert call_kwargs["electrical_energy_entity_id"] == "sensor.eu08l_hp1_heating_energy_daily"
 

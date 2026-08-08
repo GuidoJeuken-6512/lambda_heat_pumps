@@ -55,6 +55,7 @@ from .utils import (
     get_entity_icon,
     normalize_name_prefix,
     restore_energy_period_state,
+    resolve_entity_id_by_unique_id,
 )
 from .const_mapping import HP_ERROR_STATE  # noqa: F401
 from .const_mapping import HP_STATE  # noqa: F401
@@ -717,6 +718,7 @@ async def async_setup_entry(
     # COP sensors (per HP, per mode, per period)
     # COP_MODES: heating, hot_water, cooling (ohne defrost)
     # COP_PERIODS: daily, monthly, yearly, total, hourly (hourly nur für heating)
+    cop_entity_registry = async_get_entity_registry(hass)
     for hp_idx in range(1, num_hps + 1):
         for mode in COP_MODES:
             for period in COP_PERIODS:
@@ -761,9 +763,23 @@ async def async_setup_entry(
                     translations=sensor_translations,
                 )
                 
-                thermal_entity_id = thermal_names["entity_id"]
-                electrical_entity_id = electrical_names["entity_id"]
-                
+                # Reale entity_id ueber unique_id in der Registry aufloesen, statt der
+                # frisch berechneten Text-Form zu vertrauen (gleiches Prinzip wie bei
+                # increment_energy_consumption_counter/increment_cycling_counter,
+                # siehe Issue #107): weicht die tatsaechlich registrierte entity_id der
+                # Quell-Sensoren ab (z.B. bei einem Geraet, das unter aelterem/fehler-
+                # haftem Code angelegt wurde), muss der COP-Sensor trotzdem den
+                # richtigen State finden. Fallback auf die Text-Form, falls die
+                # Quell-Entity (noch) nicht registriert ist - heilt sich selbst.
+                thermal_entity_id = resolve_entity_id_by_unique_id(
+                    hass, thermal_names["unique_id"], thermal_names["entity_id"],
+                    entity_registry=cop_entity_registry,
+                )
+                electrical_entity_id = resolve_entity_id_by_unique_id(
+                    hass, electrical_names["unique_id"], electrical_names["entity_id"],
+                    entity_registry=cop_entity_registry,
+                )
+
                 # Erstelle COP-Sensor
                 cop_sensor = LambdaCOPSensor(
                     hass,
