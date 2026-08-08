@@ -119,13 +119,26 @@ COP-Sensoren werden in `async_setup_entry` erstellt (nach thermal energy Sensore
 cop_modes = ["heating", "hot_water", "cooling"]
 cop_periods = ["daily", "monthly", "total"]
 
+cop_entity_registry = async_get_entity_registry(hass)
+
 for hp_idx in range(1, num_hps + 1):
     for mode in cop_modes:
         for period in cop_periods:
-            # Generiere Entity-IDs für Quell-Sensoren
-            thermal_entity_id = ...  # z.B. sensor.eu08l_hp1_heating_thermal_energy_daily
-            electrical_entity_id = ...  # z.B. sensor.eu08l_hp1_heating_energy_daily
-            
+            # Quell-entity_ids ueber die Registry aufloesen statt aus dem
+            # Geraetenamen zu rekonstruieren (Issue #107, seit v2.8.3):
+            # thermal_names/electrical_names["unique_id"] wird via generate_sensor_names()
+            # gebildet, resolve_entity_id_by_unique_id() schlaegt die reale entity_id
+            # in der Registry nach und faellt auf den generate_sensor_names()-Text
+            # zurueck, solange die Quell-Entity noch nicht registriert ist.
+            thermal_entity_id = resolve_entity_id_by_unique_id(
+                hass, thermal_names["unique_id"], thermal_names["entity_id"],
+                entity_registry=cop_entity_registry,
+            )
+            electrical_entity_id = resolve_entity_id_by_unique_id(
+                hass, electrical_names["unique_id"], electrical_names["entity_id"],
+                entity_registry=cop_entity_registry,
+            )
+
             # Erstelle COP-Sensor
             cop_sensor = LambdaCOPSensor(
                 hass, entry, sensor_id, name, entity_id, unique_id,
@@ -137,6 +150,8 @@ for hp_idx in range(1, num_hps + 1):
             )
             sensors.append(cop_sensor)
 ```
+
+> Vor v2.8.3 (Commit `c93dcc6`) wurden `thermal_entity_id`/`electrical_entity_id` direkt aus `generate_sensor_names()` übernommen, ohne Registry-Abgleich. Bei einer zweiten Wärmepumpe/einem zweiten Heizkreis, deren Quell-Energiesensoren unter einer abweichenden `entity_id` registriert waren (z. B. unter einer älteren Version angelegt), lief `hass.states.get()` in `_calculate_cop()` dauerhaft ins Leere – der COP-Sensor blieb `unbekannt`. Details: [Energie-Sensor-Lookup über die Entity Registry](energie-sensor-lookup-registry.md).
 
 ### 3. COP-Berechnung
 

@@ -374,29 +374,25 @@ async def _handle_reset(self, entry_id: str):
     """Handle reset signal for all periods (einheitlich, wie Energy)."""
     if entry_id != self._entry.entry_id:
         return
-    
-    # Prüfe Periode basierend auf sensor_id und reset_interval
-    if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
+
+    old_value = self._cycling_value if self._cycling_value is not None else 0
+
+    # Zurueckgesetzt wird nur, wenn das Reset-Intervall des Sensors zum Suffix
+    # seiner sensor_id passt. "total"/"yesterday" haben kein passendes Intervall
+    # und bleiben damit unberuehrt.
+    if (
+        self._reset_interval in CYCLING_RESET_INTERVALS
+        and self._sensor_id.endswith(f"_{self._reset_interval}")
+    ):
         self._cycling_value = 0
         self.async_write_ha_state()
-        _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"Monthly sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"Yearly sensor {self.entity_id} reset to 0")
+        _LOGGER.info(
+            "Cycling reset: sensor=%s old_value=%s new_value=%s reset_interval=%s",
+            self.entity_id, old_value, 0, self._reset_interval,
+        )
 ```
+
+> Bis v2.8.2 waren das fünf fast identische `if`/`elif`-Zweige (einer je Intervall). Seit v2.8.3 eine Bedingung über die Modul-Konstante `CYCLING_RESET_INTERVALS = ("daily", "2h", "4h", "monthly", "yearly")` in `sensor.py` — verhaltensgleich, da `_reset_interval` intern gesetzt wird (kein Nutzer-Input) und `total`/`yesterday` weiterhin keinen der fünf Werte tragen.
 
 **Reset-Intervall**:
 - **Daily**: Um Mitternacht (`SIGNAL_RESET_DAILY`)
