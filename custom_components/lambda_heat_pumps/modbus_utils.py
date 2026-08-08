@@ -409,18 +409,14 @@ async def get_int32_register_order(hass, entry=None) -> str:
         Rückwärtskompatibilität: "big" → "high_first", "little" → "low_first"
     """
     try:
-        from .utils import load_lambda_config, get_firmware_version_int
+        from .utils import load_lambda_config, get_firmware_version
         from .const_base import FIRMWARE_CONFIG, DEFAULT_FIRMWARE
         config = await load_lambda_config(hass)
         modbus_config = config.get("modbus", {})
 
-        # Firmware-abhängiger Default
+        # Firmware-abhängiger Default (dieselbe options-vor-data-Kaskade wie überall sonst)
         if entry is not None:
-            fw_version_str = (
-                entry.options.get("firmware_version")
-                or entry.data.get("firmware_version")
-                or DEFAULT_FIRMWARE
-            )
+            fw_version_str = get_firmware_version(entry)
         else:
             fw_version_str = DEFAULT_FIRMWARE
         fw_default = FIRMWARE_CONFIG.get(fw_version_str, {}).get("reg_order", "high_first")
