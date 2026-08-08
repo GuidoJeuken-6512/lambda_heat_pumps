@@ -32,10 +32,10 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from modbus_connection import (
-    BlockReadError,
-    ExceptionCode,
+    IllegalDataAddressError,
     ModbusConnection,
     ModbusError,
+    ModbusExceptionError,
     ModbusTimeoutError,
     ModbusUnit,
 )
@@ -276,27 +276,28 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 _LOGGER.debug("No answer in a while; dropping the link to reopen it")
                 await self.connection.disconnect()
             raise UpdateFailed(f"The controller did not answer: {err}") from err
-        except BlockReadError as err:
-            if err.exception_code != ExceptionCode.ILLEGAL_DATA_ADDRESS:
-                # The controller cannot serve the block just now — it is busy, or
-                # has faulted. That says nothing about what it has, so there is
-                # nothing to look at again; the next poll tries once more.
+        except IllegalDataAddressError as err:
+            # The controller has nothing at those addresses any more, so what was
+            # read off it at setup no longer describes it — a module was added or
+            # removed, or its firmware changed. Only setting up again can find
+            # out what it has now, so ask for that rather than telling the user
+            # to. `block` says which read it was, and is None if the refusal came
+            # from a request made outside the register model.
+            if (block := err.block) is not None:
+                self.hass.config_entries.async_schedule_reload(
+                    self.config_entry.entry_id
+                )
                 raise UpdateFailed(
-                    f"The controller would not serve {err.space} registers "
-                    f"{err.address}-{err.address + err.count - 1}: {err}"
+                    f"The controller no longer has {block.space} registers "
+                    f"{block.address}-{block.address + block.count - 1}, which "
+                    f"it served when it was set up; looking again at what it has."
                 ) from err
-            # It has nothing at those addresses any more, so what was read off it
-            # at setup no longer describes it — a module was added or removed, or
-            # its firmware changed. Only setting up again can find out what it has
-            # now, so ask for that rather than telling the user to.
-            self.hass.config_entries.async_schedule_reload(
-                self.config_entry.entry_id
-            )
-            raise UpdateFailed(
-                f"The controller no longer has {err.space} registers "
-                f"{err.address}-{err.address + err.count - 1}, which it served "
-                f"when it was set up; looking again at what it has."
-            ) from err
+            raise UpdateFailed(f"The controller refused a read: {err}") from err
+        except ModbusExceptionError as err:
+            # Any other refusal is the controller saying it cannot answer just
+            # now — busy, or faulted. That says nothing about what it has, so
+            # there is nothing to look at again; the next poll tries once more.
+            raise UpdateFailed(f"The controller would not answer: {err}") from err
         except ModbusError as err:
             raise UpdateFailed(f"Error reading the controller: {err}") from err
         else:
