@@ -235,6 +235,9 @@ class TestIncrementCyclingCounterNoOffset:
 
         mock_entity_registry = Mock()
         mock_entity_registry.async_get = Mock(return_value=Mock())  # entity exists
+        # unique_id-Lookup soll hier "nicht gefunden" simulieren, damit auf die
+        # uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_entity_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -679,7 +682,7 @@ class TestEnergyOffsetIncrementDifferential:
             return_value={"entity_id": total_entity_id, "name": "Heating Energy Total", "unique_id": "test"},
         ), patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
-            return_value=Mock(async_get=Mock(return_value=Mock())),
+            return_value=Mock(async_get=Mock(return_value=Mock()), async_get_entity_id=Mock(return_value=None)),
         ):
             await increment_energy_consumption_counter(
                 hass=hass,
@@ -734,7 +737,7 @@ class TestEnergyOffsetIncrementDifferential:
             return_value={"entity_id": total_entity_id, "name": "Heating Energy Total", "unique_id": "test"},
         ), patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
-            return_value=Mock(async_get=Mock(return_value=Mock())),
+            return_value=Mock(async_get=Mock(return_value=Mock()), async_get_entity_id=Mock(return_value=None)),
         ):
             await increment_energy_consumption_counter(
                 hass=hass,

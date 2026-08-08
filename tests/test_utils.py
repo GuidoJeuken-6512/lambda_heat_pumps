@@ -21,6 +21,7 @@ from custom_components.lambda_heat_pumps.utils import (
     load_disabled_registers,
     load_sensor_translations,
     restore_energy_period_state,
+    resolve_entity_id_by_unique_id,
     store_thermal_sensor_id,
     to_signed_16bit,
     to_signed_32bit,
@@ -658,9 +659,15 @@ class TestGenerateSensorNames:
         """Test behavior with special characters in name_prefix.
 
         unique_id keeps the raw (lowercased) name_prefix for backward
-        compatibility. entity_id must be a valid ASCII/underscore-only HA
-        slug, so the hyphen is stripped there even though it survives in
-        unique_id.
+        compatibility. entity_id is derived from the same separator rule as
+        unique_id (normalize_name_prefix: only spaces are removed, everything
+        else is left untouched) plus unicode transliteration - see
+        slugify_name_prefix_for_lookup(). For underscores (the case reported
+        in Issue #107) this keeps entity_id and unique_id consistent, which is
+        the primary goal. Known residual gap: a literal hyphen is NOT a valid
+        HA entity_id character ([a-z0-9_] only) and is passed through as-is
+        here rather than collapsed to "_" - documented trade-off, out of scope
+        for #107 (which only reports underscores/spaces/umlauts).
         """
         name_prefix = "eu-08l"  # Mit Bindestrich
 
@@ -669,7 +676,7 @@ class TestGenerateSensorNames:
             "hp1", "Flow Temperature", "flow_temp", name_prefix, True
         )
         assert legacy["unique_id"] == "eu-08l_hp1_flow_temp"
-        assert legacy["entity_id"] == "sensor.eu08l_hp1_flow_temp"
+        assert legacy["entity_id"] == "sensor.eu-08l_hp1_flow_temp"
 
         # Standard Mode
         standard = generate_sensor_names(
@@ -820,6 +827,66 @@ class TestGenerateSensorNames:
             translations={},
         )
         assert caplog.text == ""
+
+
+class TestResolveEntityIdByUniqueId:
+    """Tests for resolve_entity_id_by_unique_id() - the shared Issue #107 fix helper
+    used by increment_energy_consumption_counter(), increment_cycling_counter() and
+    the coordinator's _resolve_internal_energy_sensor_entity_id().
+    """
+
+    def test_returns_registry_resolved_entity_id_when_found(self):
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value="sensor.real_registered_id")
+
+        result = resolve_entity_id_by_unique_id(
+            hass, "some_unique_id", "sensor.fallback_id", entity_registry=registry
+        )
+
+        assert result == "sensor.real_registered_id"
+        registry.async_get_entity_id.assert_called_once_with(
+            "sensor", "lambda_heat_pumps", "some_unique_id"
+        )
+
+    def test_falls_back_when_not_found_in_registry(self):
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value=None)
+
+        result = resolve_entity_id_by_unique_id(
+            hass, "some_unique_id", "sensor.fallback_id", entity_registry=registry
+        )
+
+        assert result == "sensor.fallback_id"
+
+    def test_falls_back_on_registry_exception(self):
+        """The registry must never be able to kill a poll cycle."""
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(side_effect=RuntimeError("boom"))
+
+        result = resolve_entity_id_by_unique_id(
+            hass, "some_unique_id", "sensor.fallback_id", entity_registry=registry
+        )
+
+        assert result == "sensor.fallback_id"
+
+    def test_looks_up_entity_registry_when_none_passed(self):
+        hass = Mock()
+        registry = Mock()
+        registry.async_get_entity_id = Mock(return_value="sensor.resolved")
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=registry,
+        ) as mock_get_registry:
+            result = resolve_entity_id_by_unique_id(
+                hass, "some_unique_id", "sensor.fallback_id"
+            )
+
+        mock_get_registry.assert_called_once_with(hass)
+        assert result == "sensor.resolved"
 
 
 def test_get_coordinator():

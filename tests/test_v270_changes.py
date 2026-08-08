@@ -55,6 +55,61 @@ class TestSlugifyNamePrefixForLookup:
 
 
 # ---------------------------------------------------------------------------
+# slugify_name_prefix_for_lookup — Issue #107 regression
+#
+# V2.7.0 introduced this function with `ha_slugify(raw, separator="")`, which
+# collapses EVERY separator character (space, "_", "-", ".", parentheses)
+# uniformly instead of matching normalize_name_prefix()'s asymmetric rule
+# (only spaces are removed, "_" etc. are left untouched). That silently broke
+# every device name containing an underscore, hyphen, dot or parenthesis
+# (e.g. "Lambda_EU10L" -> "lambdaeu10l" instead of "lambda_eu10l"), which made
+# _track_hp_energy_type_consumption() and the two increment_*_counter()
+# functions in utils.py unable to find their own, correctly registered
+# entities. Fixed by decoupling transliteration (unidecode) from the
+# separator rule (delegated to normalize_name_prefix()).
+# ---------------------------------------------------------------------------
+
+class TestSlugifyNamePrefixForLookupIssue107:
+    """Regression tests for the Issue #107 fix."""
+
+    def setup_method(self):
+        from custom_components.lambda_heat_pumps.utils import (
+            slugify_name_prefix_for_lookup,
+            normalize_name_prefix,
+        )
+        self.fn = slugify_name_prefix_for_lookup
+        self.old_fn = normalize_name_prefix
+
+    def test_underscore_preserved(self):
+        """The exact case reported in Issue #107."""
+        assert self.fn("Lambda_EU10L") == "lambda_eu10l"
+        assert self.fn("Lambda_EU10L") == self.old_fn("Lambda_EU10L")
+
+    def test_underscore_preserved_matches_real_registry_case(self):
+        """Second reported/verified case: mixed case with trailing digits+letters."""
+        assert self.fn("lambda_eu10l") == "lambda_eu10l"
+
+    def test_space_case_still_matches_normalize_after_fix(self):
+        """The space-handling behaviour must NOT regress while fixing underscores."""
+        assert self.fn("Lambda WP") == "lambdawp"
+        assert self.fn("Lambda WP") == self.old_fn("Lambda WP")
+
+    def test_underscore_and_umlaut_combined(self):
+        """Both fixes (transliteration + separator preservation) must compose."""
+        assert self.fn("Wärme_Pumpe") == "warme_pumpe"
+
+    def test_hyphen_known_residual_gap(self):
+        """Documented, accepted trade-off (see plan): a literal hyphen is passed
+        through as-is, not converted to "_". Not a valid HA entity_id character,
+        but out of scope for Issue #107 (which only reports underscores/spaces/
+        umlauts) and consistent with unique_id (normalize_name_prefix) handling.
+        This test locks in the current, documented behaviour so a future change
+        here is a deliberate decision, not an accident.
+        """
+        assert self.fn("Lambda-EU10L") == "lambda-eu10l"
+
+
+# ---------------------------------------------------------------------------
 # FIRMWARE_CONFIG / FIRMWARE_VERSION (const_base.py) — V2.7.0
 # ---------------------------------------------------------------------------
 

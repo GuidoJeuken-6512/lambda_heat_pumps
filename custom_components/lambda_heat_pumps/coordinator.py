@@ -17,7 +17,6 @@ from homeassistant.helpers.update_coordinator import (
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.event import async_track_time_interval, async_call_later
 from .const import (
-    DOMAIN,
     SENSOR_TYPES,
     HP_SENSOR_TEMPLATES,
     BOIL_SENSOR_TEMPLATES,
@@ -43,6 +42,7 @@ from .utils import (
     normalize_name_prefix,
     slugify_name_prefix_for_lookup,
     generate_sensor_names,
+    resolve_entity_id_by_unique_id,
     detect_sensor_change,
     get_stored_sensor_id,
     store_sensor_id,
@@ -2086,36 +2086,34 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
         Fällt auf die bisherige namensbasierte Konstruktion zurück, wenn die Entity
         (noch) nicht in der Registry steht - z.B. im ersten Zyklus nach dem Start.
         """
-        sensor_id = INTERNAL_ENERGY_SENSOR_IDS.get(sensor_type)
-        if sensor_id:
-            try:
-                name_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
-                names = generate_sensor_names(
-                    f"hp{hp_idx}",
-                    sensor_id,  # display name irrelevant für die unique_id
-                    sensor_id,
-                    name_prefix,
-                    self._use_legacy_names,
-                )
-                registry = self._entity_registry or async_get_entity_registry(self.hass)
-                resolved = registry.async_get_entity_id(
-                    "sensor", DOMAIN, names["unique_id"]
-                )
-                if resolved:
-                    return resolved
-                _LOGGER.debug(
-                    "[Energy] HP%s %s: unique_id '%s' (noch) nicht in der Entity Registry, "
-                    "verwende namensbasierten Fallback",
-                    hp_idx, sensor_type, names["unique_id"],
-                )
-            except Exception as ex:  # pragma: no cover - defensiv, Registry darf nie den Poll killen
-                _LOGGER.debug(
-                    "[Energy] HP%s %s: Registry-Lookup fehlgeschlagen (%s), verwende Fallback",
-                    hp_idx, sensor_type, ex,
-                )
-
         name_prefix = slugify_name_prefix_for_lookup(self.entry.data.get("name", "")) or "eu08l"
-        return default_sensor_id_template.format(name_prefix=name_prefix, hp_idx=hp_idx)
+        fallback_entity_id = default_sensor_id_template.format(
+            name_prefix=name_prefix, hp_idx=hp_idx
+        )
+
+        sensor_id = INTERNAL_ENERGY_SENSOR_IDS.get(sensor_type)
+        if not sensor_id:
+            return fallback_entity_id
+
+        try:
+            unique_id_prefix = normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l"
+            names = generate_sensor_names(
+                f"hp{hp_idx}",
+                sensor_id,  # display name irrelevant für die unique_id
+                sensor_id,
+                unique_id_prefix,
+                self._use_legacy_names,
+            )
+            registry = self._entity_registry or async_get_entity_registry(self.hass)
+            return resolve_entity_id_by_unique_id(
+                self.hass, names["unique_id"], fallback_entity_id, entity_registry=registry
+            )
+        except Exception as ex:  # pragma: no cover - defensiv, Registry darf nie den Poll killen
+            _LOGGER.debug(
+                "[Energy] HP%s %s: Registry-Lookup fehlgeschlagen (%s), verwende Fallback",
+                hp_idx, sensor_type, ex,
+            )
+            return fallback_entity_id
 
     async def _track_hp_energy_type_consumption(
         self, hp_idx, current_state, data, sensor_type, default_sensor_id_template,

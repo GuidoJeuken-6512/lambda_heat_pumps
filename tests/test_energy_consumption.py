@@ -340,6 +340,10 @@ class TestIncrementEnergyConsumptionCounter:
         """Mock entity registry."""
         registry = Mock()
         registry.async_get.return_value = Mock()  # Entity exists
+        # unique_id-Lookup soll hier "nicht gefunden" simulieren, damit auf die
+        # text-rekonstruierte entity_id zurueckgefallen wird (siehe generate_sensor_names
+        # in den Tests unten, die energy_entities exakt darueber schluesseln).
+        registry.async_get_entity_id.return_value = None
         return registry
 
     @pytest.fixture
@@ -489,6 +493,127 @@ class TestIncrementEnergyConsumptionCounter:
 
         # Entity wurde per set_energy_value aktualisiert (Offset nur für Total)
         assert any(ent.set_energy_value.called for ent in energy_entities.values())
+
+
+class TestIncrementEnergyConsumptionCounterUniqueIdLookupIssue107:
+    """Regression tests for Issue #107: increment_energy_consumption_counter() must
+    resolve its target entity via unique_id in the entity registry instead of
+    trusting the text-reconstructed entity_id from generate_sensor_names(). Before
+    this fix, any mismatch between the two (e.g. a device name with a special
+    character, or a manually renamed entity) caused the increment to be silently
+    skipped.
+    """
+
+    @pytest.fixture
+    def mock_hass(self):
+        hass = Mock(spec=HomeAssistant)
+        hass.states = Mock()
+        hass.data = {"lambda_heat_pumps": {}}
+        hass.config = Mock()
+        hass.config.language = "en"
+        hass.config.locale = SimpleNamespace(language="en")
+        hass.loop = DummyLoop()
+        return hass
+
+    @pytest.mark.asyncio
+    async def test_uses_registry_resolved_entity_id_not_reconstructed_text(self, mock_hass):
+        """The real, registered entity_id may differ from the text generate_sensor_names()
+        would construct (e.g. because it was created before a naming change, or the user
+        renamed it). The registry-resolved entity_id must win.
+        """
+        # generate_sensor_names() would construct this from name_prefix/device_prefix/sensor_id...
+        reconstructed_entity_id = "sensor.eu08l_hp1_heating_energy_total"
+        # ...but the entity actually registered under that unique_id has a different id.
+        real_entity_id = "sensor.custom_renamed_heating_energy_total"
+
+        state_obj = Mock()
+        state_obj.state = "100.5"
+        state_obj.attributes = {}
+        mock_hass.states.get = Mock(return_value=state_obj)
+
+        fake_entity = Mock()
+        fake_entity._energy_value = 100.5
+        fake_entity.set_energy_value = Mock()
+        mock_hass.data["lambda_heat_pumps"] = {
+            "test_entry_id": {"energy_entities": {real_entity_id: fake_entity}}
+        }
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+
+        def fake_async_get_entity_id(domain, platform, unique_id):
+            # Only the "total" sensor's unique_id resolves; others fall back (kept simple).
+            if unique_id.endswith("heating_energy_total"):
+                return real_entity_id
+            return None
+
+        mock_registry.async_get_entity_id = Mock(side_effect=fake_async_get_entity_id)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ):
+            await increment_energy_consumption_counter(
+                hass=mock_hass,
+                mode="heating",
+                hp_index=1,
+                energy_delta=5.0,
+                name_prefix="eu08l",
+                use_legacy_modbus_names=True,
+                energy_offsets=None,
+            )
+
+        fake_entity.set_energy_value.assert_called_once()
+        assert abs(fake_entity.set_energy_value.call_args[0][0] - 105.5) < 0.001, (
+            "Expected the entity found via unique_id (100.5 + 5.0 delta) to be updated, "
+            "not silently skipped because its entity_id doesn't match the reconstructed text."
+        )
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_reconstructed_entity_id_when_not_yet_in_registry(self, mock_hass):
+        """Self-healing fallback: if the unique_id lookup finds nothing (e.g. first
+        cycle right after startup), the previous text-based construction is used.
+        """
+        reconstructed_entity_id = "sensor.eu08l_hp1_heating_energy_total"
+
+        state_obj = Mock()
+        state_obj.state = "100.5"
+        state_obj.attributes = {}
+        mock_hass.states.get = Mock(return_value=state_obj)
+
+        fake_entity = Mock()
+        fake_entity._energy_value = 100.5
+        fake_entity.set_energy_value = Mock()
+        mock_hass.data["lambda_heat_pumps"] = {
+            "test_entry_id": {"energy_entities": {reconstructed_entity_id: fake_entity}}
+        }
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+        mock_registry.async_get_entity_id = Mock(return_value=None)  # not in registry yet
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ):
+            await increment_energy_consumption_counter(
+                hass=mock_hass,
+                mode="heating",
+                hp_index=1,
+                energy_delta=5.0,
+                name_prefix="eu08l",
+                use_legacy_modbus_names=True,
+                energy_offsets=None,
+            )
+
+        fake_entity.set_energy_value.assert_called_once()
+        assert abs(fake_entity.set_energy_value.call_args[0][0] - 105.5) < 0.001
 
 
 class TestEnergyConsumptionConstants:

@@ -774,6 +774,9 @@ class TestIncrementCyclingCounterEntityLookupOrder:
 
         mock_registry = Mock()
         mock_registry.async_get = Mock(return_value=Mock())
+        # Registry-Lookup ueber unique_id soll hier "nicht gefunden" simulieren,
+        # damit auf die uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -821,6 +824,9 @@ class TestIncrementCyclingCounterEntityLookupOrder:
 
         mock_registry = Mock()
         mock_registry.async_get = Mock(return_value=Mock())
+        # Registry-Lookup ueber unique_id soll hier "nicht gefunden" simulieren,
+        # damit auf die uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -863,6 +869,9 @@ class TestIncrementCyclingCounterEntityLookupOrder:
 
         mock_registry = Mock()
         mock_registry.async_get = Mock(return_value=Mock())
+        # Registry-Lookup ueber unique_id soll hier "nicht gefunden" simulieren,
+        # damit auf die uebergebene entity_id (Text-Fallback) zurueckgefallen wird.
+        mock_registry.async_get_entity_id = Mock(return_value=None)
 
         with patch(
             "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
@@ -882,6 +891,71 @@ class TestIncrementCyclingCounterEntityLookupOrder:
         assert any(v == 301 for v in received_values), (
             f"Expected 301 (HA state 300 + 1) but got {received_values}."
         )
+
+
+class TestIncrementCyclingCounterUniqueIdLookupIssue107:
+    """Regression tests for Issue #107: increment_cycling_counter() must resolve its
+    target entity via unique_id in the entity registry instead of trusting the
+    text-reconstructed entity_id from generate_sensor_names(). Before this fix, any
+    mismatch between the two (e.g. a device name with a special character, or a
+    manually renamed entity) caused the increment to be silently skipped - exactly
+    the symptom reported in Issue #107 (name "Lambda_EU10L").
+    """
+
+    @pytest.mark.asyncio
+    async def test_uses_registry_resolved_entity_id_not_reconstructed_text(self, mock_entry, mock_coordinator):
+        """The real, registered entity_id may differ from the text generate_sensor_names()
+        would construct. The registry-resolved entity_id must win.
+        """
+        from custom_components.lambda_heat_pumps.utils import increment_cycling_counter
+
+        received_values = []
+
+        class FakeCyclingEntity:
+            _cycling_value = 10
+            def set_cycling_value(self, value):
+                received_values.append(value)
+
+        # generate_sensor_names() would construct this...
+        reconstructed_entity_id = "sensor.eu08l_hp1_heating_cycling_total"
+        # ...but the entity is actually registered under a different entity_id.
+        real_entity_id = "sensor.custom_renamed_heating_cycling_total"
+
+        hass, _ = _make_increment_hass(real_entity_id, FakeCyclingEntity(), state_value="10")
+
+        mock_registry = Mock()
+        mock_registry.async_get = Mock(return_value=Mock())
+
+        def fake_async_get_entity_id(domain, platform, unique_id):
+            if unique_id.endswith("heating_cycling_total"):
+                return real_entity_id
+            return None
+
+        mock_registry.async_get_entity_id = Mock(side_effect=fake_async_get_entity_id)
+
+        with patch(
+            "custom_components.lambda_heat_pumps.utils.async_get_entity_registry",
+            return_value=mock_registry,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils.async_update_entity",
+            new_callable=AsyncMock,
+        ), patch(
+            "custom_components.lambda_heat_pumps.utils._get_coordinator",
+            return_value=None,
+        ):
+            await increment_cycling_counter(
+                hass=hass, mode="heating", hp_index=1,
+                name_prefix="eu08l", use_legacy_modbus_names=True,
+            )
+
+        assert any(v == 11 for v in received_values), (
+            f"Expected 11 (entity found via unique_id, _cycling_value=10 + 1) but got "
+            f"{received_values}. Regression: increment silently skipped because the "
+            "reconstructed entity_id text didn't match the real one."
+        )
+        # Sanity: the reconstructed (wrong) entity_id must never have been used to
+        # look up a fake entity - there is none registered under it in this test.
+        assert reconstructed_entity_id not in hass.data["lambda_heat_pumps"]["test_entry"]["cycling_entities"]
 
 
 class TestEdgeDetectionStateUpdate:
