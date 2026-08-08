@@ -628,7 +628,12 @@ async def async_setup_entry(
                 sensor_id = f"{mode}_energy_{period}"
                 sensor_template = ENERGY_CONSUMPTION_SENSOR_TEMPLATES.get(sensor_id)
                 if not sensor_template:
-                    _LOGGER.warning("Template not found for %s", sensor_id)
+                    # Erwartet, kein Fehler: ENERGY_CONSUMPTION_PERIODS ist modus-uebergreifend
+                    # (z.B. "hourly" existiert nur fuer heating), daher landen hier bei jedem
+                    # Setup auch Modus/Periode-Kombinationen ohne Template (z.B.
+                    # cooling_energy_hourly). Kein fehlender Sensor, nur DEBUG statt WARNING,
+                    # damit normale Nutzer das nicht als Fehler im Log sehen.
+                    _LOGGER.debug("Template not found for %s", sensor_id)
                     continue
                 
                 device_prefix = f"hp{hp_idx}"
