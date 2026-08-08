@@ -1,1 +1,3 @@
-modbus-connection[tmodbus]==3.7.0
+# Must match the requirement in custom_components/lambda_heat_pumps/manifest.json,
+# which is what Home Assistant actually installs.
+modbus-connection[tmodbus]==4.3.0
