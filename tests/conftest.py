@@ -98,6 +98,19 @@ class Controller:
 
     _connections: list[MockModbusConnection] = field(default_factory=list)
     _busy: set[int] = field(default_factory=set)
+    # The first register of each module this controller does not have. Per
+    # controller rather than fixed, so a test can install one.
+    _absent: set[int] = field(default_factory=lambda: set(ABSENT_BLOCKS))
+
+    def install(self, base: int) -> None:
+        """Start answering for a module block, as a controller with one does.
+
+        Applied to the connections opened later too, so a test can add a module
+        before setup — which is the only time the probe counts them.
+        """
+        self._absent.discard(base)
+        for unit in self._units:
+            unit.fail_read(base, None)
 
     def refuse(self, address: int) -> None:
         """Stop answering for any block covering this register, as a controller
@@ -193,14 +206,14 @@ class Controller:
             unit.fail_requests(None)
 
 
-def _refuse_absent_modules(unit: MockModbusUnit) -> None:
+def _refuse_absent_modules(unit: MockModbusUnit, absent: set[int]) -> None:
     """Make the controller answer for the modules it has, and no others.
 
     A block read that reaches into one of these refuses, exactly as a controller
     does for a module that is not installed — which is the only way it ever says
     so.
     """
-    for base in ABSENT_BLOCKS:
+    for base in absent:
         unit.fail_read(base, IllegalDataAddressError())
 
 
@@ -227,7 +240,7 @@ def controller() -> Iterator[Controller]:
             # The controller's memory, not this connection's — what is written
             # over one link is there to be read over the next.
             unit.holding = device.registers
-            _refuse_absent_modules(unit)
+            _refuse_absent_modules(unit, device._absent)
             for address in device._refused:
                 unit.fail_read(address, IllegalDataAddressError())
             for address in device._busy:

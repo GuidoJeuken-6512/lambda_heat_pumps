@@ -430,3 +430,39 @@ async def test_the_capacity_limits_are_polled_on_the_hour(
     # that the limits were among what was read — and that the new value arrived.
     assert CAPACITY_POLL <= set(controller.reads)
     assert state_of(hass, "eu08l_hp1_cooling_max_output_power") == "25.0"
+
+
+async def test_a_second_heat_pump_gets_its_own_capacity_poll(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Each heat pump's limits are their own component on their own coordinator.
+
+    The limits share a block with the heat pump they belong to, so a second one
+    is the case where an off-by-one in the indexing would show up: two
+    coordinators both reading HP1's block, or HP2's sensors reading HP1's values.
+    """
+    # Give the controller a second heat pump, and stop refusing its block.
+    controller.registers.update(
+        {1100: 0, 1102: 5, 1103: 1, 1104: 2000, 1110: 5000, 1159: 300}
+    )
+    controller.install(1100)
+    controller.refuse(1200)  # and no third one
+
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    assert coordinator.counts["hp"] == 2
+    assert len(coordinator.capacity_limits) == 2
+
+    controller.forget_reads()
+    for capacity in coordinator.capacity_limits:
+        await capacity.async_refresh()
+    await hass.async_block_till_done()
+
+    # One coordinator reads 1050-1060, the other 1150-1160 — not the same block.
+    assert set(controller.reads) == {
+        *((address, 1) for address in range(1050, 1061)),
+        *((address, 1) for address in range(1150, 1161)),
+    }
+    # And each heat pump's sensor reports its own controller's value.
+    assert state_of(hass, "eu08l_hp1_cooling_max_output_power") == "0.0"
+    assert state_of(hass, "eu08l_hp2_cooling_max_output_power") == "30.0"
