@@ -16,10 +16,12 @@ import logging
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 from modbus_connection import ModbusTimeoutError
 
 from .conftest import Controller
 from .test_init import setup_entry, state_of
+from .test_reads import CAPACITY_POLL
 
 pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
 
@@ -397,3 +399,34 @@ async def test_the_capacity_poll_never_recycles_the_link(
 
     assert not capacity.last_update_success
     assert connection.connected
+
+
+async def test_the_capacity_limits_are_polled_on_the_hour(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The slow poll is really armed, and really is an hour apart.
+
+    Carving the limits out is only a saving if they are still read; a
+    coordinator that was built but never scheduled would look identical to every
+    other test here.
+    """
+    from datetime import timedelta
+
+    from freezegun.api import FrozenDateTimeFactory
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    [capacity] = coordinator.capacity_limits
+    assert capacity.update_interval == timedelta(hours=1)
+
+    controller.registers[1059] = 250  # cooling_max_output_power -> 25.0 kW
+    controller.forget_reads()
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(hours=1, seconds=1))
+    await hass.async_block_till_done()
+
+    # An hour's worth of the fast and full polls lands too, so this asks only
+    # that the limits were among what was read — and that the new value arrived.
+    assert CAPACITY_POLL <= set(controller.reads)
+    assert state_of(hass, "eu08l_hp1_cooling_max_output_power") == "25.0"
