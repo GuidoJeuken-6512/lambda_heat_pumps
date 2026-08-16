@@ -658,3 +658,37 @@ async def test_a_busy_answer_mid_poll_does_not_re_probe_the_controller(
     # The entry was not reloaded: it is still the same coordinator.
     assert entry.runtime_data is coordinator
     assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_only_a_sensor_holding_a_value_asks_to_be_restored(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A plain register sensor is not handed to the restore store.
+
+    The store writes every entity registered with it to disk on a timer, whether
+    or not that entity ever restores anything — so a register sensor, whose value
+    is simply whatever the model last decoded, has no business in it. Only the
+    ones that carry a value of their own do: the controller's own accumulating
+    counters, and the counters this integration keeps itself.
+    """
+    from homeassistant.helpers import restore_state
+
+    await setup_entry(hass, controller, legacy=True)
+    registered = set(restore_state.async_get(hass).entities)
+
+    assert registered, "nothing registered with the restore store at all"
+    # The controller's own lifetime counter holds its value across a restart.
+    electrical = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_compressor_power_consumption_accumulated"
+    )
+    assert electrical in registered
+    # A plain measurement does not.
+    flow_line = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_flow_line_temperature"
+    )
+    assert flow_line not in registered
+    # Nor does one of the capacity limits, off its own poll.
+    cooling = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_cooling_max_output_power"
+    )
+    assert cooling not in registered

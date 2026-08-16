@@ -151,6 +151,20 @@ class Controller:
         for unit in self._units:
             unit.fail_read(address, ServerDeviceBusyError())
 
+    def stop_answering_for(self, address: int) -> None:
+        """Answer nothing for any block covering this register.
+
+        One module going quiet while the rest keep answering, which is a timeout
+        belonging to that module rather than to the link.
+        """
+        for unit in self._units:
+            unit.fail_read(address, ModbusTimeoutError("no answer"))
+
+    def answer_again_for(self, address: int) -> None:
+        """Answer for this register again."""
+        for unit in self._units:
+            unit.fail_read(address, None)
+
     def stop_answering(self) -> None:
         """Keep the link up but answer nothing, as a wedged bridge does."""
         for unit in self._units:

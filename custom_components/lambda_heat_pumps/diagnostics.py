@@ -36,6 +36,12 @@ async def async_get_config_entry_diagnostics(
             "options": dict(entry.options),
         },
         "detected_modules": coordinator.counts,
+        # What the last poll made of the controller, so a module that is not
+        # answering can be told from one whose registers read oddly.
+        "poll": {
+            "updated": sorted(coordinator.updated),
+            "failed": {name: str(err) for name, err in coordinator.failed.items()},
+        },
         "registers": await _async_read_registers(coordinator),
         # What the integration counts for itself, so a wrong cycle or energy
         # figure can be told apart from a wrong register.

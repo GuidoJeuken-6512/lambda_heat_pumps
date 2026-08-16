@@ -88,3 +88,57 @@ async def test_the_host_is_redacted(
     diagnostics = await _diagnostics(hass, entry, hass_client)
 
     assert diagnostics["entry"]["data"][CONF_HOST] == REDACTED
+
+async def test_the_dump_still_carries_the_capacity_limits(
+    hass: HomeAssistant, controller: Controller, hass_client
+) -> None:
+    """Reading them on their own poll does not take them out of the dump.
+
+    The dump reads what the controller serves, not what any one schedule happens
+    to ask for, so moving these off the full poll must not quietly drop eleven
+    registers out of every issue report.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    registers = (await _diagnostics(hass, entry, hass_client))["registers"]
+
+    for address in range(1050, 1061):
+        assert str(address) in registers, f"{address} is missing from the dump"
+
+
+async def test_the_dump_does_not_pass_for_a_poll(
+    hass: HomeAssistant, controller: Controller, hass_client
+) -> None:
+    """Downloading diagnostics does not write a state for every entity.
+
+    The dump reads the controller's registers straight off the unit rather than
+    through the model, so it refreshes no field and fires no listener. A user
+    downloading diagnostics is asking what the controller holds, not asking for
+    an extra poll — and an entity's last-changed should not move because of it.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    device = entry.runtime_data.device
+
+    fired: list[str] = []
+    device.ambient.add_update_listener(lambda: fired.append("ambient"))
+    device.heat_pumps[0].add_update_listener(lambda: fired.append("hp1"))
+
+    await _diagnostics(hass, entry, hass_client)
+    assert not fired, "the diagnostics download passed for a poll"
+
+    # A real poll does fire them, so the listeners were wired up correctly.
+    await entry.runtime_data.async_refresh()
+    assert sorted(fired) == ["ambient", "hp1"]
+
+
+async def test_the_dump_says_what_the_last_poll_made_of_the_controller(
+    hass: HomeAssistant, controller: Controller, hass_client
+) -> None:
+    """A module that is not answering shows up in the download."""
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    controller.answer_busy(1004)
+    await entry.runtime_data.async_refresh()
+    diagnostics = await _diagnostics(hass, entry, hass_client)
+
+    assert list(diagnostics["poll"]["failed"]) == ["hp1"]
+    assert "boil1" in diagnostics["poll"]["updated"]
