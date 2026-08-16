@@ -29,6 +29,7 @@ tests/playwright/
 !CHANGELOG_ALL_CHANGES.md
 !requirements.txt
 !requirements_test.txt
+!pytest.ini
 
 # Docs directory and all subdirectories (offizielle, publizierte Doku)
 !docs/
