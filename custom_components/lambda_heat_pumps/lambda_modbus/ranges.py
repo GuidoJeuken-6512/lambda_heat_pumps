@@ -34,8 +34,12 @@ _HP_RANGES: tuple[Range, ...] = (
     (20, 21),  # compressor_power_consumption_accumulated (int32)
     (22, 23),  # compressor_thermal_energy_output_accumulated (int32)
     (24, 33),
-    *((n, n) for n in range(50, 61)),  # capacity limits — one read each
 )
+
+# The capacity limits, one read each. They are the heat pump's own component on
+# its own poll: eleven requests for settings an installer changes, against five
+# for everything a heat pump measures.
+HP_CAPACITY_RANGES: tuple[Range, ...] = tuple((n, n) for n in range(50, 61))
 _BOIL_RANGES: tuple[Range, ...] = ((0, 5), (50, 50))
 _BUFF_RANGES: tuple[Range, ...] = ((0, 9), (50, 50))
 _SOL_RANGES: tuple[Range, ...] = ((0, 4), (5, 6), (50, 51))  # 5-6 is energy_total
@@ -83,7 +87,13 @@ def readable_ranges(counts: dict[str, int]) -> tuple[Range, ...]:
     """
     ranges = list(_MAIN_RANGES)
     for module, count in counts.items():
+        relative = _MODULE_RANGES[module]
+        if module == "hp":
+            # Polled apart from the rest of the heat pump, but readable all the
+            # same — a diagnostics dump reads what the controller serves, not
+            # what any one schedule happens to ask for.
+            relative += HP_CAPACITY_RANGES
         for index in range(1, count + 1):
             base = base_address(module, index)
-            ranges += [(base + low, base + high) for low, high in _MODULE_RANGES[module]]
+            ranges += [(base + low, base + high) for low, high in relative]
     return tuple(sorted(ranges))

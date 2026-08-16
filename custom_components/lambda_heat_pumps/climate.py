@@ -116,7 +116,13 @@ class LambdaClimate(LambdaEntity, ClimateEntity):
         index: int,
     ) -> None:
         """Bind the thermostat to the module it controls."""
-        super().__init__(coordinator, description.key, description.module, index)
+        super().__init__(
+            coordinator,
+            description.key,
+            description.module,
+            index,
+            component=f"{description.module}{index}",
+        )
         self.entity_description = description
         self._attr_translation_key = description.key
         self._attr_hvac_mode = description.hvac_mode

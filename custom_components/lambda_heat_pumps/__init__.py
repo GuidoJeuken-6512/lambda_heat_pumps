@@ -69,6 +69,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bo
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
 
+    # The capacity limits are read on their own slow schedule. A first read that
+    # fails is not worth failing setup over — they are settings, the rest of the
+    # controller is answering, and their entities say so on their own until the
+    # next read lands an hour later.
+    for capacity in coordinator.capacity_limits:
+        await capacity.async_refresh()
+
     # Nothing here reloads the entry, and the two things that used to are both
     # better off without it: a dropped link is re-established by the next poll,
     # which keeps the entities and the probed register map in place rather than

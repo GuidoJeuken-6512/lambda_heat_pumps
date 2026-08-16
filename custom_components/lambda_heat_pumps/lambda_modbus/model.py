@@ -15,8 +15,10 @@ number the controller wants to put there.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
+from modbus_connection import ModbusError
 from modbus_connection.model import Component
 from modbus_connection.model import enum as _enum, gauge as _gauge
 
@@ -41,6 +43,28 @@ def enum(address: int, states, /, **kwargs: Any):
     """
     kwargs.setdefault("nan", SENTINELS)
     return _enum(address, states, **kwargs)
+
+
+@dataclass(frozen=True)
+class UpdateReport:
+    """What one poll refreshed, by sub-system name.
+
+    The names are the controller's own two sub-systems, ``ambient`` and
+    ``e_manager``, and one per installed module — ``hp1``, ``boil1``, ``hc2``.
+
+    A failed sub-system kept the values it had and did not notify its listeners;
+    the error that failed it rides along. A controller that answered nothing at
+    all is never in here — the update raises instead of reporting a silence that
+    belongs to no one sub-system.
+    """
+
+    updated: set[str]
+    failed: dict[str, ModbusError]
+
+    @property
+    def complete(self) -> bool:
+        """Whether every polled sub-system refreshed."""
+        return not self.failed
 
 
 class LambdaComponent(Component):

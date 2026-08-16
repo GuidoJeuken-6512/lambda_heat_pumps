@@ -76,6 +76,11 @@ DEFAULT_UPDATE_INTERVAL: Final = 30
 DEFAULT_FAST_UPDATE_INTERVAL: Final = 2
 DEFAULT_WRITE_INTERVAL: Final = 9
 
+# How often a heat pump's capacity limits are read. They change when an installer
+# changes them, so an hour is soon enough — and they cost eleven single-register
+# requests, close to half of what a poll of the whole controller costs.
+CAPACITY_LIMIT_UPDATE_INTERVAL: Final = 3600
+
 # Setpoint bounds, asked for in the options flow.
 CONF_HEATING_CIRCUIT_MIN_TEMP: Final = "heating_circuit_min_temp"
 CONF_HEATING_CIRCUIT_MAX_TEMP: Final = "heating_circuit_max_temp"

@@ -15,14 +15,20 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
 from .const import CONF_NAME_PREFIX, CONF_USE_LEGACY_MODBUS_NAMES
-from .coordinator import LambdaCoordinator
+from .coordinator import LambdaCapacityLimitCoordinator, LambdaCoordinator
+
+type AnyLambdaCoordinator = LambdaCoordinator | LambdaCapacityLimitCoordinator
 
 
-class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
+class LambdaEntity(CoordinatorEntity[AnyLambdaCoordinator]):
     """Identity and device info shared by every Lambda entity.
 
     `module` and `index` name the sub-device the entity belongs to — ("hp", 1) —
     or are None for an entity that belongs to the controller itself.
+
+    `component` names the sub-system a poll has to have read for this entity's
+    value to be current. An entity whose value is derived, accumulated or set by
+    the user names none, and stays available whatever the controller answered.
     """
 
     _attr_has_entity_name = True
@@ -34,15 +40,18 @@ class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
 
     def __init__(
         self,
-        coordinator: LambdaCoordinator,
+        coordinator: AnyLambdaCoordinator,
         key: str,
         module: str | None = None,
         index: int | None = None,
+        *,
+        component: str | None = None,
     ) -> None:
         """Give the entity its unique id and its device."""
         super().__init__(coordinator)
         self._module = module
         self._index = index
+        self._polled = component
 
         entry = coordinator.config_entry
         # Installations created before Home Assistant named entities from their
@@ -75,3 +84,25 @@ class LambdaEntity(CoordinatorEntity[LambdaCoordinator]):
         if self._entity_domain:
             object_id = slugify(f"{prefix}_{module_prefix}{key}")
             self.entity_id = f"{self._entity_domain}.{object_id}"
+
+    @property
+    def available(self) -> bool:
+        """Whether what this entity reports is what the controller holds.
+
+        A module the last poll could not read kept the values it had, which are
+        no longer the controller's — so its entities go unavailable while the
+        rest of the controller carries on reporting.
+
+        An entity that names no sub-system holds its own value and stays
+        available whatever happened to the poll, including a controller that is
+        gone for good: a gap in a running total reads as a counter reset and
+        takes the long-term statistics with it, and heat pumps are switched off
+        for the season as inverters are at night. That test comes first, above
+        the coordinator's own — a controller answering nothing at all is exactly
+        the case the totals and the derived sensors have to survive. Saying
+        whether the controller is answering is a connectivity entity's job, not
+        a counter's.
+        """
+        return self._polled is None or (
+            super().available and self._polled not in self.coordinator.failed
+        )

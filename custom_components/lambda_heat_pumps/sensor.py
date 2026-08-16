@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from functools import cached_property
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -64,7 +65,11 @@ from .const import (
     SIGNAL_PERIOD_ROLLOVER,
     THERMAL_ENERGY_MODES,
 )
-from .coordinator import LambdaConfigEntry, LambdaCoordinator
+from .coordinator import (
+    LambdaCapacityLimitCoordinator,
+    LambdaConfigEntry,
+    LambdaCoordinator,
+)
 from .entity import LambdaEntity
 from .firmware import firmware_level, serves
 from .lambda_modbus.enums import HeatingCircuitOperatingState, LambdaState
@@ -89,6 +94,20 @@ class LambdaSensorDescription(SensorEntityDescription):
     # `firmware.py`; unset means every firmware serves it.
     firmware_version: int | None = None
     firmware_versions: tuple[int | str, ...] | None = None
+
+    @cached_property
+    def is_total(self) -> bool:
+        """Whether this sensor accumulates rather than measures.
+
+        A total feeds long-term statistics, which is what makes it worth holding
+        on to when the controller stops answering. Caching writes into the
+        instance dict rather than through ``__setattr__``, so the description
+        stays frozen.
+        """
+        return self.state_class in (
+            SensorStateClass.TOTAL,
+            SensorStateClass.TOTAL_INCREASING,
+        )
 
 
 def _temperature(key: str, **kwargs) -> LambdaSensorDescription:
@@ -209,6 +228,11 @@ HP_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _percent("eqm_rating", precision=2),
     _percent("expansion_valve_opening_angle", precision=2),
     _count("config_parameter_33"),
+)
+
+# The capacity limits, read on their own slow poll rather than with the rest of
+# the heat pump. Same keys, so the entities they back are the ones that existed.
+HP_CAPACITY_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _count("config_parameter_50"),
     _power("dhw_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1),
     _power("heating_min_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1),
@@ -440,7 +464,7 @@ async def async_setup_entry(
             continue
         prefix = next(p for p in CONTROLLER_COMPONENTS if description.key.startswith(p))
         entities.append(
-            LambdaSensor(
+            _register_sensor(description)(
                 coordinator,
                 description,
                 component=CONTROLLER_COMPONENTS[prefix],
@@ -451,10 +475,17 @@ async def async_setup_entry(
     for module, descriptions in MODULE_SENSORS.items():
         for index in range(1, coordinator.counts[module] + 1):
             entities += [
-                LambdaSensor(coordinator, d, module=module, index=index)
+                _register_sensor(d)(coordinator, d, module=module, index=index)
                 for d in descriptions
                 if serves(d, level)
             ]
+
+    for capacity in coordinator.capacity_limits:
+        entities += [
+            LambdaCapacityLimitSensor(capacity, description)
+            for description in HP_CAPACITY_SENSORS
+            if serves(description, level)
+        ]
 
     for index in range(1, coordinator.counts["hp"] + 1):
         # A yesterday counter mirrors the daily one it is paired with: the daily
@@ -504,8 +535,8 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class LambdaSensor(LambdaEntity, SensorEntity):
-    """A value the controller holds, read off the device model."""
+class LambdaRegisterEntity(LambdaEntity):
+    """What the two kinds of register sensor share: which field they report."""
 
     _entity_domain = "sensor"
 
@@ -522,7 +553,10 @@ class LambdaSensor(LambdaEntity, SensorEntity):
         attribute: str | None = None,
     ) -> None:
         """Bind the sensor to the field it reports."""
-        super().__init__(coordinator, description.key, module, index)
+        # A gap in a running total reads as a counter reset, so it holds what it
+        # last read rather than going unavailable with its module.
+        polled = None if description.is_total else component or f"{module}{index}"
+        super().__init__(coordinator, description.key, module, index, component=polled)
         self.entity_description = description
         self._attr_translation_key = description.key
         self._component = component
@@ -551,13 +585,108 @@ class LambdaSensor(LambdaEntity, SensorEntity):
         """
         return self._component_of(coordinator).declared_fields[self._attribute]
 
-    @property
-    def native_value(self) -> float | str | None:
+    def _read(self) -> float | str | None:
         """The decoded field, or its label if it is one of the state codes."""
         value = getattr(self._component_of(self.coordinator), self._attribute)
         if isinstance(value, LambdaState):
             return value.label
         return value
+
+
+class LambdaSensor(LambdaRegisterEntity, SensorEntity):
+    """A value the controller holds, read straight off the device model.
+
+    There is nothing to keep here: the model holds the value, and the entity
+    goes unavailable with the module that stopped answering for it.
+    """
+
+    @property
+    def native_value(self) -> float | str | None:
+        """What the model holds for this field right now."""
+        return self._read()
+
+
+class LambdaTotalSensor(LambdaRegisterEntity, RestoreSensor):
+    """One of the controller's own accumulating counters.
+
+    It feeds long-term statistics, so it holds the last value it read and
+    restores it across a restart: a heat pump that is not answering when Home
+    Assistant starts does not leave a hole in its own history.
+    """
+
+    async def async_added_to_hass(self) -> None:
+        """Take the last value back up before the first poll lands."""
+        await super().async_added_to_hass()
+        if (last := await self.async_get_last_sensor_data()) is not None:
+            self._attr_native_value = last.native_value
+        self._process_data()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Take this poll's reading before the state is written."""
+        self._process_data()
+        super()._handle_coordinator_update()
+
+    def _process_data(self) -> None:
+        """Read the total, and keep the one we had if it reads as nothing.
+
+        The controller has not un-generated the energy it already counted, and
+        publishing the gap would take its long-term statistics with it.
+
+        A counter that dips by a hair is the same thing said differently: these
+        are 32-bit counters read as two registers, so a poll that catches the
+        controller mid-carry reads a value just below the last one. Home
+        Assistant would take that for a meter reset. Only a counter that can
+        just as well fall on its own — a ``TOTAL`` — is published as read.
+        """
+        if (value := self._read()) is None:
+            return
+        last = self._attr_native_value
+        if (
+            self.entity_description.state_class is SensorStateClass.TOTAL_INCREASING
+            and last is not None
+            and last * 0.99 <= value < last
+        ):
+            return  # ignore firmware issue causing minor decrease
+        self._attr_native_value = value
+
+
+def _register_sensor(
+    description: LambdaSensorDescription,
+) -> type[LambdaSensor | LambdaTotalSensor]:
+    """Which kind of register sensor a description asks for.
+
+    Only a total has a value of its own to keep, and only it is worth handing to
+    Home Assistant's restore store — which writes every entity registered with
+    it to disk on a timer, whether or not that entity ever restores anything.
+    """
+    return LambdaTotalSensor if description.is_total else LambdaSensor
+
+
+class LambdaCapacityLimitSensor(LambdaRegisterEntity, SensorEntity):
+    """One of a heat pump's capacity limits, off its own slow poll.
+
+    Its coordinator polls a single component, so it either read or it did not:
+    naming the heat pump costs nothing and the availability comes down to
+    whether that read succeeded.
+    """
+
+    def __init__(
+        self,
+        coordinator: LambdaCapacityLimitCoordinator,
+        description: LambdaSensorDescription,
+    ) -> None:
+        """Bind the sensor to the limit it reports."""
+        super().__init__(coordinator, description, module="hp", index=coordinator.index)
+
+    def _component_of(self, coordinator: LambdaCapacityLimitCoordinator):
+        """The limits component, which is all this coordinator polls."""
+        return coordinator.component
+
+    @property
+    def native_value(self) -> float | str | None:
+        """What the model holds for this limit right now."""
+        return self._read()
 
 
 async def _restored_value(entity: RestoreSensor) -> float | None:

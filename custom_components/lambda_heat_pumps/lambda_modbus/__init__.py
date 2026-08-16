@@ -37,17 +37,23 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from modbus_connection import IllegalDataAddressError
+from modbus_connection import (
+    IllegalDataAddressError,
+    ModbusConnectionError,
+    ModbusError,
+    ModbusTimeoutError,
+)
 
 from .boiler import Boiler
 from .buffer import Buffer
 from .general import Ambient, EManager
-from .heat_pump import HeatPump, HeatPumpLowFirst
+from .heat_pump import HeatPump, HeatPumpCapacityLimits, HeatPumpLowFirst
 from .heating_circuit import HeatingCircuit
-from .model import LambdaComponent
+from .model import LambdaComponent, UpdateReport
 from .ranges import (
     AMBIENT_RANGES,
     E_MANAGER_RANGES,
+    HP_CAPACITY_RANGES,
     Range,
     base_address,
     module_ranges,
@@ -63,10 +69,12 @@ __all__ = [
     "Buffer",
     "EManager",
     "HeatPump",
+    "HeatPumpCapacityLimits",
     "HeatingCircuit",
     "LambdaComponent",
     "LambdaHeatPump",
     "Solar",
+    "UpdateReport",
 ]
 
 
@@ -140,6 +148,13 @@ class LambdaHeatPump:
         self.buffers: list[Buffer] = []
         self.solar_modules: list[Solar] = []
         self.heating_circuits: list[HeatingCircuit] = []
+        # Read apart from the poll, on their own schedule; see `async_setup`.
+        self.capacity_limits: list[HeatPumpCapacityLimits] = []
+
+        # What a poll reads, named as the report names it. The capacity limits
+        # are deliberately not in here: they are polled on their own schedule,
+        # so they are in no report and fail on their own.
+        self._polled: dict[str, LambdaComponent] = {}
 
     async def async_setup(self) -> None:
         """Probe the controller and build each module from what it serves."""
@@ -153,16 +168,43 @@ class LambdaHeatPump:
         self.buffers = await self._build_all(Buffer, "buff")
         self.solar_modules = await self._build_all(solar_class, "sol")
         self.heating_circuits = await self._build_all(HeatingCircuit, "hc")
+        self.capacity_limits = await self._build_all(
+            HeatPumpCapacityLimits, "hp", HP_CAPACITY_RANGES
+        )
+
+        self._polled = {
+            "ambient": self.ambient,
+            "e_manager": self.e_manager,
+            **{
+                f"{module}{index}": component
+                for module, components in (
+                    ("hp", self.heat_pumps),
+                    ("boil", self.boilers),
+                    ("buff", self.buffers),
+                    ("sol", self.solar_modules),
+                    ("hc", self.heating_circuits),
+                )
+                for index, component in enumerate(components, 1)
+            },
+        }
 
     async def _build_all[C: LambdaComponent](
-        self, component_class: type[C], module: str
+        self,
+        component_class: type[C],
+        module: str,
+        relative_ranges: tuple[Range, ...] | None = None,
     ) -> list[C]:
-        """One component per installed module, each at its own 100-register block."""
+        """One component per installed module, each at its own 100-register block.
+
+        `relative_ranges` overrides the module's own runs, for a second component
+        sharing the block — the heat pump's capacity limits.
+        """
+        ranges = module_ranges(module) if relative_ranges is None else relative_ranges
         return [
             await self._build(
                 component_class,
                 base_address(module, index),
-                module_ranges(module),
+                ranges,
                 index=index,
             )
             for index in range(1, self._counts[module] + 1)
@@ -208,23 +250,42 @@ class LambdaHeatPump:
 
     @property
     def components(self) -> tuple[LambdaComponent, ...]:
-        """Every sub-system that is polled."""
-        return (
-            self.ambient,
-            self.e_manager,
-            *self.heat_pumps,
-            *self.boilers,
-            *self.buffers,
-            *self.solar_modules,
-            *self.heating_circuits,
-        )
+        """Every sub-system this controller has, whichever schedule reads it."""
+        return (*self._polled.values(), *self.capacity_limits)
 
-    async def async_update(self) -> None:
-        """Refresh every sub-system.
+    async def async_update(self) -> UpdateReport:
+        """Refresh every polled sub-system, one at a time.
 
         Each module is read on its own, so they are independent: one that stops
-        answering raises, and the caller decides what that means, without the
-        others' reads riding on it.
+        answering keeps the values it had and is named in the report, while the
+        rest still refresh. Listeners fire only once every sub-system has been
+        tried, and only for the ones that did refresh — so what a listener reads
+        is one poll's worth of the controller, not half of it.
+
+        A silence that belongs to no one module raises instead of being
+        reported: the link itself failing, and a first sub-system that times out
+        with nothing having answered yet — walking the rest of a controller that
+        is not talking costs a full timeout per module and reports every one of
+        them as stale.
         """
-        for component in self.components:
-            await component.async_update()
+        updated: set[str] = set()
+        failed: dict[str, ModbusError] = {}
+        for name, component in self._polled.items():
+            try:
+                await component.async_update(notify=False)
+            except ModbusConnectionError:
+                raise
+            except ModbusTimeoutError as err:
+                if not updated and not failed:
+                    # Nothing has answered yet — not a value, not even a refusal,
+                    # which would at least prove the controller is there. Assume
+                    # the rest would time out too rather than paying for each.
+                    raise
+                failed[name] = err
+            except ModbusError as err:
+                failed[name] = err
+            else:
+                updated.add(name)
+        for name in updated:
+            self._polled[name].notify()
+        return UpdateReport(updated, failed)

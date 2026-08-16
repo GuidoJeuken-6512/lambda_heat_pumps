@@ -649,7 +649,12 @@ async def test_a_busy_answer_mid_poll_does_not_re_probe_the_controller(
     await coordinator.async_refresh()
     await hass.async_block_till_done()
 
-    assert not coordinator.last_update_success
+    # The heat pump is the only module that could not be read; it is reported
+    # rather than raised, so the rest of the controller carries on.
+    assert set(coordinator.failed) == {"hp1"}
+    assert "boil1" in coordinator.updated
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "unavailable"
+    assert state_of(hass, "eu08l_boil1_actual_high_temperature") == "48.0"
     # The entry was not reloaded: it is still the same coordinator.
     assert entry.runtime_data is coordinator
     assert entry.state is ConfigEntryState.LOADED

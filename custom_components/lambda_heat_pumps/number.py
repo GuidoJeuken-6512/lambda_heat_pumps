@@ -194,7 +194,11 @@ class LambdaFlowLineOffsetNumber(LambdaEntity, NumberEntity):
     def __init__(self, coordinator: LambdaCoordinator, index: int) -> None:
         """Bind the number to one heating circuit."""
         super().__init__(
-            coordinator, f"{FLOW_LINE_OFFSET.key}_number", "hc", index
+            coordinator,
+            f"{FLOW_LINE_OFFSET.key}_number",
+            "hc",
+            index,
+            component=f"hc{index}",
         )
         self._attr_translation_key = FLOW_LINE_OFFSET.key
 

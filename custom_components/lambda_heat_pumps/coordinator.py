@@ -35,12 +35,12 @@ from modbus_connection import (
     IllegalDataAddressError,
     ModbusConnection,
     ModbusError,
-    ModbusExceptionError,
     ModbusTimeoutError,
     ModbusUnit,
 )
 
 from .const import (
+    CAPACITY_LIMIT_UPDATE_INTERVAL,
     CONF_FAST_UPDATE_INTERVAL,
     CONF_FIRMWARE_VERSION,
     CONF_HOST,
@@ -70,7 +70,7 @@ from .const import (
 )
 from .config_file import LambdaFileConfig, async_load as async_load_config
 from .firmware import default_register_order
-from .lambda_modbus import LambdaHeatPump
+from .lambda_modbus import HeatPumpCapacityLimits, LambdaHeatPump
 from .lambda_modbus.ranges import base_address
 
 _LOGGER = logging.getLogger(__name__)
@@ -196,6 +196,17 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         # Consecutive polls the controller has not answered.
         self._timeouts = 0
 
+        # What the last poll could not read, by sub-system name. Those modules
+        # kept the values they had, so the entities reading them say so.
+        self.failed: dict[str, ModbusError] = {}
+        # What it did read, for the diagnostics download.
+        self.updated: set[str] = set()
+        # Which modules were already failing, so only a new one is logged.
+        self._warned: frozenset[str] = frozenset()
+
+        # One per heat pump, built once the probe has settled what it serves.
+        self.capacity_limits: list[LambdaCapacityLimitCoordinator] = []
+
         # What `lambda_wp_config.yaml` says, read in `_async_setup`.
         self.file_config = LambdaFileConfig()
 
@@ -233,6 +244,11 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         # the first poll reads them.
         await self.device.async_setup()
 
+        self.capacity_limits = [
+            LambdaCapacityLimitCoordinator(self, index)
+            for index in range(1, len(self.device.capacity_limits) + 1)
+        ]
+
         entry = self.config_entry
         entry.async_on_unload(
             async_track_time_interval(
@@ -263,7 +279,7 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             # The connection re-establishes itself: a request opens the link if
             # it is down, over the same unit handles, so a drop costs at most the
             # poll it happened on and nothing has to be rebuilt.
-            await self.device.async_update()
+            report = await self.device.async_update()
         except ModbusTimeoutError as err:
             # A link can be up and useless: the socket stays open and the
             # controller stops answering, which happens with the serial-to-network
@@ -276,34 +292,51 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 _LOGGER.debug("No answer in a while; dropping the link to reopen it")
                 await self.connection.disconnect()
             raise UpdateFailed(f"The controller did not answer: {err}") from err
-        except IllegalDataAddressError as err:
-            # The controller has nothing at those addresses any more, so what was
-            # read off it at setup no longer describes it — a module was added or
-            # removed, or its firmware changed. Only setting up again can find
-            # out what it has now, so ask for that rather than telling the user
-            # to. `block` says which read it was, and is None if the refusal came
-            # from a request made outside the register model.
-            if (block := err.block) is not None:
-                self.hass.config_entries.async_schedule_reload(
-                    self.config_entry.entry_id
-                )
-                raise UpdateFailed(
-                    f"The controller no longer has {block.space} registers "
-                    f"{block.address}-{block.address + block.count - 1}, which "
-                    f"it served when it was set up; looking again at what it has."
-                ) from err
-            raise UpdateFailed(f"The controller refused a read: {err}") from err
-        except ModbusExceptionError as err:
-            # Any other refusal is the controller saying it cannot answer just
-            # now — busy, or faulted. That says nothing about what it has, so
-            # there is nothing to look at again; the next poll tries once more.
-            raise UpdateFailed(f"The controller would not answer: {err}") from err
         except ModbusError as err:
+            # The link itself failing; it re-establishes on the next poll.
             raise UpdateFailed(f"Error reading the controller: {err}") from err
         else:
+            # A report at all means the controller is answering, whatever any one
+            # module said.
             self._timeouts = 0
         finally:
             self._polling = False
+
+        self.updated = report.updated
+        self.failed = report.failed
+
+        # The controller has nothing at those addresses any more, so what was
+        # read off it at setup no longer describes it — a module was added or
+        # removed, or its firmware changed. Only setting up again can find out
+        # what it has now, so ask for that rather than telling the user to.
+        # `block` says which read it was, and is None if the refusal came from a
+        # request made outside the register model.
+        stale = {
+            name: err
+            for name, err in report.failed.items()
+            if isinstance(err, IllegalDataAddressError) and err.block is not None
+        }
+        if stale:
+            self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+            raise UpdateFailed(
+                f"The controller no longer serves {', '.join(sorted(stale))}, "
+                f"which it served when it was set up; looking again at what it has."
+            ) from next(iter(stale.values()))
+
+        if report.failed and not report.updated:
+            # Every module refused or failed in its own right — which is not the
+            # link failing, so it is worth carrying all of them rather than
+            # picking one to blame.
+            errors = list(report.failed.values())
+            raise UpdateFailed(
+                f"Error reading the controller: {errors[0]}"
+            ) from ExceptionGroup("no sub-system answered", errors)
+
+        # Only a module that was not already failing is worth a line; a
+        # controller with one module off would otherwise log on every poll.
+        for name in sorted(report.failed.keys() - self._warned):
+            _LOGGER.warning("Failed to fetch %s: %s", name, report.failed[name])
+        self._warned = frozenset(report.failed)
 
         for index in self.totals:
             heat_pump = self.component("hp", index)
@@ -467,3 +500,57 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             return 0.0
         return delta
 
+
+
+class LambdaCapacityLimitCoordinator(DataUpdateCoordinator[None]):
+    """One heat pump's capacity limits, on their own hourly poll.
+
+    They are settings — an installer's, not the heat pump's — and the controller
+    serves them one register at a time, so reading them with everything else put
+    eleven of a poll's twenty-three requests into values that change perhaps once
+    a year.
+
+    The values live on the component, so there is no report to carry: an entity
+    is available exactly when the last read of the limits succeeded.
+
+    Liveness stays with the full poll. That one runs every 30 s and touches the
+    whole controller, so it is what notices a silent one, and it alone counts
+    timeouts and recycles a wedged link. This coordinator only reports its own
+    failure: two of them counting timeouts over the one connection would race to
+    drop it, and this one could tear the link down under a poll in flight.
+    """
+
+    # It polls one component, so it either read or it did not; there is no
+    # module here that can fail while another answers. Named so the entities can
+    # ask this coordinator the same question they ask the main one.
+    failed: dict[str, ModbusError] = {}
+
+    def __init__(self, main: LambdaCoordinator, index: int) -> None:
+        """Poll heat pump `index`'s limits, alongside the controller's poll."""
+        super().__init__(
+            main.hass,
+            _LOGGER,
+            name=f"{DOMAIN} hp{index} capacity limits",
+            config_entry=main.config_entry,
+            update_interval=timedelta(seconds=CAPACITY_LIMIT_UPDATE_INTERVAL),
+        )
+        self.main = main
+        self.index = index
+
+    @property
+    def component(self) -> HeatPumpCapacityLimits:
+        """The limits this polls, off the device the probe built."""
+        return self.main.device.capacity_limits[self.index - 1]
+
+    def device_info(self, module: str | None, index: int | None) -> DeviceInfo:
+        """The heat pump these limits belong to, as the main poll describes it."""
+        return self.main.device_info(module, index)
+
+    async def _async_update_data(self) -> None:
+        """Read the limits; the entities read them off the component."""
+        try:
+            await self.component.async_update()
+        except ModbusError as err:
+            raise UpdateFailed(
+                f"Error reading HP{self.index}'s capacity limits: {err}"
+            ) from err

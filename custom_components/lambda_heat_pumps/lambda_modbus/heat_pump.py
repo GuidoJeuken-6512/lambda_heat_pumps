@@ -56,7 +56,16 @@ class HeatPump(LambdaComponent):
     expansion_valve_opening_angle = gauge(32, 0.01, signed=False, unit="%")
     config_parameter_33 = integer(33, signed=False)
 
-    # Capacity limits, settable per outside temperature.
+
+class HeatPumpCapacityLimits(LambdaComponent):
+    """One heat pump's capacity limits, settable per outside temperature.
+
+    Its own component, over the same block as the heat pump it belongs to,
+    because it is read on its own schedule: the controller serves these eleven
+    registers only one at a time, and they hold what an installer set rather
+    than anything the heat pump is doing.
+    """
+
     config_parameter_50 = integer(50, signed=False)
     dhw_output_power_15c = gauge(51, 0.1, signed=False, writable=True, unit="kW")
     heating_min_output_power_15c = gauge(52, 0.1, signed=False, writable=True, unit="kW")
