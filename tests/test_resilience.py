@@ -82,6 +82,29 @@ async def test_only_the_failed_modules_entities_go_unavailable(
     assert state_of(hass, "eu08l_hc1_room_device_temperature") == "21.5"
 
 
+async def test_the_controllers_own_sub_systems_are_named_the_same_way(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Ambient and the e-manager are not modules, and still go unavailable alone.
+
+    They are named in the report by the attribute they hang off the device as,
+    and the sensors reading them name the same thing. A mismatch would not
+    error — the sensors would simply never go unavailable — so it is worth
+    asserting from the outside.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    controller.answer_busy(2)  # the ambient block
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert set(entry.runtime_data.failed) == {"ambient"}
+    assert state_of(hass, "eu08l_ambient_temperature_calculated") == "unavailable"
+    # The e-manager sits in its own block and is unaffected.
+    assert state_of(hass, "eu08l_emgr_actual_power") == "1500"
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
 async def test_a_module_that_stops_answering_is_logged_once(
     hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
 ) -> None:
