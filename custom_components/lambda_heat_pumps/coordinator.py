@@ -18,9 +18,11 @@ nothing here has to be persisted.
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-import logging
+from types import MappingProxyType
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -39,6 +41,8 @@ from modbus_connection import (
     ModbusUnit,
 )
 
+from .config_file import LambdaFileConfig
+from .config_file import async_load as async_load_config
 from .const import (
     CAPACITY_LIMIT_UPDATE_INTERVAL,
     CONF_FAST_UPDATE_INTERVAL,
@@ -68,7 +72,6 @@ from .const import (
     SIGNAL_PERIOD_ROLLOVER,
     THERMAL_ENERGY_MODES,
 )
-from .config_file import LambdaFileConfig, async_load as async_load_config
 from .firmware import default_register_order
 from .lambda_modbus import HeatPumpCapacityLimits, LambdaHeatPump
 from .lambda_modbus.ranges import base_address
@@ -291,9 +294,11 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 self._timeouts = 0
                 _LOGGER.debug("No answer in a while; dropping the link to reopen it")
                 await self.connection.disconnect()
+            self._forget_what_answered()
             raise UpdateFailed(f"The controller did not answer: {err}") from err
         except ModbusError as err:
             # The link itself failing; it re-establishes on the next poll.
+            self._forget_what_answered()
             raise UpdateFailed(f"Error reading the controller: {err}") from err
         else:
             # A report at all means the controller is answering, whatever any one
@@ -348,6 +353,12 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 )
             self._track_energy(index)
         return self.device
+
+    def _forget_what_answered(self) -> None:
+        """Drop the last poll's outcome when this one never got that far."""
+        self.updated = set()
+        self.failed = {}
+        self._warned = frozenset()
 
     async def _async_fast_poll(self, _now: datetime) -> None:
         """Catch the mode changes and compressor starts a slow poll would miss.
@@ -523,7 +534,7 @@ class LambdaCapacityLimitCoordinator(DataUpdateCoordinator[None]):
     # It polls one component, so it either read or it did not; there is no
     # module here that can fail while another answers. Named so the entities can
     # ask this coordinator the same question they ask the main one.
-    failed: dict[str, ModbusError] = {}
+    failed: Mapping[str, ModbusError] = MappingProxyType({})
 
     def __init__(self, main: LambdaCoordinator, index: int) -> None:
         """Poll heat pump `index`'s limits, alongside the controller's poll."""
@@ -538,7 +549,7 @@ class LambdaCapacityLimitCoordinator(DataUpdateCoordinator[None]):
         self.index = index
 
     @property
-    def component(self) -> HeatPumpCapacityLimits:
+    def limits(self) -> HeatPumpCapacityLimits:
         """The limits this polls, off the device the probe built."""
         return self.main.device.capacity_limits[self.index - 1]
 
@@ -549,7 +560,7 @@ class LambdaCapacityLimitCoordinator(DataUpdateCoordinator[None]):
     async def _async_update_data(self) -> None:
         """Read the limits; the entities read them off the component."""
         try:
-            await self.component.async_update()
+            await self.limits.async_update()
         except ModbusError as err:
             raise UpdateFailed(
                 f"Error reading HP{self.index}'s capacity limits: {err}"

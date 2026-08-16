@@ -19,6 +19,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from modbus_connection import ModbusTimeoutError
 
+from custom_components.lambda_heat_pumps.coordinator import _TIMEOUTS_BEFORE_RECYCLING
+
 from .conftest import Controller
 from .test_init import setup_entry, state_of
 from .test_reads import CAPACITY_POLL
@@ -251,6 +253,62 @@ async def test_a_silent_controller_does_not_reload_the_entry(
 
     assert not coordinator.last_update_success
     assert entry.runtime_data is coordinator
+
+
+async def test_a_silent_controller_reports_nothing_as_answered(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A poll that never got a report leaves the last one's behind.
+
+    The diagnostics download names what answered so a module that is not
+    answering can be told from one whose registers read oddly. Holding the last
+    successful poll's names says the opposite of what happened.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+
+    await coordinator.async_refresh()
+    assert coordinator.updated
+
+    controller.go_offline()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.updated == set()
+    assert coordinator.failed == {}
+
+
+async def test_a_contained_timeout_leaves_the_link_alone(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """One module timing out is not a wedged link, however often it repeats.
+
+    The link is thrown away when nothing answers at all. A timeout the poll
+    contained proves the opposite — the controller is there, and one module is
+    not answering, which reopening the socket would not change.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    connection = coordinator.connection
+
+    dropped = 0
+    reopen = connection.disconnect
+
+    async def count_drop() -> None:
+        nonlocal dropped
+        dropped += 1
+        await reopen()
+
+    connection.disconnect = count_drop  # type: ignore[method-assign]
+
+    controller.stop_answering_for(1004)
+    for _ in range(_TIMEOUTS_BEFORE_RECYCLING + 2):
+        await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert "hp1" in coordinator.failed
+    assert coordinator.updated
+    assert dropped == 0
 
 
 # --------------------------------------------------------------------------

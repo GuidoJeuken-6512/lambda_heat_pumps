@@ -681,7 +681,7 @@ class LambdaCapacityLimitSensor(LambdaRegisterEntity, SensorEntity):
 
     def _component_of(self, coordinator: LambdaCapacityLimitCoordinator):
         """The limits component, which is all this coordinator polls."""
-        return coordinator.component
+        return coordinator.limits
 
     @property
     def native_value(self) -> float | str | None:
