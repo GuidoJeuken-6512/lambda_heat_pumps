@@ -10,14 +10,14 @@ Dieses Dokument beschreibt den vollständigen Ablauf der Integration – von der
 
 ## Inhaltsverzeichnis
 
-1. [Schnellübersicht – wichtige Dateien](#1-schnellübersicht--wichtige-dateien)
+1. [Schnellübersicht – wichtige Dateien](#1-schnellubersicht-wichtige-dateien)
 2. [Setup-Ablauf](#2-setup-ablauf)
 3. [Coordinator-Initialisierung](#3-coordinator-initialisierung)
 4. [Platform-Setup und Entity-Klassen](#4-platform-setup-und-entity-klassen)
 5. [Daten-Update-Zyklus](#5-daten-update-zyklus)
 6. [Flankenerkennung (Edge Detection)](#6-flankenerkennung-edge-detection)
 7. [Offset-Anwendung](#7-offset-anwendung)
-8. [ResetManager – Periodische Resets](#8-resetmanager--periodische-resets)
+8. [ResetManager – Periodische Resets](#8-resetmanager-periodische-resets)
 9. [Unload und Reload](#9-unload-und-reload)
 10. [Offene Probleme](#10-offene-probleme)
 
@@ -409,7 +409,7 @@ flowchart TD
     style CYCLE fill:#fff3e0
 ```
 
-> **⚠ Bug B-1:** `increment_cycling_counter()` addiert den vollen YAML-Offset bei jedem Zyklus-Event (utils.py:901). Details → [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md)
+> **⚠ Bug B-1:** `increment_cycling_counter()` addiert den vollen YAML-Offset bei jedem Zyklus-Event (utils.py:901). Details → `offset_bug_analysis.md` (interne Analyse, nicht Teil der veröffentlichten Doku)
 
 ---
 
@@ -507,11 +507,11 @@ flowchart TD
 
 | # | Status | Schweregrad | Kurzbeschreibung | Ort | Analyse |
 |---|---|---|---|---|---|
-| B-1 | ✅ Behoben (Release 2.4.0) | Kritisch | Cycling-Offset wurde bei jedem Zyklus-Event erneut addiert → exponentieller Wertzuwachs. Offset-Block aus `increment_cycling_counter()` entfernt; alleinige Verantwortung liegt jetzt bei `_apply_cycling_offset()` in `sensor.py` (Differenz-Tracking). | utils.py | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
-| B-2 | ✅ Behoben (Release 2.4.0) | Mittel | Daily-Offset-Lookup/-Addition im 30s-Update-Zyklus entfernt; `_cycling_offsets` wird zwar noch geladen, aber im Coordinator nirgends mehr angewendet. | coordinator.py | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
-| H-03 | ⚠️ Praktisch entschärft, architektonisch offen | Hoch | Template-Sensoren sind weiterhin nicht als eigene `Platform` deklariert. Das ursprünglich befürchtete Symptom (Geist-Entities nach Unload) wird aber dadurch vermieden, dass (a) `template_setup_task` als einer der ersten Schritte in `async_unload_entry` abgebrochen wird (Fix K-01, Abschnitt 9) und (b) Template-Entities über denselben `async_add_entities`-Callback wie die übrigen SENSOR-Entities laufen (`sensor.py` → `template_sensor.async_setup_entry(hass, entry, async_add_entities)`), also vom selben `EntityPlatform`-Objekt verwaltet werden. Eine echte `Platform.TEMPLATE`-Registrierung gibt es trotzdem nicht. | __init__.py, sensor.py, template_sensor.py | [integration_analysis.md](../../analysis/integration_analysis.md) |
+| B-1 | ✅ Behoben (Release 2.4.0) | Kritisch | Cycling-Offset wurde bei jedem Zyklus-Event erneut addiert → exponentieller Wertzuwachs. Offset-Block aus `increment_cycling_counter()` entfernt; alleinige Verantwortung liegt jetzt bei `_apply_cycling_offset()` in `sensor.py` (Differenz-Tracking). | utils.py | `offset_bug_analysis.md` |
+| B-2 | ✅ Behoben (Release 2.4.0) | Mittel | Daily-Offset-Lookup/-Addition im 30s-Update-Zyklus entfernt; `_cycling_offsets` wird zwar noch geladen, aber im Coordinator nirgends mehr angewendet. | coordinator.py | `offset_bug_analysis.md` |
+| H-03 | ⚠️ Praktisch entschärft, architektonisch offen | Hoch | Template-Sensoren sind weiterhin nicht als eigene `Platform` deklariert. Das ursprünglich befürchtete Symptom (Geist-Entities nach Unload) wird aber dadurch vermieden, dass (a) `template_setup_task` als einer der ersten Schritte in `async_unload_entry` abgebrochen wird (Fix K-01, Abschnitt 9) und (b) Template-Entities über denselben `async_add_entities`-Callback wie die übrigen SENSOR-Entities laufen (`sensor.py` → `template_sensor.async_setup_entry(hass, entry, async_add_entities)`), also vom selben `EntityPlatform`-Objekt verwaltet werden. Eine echte `Platform.TEMPLATE`-Registrierung gibt es trotzdem nicht. | __init__.py, sensor.py, template_sensor.py | `integration_analysis.md` |
 
-Vollständige Analyse: [docs/analysis/integration_analysis.md](../../analysis/integration_analysis.md) und [docs/analysis/offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) – beide Dokumente wurden am 24.06.2026 mit Status-Updates versehen (B-1/B-2/B-3 ✅ behoben, H-03 ⚠️ praktisch entschärft). Die übrigen, dort nicht erneut verifizierten Punkte (H-02, H-05, M-01, M-04, M-08) spiegeln weiterhin den Stand von Release 2.3.
+Vollständige Analyse: `docs/analysis/integration_analysis.md` und `docs/analysis/offset_bug_analysis.md` (interne Analyse-Dokumente, nicht Teil der veröffentlichten Doku) – beide Dokumente wurden am 24.06.2026 mit Status-Updates versehen (B-1/B-2/B-3 ✅ behoben, H-03 ⚠️ praktisch entschärft). Die übrigen, dort nicht erneut verifizierten Punkte (H-02, H-05, M-01, M-04, M-08) spiegeln weiterhin den Stand von Release 2.3.
 
 ---
 

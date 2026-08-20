@@ -292,6 +292,6 @@ Die Log-Meldung zeigt:
 
 ## Weitere Informationen
 
-- [Raumthermomenter](raumthermostat.md) - Integration externer Raumthermomenter-Sensoren
-- [Technische Berechnungsdetails](../../docs_md/HEATING_CURVE_CALCULATION.md) - Detaillierte Beschreibung der Berechnungslogik
+- [Raumthermomenter](../Anwender/raumthermometer.md) - Integration externer Raumthermomenter-Sensoren
+- `HEATING_CURVE_CALCULATION.md` (interne Notiz, nicht Teil der veröffentlichten Doku) - Detaillierte Beschreibung der Berechnungslogik
 

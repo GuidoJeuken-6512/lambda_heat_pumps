@@ -140,6 +140,6 @@ Wenn Sie die Firmware Ihrer Lambda-Wärmepumpe aktualisieren:
 Nach der Anpassung der Sensoren können Sie:
 
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
-- [Raumthermostat](raumthermostat.md) konfigurieren
+- [Raumthermostat](raumthermometer.md) konfigurieren
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 

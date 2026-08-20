@@ -124,7 +124,7 @@ title: "Optionen des config_flow"
 **Nach Aktivierung:**
 - Sie müssen für jeden Heizkreis einen Raumtemperatur-Sensor auswählen
 - Die Integration berechnet automatisch Anpassungen der Vorlauftemperatur
-- Weitere Informationen: [Raumthermostat](raumthermostat.md)
+- Weitere Informationen: [Raumthermostat](raumthermometer.md)
 
 **Konfiguration:**
 1. Aktivieren Sie "Raumthermostat-Steuerung"
@@ -162,7 +162,7 @@ Der Modus bestimmt, wie der Leistungswert des PV-Sensors an das Lambda-Register 
 
 Nach der Anpassung der Optionen können Sie:
 
-- [Raumthermostat](raumthermostat.md) konfigurieren (falls aktiviert)
+- [Raumthermostat](raumthermometer.md) konfigurieren (falls aktiviert)
 - [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) verwenden (falls aktiviert)
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) verwenden
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
