@@ -377,6 +377,52 @@ def test_apply_persisted_energy_state_yearly_corrects_previous_yearly_greater_th
     assert sensor.native_value == 0.0
 
 
+def test_apply_persisted_energy_state_rejects_stale_lower_snapshot_total(mock_hass, mock_entry):
+    """Regression (2.8.4): ein veralteter cycle_energy_persist-Snapshot mit niedrigerem
+    energy_value darf einen bereits (via restore_state/HA-Recorder) höher restaurierten
+    _energy_value nicht zurückwerfen - live beobachtet auf einer echten Installation:
+    ein _total-Sensor stand nach restore_state() korrekt bei 2518.51, ein veralteter
+    JSON-Snapshot (0.0, aus einer Session, in der die Entity nie erfolgreich zu HA
+    hinzugefügt wurde) überschrieb ihn zuvor kommentarlos auf 0.0 - ohne jede Warnung,
+    da ENERGY_PERIOD_CONFIG "total" nicht kennt und die Baseline-Warnschleife hier nie
+    greift."""
+    sensor = _total_sensor(mock_hass, mock_entry)
+    sensor._energy_value = 2518.51  # bereits durch restore_state() gesetzt
+    data = {"state": 0.0, "attributes": {"energy_value": 0.0, "applied_offset": 0.0}}
+    sensor._apply_persisted_energy_state(data)
+    assert sensor._energy_value == 2518.51
+    assert sensor.native_value == 2518.51
+
+
+def test_apply_persisted_energy_state_rejects_stale_lower_snapshot_daily(mock_hass, mock_entry):
+    """Derselbe Schutz greift auch für periodische Sensoren (daily/monthly/yearly/hourly):
+    energy_value ist überall der kumulative Zähler und darf nie sinken, unabhängig davon,
+    ob die jeweilige Baseline zusätzlich geprüft wird."""
+    sensor = _daily_sensor(mock_hass, mock_entry)
+    sensor._energy_value = 1668.47
+    sensor._yesterday_value = 1600.0
+    data = {
+        "state": 68.47,
+        "attributes": {
+            "energy_value": 0.0,  # veralteter Snapshot
+            "yesterday_value": 0.0,
+        },
+    }
+    sensor._apply_persisted_energy_state(data)
+    assert sensor._energy_value == 1668.47
+    assert sensor._yesterday_value == 1600.0
+
+
+def test_apply_persisted_energy_state_accepts_snapshot_within_float_noise_tolerance(mock_hass, mock_entry):
+    """Eine minimale Differenz im Bereich von Float-Rundungsrauschen (< 0.001 kWh) gilt
+    nicht als 'veraltet' und der Snapshot wird weiterhin angewendet."""
+    sensor = _total_sensor(mock_hass, mock_entry)
+    sensor._energy_value = 212.7701  # z.B. Restore-Rundungsrauschen
+    data = {"state": 212.77, "attributes": {"energy_value": 212.77}}
+    sensor._apply_persisted_energy_state(data)
+    assert sensor._energy_value == 212.77
+
+
 # --- _get_energy_sensor_persisted_state_from_coordinator ---
 
 

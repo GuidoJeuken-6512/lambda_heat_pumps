@@ -1463,9 +1463,33 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         return None
 
     def _apply_persisted_energy_state(self, data):
-        """Wendet einen aus cycle_energy_persist geladenen State auf diese Entity an (electrical + thermal)."""
+        """Wendet einen aus cycle_energy_persist geladenen State auf diese Entity an (electrical + thermal).
+
+        cycle_energy_persist.json kann veralten - z. B. wenn diese Entity länger nicht
+        erfolgreich zu Home Assistant hinzugefügt wurde (async_added_to_hass lief nie, siehe
+        via_device-Fix in 2.8.4) und der Coordinator zwischenzeitlich trotzdem einen Snapshot
+        mit dem eingefrorenen Default-Wert (0.0) geschrieben hat, ausgelöst durch irgendeine
+        andere Entity, die den Dirty-Flag gesetzt hat. energy_value darf grundsätzlich nur
+        monoton steigen (siehe set_energy_value(), "_energy_value nie verringern") - dieselbe
+        Regel gilt daher auch hier beim Restore: ein aus der JSON-Datei geladener energy_value,
+        der niedriger ist als der bereits von restore_state() (Home-Assistant-Recorder-Restore)
+        gesetzte Wert, ist veraltet. Der komplette Snapshot wird dann verworfen statt nur
+        energy_value zu ignorieren - sonst würde eine frische energy_value mit einer aus
+        demselben (veralteten) Snapshot stammenden Baseline/applied_offset kombiniert und wieder
+        ein inkonsistentes Paar erzeugen.
+        """
         try:
             attrs = data.get("attributes") or {}
+            json_energy_value = attrs.get("energy_value")
+            if json_energy_value is not None:
+                json_energy_value = float(json_energy_value)
+                if json_energy_value < self._energy_value - 0.001:
+                    _LOGGER.debug(
+                        "Energy sensor %s: cycle_energy_persist energy_value (%.2f) ist älter/niedriger "
+                        "als der bereits von Home Assistant restaurierte Wert (%.2f) - Snapshot verworfen.",
+                        self.entity_id, json_energy_value, self._energy_value,
+                    )
+                    return
             self._energy_value = float(attrs.get("energy_value", self._energy_value))
             # Restore applied_offset from coordinator JSON so _apply_energy_offset() uses the
             # correct base: if coordinator JSON has energy_value WITH offset, applied_offset
