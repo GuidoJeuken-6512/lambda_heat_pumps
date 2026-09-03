@@ -1155,7 +1155,7 @@ class LambdaCyclingSensor(RestoreEntity, SensorEntity):
     def device_info(self):
         if self._device_type and self._hp_index:
             return build_subdevice_info(
-                self._entry, self._device_type, self._hp_index
+                self._entry, self._device_type, self._hp_index, self.hass
             )
         return build_device_info(self._entry)
 
@@ -1749,7 +1749,7 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         """Return device information."""
         if self._device_type and self._hp_index:
             return build_subdevice_info(
-                self._entry, self._device_type, self._hp_index
+                self._entry, self._device_type, self._hp_index, self.hass
             )
         return build_device_info(self._entry)
 
@@ -2370,7 +2370,7 @@ class LambdaCOPSensor(RestoreEntity, SensorEntity):
         """Return device information."""
         if self._device_type and self._hp_index:
             return build_subdevice_info(
-                self._entry, self._device_type, self._hp_index
+                self._entry, self._device_type, self._hp_index, self.hass
             )
         return build_device_info(self._entry)
 
@@ -2501,7 +2501,7 @@ class LambdaYesterdaySensor(RestoreEntity, SensorEntity):
         """Return device info."""
         if self._device_type and self._hp_index:
             return build_subdevice_info(
-                self._entry, self._device_type, self._hp_index
+                self._entry, self._device_type, self._hp_index, self.hass
             )
         return build_device_info(self._entry)
 
@@ -2870,7 +2870,9 @@ class LambdaSensor(CoordinatorEntity[LambdaDataUpdateCoordinator], SensorEntity)
             self._sensor_id
         )
         if device_type and device_index:
-            return build_subdevice_info(self._entry, device_type, device_index)
+            return build_subdevice_info(
+                self._entry, device_type, device_index, self.hass
+            )
         return build_device_info(self._entry)
 
 
@@ -2965,7 +2967,9 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         if not device_index and hasattr(self, "_hp_index"):
             device_index = getattr(self, "_hp_index", None)
         if device_type and device_index:
-            return build_subdevice_info(self._entry, device_type, device_index)
+            return build_subdevice_info(
+                self._entry, device_type, device_index, self.hass
+            )
         return build_device_info(self._entry)
 
     @callback

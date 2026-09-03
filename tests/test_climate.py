@@ -293,5 +293,9 @@ async def test_lambda_climate_entity_device_info():
     # For hot_water, device_type is "boil", so it should return subdevice info
     # Subdevice identifier: (domain, entry_id, device_type, device_index)
     assert device_info["identifiers"] == {("lambda_heat_pumps", "test_entry", "boil", 1)}
-    assert device_info["via_device"] == ("lambda_heat_pumps", "test_entry")
+    # "via_device" (the old identifiers-tuple field) was removed from
+    # DeviceInfo by Home Assistant; since entity.hass isn't set in this test,
+    # the main device can't be resolved, so no "via_device_id" key is set
+    # either. See build_subdevice_info() in utils.py.
+    assert "via_device" not in device_info
     assert "Boiler1" in device_info["name"] or "test - Boiler1" in device_info["name"]

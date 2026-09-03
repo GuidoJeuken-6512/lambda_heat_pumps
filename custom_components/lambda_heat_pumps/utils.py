@@ -13,6 +13,7 @@ from typing import Any, List, Optional, Tuple
 
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.entity_component import async_update_entity
 from homeassistant.helpers.entity_registry import async_get as async_get_entity_registry
 from homeassistant.helpers.translation import async_get_translations
@@ -168,14 +169,25 @@ def build_device_info(entry):
         "sw_version": fw_version,
         "entry_type": None,
         "suggested_area": None,
-        "via_device": None,
         "hw_version": None,
         "serial_number": None,
     }
 
 
-def build_subdevice_info(entry, device_type: str, device_index: int):
-    """Build device_info dict for module subdevices like HP1, HC2, etc."""
+def build_subdevice_info(entry, device_type: str, device_index: int, hass=None):
+    """Build device_info dict for module subdevices like HP1, HC2, etc.
+
+    `hass` is optional but should be passed whenever available (i.e. from an
+    entity's `device_info` property via `self.hass`) so the sub-device can be
+    linked to the main device via `via_device_id`. Recent Home Assistant
+    versions removed the old `via_device` (identifiers-tuple) field from
+    `DeviceInfo` - passing it now raises a hard `RuntimeError` when Home
+    Assistant core itself performs the device registration (see
+    https://developers.home-assistant.io/blog/2026/08/24/device-registry-follow-up-changes/).
+    Without a resolvable device id we simply omit the `via_device_id` key -
+    the sub-device is still created, it's just not nested under the main
+    device in the UI.
+    """
 
     if not device_type or not device_index:
         return build_device_info(entry)
@@ -200,7 +212,18 @@ def build_subdevice_info(entry, device_type: str, device_index: int):
     main_identifier = (DOMAIN, entry_id)
     sub_identifier = (DOMAIN, entry_id, device_type_lc, device_index)
 
-    return {
+    via_device_id = None
+    if hass is not None:
+        try:
+            main_device = dr.async_get(hass).async_get_device(
+                identifiers={main_identifier}
+            )
+            if main_device is not None:
+                via_device_id = main_device.id
+        except Exception:  # pragma: no cover - defensive, registry lookup shouldn't fail
+            via_device_id = None
+
+    device_info = {
         "identifiers": {sub_identifier},
         "name": device_name,
         "manufacturer": "Lambda",
@@ -209,10 +232,12 @@ def build_subdevice_info(entry, device_type: str, device_index: int):
         "sw_version": fw_version,
         "entry_type": None,
         "suggested_area": None,
-        "via_device": main_identifier,
         "hw_version": None,
         "serial_number": None,
     }
+    if via_device_id is not None:
+        device_info["via_device_id"] = via_device_id
+    return device_info
 
 
 def extract_device_info_from_sensor_id(sensor_id: str) -> tuple[str | None, int | None]:

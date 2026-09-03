@@ -248,7 +248,7 @@ class LambdaHeatingCurveNumber(RestoreNumber, NumberEntity):
     def device_info(self) -> dict[str, Any]:
         """Return device information for this number entity."""
         if self._hc_index:
-            return build_subdevice_info(self._entry, "hc", self._hc_index)
+            return build_subdevice_info(self._entry, "hc", self._hc_index, self.hass)
         return build_device_info(self._entry)
 
     @property
@@ -512,7 +512,7 @@ class LambdaFlowLineOffsetNumber(CoordinatorEntity, RestoreNumber, NumberEntity)
     @property
     def device_info(self) -> dict[str, Any]:
         """Return device information for this number entity."""
-        return build_subdevice_info(self._entry, "hc", self._hc_index)
+        return build_subdevice_info(self._entry, "hc", self._hc_index, self.hass)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -582,6 +582,6 @@ class LambdaEcoTempReductionNumber(RestoreNumber, NumberEntity):
     def device_info(self) -> dict[str, Any]:
         """Return device information for this number entity."""
         if self._hc_index:
-            return build_subdevice_info(self._entry, "hc", self._hc_index)
+            return build_subdevice_info(self._entry, "hc", self._hc_index, self.hass)
         return build_device_info(self._entry)
 

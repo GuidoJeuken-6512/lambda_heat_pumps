@@ -9,6 +9,11 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [2.8.4] - 2026-09-03
+
+#### Bug Fixes
+- **Sub-device sensors (`hp1_*`, `hc1_*`, `boil1_*`, `buff1_*`, `sol1_*`, …) failed to load after updating Home Assistant**, logged as `Error adding entity sensor.<name>_hp1_hot_water_energy_monthly for domain sensor with platform lambda_heat_pumps` with a `RuntimeError: ... calls device_registry.async_get_or_create with a deprecated via_device parameter; use via_device_id instead` underneath: recent Home Assistant versions removed the old `via_device` field (an identifiers tuple) from `DeviceInfo` in favor of `via_device_id` (a resolved device id), and now raise a hard `RuntimeError` instead of just logging a warning when core itself performs the device registration for an entity that still supplies the removed field (see the [Home Assistant developer blog](https://developers.home-assistant.io/blog/2026/08/24/device-registry-follow-up-changes/)). `build_subdevice_info()` (`utils.py`) set `"via_device": main_identifier` for every HP/Boiler/HC/Buffer/Solar sub-device, so on an affected Home Assistant version every sub-device entity failed `async_add_entities()` — only the main-device sensors kept working. The function now accepts the entity's `hass` and resolves the already-registered main device's id via the device registry, setting `via_device_id` instead; if the main device can't (yet) be resolved, the key is simply omitted rather than passing the removed field, so entity creation can no longer fail because of it — worst case the sub-device just isn't nested under the main device visually until Home Assistant re-evaluates `device_info` on a later run. All call sites in `sensor.py`, `climate.py`, `number.py` and `template_sensor.py` now pass `self.hass` through.
+
 ### [2.8.3] - 2026-08-08
 
 #### Bug Fixes
@@ -59,6 +64,11 @@
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [2.8.4] - 2026-09-03
+
+#### Fehlerbehebungen
+- **Sub-Device-Sensoren (`hp1_*`, `hc1_*`, `boil1_*`, `buff1_*`, `sol1_*`, …) ließen sich nach einem Home-Assistant-Update nicht mehr laden**, geloggt als `Error adding entity sensor.<name>_hp1_hot_water_energy_monthly for domain sensor with platform lambda_heat_pumps` mit darunterliegendem `RuntimeError: ... calls device_registry.async_get_or_create with a deprecated via_device parameter; use via_device_id instead`: Neuere Home-Assistant-Versionen haben das alte `via_device`-Feld (ein Identifiers-Tupel) aus `DeviceInfo` zugunsten von `via_device_id` (eine aufgelöste Device-ID) entfernt und werfen jetzt einen harten `RuntimeError` statt nur eine Warnung zu loggen, wenn der Core selbst die Geräteregistrierung für eine Entity durchführt, die noch das entfernte Feld liefert (siehe [Home-Assistant-Entwickler-Blog](https://developers.home-assistant.io/blog/2026/08/24/device-registry-follow-up-changes/)). `build_subdevice_info()` (`utils.py`) setzte `"via_device": main_identifier` für jedes HP-/Boiler-/HC-/Puffer-/Solar-Sub-Device, wodurch auf einer betroffenen Home-Assistant-Version jede Sub-Device-Entity bei `async_add_entities()` fehlschlug — nur die Sensoren am Haupt-Device blieben funktionsfähig. Die Funktion erhält jetzt das `hass` der Entity und löst die ID des bereits registrierten Haupt-Device über die Device Registry auf, um stattdessen `via_device_id` zu setzen; lässt sich das Haupt-Device (noch) nicht auflösen, wird der Schlüssel einfach weggelassen statt das entfernte Feld zu übergeben — die Entity-Erzeugung kann dadurch nicht mehr daran scheitern, im schlimmsten Fall ist das Sub-Device optisch nur bis zum nächsten Auswerten von `device_info` nicht unter dem Haupt-Device eingehängt. Alle Aufrufstellen in `sensor.py`, `climate.py`, `number.py` und `template_sensor.py` reichen jetzt `self.hass` durch.
 
 ### [2.8.3] - 2026-08-08
 

@@ -369,7 +369,9 @@ class LambdaTemplateSensor(CoordinatorEntity, SensorEntity):
         device_type = self._device_type or parsed_type
         device_index = self._device_index or parsed_index
         if device_type and device_index:
-            return build_subdevice_info(self._entry, device_type, device_index)
+            return build_subdevice_info(
+                self._entry, device_type, device_index, self.hass
+            )
         return build_device_info(self._entry)
 
     @callback
@@ -643,7 +645,9 @@ class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
         device_type = self._device_type or parsed_type
         device_index = self._device_index or parsed_index
         if device_type and device_index:
-            return build_subdevice_info(self._entry, device_type, device_index)
+            return build_subdevice_info(
+                self._entry, device_type, device_index, self.hass
+            )
         return build_device_info(self._entry)
 
     @property
