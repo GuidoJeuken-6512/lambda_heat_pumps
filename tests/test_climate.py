@@ -11,6 +11,7 @@ from custom_components.lambda_heat_pumps.climate import (
     async_setup_entry,
 )
 from custom_components.lambda_heat_pumps.const import DOMAIN
+from custom_components.lambda_heat_pumps.utils import _HA_SUPPORTS_VIA_DEVICE_ID
 
 pytestmark = pytest.mark.asyncio
 
@@ -293,9 +294,15 @@ async def test_lambda_climate_entity_device_info():
     # For hot_water, device_type is "boil", so it should return subdevice info
     # Subdevice identifier: (domain, entry_id, device_type, device_index)
     assert device_info["identifiers"] == {("lambda_heat_pumps", "test_entry", "boil", 1)}
-    # "via_device" (the old identifiers-tuple field) was removed from
-    # DeviceInfo by Home Assistant; since entity.hass isn't set in this test,
-    # the main device can't be resolved, so no "via_device_id" key is set
-    # either. See build_subdevice_info() in utils.py.
-    assert "via_device" not in device_info
+    # build_subdevice_info() is version-aware (see utils.py / _HA_SUPPORTS_VIA_DEVICE_ID):
+    # - HA >= 2026.9: via_device (tuple) raises RuntimeError → uses via_device_id instead.
+    #   Since entity.hass is not set here, the main device can't be resolved, so
+    #   neither via_device nor via_device_id appear in device_info.
+    # - HA < 2026.9: uses the old via_device (identifiers-tuple), always present.
+    if _HA_SUPPORTS_VIA_DEVICE_ID:
+        assert "via_device" not in device_info
+        assert "via_device_id" not in device_info
+    else:
+        assert device_info["via_device"] == ("lambda_heat_pumps", "test_entry")
+        assert "via_device_id" not in device_info
     assert "Boiler1" in device_info["name"] or "test - Boiler1" in device_info["name"]

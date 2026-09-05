@@ -7,6 +7,13 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [2.8.5] - 2026-09-05
+
+#### Bug Fixes
+- **Sub-device sensors still failed on Home Assistant < 2026.9 after the 2.8.4 fix**: the 2.8.4 fix replaced the old `via_device` (identifiers-tuple) with `via_device_id` (device-registry UUID string) in `build_subdevice_info()` — correctly targeting HA 2026.9+, which removed `via_device` and raises a hard `RuntimeError` for it. However, HA versions before 2026.9 do not know `via_device_id` and raised their own `TypeError: DeviceRegistry.async_get_or_create() got an unexpected keyword argument 'via_device_id'` instead — causing every sub-device entity to fail on older installations. `build_subdevice_info()` (`utils.py`) now detects the running HA version once at import time (`_HA_SUPPORTS_VIA_DEVICE_ID`) and uses `via_device_id` on HA ≥ 2026.9 while falling back to the old `via_device` (tuple) on HA < 2026.9, so sub-device entities are registered correctly on both version families.
+
+---
+
 ### [2.8.4] - 2026-09-03
 
 #### Bug Fixes
@@ -409,6 +416,13 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [2.8.5] - 2026-09-05
+
+#### Fehlerbehebungen
+- **Sub-Device-Sensoren schlugen auf Home Assistant < 2026.9 auch nach dem Fix in 2.8.4 fehl**: Der 2.8.4-Fix ersetzte das alte `via_device` (Identifiers-Tupel) durch `via_device_id` (Device-Registry-UUID-String) in `build_subdevice_info()` — korrekt für HA 2026.9+, das `via_device` entfernt hat und mit einem harten `RuntimeError` quittiert. Allerdings kennen HA-Versionen vor 2026.9 das Feld `via_device_id` nicht und warfen stattdessen einen eigenen `TypeError: DeviceRegistry.async_get_or_create() got an unexpected keyword argument 'via_device_id'` — wodurch jede Sub-Device-Entity auf älteren Installationen fehlschlug. `build_subdevice_info()` (`utils.py`) erkennt die laufende HA-Version jetzt einmalig beim Import (`_HA_SUPPORTS_VIA_DEVICE_ID`) und nutzt `via_device_id` auf HA ≥ 2026.9, während auf HA < 2026.9 das alte `via_device` (Tupel) verwendet wird — Sub-Device-Entities werden damit auf beiden Versionsfamilien korrekt registriert.
+
+---
 
 ### [2.8.4] - 2026-09-03
 
