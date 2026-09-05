@@ -1477,17 +1477,36 @@ class LambdaEnergyConsumptionSensor(RestoreEntity, SensorEntity):
         energy_value zu ignorieren - sonst würde eine frische energy_value mit einer aus
         demselben (veralteten) Snapshot stammenden Baseline/applied_offset kombiniert und wieder
         ein inkonsistentes Paar erzeugen.
+
+        Achtung Basis-Mismatch (Regression, behoben in 2.8.6): json_energy_value ist roh
+        (ohne Offset), wenn das JSON kein "applied_offset"-Feld hat (altes Format) - der
+        von restore_state() gesetzte self._energy_value enthält aber ggf. bereits einen
+        Offset aus einer früheren Session. Der "veraltet?"-Vergleich muss daher in diesem
+        Fall self._energy_value um _applied_offset bereinigen, sonst wird ein aktueller,
+        nur noch nicht offset-behafteter Coordinator-Snapshot fälschlich als veraltet
+        verworfen und der Offset nie erneut angewendet.
         """
         try:
             attrs = data.get("attributes") or {}
             json_energy_value = attrs.get("energy_value")
             if json_energy_value is not None:
                 json_energy_value = float(json_energy_value)
-                if json_energy_value < self._energy_value - 0.001:
+                # Fairer Vergleich braucht dieselbe Basis auf beiden Seiten: fehlt
+                # "applied_offset" im JSON (altes Format), ist json_energy_value roh (ohne
+                # Offset) - dann muss auch der bereits restaurierte Wert um den zuvor
+                # angewendeten Offset bereinigt werden. Sonst vergleicht man einen rohen
+                # Coordinator-Wert gegen einen Offset-inklusiven Restore-Wert und verwirft
+                # fälschlich einen aktuellen Snapshot als "veraltet" (siehe applied_offset-
+                # Reset weiter unten, der dann nie erreicht wird).
+                if "applied_offset" in attrs:
+                    comparable_value = self._energy_value
+                else:
+                    comparable_value = self._energy_value - getattr(self, "_applied_offset", 0.0)
+                if json_energy_value < comparable_value - 0.001:
                     _LOGGER.debug(
                         "Energy sensor %s: cycle_energy_persist energy_value (%.2f) ist älter/niedriger "
                         "als der bereits von Home Assistant restaurierte Wert (%.2f) - Snapshot verworfen.",
-                        self.entity_id, json_energy_value, self._energy_value,
+                        self.entity_id, json_energy_value, comparable_value,
                     )
                     return
             self._energy_value = float(attrs.get("energy_value", self._energy_value))

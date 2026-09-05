@@ -7,6 +7,13 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [2.8.6] - 2026-09-05
+
+#### Bug Fixes
+- **The 2.8.4 energy-offset-persistence fix fell short in one case**: `_apply_persisted_energy_state()`'s "discard the whole snapshot if it's lower than the already-restored value" guard (added in 2.8.4 to stop a stale, never-updated `cycle_energy_persist.json` from regressing a correctly Recorder-restored value) compared the coordinator JSON's `energy_value` directly against `self._energy_value` — but these aren't always on the same basis: when the JSON predates the `applied_offset` field (old format), its `energy_value` is the **raw** value (offset not yet applied), while `self._energy_value` from `restore_state()` may already include an offset applied in a previous session. Comparing a raw coordinator value against an offset-inclusive restored value made an up-to-date snapshot look "older/lower" than it really was, so the whole snapshot — including the `applied_offset` reset that would have triggered `_apply_energy_offset()` to reapply the configured offset — was discarded, silently leaving the energy value stuck without its offset after every restart. The comparison now strips the previously-applied offset from `self._energy_value` before comparing whenever the JSON lacks `applied_offset`, so a genuinely fresher raw reading is recognized as such and the offset gets reapplied on top of it.
+
+---
+
 ### [2.8.5] - 2026-09-05
 
 #### Bug Fixes
@@ -416,6 +423,13 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [2.8.6] - 2026-09-05
+
+#### Fehlerbehebungen
+- **Der Energie-Offset-Persistenz-Fix aus 2.8.4 griff in einem Fall zu kurz**: Die in 2.8.4 eingeführte Schutzlogik in `_apply_persisted_energy_state()` ("kompletten Snapshot verwerfen, wenn er niedriger ist als der bereits restaurierte Wert" — gedacht, um einen veralteten, nie aktualisierten `cycle_energy_persist.json`-Snapshot davon abzuhalten, einen korrekt aus dem Recorder wiederhergestellten Wert zurückzuwerfen) verglich das `energy_value` aus der Coordinator-JSON direkt gegen `self._energy_value` — beide stehen aber nicht immer auf derselben Basis: Stammt die JSON aus der Zeit vor dem `applied_offset`-Feld (altes Format), ist ihr `energy_value` der **rohe** Wert (Offset noch nicht angewendet), während `self._energy_value` aus `restore_state()` bereits einen in einer früheren Session angewendeten Offset enthalten kann. Der Vergleich eines rohen Coordinator-Werts gegen einen Offset-inklusiven Restore-Wert ließ einen eigentlich aktuellen Snapshot "älter/niedriger" erscheinen als er war — der komplette Snapshot wurde dann verworfen, einschließlich des `applied_offset`-Resets, der `_apply_energy_offset()` dazu gebracht hätte, den konfigurierten Offset erneut anzuwenden. Ergebnis: der Energiewert blieb nach jedem Neustart stillschweigend ohne seinen Offset hängen. Der Vergleich zieht jetzt den zuvor angewendeten Offset von `self._energy_value` ab, bevor verglichen wird, sobald der JSON-Snapshot kein `applied_offset` enthält — ein tatsächlich aktuellerer Rohwert wird dadurch korrekt erkannt und der Offset wieder darauf angewendet.
+
+---
 
 ### [2.8.5] - 2026-09-05
 
