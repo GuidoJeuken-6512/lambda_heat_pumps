@@ -150,6 +150,60 @@ async def test_the_first_reading_is_not_counted(
     assert state_of(hass, "eu08l_hp1_heating_energy_total") == "0.0"
 
 
+async def test_a_second_heat_pump_counts_its_own_totals(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A second heat pump's COP, energy and cycling counters are its own.
+
+    Regression test for GitHub Issue #107: a name-derived (rather than
+    object/index-based) lookup of a second heat pump's source entities used to
+    risk wiring hp2's COP/energy sensors to hp1's data, or never finding them
+    at all. Every value below differs from hp1's counterpart, so a mix-up
+    would show up as a wrong number rather than a coincidentally-right one.
+    """
+    controller.install(1100)  # heat pump 2 (block offset +100 from hp1's)
+    controller.registers.update(
+        {
+            1102: 5,  # state -> START COMPRESSOR
+            1103: 1,  # operating state -> CH (heating)
+            1120: 0x0000,  # electrical counter, high word
+            1121: 0x2710,  # -> 10000 Wh = 10 kWh
+            1122: 0x0000,  # thermal counter, high word
+            1123: 0x9C40,  # -> 40000 Wh = 40 kWh
+        }
+    )
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    # hp1 climbs by 2000 Wh electrical / 8000 Wh thermal while heating...
+    controller.registers[1021] = 0x86A0 + 2000
+    controller.registers[1023] = 0x1A80 + 8000
+    # ...and hp2 by a different amount, so a mix-up between the two is visible.
+    controller.registers[1121] = 0x2710 + 5000
+    controller.registers[1123] = 0x9C40 + 10000
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert state_of(hass, "eu08l_hp1_heating_energy_total") == "2.0"
+    assert state_of(hass, "eu08l_hp1_heating_thermal_energy_total") == "8.0"
+    assert state_of(hass, "eu08l_hp1_heating_cop_total") == "4.0"
+
+    assert state_of(hass, "eu08l_hp2_heating_energy_total") == "5.0"
+    assert state_of(hass, "eu08l_hp2_heating_thermal_energy_total") == "10.0"
+    assert state_of(hass, "eu08l_hp2_heating_cop_total") == "2.0"
+
+    # Cycling counters are independent too: hp2 switching mode does not touch
+    # hp1's counter, and vice versa.
+    controller.registers[1003] = 2  # hp1 switches to hot water...
+    await _poll(hass, 3)
+    assert state_of(hass, "eu08l_hp1_hot_water_cycling_total") == "1"
+    assert state_of(hass, "eu08l_hp2_hot_water_cycling_total") == "0"
+
+    controller.registers[1103] = 2  # ...and now hp2 does too
+    await _poll(hass, 6)
+    assert state_of(hass, "eu08l_hp1_hot_water_cycling_total") == "1"
+    assert state_of(hass, "eu08l_hp2_hot_water_cycling_total") == "1"
+
+
 async def test_a_counter_survives_a_restart(
     hass: HomeAssistant, controller: Controller
 ) -> None:

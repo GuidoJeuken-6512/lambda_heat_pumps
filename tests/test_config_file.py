@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from homeassistant.core import HomeAssistant, State
 import pytest
-from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import mock_restore_cache_with_extra_data
 
 from custom_components.lambda_heat_pumps.config_file import FILENAME
+from custom_components.lambda_heat_pumps.const import ATTR_APPLIED_OFFSET
 
 from .conftest import Controller
 from .test_init import enable_sensors, setup_entry, state_of
@@ -78,6 +80,42 @@ async def test_an_offset_does_not_touch_a_counter_over_a_period(
     await enable_sensors(hass, entry, "eu08l_hp1_heating_cycling_daily")
 
     assert state_of(hass, "eu08l_hp1_heating_cycling_daily") == "0"
+
+
+async def test_a_changed_offset_moves_a_restored_total_by_the_difference(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A restart with a changed offset applies only the difference, once.
+
+    The restored value already has the old offset baked in; `_apply_offset()`
+    tracks that baseline itself (`applied_offset`) precisely so a changed
+    offset moves the total by the delta instead of being added again on top of
+    what a previous run already applied.
+    """
+    mock_restore_cache_with_extra_data(
+        hass,
+        (
+            (
+                # The applied offset is a plain state attribute (see
+                # `extra_state_attributes`), not part of the typed sensor data.
+                State(
+                    "sensor.eu08l_hp1_heating_cycling_total",
+                    "1500",
+                    {ATTR_APPLIED_OFFSET: 1500},
+                ),
+                {"native_value": 1500, "native_unit_of_measurement": "cycles"},
+            ),
+        ),
+    )
+    write_config(
+        hass,
+        "cycling_offsets:\n  hp1:\n    heating_cycling_total: 2000\n",
+    )
+    await setup_entry(hass, controller, legacy=True)
+
+    # 1500 (restored) + (2000 - 1500) = 2000 - the new offset applied exactly
+    # once, not 1500 + 2000 stacked on top of each other.
+    assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "2000"
 
 
 async def test_a_broken_section_does_not_cost_the_others(

@@ -385,6 +385,36 @@ async def test_a_total_that_dips_by_a_hair_keeps_what_it_had(
     assert state_of(hass, key) == "100001"
 
 
+async def test_a_jump_that_is_too_large_is_not_booked(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An implausibly large single-poll jump is not booked as normal energy.
+
+    Whatever caused it - a firmware update changing counter semantics, a
+    swapped heat pump - a jump bigger than the sane per-poll ceiling is not
+    trusted as a continuation of the last reading, the same way a negative
+    delta is not. It still moves the reference reading, so counting resumes
+    normally from there rather than staying stuck.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    assert state_of(hass, "eu08l_hp1_heating_energy_total") == "0.0"
+
+    # 100000 -> 250000 Wh: a 150 kWh jump in one poll, well past the 100 kWh
+    # per-poll ceiling.
+    controller.registers[1020] = 0x3
+    controller.registers[1021] = 0xD090
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert state_of(hass, "eu08l_hp1_heating_energy_total") == "0.0"
+
+    # A normal-sized delta from the new reading books as usual - the reference
+    # moved to 250000 Wh even though the jump itself was not counted.
+    controller.registers[1021] = 0xD860  # 250000 -> 252000 Wh
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert state_of(hass, "eu08l_hp1_heating_energy_total") == "2.0"
+
+
 async def test_a_total_that_really_falls_is_published(
     hass: HomeAssistant, controller: Controller
 ) -> None:
