@@ -433,6 +433,8 @@ The integration linearly interpolates between these points based on the current 
 
 ## 📦 Manual Installation (without HACS)
 
+> ⚠️ **Requires Home Assistant ≥ 2026.9.** This integration depends on `modbus-connection[tmodbus]`, which is not installable/usable on older Home Assistant Core versions. HACS enforces this automatically; if you install manually, **you are responsible for checking your Home Assistant version yourself** — an older core will fail at setup with an unclear error rather than a helpful message.
+
 If you do not use HACS, you can install the integration manually:
 
 1. **Create the folder** `/config/custom_components` on your Home Assistant server if it does not exist.
