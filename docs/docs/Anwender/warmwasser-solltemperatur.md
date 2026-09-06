@@ -228,7 +228,7 @@ automation:
 
 Nach der Einrichtung der Warmwasser-Solltemperatur-Steuerung können Sie:
 
-- [Raumthermostat](raumthermometer.md) konfigurieren
+- [Raumthermostat](raumthermostat.md) konfigurieren
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Optionen des config_flow](optionen-config-flow.md) anpassen
 

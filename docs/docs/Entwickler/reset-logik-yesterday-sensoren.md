@@ -4,7 +4,7 @@ title: "Reset-Logik und Yesterday-Sensoren - Technische Dokumentation"
 
 # Reset-Logik und Yesterday-Sensoren - Technische Dokumentation
 
-*Zuletzt geändert am 03.09.2026*
+*Zuletzt geändert am 21.03.2026*
 
 Diese Dokumentation beschreibt die technische Implementierung der Reset-Logik für Energieverbrauchssensoren (Daily, Monthly, Yearly) und die Yesterday-Wert-Verwaltung in der Lambda Heat Pumps Integration.
 
@@ -450,7 +450,7 @@ else:
 **Lösung in der Implementierung** (Details siehe [Energieverbrauchssensoren](energieverbrauchssensoren.md#konsistenz-dailymonthlyyearly-yesterdayprevious_-energy_value)):
 
 1. **Restore** (`restore_state`): Nach dem Setzen der Werte wird geprüft: Ist der Basis-Wert (yesterday/previous_monthly/previous_yearly) größer als `_energy_value`, wird er auf `_energy_value` gesetzt. Die Rekonstruktion „displayed = yesterday + displayed“ erfolgt nur, wenn `_yesterday_value <= _energy_value`.
-2. **Persist-Anwendung** (`_apply_persisted_energy_state`): Nach dem Übernehmen der Werte aus `cycle_energy_persist` dieselbe Prüfung; bei Bedarf Korrektur. Seit 2.8.4 vorgeschaltet: Der komplette Snapshot wird verworfen, wenn sein `energy_value` niedriger ist als der bereits von `restore_state()` restaurierte Wert (siehe [Monotonie-Schutz beim Restore energy_value](energieverbrauchssensoren.md#monotonie-schutz-beim-restore-energy_value)) - Punkt 2 hier greift dann gar nicht erst.
+2. **Persist-Anwendung** (`_apply_persisted_energy_state`): Nach dem Übernehmen der Werte aus `cycle_energy_persist` dieselbe Prüfung; bei Bedarf Korrektur.
 3. **Persist-Schreiben** (Coordinator `_collect_energy_sensor_states`): Es wird nie ein Paar mit Basis-Wert > `energy_value` gespeichert; der Basis-Wert wird vor dem Schreiben auf `energy_value` begrenzt.
 4. **Daily-Init** (`_initialize_daily_yesterday_value`): Erkennt negativen Tageswert, setzt `yesterday_value = energy_value` und markiert Persist als „dirty“.
 

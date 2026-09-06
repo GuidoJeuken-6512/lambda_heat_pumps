@@ -232,7 +232,7 @@ cycling_offsets:
     hot_water_cycling_total: 50
 # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
 modbus:
-  int32_register_order: "high_first"  # "high_first" oder "low_first"
+  int32_register_order: "high_first"  # "high_first" oder "low_first" - Standard: "high_first"
 ```
 
 ---
@@ -248,16 +248,15 @@ In der `lambda_wp_config.yaml` können Sie die Register-Reihenfolge festlegen:
 # Modbus-Konfiguration
 modbus:
   # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
-  # "high_first" = Höherwertiges Register zuerst
+  # "high_first" = Höherwertiges Register zuerst (Standard)
   # "low_first" = Niedrigwertiges Register zuerst
   int32_register_order: "high_first"  # oder "low_first"
 ```
 
 ### Wann ist das wichtig?
-- **"high_first"**: Verwendet bei den meisten Lambda-Modellen (höherwertiges Register zuerst)
+- **"high_first"**: Standard für die meisten Lambda-Modelle (höherwertiges Register zuerst)
 - **"low_first"**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen (niedrigwertiges Register zuerst)
 - **Rückwärtskompatibilität**: Alte Config mit `int32_byte_order` oder alten Werten (`big`/`little`) wird automatisch erkannt und migriert
-- **Seit V2.7.0**: Der Default wird automatisch anhand der eingestellten Firmware-Version gesetzt (für `V1.1.0-3K` und `V0.0.10-3K` bereits `"low_first"`); die manuelle Einstellung überschreibt diesen Default weiterhin
 
 ### Fehlerbehebung
 Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung.
@@ -321,7 +320,7 @@ cycling_offsets:
     hot_water_cycling_total: 50
 # Register order for 32-bit registers (int32 sensors)
 modbus:
-  int32_register_order: "high_first"  # "high_first" or "low_first"
+  int32_register_order: "high_first"  # "high_first" or "low_first" - Default: "high_first"
 ```
 
 ---
@@ -337,16 +336,15 @@ In the `lambda_wp_config.yaml` you can set the register order:
 # Modbus configuration
 modbus:
   # Register order for 32-bit registers (int32 sensors)
-  # "high_first" = High-order register first
+  # "high_first" = High-order register first (Default)
   # "low_first" = Low-order register first
   int32_register_order: "high_first"  # or "low_first"
 ```
 
 ### When is this important?
-- **"high_first"**: Used by most Lambda models (high-order register first)
+- **"high_first"**: Default for most Lambda models (high-order register first)
 - **"low_first"**: Required for certain Lambda models or firmware versions (low-order register first)
 - **Backward Compatibility**: Old config with `int32_byte_order` or old values (`big`/`little`) is automatically detected and migrated
-- **Since V2.7.0**: The default is set automatically based on the configured firmware version (already `"low_first"` for `V1.1.0-3K` and `V0.0.10-3K`); a manual setting still overrides this default
 
 ### Troubleshooting
 If you see incorrect values in the sensors, try the other register order setting.

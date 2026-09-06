@@ -4,7 +4,7 @@ title: "Firmware-Einstellung – technische Auswirkungen"
 
 # Firmware-Einstellung – technische Auswirkungen
 
-*Zuletzt geändert am 25.07.2026*
+*Zuletzt geändert am 21.03.2026*
 
 Diese Seite beschreibt, wo die Firmware-Version in der Integration gesetzt wird, wie sie ausgewertet wird und welche Folgen die **initiale Konfiguration** gegenüber einer **späteren Änderung** der Firmware haben.
 
@@ -22,28 +22,20 @@ Die Auswertung erfolgt einheitlich über die Hilfsfunktionen in [utils.py](custo
 
 ### Konstanten ([const_base.py](custom_components/lambda_heat_pumps/const_base.py))
 
-Seit V2.7.0 ist `FIRMWARE_CONFIG` die Primärstruktur und trägt **zwei** von der Firmware-Zeichenkette abhängige Werte: die numerische Version (Kompatibilitätsprüfung, siehe unten) **und** den Default für `int32_register_order` (`reg_order`). `FIRMWARE_VERSION` wird automatisch davon abgeleitet und bleibt für alle bestehenden Aufrufer unverändert nutzbar:
-
-```python
-FIRMWARE_CONFIG: dict = {
-    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
-    "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
-    "V0.0.9-3K":  {"version": 7, "reg_order": "high_first"},
-    # ...
-    "V0.0.3-3K":  {"version": 1, "reg_order": "high_first"},
+```text
+FIRMWARE_VERSION = {
+    "V1.1.0-3K": 8,
+    "V0.0.9-3K": 7,
+    "V0.0.8-3K": 6,
+    "V0.0.7-3K": 5,
+    "V0.0.6-3K": 4,
+    "V0.0.5-3K": 3,
+    "V0.0.4-3K": 2,
+    "V0.0.3-3K": 1,
 }
-FIRMWARE_VERSION: dict = {k: v["version"] for k, v in FIRMWARE_CONFIG.items()}
 ```
 
-Jede Firmware-*Zeichenkette* ist einer **numerischen Version** (aktuell 1–9) zugeordnet. Diese Zahl wird für die Kompatibilitätsprüfung verwendet.
-
-### Register-Reihenfolge für 32-Bit-Werte (`int32_register_order`) — ebenfalls firmware-abhängig
-
-Seit V2.7.0 ist nicht nur die Sensor-*Verfügbarkeit* firmware-abhängig, sondern auch die **Interpretation** der bereits vorhandenen int32-Sensoren (z. B. Energie-Akkumulation): `get_int32_register_order(hass, entry)` ([modbus_utils.py](custom_components/lambda_heat_pumps/modbus_utils.py)) liest den `reg_order`-Wert aus `FIRMWARE_CONFIG[fw_version]` als Default, sofern kein manueller `int32_register_order`-Override in `lambda_wp_config.yaml` gesetzt ist (Priorität: YAML-Override > FW-Default > absoluter Fallback `"high_first"`).
-
-Der Wert wird **einmalig beim Setup** ausgelesen und in `coordinator._int32_register_order` gespeichert ([__init__.py](custom_components/lambda_heat_pumps/__init__.py)) — **nicht** bei jedem Update-Zyklus neu. Das heißt aber auch: Ein Reload (z. B. durch Ändern der Firmware-Version im Options-Flow, siehe unten) wertet den FW-Default **neu** aus. Details zur Prioritätskette und den beiden 32-Bit-Reihenfolgen: [Register-Reihenfolge int32](register-reihenfolge-int32.md).
-
-**Wichtige Konsequenz beim Firmware-Wechsel:** Ändert sich durch den neuen `fw_version` der `reg_order`-Default (z. B. bei einem Wechsel zwischen den beiden neuesten und einer älteren Firmware-Version, siehe Tabelle oben), werden bestehende int32-Sensoren ab dem Reload **anders interpretiert** — ohne dass sich am Gerät etwas geändert hat. Das kann bei Energie-Zählern zu einem scheinbaren Sprung führen. Der in [Release 2.8.0](../Releases/release-2-8-0.md) eingeführte `calculate_energy_delta()`-Schutz (verwirft implausible Deltas über `MAX_ENERGY_DELTA_WH` statt sie zu kappen und einzubuchen) fängt genau diesen Fall ab.
+Jede Firmware-*Zeichenkette* ist einer **numerischen Version** (1–8) zugeordnet. Diese Zahl wird für die Kompatibilitätsprüfung verwendet.
 
 ### Abfrage der Firmware
 
@@ -54,21 +46,14 @@ Reihenfolge: `entry.options` → `entry.data` → `DEFAULT_FIRMWARE`.
 
 ### Sensor-Filterung
 
-**`get_compatible_sensors(sensor_templates, fw_version)`** ([utils.py](custom_components/lambda_heat_pumps/utils.py)), seit V2.8.0 mit zwei Feldern pro Template (Priorität von hoch nach niedrig):
+**`get_compatible_sensors(sensor_templates, fw_version)`** ([utils.py](custom_components/lambda_heat_pumps/utils.py) Zeilen 50–67):
 
-1. **`firmware_versions`** (Range-Notation, neu in V2.8.0): Liste aus `"X-Y"` (Bereich inklusive), `"-X"` (Version X ausschließen) oder `X` (einzelne Version einschließen), ausgewertet über `_parse_firmware_versions()`. Erlaubt — anders als `firmware_version` — auch eine **Obergrenze**, z. B. `["1-7"]` für ein Register, das ab einer neueren Steuerungsgeneration nicht mehr existiert (siehe `ambient_temperature` in [const_sensor.py](custom_components/lambda_heat_pumps/const_sensor.py) und [Release 2.8.0](../Releases/release-2-8-0.md)).
-2. **`firmware_version`** (Minimum, bestehendes Verhalten): Sensor aktiv, wenn `template["firmware_version"] <= fw_version`.
-3. **Kein Feld**: Sensor gilt für alle Firmware-Versionen.
+- Ein Sensor-Template wird **einbezogen**, wenn:
+  - es ein numerisches `firmware_version` hat und `template["firmware_version"] <= fw_version` ist, **oder**
+  - es **kein** numerisches `firmware_version` hat (dann gilt der Sensor für alle Firmware-Versionen).
+- Templates mit `firmware_version` **größer** als die konfigurierte Firmware werden **nicht** verwendet.
 
-`firmware_versions` hat Vorrang vor `firmware_version`, falls beide gesetzt sind. Vollständig rückwärtskompatibel — bestehende `firmware_version: X`-Sensoren sind unverändert.
-
-In den Konstanten ([const_sensor.py](custom_components/lambda_heat_pumps/const_sensor.py), [const_calculated_sensors.py](custom_components/lambda_heat_pumps/const_calculated_sensors.py)) haben die allermeisten Sensoren `"firmware_version": 1`; einzelne können höhere Werte oder (seit V2.8.0) `firmware_versions`-Bereiche haben.
-
-**Wichtig — General Sensors (`SENSOR_TYPES`):** Bis einschließlich V2.7.0 wurde diese Sensorgruppe **nirgends** durch `get_compatible_sensors()` gefiltert — weder in `sensor.py` (Entity-Erzeugung) noch in `coordinator.py` (`_read_general_sensors_batch`). Ein `firmware_version`/`firmware_versions`-Feld bei einem General Sensor hatte dadurch **nie** eine Wirkung. Seit V2.8.0 ist das behoben; die Tabelle unten ist entsprechend aktuell.
-
-### Sentinel-Filterung als ergänzender Schutz
-
-Unabhängig von der FW-Filterung schützt seit V2.8.0 `is_sentinel_value()` ([utils.py](custom_components/lambda_heat_pumps/utils.py)) vor Lambda-Protokoll-Sentinel-Rohwerten (`0x8000` = Register nicht vorhanden, `-3000` als `int16` = Fühler nicht angeschlossen), die sonst unskaliert als reale Messwerte gespeichert würden. Ein optionales `sentinel_values`-Feld im Template aktiviert zusätzlich `-1` (`0xFFFF`) als Sentinel für einen einzelnen Sensor — global ist `-1` bewusst **kein** Sentinel, da er bei manchen Sensoren (z. B. Temperatur-Offsets) ein gültiger Wert ist. Details: [Release 2.8.0](../Releases/release-2-8-0.md).
+In den Konstanten ([const_sensor.py](custom_components/lambda_heat_pumps/const_sensor.py), [const_calculated_sensors.py](custom_components/lambda_heat_pumps/const_calculated_sensors.py)) haben die allermeisten Sensoren `"firmware_version": 1`; einzelne können höhere Werte haben (z. B. `firmware_version: 3`). Nur bei höherer konfigurierter Firmware werden diese zusätzlichen Sensoren erzeugt.
 
 ---
 
@@ -82,7 +67,6 @@ Unabhängig von der FW-Filterung schützt seit V2.8.0 `is_sentinel_value()` ([ut
 | **Template-Sensoren** | [template_sensor.py](custom_components/lambda_heat_pumps/template_sensor.py) Zeilen 79–82: Filterung nach Firmware-Version. |
 | **Migration/Cleanup** | [migration.py](custom_components/lambda_heat_pumps/migration.py) nutzt `get_firmware_version_int` für kompatible Sensoren. |
 | **device_info** | [utils.py](custom_components/lambda_heat_pumps/utils.py) `build_device_info`: `model` wird mit `get_firmware_version(entry)` (Zeichenkette) gesetzt. |
-| **32-Bit-Register-Reihenfolge** | [modbus_utils.py](custom_components/lambda_heat_pumps/modbus_utils.py) `get_int32_register_order(hass, entry)`: FW-abhängiger `reg_order`-Default aus `FIRMWARE_CONFIG[fw_version]` (seit V2.7.0), sofern kein YAML-Override gesetzt ist. Einmalig beim Setup ausgewertet, siehe unten. |
 
 ---
 
@@ -111,7 +95,6 @@ Unabhängig von der FW-Filterung schützt seit V2.8.0 `is_sentinel_value()` ([ut
 
 - **Firmware-Erhöhung (z. B. 1 → 6):** Es werden **mehr** Sensoren/Register kompatibel. Es entstehen **neue** Entities; ggf. erscheinen neue Entity-IDs (und bei bereits belegten IDs im Entity-Register z. B. Suffixe wie `_2`).
 - **Firmware-Absenkung (z. B. 6 → 1):** Sensoren mit `firmware_version` > 1 werden aus der Liste gestrichen. Die zugehörigen Entities werden beim Unload **entfernt**. Die alten Entity-IDs können im Entity-Register als „verwaist“ (restored) zurückbleiben; die zugehörigen Verlaufsdaten bleiben in der Recorder-Datenbank unter der alten Entity-ID, sind aber für die neue Konfiguration nicht mehr sichtbar.
-- **Register-Reihenfolge (`int32_register_order`):** Ändert der Firmware-Wechsel auch den `reg_order`-Default (siehe oben), werden bestehende int32-Sensoren ab dem Reload anders interpretiert - ohne YAML-Override. Betroffene Energie-Zähler können dadurch einen scheinbaren Sprung zeigen; der `calculate_energy_delta()`-Schutz (Release 2.8.0) verwirft diesen statt ihn einzubuchen.
 
 Es findet **keine** automatische Migration von Entity-IDs oder Verlaufsdaten beim Firmware-Wechsel statt.
 
@@ -130,7 +113,6 @@ Es findet **keine** automatische Migration von Entity-IDs oder Verlaufsdaten bei
 | **Wann wirksam** | Beim ersten Setup | Nach Speichern der Optionen und Reload |
 | **Entities** | Nur zur gewählten Firmware passend | Beim Reload komplett neu aufgebaut; je nach Richtung (Hoch/Runter) neue oder weniger Entities |
 | **Modbus** | Nur Register für kompatible Sensoren | Nach Reload nur noch Register für die neue Firmware |
-| **Register-Reihenfolge (int32)** | FW-abhängiger `reg_order`-Default aus `FIRMWARE_CONFIG` (seit V2.7.0) | Wird beim Reload neu ausgewertet — kann bestehende int32-Sensoren anders interpretieren (siehe Folgen oben) |
 | **Verlauf/Statistik** | Keine Besonderheit | Keine Migration; bei entfernten Entities bleiben alte IDs ggf. als Waisen im Register, Verlauf bleibt unter alter Entity-ID |
 
 Die technische Grundlage für die Anzeige und Konfiguration der Firmware im UI bildet die gleiche Stelle im Config Flow ([config_flow.py](custom_components/lambda_heat_pumps/config_flow.py) Zeilen 397–398: `firmware_options = list(FIRMWARE_VERSION.keys())` für die Dropdown-Liste; die tatsächlichen Auswirkungen entstehen durch die beschriebene Filterung in Coordinator und allen Plattformen.

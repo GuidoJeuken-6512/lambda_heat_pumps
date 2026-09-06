@@ -1,8 +1,8 @@
 # Lambda Heat Pumps Integration – Ablaufdiagramm & Entwicklerreferenz
 
-*Zuletzt geändert am 25.07.2026*
+*Zuletzt geändert am 24.06.2026*
 
-**Stand:** Release 2.8.0 · **Letzte Aktualisierung:** 2026-07-25
+**Stand:** Release 2.6.0 · **Letzte Aktualisierung:** 2026-06-24
 
 Dieses Dokument beschreibt den vollständigen Ablauf der Integration – von der Initialisierung bis zum laufenden Betrieb. Es dient als Referenz für zukünftige Entwicklung und Debugging.
 
@@ -10,14 +10,14 @@ Dieses Dokument beschreibt den vollständigen Ablauf der Integration – von der
 
 ## Inhaltsverzeichnis
 
-1. [Schnellübersicht – wichtige Dateien](#1-schnellubersicht-wichtige-dateien)
+1. [Schnellübersicht – wichtige Dateien](#1-schnellübersicht--wichtige-dateien)
 2. [Setup-Ablauf](#2-setup-ablauf)
 3. [Coordinator-Initialisierung](#3-coordinator-initialisierung)
 4. [Platform-Setup und Entity-Klassen](#4-platform-setup-und-entity-klassen)
 5. [Daten-Update-Zyklus](#5-daten-update-zyklus)
 6. [Flankenerkennung (Edge Detection)](#6-flankenerkennung-edge-detection)
 7. [Offset-Anwendung](#7-offset-anwendung)
-8. [ResetManager – Periodische Resets](#8-resetmanager-periodische-resets)
+8. [ResetManager – Periodische Resets](#8-resetmanager--periodische-resets)
 9. [Unload und Reload](#9-unload-und-reload)
 10. [Offene Probleme](#10-offene-probleme)
 
@@ -309,8 +309,8 @@ flowchart TD
     A([Timer-Tick\n30s Intervall]) --> B{hass.is_stopping?}
     B -->|Ja| B1([Letzten Datensatz zurückgeben])
     B -->|Nein| C[Globalen Register-Cache leeren]
-    C --> D[wait_for_stable_connection\nModbus-Health-Check\nteilt sich seit V2.8.0 den Lock\nmit Reads/Writes]
-    D --> E[Firmware-Version ermitteln\nkompatible Sensor-Templates filtern\nseit V2.8.0 auch General Sensors]
+    C --> D[wait_for_stable_connection\nModbus-Health-Check]
+    D --> E[Firmware-Version ermitteln\nkompatible Sensor-Templates filtern]
     E --> F[_read_general_sensors_batch\nHauptgerät-Register]
     F --> G[_read_heatpump_sensors_batch\npro HP-Instanz]
     G --> H[Boiler-Register lesen\npro Boiler-Instanz]
@@ -330,12 +330,6 @@ flowchart TD
 ```
 
 **Wichtig:** `_initialization_complete` muss `True` sein, damit Flanken erkannt werden. Dies verhindert falsche Zähler-Inkremente beim ersten Update nach dem Start.
-
-**Seit V2.8.0 (Issue #100) zwei zusätzliche Schutzmechanismen innerhalb der Register-Lese-Schritte (F–J, L):**
-- **Sentinel-Filterung:** Vor jeder Skalierung prüft `is_sentinel_value()`, ob der Rohwert `0x8000` (Register nicht vorhanden) oder `-3000` als `int16` (Fühler nicht angeschlossen) ist — betroffene Sensoren werden auf `None` gesetzt (`unavailable`) statt den Sentinel als echten Messwert zu speichern. Optional per Sensor-Template zusätzlich `-1`/`0xFFFF` via `sentinel_values`-Feld (opt-in, da `-1` bei manchen Sensoren ein gültiger Wert ist).
-- **Implausible Energie-Deltas:** In Schritt Q verwirft `calculate_energy_delta()` ein Delta über `MAX_ENERGY_DELTA_WH` (Default 5000 Wh, `const_base.py`) statt es zu kappen und einzubuchen — die Referenz wird auf den aktuellen Wert zurückgesetzt, es wird nichts gebucht. Schützt u. a. vor Sprüngen durch eine geänderte `int32_register_order` (siehe Abschnitt 2 und [Register-Reihenfolge int32](register-reihenfolge-int32.md)).
-
-Details: [Release 2.8.0](../Releases/release-2-8-0.md).
 
 ---
 
@@ -409,7 +403,7 @@ flowchart TD
     style CYCLE fill:#fff3e0
 ```
 
-> **⚠ Bug B-1:** `increment_cycling_counter()` addiert den vollen YAML-Offset bei jedem Zyklus-Event (utils.py:901). Details → `offset_bug_analysis.md` (interne Analyse, nicht Teil der veröffentlichten Doku)
+> **⚠ Bug B-1:** `increment_cycling_counter()` addiert den vollen YAML-Offset bei jedem Zyklus-Event (utils.py:901). Details → [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md)
 
 ---
 
@@ -507,11 +501,11 @@ flowchart TD
 
 | # | Status | Schweregrad | Kurzbeschreibung | Ort | Analyse |
 |---|---|---|---|---|---|
-| B-1 | ✅ Behoben (Release 2.4.0) | Kritisch | Cycling-Offset wurde bei jedem Zyklus-Event erneut addiert → exponentieller Wertzuwachs. Offset-Block aus `increment_cycling_counter()` entfernt; alleinige Verantwortung liegt jetzt bei `_apply_cycling_offset()` in `sensor.py` (Differenz-Tracking). | utils.py | `offset_bug_analysis.md` |
-| B-2 | ✅ Behoben (Release 2.4.0) | Mittel | Daily-Offset-Lookup/-Addition im 30s-Update-Zyklus entfernt; `_cycling_offsets` wird zwar noch geladen, aber im Coordinator nirgends mehr angewendet. | coordinator.py | `offset_bug_analysis.md` |
-| H-03 | ⚠️ Praktisch entschärft, architektonisch offen | Hoch | Template-Sensoren sind weiterhin nicht als eigene `Platform` deklariert. Das ursprünglich befürchtete Symptom (Geist-Entities nach Unload) wird aber dadurch vermieden, dass (a) `template_setup_task` als einer der ersten Schritte in `async_unload_entry` abgebrochen wird (Fix K-01, Abschnitt 9) und (b) Template-Entities über denselben `async_add_entities`-Callback wie die übrigen SENSOR-Entities laufen (`sensor.py` → `template_sensor.async_setup_entry(hass, entry, async_add_entities)`), also vom selben `EntityPlatform`-Objekt verwaltet werden. Eine echte `Platform.TEMPLATE`-Registrierung gibt es trotzdem nicht. | __init__.py, sensor.py, template_sensor.py | `integration_analysis.md` |
+| B-1 | ✅ Behoben (Release 2.4.0) | Kritisch | Cycling-Offset wurde bei jedem Zyklus-Event erneut addiert → exponentieller Wertzuwachs. Offset-Block aus `increment_cycling_counter()` entfernt; alleinige Verantwortung liegt jetzt bei `_apply_cycling_offset()` in `sensor.py` (Differenz-Tracking). | utils.py | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
+| B-2 | ✅ Behoben (Release 2.4.0) | Mittel | Daily-Offset-Lookup/-Addition im 30s-Update-Zyklus entfernt; `_cycling_offsets` wird zwar noch geladen, aber im Coordinator nirgends mehr angewendet. | coordinator.py | [offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) |
+| H-03 | ⚠️ Praktisch entschärft, architektonisch offen | Hoch | Template-Sensoren sind weiterhin nicht als eigene `Platform` deklariert. Das ursprünglich befürchtete Symptom (Geist-Entities nach Unload) wird aber dadurch vermieden, dass (a) `template_setup_task` als einer der ersten Schritte in `async_unload_entry` abgebrochen wird (Fix K-01, Abschnitt 9) und (b) Template-Entities über denselben `async_add_entities`-Callback wie die übrigen SENSOR-Entities laufen (`sensor.py` → `template_sensor.async_setup_entry(hass, entry, async_add_entities)`), also vom selben `EntityPlatform`-Objekt verwaltet werden. Eine echte `Platform.TEMPLATE`-Registrierung gibt es trotzdem nicht. | __init__.py, sensor.py, template_sensor.py | [integration_analysis.md](../../analysis/integration_analysis.md) |
 
-Vollständige Analyse: `docs/analysis/integration_analysis.md` und `docs/analysis/offset_bug_analysis.md` (interne Analyse-Dokumente, nicht Teil der veröffentlichten Doku) – beide Dokumente wurden am 24.06.2026 mit Status-Updates versehen (B-1/B-2/B-3 ✅ behoben, H-03 ⚠️ praktisch entschärft). Die übrigen, dort nicht erneut verifizierten Punkte (H-02, H-05, M-01, M-04, M-08) spiegeln weiterhin den Stand von Release 2.3.
+Vollständige Analyse: [docs/analysis/integration_analysis.md](../../analysis/integration_analysis.md) und [docs/analysis/offset_bug_analysis.md](../../analysis/offset_bug_analysis.md) – beide Dokumente wurden am 24.06.2026 mit Status-Updates versehen (B-1/B-2/B-3 ✅ behoben, H-03 ⚠️ praktisch entschärft). Die übrigen, dort nicht erneut verifizierten Punkte (H-02, H-05, M-01, M-04, M-08) spiegeln weiterhin den Stand von Release 2.3.
 
 ---
 
@@ -521,24 +515,12 @@ Vollständige Analyse: `docs/analysis/integration_analysis.md` und `docs/analysi
 AsyncModbusTcpClient (pymodbus >= 3.6.0)
 │
 ├── _modbus_read_lock (global asyncio.Lock)
-│   Verhindert parallele Requests → Transaction-ID-Konflikte.
-│   Seit V2.8.0 (Issue #105) EIN gemeinsamer Lock für Reads, Writes
-│   UND wait_for_stable_connection()-Health-Checks — vorher hatte der
-│   Health-Check einen eigenen, separaten Lock, wodurch er parallel zu
-│   echten Reads/Writes laufen und Modbus-Transaktionen auf der Leitung
-│   desynchronisieren konnte (PV-Überschuss-/Raumtemperatur-Writes kamen
-│   dadurch sporadisch nie am Gerät an, obwohl das Log Erfolg meldete).
-│   Details: modbus-serialisierung.md
+│   Verhindert parallele Requests → Transaction-ID-Konflikte
 │
 ├── async_read_holding_registers(client, address, count, slave_id)
 │   ├── 3 Retry-Versuche
 │   ├── asyncio.wait_for(... timeout=LAMBDA_MODBUS_TIMEOUT)
 │   └── Sonderbehandlung bei hass.is_stopping
-│
-├── async_write_registers(client, address, values, slave_id)
-│   └── PV-Überschuss (services.py, Timer DEFAULT_WRITE_INTERVAL) und
-│       Raumtemperatur-Schreibvorgänge — konkurrieren um denselben Lock
-│       wie der 30s-Lesezyklus
 │
 └── Batch-Optimierung in _async_update_data
     ├── _global_register_cache: vermeidet doppelte Reads pro Zyklus
@@ -559,4 +541,4 @@ HC1:                5000 – 5099    HC2: 5100–5199    …  HC12: 6100–6199
 
 ---
 
-*Dieses Dokument wurde auf Basis des tatsächlichen Quellcodes erstellt, ursprünglich für Release 2.3, zuletzt aktualisiert für Release 2.8.0 (Sentinel-Filterung, implausible Energie-Deltas, FW-abhängige Register-Reihenfolge, General-Sensors-FW-Filter-Fix, vereinheitlichter Modbus-Lock für Health-Checks/Reads/Writes — Issue #100 / #105).*
+*Dieses Dokument wurde auf Basis des tatsächlichen Quellcodes erstellt, ursprünglich für Release 2.3, zuletzt aktualisiert für Release 2.6.0 (Cooling-Circuit-Climate-Entity, `skip_auto_detect`-Fix).*

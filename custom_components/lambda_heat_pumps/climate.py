@@ -1,271 +1,177 @@
-"""Climate platform for Lambda integration (template-basiert)."""
+"""Climate platform for the Lambda Heat Pumps integration.
+
+A thermostat for each thing the user sets a temperature on: the hot water in each
+boiler, and — when the circuit is set up to follow a room thermostat, or to cool
+— the room temperature of each heating circuit.
+"""
 
 from __future__ import annotations
-import logging
+
+from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.climate import (
     ClimateEntity,
+    ClimateEntityDescription,
     ClimateEntityFeature,
     HVACMode,
 )
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from modbus_connection import ModbusError
 
 from .const import (
-    DOMAIN,
-    CLIMATE_TEMPLATES,
-    HOT_WATER_MIN_TEMP_LIMIT,
-    HOT_WATER_MAX_TEMP_LIMIT,
-    DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
+    CONF_COOLING_MODE,
+    CONF_HEATING_CIRCUIT_MAX_TEMP,
+    CONF_HEATING_CIRCUIT_MIN_TEMP,
+    CONF_HEATING_CIRCUIT_TEMP_STEP,
+    CONF_HOT_WATER_MAX_TEMP,
+    CONF_HOT_WATER_MIN_TEMP,
+    CONF_ROOM_TEMPERATURE_ENTITY,
+    CONF_ROOM_THERMOSTAT_CONTROL,
     DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
-    DEFAULT_COOLING_MODE_ENABLED,
+    DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
+    DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
+    DEFAULT_HOT_WATER_MAX_TEMP,
+    DEFAULT_HOT_WATER_MIN_TEMP,
 )
-from .utils import (
-    generate_base_addresses,
-    build_device_info,
-    build_subdevice_info,
-    generate_sensor_names,
-    load_sensor_translations,
-    get_firmware_version_int,
-    get_compatible_sensors,
-    get_entity_icon,
-    normalize_name_prefix,
+from .coordinator import LambdaConfigEntry, LambdaCoordinator
+from .entity import LambdaEntity
+
+
+@dataclass(frozen=True, kw_only=True)
+class LambdaClimateDescription(ClimateEntityDescription):
+    """A thermostat over one module's current and target temperature."""
+
+    module: str
+    current: str
+    target: str
+    hvac_mode: HVACMode
+
+
+HOT_WATER = LambdaClimateDescription(
+    key="hot_water",
+    module="boil",
+    current="actual_high_temperature",
+    target="target_high_temperature",
+    hvac_mode=HVACMode.HEAT,
 )
-from .modbus_utils import async_write_registers
+HEATING_CIRCUIT = LambdaClimateDescription(
+    key="heating_circuit",
+    module="hc",
+    current="room_device_temperature",
+    target="target_room_temperature",
+    hvac_mode=HVACMode.HEAT,
+)
+COOLING_CIRCUIT = LambdaClimateDescription(
+    key="cooling_circuit",
+    module="hc",
+    current="room_device_temperature",
+    target="set_cooling_mode_room_temperature",
+    hvac_mode=HVACMode.COOL,
+)
 
-_LOGGER = logging.getLogger(__name__)
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: LambdaConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up a thermostat for every temperature the user can set."""
+    coordinator = entry.runtime_data
+    options = entry.options
+
+    entities = [
+        LambdaClimate(coordinator, HOT_WATER, index)
+        for index in range(1, coordinator.counts["boil"] + 1)
+    ]
+    for index in range(1, coordinator.counts["hc"] + 1):
+        # A circuit only becomes a room thermostat once it has a room to read.
+        if options.get(CONF_ROOM_THERMOSTAT_CONTROL, False) and options.get(
+            CONF_ROOM_TEMPERATURE_ENTITY.format(index)
+        ):
+            entities.append(LambdaClimate(coordinator, HEATING_CIRCUIT, index))
+        if options.get(CONF_COOLING_MODE, False):
+            entities.append(LambdaClimate(coordinator, COOLING_CIRCUIT, index))
+
+    async_add_entities(entities)
 
 
-class LambdaClimateEntity(CoordinatorEntity, ClimateEntity):
-    """Template-basierte Lambda Climate Entity."""
+class LambdaClimate(LambdaEntity, ClimateEntity):
+    """One temperature the user sets on the controller."""
 
-    _attr_should_poll = False
+    _entity_domain = "climate"
+
+    entity_description: LambdaClimateDescription
+
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
     def __init__(
         self,
-        coordinator,
-        entry,
-        climate_type,
-        idx,
-        base_address,
-        translations: dict[str, str] | None = None,
-    ):
-        super().__init__(coordinator)
-        self._entry = entry
-        self._climate_type = climate_type  # "hot_water" oder "heating_circuit"
-        self._idx = idx
-        self._base_address = base_address
-        self._template = CLIMATE_TEMPLATES[climate_type]
-        self._device_type = self._template["device_type"]
-
-        # Hole den Legacy-Modbus-Namen-Switch aus der Config
-        use_legacy_modbus_names = entry.data.get("use_legacy_modbus_names", True)
-        name_prefix = normalize_name_prefix(entry.data.get("name", ""))
-
-        # Verwende die Werte aus der CLIMATE_TEMPLATES Konfiguration
-        device_type = self._device_type  # "boil" oder "hc"
-        sensor_id = climate_type  # "hot_water" oder "heating_circuit"
-
-        # Verwende die zentrale Namensgenerierung
-        device_prefix = f"{device_type}{idx}"
-        names = generate_sensor_names(
-            device_prefix,
-            self._template["name"],
-            sensor_id,
-            name_prefix,
-            use_legacy_modbus_names,
-            translations=translations,
+        coordinator: LambdaCoordinator,
+        description: LambdaClimateDescription,
+        index: int,
+    ) -> None:
+        """Bind the thermostat to the module it controls."""
+        super().__init__(
+            coordinator,
+            description.key,
+            description.module,
+            index,
+            component=f"{description.module}{index}",
         )
+        self.entity_description = description
+        self._attr_translation_key = description.key
+        self._attr_hvac_mode = description.hvac_mode
+        self._attr_hvac_modes = [description.hvac_mode]
 
-        # Setze die Namen und IDs
-        self._attr_name = names["name"]
-        self._attr_unique_id = names["unique_id"]
-        self.entity_id = names["entity_id"]
-
-        # Temperaturbereich aus Entry-Optionen lesen
-        if climate_type == "hot_water":
-            min_temp = entry.options.get("hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT)
-            max_temp = entry.options.get("hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT)
-            default_min, default_max = HOT_WATER_MIN_TEMP_LIMIT, HOT_WATER_MAX_TEMP_LIMIT
-        else:  # heating_circuit oder cooling_circuit (gleicher Raumtemperaturbereich)
-            min_temp = entry.options.get("heating_circuit_min_temp", DEFAULT_HEATING_CIRCUIT_MIN_TEMP)
-            max_temp = entry.options.get("heating_circuit_max_temp", DEFAULT_HEATING_CIRCUIT_MAX_TEMP)
-            default_min, default_max = DEFAULT_HEATING_CIRCUIT_MIN_TEMP, DEFAULT_HEATING_CIRCUIT_MAX_TEMP
-
-        if min_temp >= max_temp:
-            _LOGGER.warning(
-                "Invalid temperature range min=%s >= max=%s for %s, using defaults",
-                min_temp, max_temp, climate_type,
+        options = coordinator.config_entry.options
+        if description is HOT_WATER:
+            self._attr_min_temp = options.get(
+                CONF_HOT_WATER_MIN_TEMP, DEFAULT_HOT_WATER_MIN_TEMP
             )
-            min_temp, max_temp = default_min, default_max
-
-        self._attr_min_temp = min_temp
-        self._attr_max_temp = max_temp
-
-        self._attr_target_temperature_step = self._template.get("precision", 0.5)
-        self._attr_temperature_unit = self._template.get("unit", "°C")
-
-        # HVAC-Modi aus CLIMATE_TEMPLATES lesen
-        hvac_modes_set = self._template.get("hvac_mode", {"heat"})
-        self._attr_hvac_modes = [HVACMode(mode) for mode in hvac_modes_set]
-        default_hvac_mode = "cool" if "cool" in hvac_modes_set else "heat"
-        self._attr_hvac_mode = HVACMode(default_hvac_mode)
-        
-        # Setze Icon aus Template (zentrale Steuerung)
-        self._attr_icon = get_entity_icon(self._template)
-
-    @property
-    def current_temperature(self):
-        if self.coordinator.data is None:
-            return None
-        key = (
-            f"boil{self._idx}_actual_high_temperature"
-            if self._climate_type == "hot_water"
-            else f"hc{self._idx}_room_device_temperature"
-        )
-        return self.coordinator.data.get(key)
-
-    @property
-    def target_temperature(self):
-        if self.coordinator.data is None:
-            return None
-        return self.coordinator.data.get(self._target_temperature_key)
-
-    @property
-    def _target_temperature_key(self):
-        if self._climate_type == "hot_water":
-            return f"boil{self._idx}_target_high_temperature"
-        if self._climate_type == "cooling_circuit":
-            return f"hc{self._idx}_set_cooling_mode_room_temperature"
-        return f"hc{self._idx}_target_room_temperature"
-
-    @property
-    def state_class(self):
-        return self._template.get("state_class")
-
-    @property
-    def device_info(self):
-        if self._device_type and self._idx:
-            return build_subdevice_info(
-                self._entry, self._device_type, self._idx, self.hass
+            self._attr_max_temp = options.get(
+                CONF_HOT_WATER_MAX_TEMP, DEFAULT_HOT_WATER_MAX_TEMP
             )
-        return build_device_info(self._entry)
+        else:
+            self._attr_min_temp = options.get(
+                CONF_HEATING_CIRCUIT_MIN_TEMP, DEFAULT_HEATING_CIRCUIT_MIN_TEMP
+            )
+            self._attr_max_temp = options.get(
+                CONF_HEATING_CIRCUIT_MAX_TEMP, DEFAULT_HEATING_CIRCUIT_MAX_TEMP
+            )
+        self._attr_target_temperature_step = options.get(
+            CONF_HEATING_CIRCUIT_TEMP_STEP, DEFAULT_HEATING_CIRCUIT_TEMP_STEP
+        )
 
-    async def async_set_temperature(self, **kwargs):
-        temperature = kwargs.get("temperature")
-        if temperature is None:
-            return
-        reg_addr = self._base_address + self._template["relative_set_address"]
-        scale = self._template["scale"]
-        raw_value = int(temperature / scale)
-        _LOGGER.info(
-            "[Climate] Write target temperature: entity=%s, address=%s, "
-            "value(raw)=%s, value(temp)=%s",
-            self.entity_id,
-            reg_addr,
-            raw_value,
-            temperature,
+    @property
+    def _component(self):
+        """The module this thermostat controls."""
+        return self.coordinator.component(
+            self.entity_description.module, self._index
         )
-        result = await async_write_registers(
-            self.coordinator.client,
-            reg_addr,
-            [raw_value],
-            self._entry.data.get("slave_id", 1),
-        )
-        if result is None or (hasattr(result, "isError") and result.isError()):
-            _LOGGER.error("Failed to write target temperature: %s", result)
-            await self.coordinator.async_request_refresh()
+
+    @property
+    def current_temperature(self) -> float | None:
+        """What it is now."""
+        return getattr(self._component, self.entity_description.current)
+
+    @property
+    def target_temperature(self) -> float | None:
+        """What the controller is aiming for."""
+        return getattr(self._component, self.entity_description.target)
+
+    async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Ask the controller for a different temperature."""
+        if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
-        self.coordinator.data[self._target_temperature_key] = temperature
-        self.async_write_ha_state()
+        try:
+            await self._component.write(self.entity_description.target, temperature)
+        except ModbusError as err:
+            raise HomeAssistantError(
+                f"Could not set the target temperature: {err}"
+            ) from err
         await self.coordinator.async_request_refresh()
-
-
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
-) -> None:
-    """Set up the Lambda Heat Pumps climate entities (template-basiert)."""
-    _LOGGER.debug("Setting up Lambda climate entities for entry %s", entry.entry_id)
-
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    num_boil = entry.data.get("num_boil", 1)
-    num_hc = entry.data.get("num_hc", 1)
-    sensor_translations = await load_sensor_translations(hass)
-    
-    # Get firmware version and filter compatible climate templates
-    fw_version = get_firmware_version_int(entry)
-    _LOGGER.debug(
-        "Filtering climate entities for firmware version (numeric: %d)",
-        fw_version,
-    )
-    
-    # Filter compatible climate templates
-    compatible_climates = get_compatible_sensors(CLIMATE_TEMPLATES, fw_version)
-    
-    entities = []
-
-    # Boiler
-    boil_addresses = generate_base_addresses("boil", num_boil)
-    for idx in range(1, num_boil + 1):
-        # Check if hot_water climate is compatible
-        if "hot_water" in compatible_climates:
-            entities.append(
-                LambdaClimateEntity(
-                    coordinator,
-                    entry,
-                    "hot_water",  # climate_type aus CLIMATE_TEMPLATES
-                    idx,
-                    boil_addresses[idx],
-                    sensor_translations,
-                )
-            )
-
-    # Heating Circuits (nur wenn Raumthermostat-Steuerung aktiviert ist)
-    hc_addresses = generate_base_addresses("hc", num_hc)
-    for idx in range(1, num_hc + 1):
-        # Check if heating_circuit climate is compatible
-        if "heating_circuit" not in compatible_climates:
-            continue
-        if not entry.options.get("room_thermostat_control", False):
-            continue
-        entity_key = f"room_temperature_entity_{idx}"
-        if not entry.options.get(entity_key):
-            _LOGGER.debug(
-                "No room temperature entity configured for heating circuit %s "
-                "in entry %s, skipping entity creation.",
-                idx,
-                entry.entry_id,
-            )
-            continue
-        entities.append(
-            LambdaClimateEntity(
-                coordinator,
-                entry,
-                "heating_circuit",  # climate_type aus CLIMATE_TEMPLATES
-                idx,
-                hc_addresses[idx],
-                sensor_translations,
-            )
-        )
-
-    # Cooling Circuits (nur wenn Kühlbetrieb in den Optionen aktiviert ist)
-    if entry.options.get("cooling_mode_enabled", DEFAULT_COOLING_MODE_ENABLED):
-        for idx in range(1, num_hc + 1):
-            # Check if cooling_circuit climate is compatible
-            if "cooling_circuit" not in compatible_climates:
-                continue
-            entities.append(
-                LambdaClimateEntity(
-                    coordinator,
-                    entry,
-                    "cooling_circuit",  # climate_type aus CLIMATE_TEMPLATES
-                    idx,
-                    hc_addresses[idx],
-                    sensor_translations,
-                )
-            )
-
-    async_add_entities(entities)

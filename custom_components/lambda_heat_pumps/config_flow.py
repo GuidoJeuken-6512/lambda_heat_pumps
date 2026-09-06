@@ -1,1042 +1,357 @@
-"""Config flow for Lambda WP integration."""
+"""Config flow for the Lambda Heat Pumps integration.
+
+The user is asked how to reach the controller, and nothing else. Which modules it
+has is not a question they should have to answer — the controller is probed for
+that on every setup.
+"""
 
 from __future__ import annotations
-import logging
+
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import (
-    ConfigEntry,
     ConfigFlow,
+    ConfigFlowResult,
     OptionsFlow,
+    OptionsFlowWithReload,
 )
-from homeassistant.const import CONF_HOST, CONF_PORT, CONF_NAME
-from homeassistant.data_entry_flow import FlowResult
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import selector
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
+from homeassistant.core import callback
+from homeassistant.helpers.selector import (
+    BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+)
+from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
+from modbus_connection import ModbusError, ModbusTcpParams
+from modbus_connection.tmodbus import ModbusConnection
 
 from .const import (
-    DOMAIN,
+    CONF_COOLING_MODE,
+    CONF_FIRMWARE_VERSION,
+    CONF_HEATING_CIRCUIT_MAX_TEMP,
+    CONF_HEATING_CIRCUIT_MIN_TEMP,
+    CONF_HEATING_CIRCUIT_TEMP_STEP,
+    CONF_HOT_WATER_MAX_TEMP,
+    CONF_HOT_WATER_MIN_TEMP,
+    CONF_INT32_REGISTER_ORDER,
+    CONF_PV_POWER_SENSOR_ENTITY,
+    CONF_PV_SURPLUS,
+    CONF_PV_SURPLUS_MODE,
+    CONF_ROOM_TEMPERATURE_ENTITY,
+    CONF_ROOM_THERMOSTAT_CONTROL,
+    CONF_SLAVE_ID,
+    CONF_UPDATE_INTERVAL,
+    CONF_USE_LEGACY_MODBUS_NAMES,
+    DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
+    DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
+    DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
+    DEFAULT_HOT_WATER_MAX_TEMP,
+    DEFAULT_HOT_WATER_MIN_TEMP,
+    DEFAULT_INT32_REGISTER_ORDER,
     DEFAULT_NAME,
     DEFAULT_PORT,
-    DEFAULT_SLAVE_ID,
-    DEFAULT_HOST,
-    DEFAULT_FIRMWARE,
-    DEFAULT_ROOM_THERMOSTAT_CONTROL,
-    DEFAULT_PV_SURPLUS,
-    DEFAULT_COOLING_MODE_ENABLED,
-    DEFAULT_NUM_HPS,
-    DEFAULT_NUM_BOIL,
-    DEFAULT_NUM_HC,
-    DEFAULT_NUM_BUFFER,
-    DEFAULT_NUM_SOLAR,
-    HOT_WATER_MIN_TEMP_LIMIT,
-    HOT_WATER_MAX_TEMP_LIMIT,
-    DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
-    DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
-    DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
-    DEFAULT_UPDATE_INTERVAL,
-    CONF_SLAVE_ID,
-    FIRMWARE_VERSION,
-    CONF_ROOM_TEMPERATURE_ENTITY,
-    CONF_PV_POWER_SENSOR_ENTITY,
-    MAX_NUM_HPS,
-    MAX_NUM_BOIL,
-    MAX_NUM_HC,
-    MAX_NUM_BUFFER,
-    MAX_NUM_SOLAR,
-    PV_SURPLUS_MODE_OPTIONS,
     DEFAULT_PV_SURPLUS_MODE,
+    DEFAULT_SLAVE_ID,
+    DEFAULT_UPDATE_INTERVAL,
+    DOMAIN,
+    ENTRY_VERSION,
+    FIRMWARE_VERSIONS,
+    PV_SURPLUS_MODE_OPTIONS,
+    REGISTER_ORDER_HIGH_FIRST,
+    REGISTER_ORDER_LOW_FIRST,
 )
-from .const_migration import MIGRATION_VERSION
-from .modbus_utils import async_read_holding_registers
 
-_LOGGER = logging.getLogger(__name__)
+# The MAC prefix Lambda controllers are shipped with.
+DHCP_MACADDRESS = "0050F4*"
+
+# Register 0 is the general error number: every controller answers it.
+_PROBE_REGISTER = 0
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
-    """Validate the user input allows us to connect."""
-    try:
-        from pymodbus.client import AsyncModbusTcpClient
-
-        # Use only basic parameters that are supported across all pymodbus versions
-        client = AsyncModbusTcpClient(
-            host=data[CONF_HOST], port=data[CONF_PORT], timeout=5
+def _number(minimum: float, maximum: float, step: float = 1) -> NumberSelector:
+    return NumberSelector(
+        NumberSelectorConfig(
+            min=minimum, max=maximum, step=step, mode=NumberSelectorMode.BOX
         )
+    )
 
-        if not await client.connect():
-            raise CannotConnectError("Could not connect to Modbus TCP")
 
-        # Test read using the same proven approach as modbus_utils.py
-        slave_id = data[CONF_SLAVE_ID]
+def _select(options: list[str]) -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(options=options, mode=SelectSelectorMode.DROPDOWN)
+    )
 
-        # Use the modbus_utils function which has proven compatibility
-        result = await async_read_holding_registers(client, 0, 1, slave_id)
 
-        if hasattr(result, "isError") and result.isError():
-            raise CannotConnectError("Failed to read from device")
+CONNECTION_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME, default=DEFAULT_NAME): TextSelector(),
+        vol.Required(CONF_HOST): TextSelector(),
+        vol.Required(CONF_PORT, default=DEFAULT_PORT): _number(1, 65535),
+        vol.Required(CONF_SLAVE_ID, default=DEFAULT_SLAVE_ID): _number(1, 247),
+        vol.Required(CONF_FIRMWARE_VERSION, default=FIRMWARE_VERSIONS[0]): _select(
+            FIRMWARE_VERSIONS
+        ),
+    }
+)
 
-    except Exception as ex:
-        _LOGGER.error("Connection test failed: %s", ex)
-        raise CannotConnectError("Failed to connect to device") from ex
+
+async def async_can_connect(data: dict[str, Any]) -> bool:
+    """Whether the controller answers where the user says it is."""
+    # Building the connection does no I/O; the read below is what reaches out.
+    connection = ModbusConnection(
+        ModbusTcpParams(host=data[CONF_HOST], port=int(data[CONF_PORT]))
+    )
+    try:
+        unit = connection.for_unit(int(data[CONF_SLAVE_ID]))
+        await unit.read_holding_registers(_PROBE_REGISTER, 1)
+    except ModbusError:
+        return False
+    else:
+        return True
     finally:
-        try:
-            if "client" in locals() and client is not None:
-                # Try async close first, fallback to sync
-                try:
-                    if hasattr(client, "close") and callable(client.close):
-                        client.close()
-                except Exception:
-                    pass
-        except Exception as close_ex:
-            _LOGGER.debug("Error closing client: %s", close_ex)
+        await connection.close()
 
 
 class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Lambda WP."""
+    """Ask the user how to reach the controller."""
 
-    VERSION = MIGRATION_VERSION  # Wird automatisch aus const_migration.py importiert
+    VERSION = ENTRY_VERSION
 
     def __init__(self) -> None:
-        """Initialize the config flow."""
-        self._data: dict[str, Any] = {}
+        """Start with no discovered host."""
         self._discovered_host: str | None = None
 
-    def _is_connection_already_configured(
-        self, host: str, port: int, slave_id: int
-    ) -> bool:
-        """Prüfe ob bereits eine Konfiguration mit dieser IP/Port/Slave-ID existiert."""
-        existing_entries = self._async_current_entries()
-        for entry in existing_entries:
-            if (
-                entry.data.get(CONF_HOST) == host
-                and entry.data.get(CONF_PORT) == port
-                and entry.data.get(CONF_SLAVE_ID) == slave_id
-            ):
-                _LOGGER.debug(
-                    "Connection already exists: %s:%d (slave %d) in entry %s",
-                    host, port, slave_id, entry.entry_id
-                )
-                return True
-        return False
-
-    def _is_ip_already_configured(self, host: str) -> bool:
-        """Prüfe ob bereits eine Konfiguration mit dieser IP-Adresse existiert."""
-        existing_entries = self._async_current_entries()
-        for entry in existing_entries:
-            if entry.data.get(CONF_HOST) == host:
-                _LOGGER.debug(
-                    "IP address %s already configured in entry %s",
-                    host, entry.entry_id
-                )
-                return True
-        return False
-
-    async def async_step_dhcp(self, discovery_info: Any) -> FlowResult:
-        """Handle DHCP discovery (Lambda/SIGMATEK OUI)."""
-        try:
-            mac = (
-                getattr(discovery_info, "macaddress", None)
-                or getattr(discovery_info, "mac", None)
-                or (
-                    discovery_info.get("macaddress")
-                    if isinstance(discovery_info, dict)
-                    else None
-                )
-            )
-            ip = (
-                getattr(discovery_info, "ip", None)
-                or (
-                    discovery_info.get("ip")
-                    if isinstance(discovery_info, dict)
-                    else None
-                )
-            )
-            # Normalize MAC for matching and unique_id
-            mac_norm = (mac or "").upper().replace(":", "").replace("-", "").replace(
-                ".", ""
-            )
-
-            # Safety check (framework already filtered by manifest matcher)
-            if not mac_norm.startswith("0050F4"):
-                return self.async_abort(reason="not_sigmatek")
-
-            if ip:
-                self._discovered_host = ip
-
-            # Prüfe ZUERST ob bereits eine Konfiguration mit dieser IP existiert
-            # (unabhängig von Port/Slave-ID, da diese bei DHCP-Discovery unbekannt sind)
-            if ip and self._is_ip_already_configured(ip):
-                _LOGGER.info(
-                    "Lambda device with IP %s already configured, aborting discovery",
-                    ip,
-                )
-                return self.async_abort(reason="already_configured")
-
-            # Use MAC as unique id so IP changes update the entry
-            await self.async_set_unique_id(mac_norm)
-
-            # Continue with normal user step, pre-filling discovered host
-            return await self.async_step_user()
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("DHCP discovery handling failed")
-            return self.async_abort(reason="unknown")
+    async def async_step_dhcp(self, discovery_info: DhcpServiceInfo) -> ConfigFlowResult:
+        """A controller announced itself on the network."""
+        await self.async_set_unique_id(discovery_info.macaddress)
+        self._abort_if_unique_id_configured(updates={CONF_HOST: discovery_info.ip})
+        # An entry created before discovery set the unique id has no MAC to match
+        # on, so fall back to the address — otherwise a controller that is already
+        # set up keeps being offered as a new one.
+        self._async_abort_entries_match({CONF_HOST: discovery_info.ip})
+        self._discovered_host = discovery_info.ip
+        return await self.async_step_user()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step."""
+    ) -> ConfigFlowResult:
+        """Ask for the connection."""
         errors: dict[str, str] = {}
-        if user_input is None:
-            user_input = {}
-
-        # Default-Werte aus bestehendem Eintrag holen, falls vorhanden
-        current_entries = self._async_current_entries()
-        existing_data = current_entries[0].data if current_entries else {}
-        existing_options = dict(current_entries[0].options) if current_entries else {}
-
-        # Die Übersetzungen werden automatisch
-        # von Home Assistant übernommen
-
-        # Pflichtfelder prüfen - nur noch die wesentlichen Verbindungsparameter
-        required_fields = [CONF_NAME, CONF_HOST, CONF_PORT, CONF_SLAVE_ID]
-        if not all(k in user_input and user_input[k] for k in required_fields):
-            # Formular anzeigen, wenn Eingaben fehlen
-            firmware_options = list(FIRMWARE_VERSION.keys())
-            return self.async_show_form(
-                step_id="user",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            CONF_NAME,
-                            default=user_input.get(
-                                CONF_NAME,
-                                existing_data.get(CONF_NAME, DEFAULT_NAME),
-                            ),
-                        ): selector.TextSelector(),
-                        vol.Required(
-                            CONF_HOST,
-                            default=user_input.get(
-                                CONF_HOST,
-                                self._discovered_host
-                                or existing_data.get(CONF_HOST, DEFAULT_HOST),
-                            ),
-                        ): selector.TextSelector(),
-                        vol.Required(
-                            CONF_PORT,
-                            default=int(
-                                user_input.get(
-                                    CONF_PORT,
-                                    existing_data.get(CONF_PORT, DEFAULT_PORT),
-                                )
-                            ),
-                        ): selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=1,
-                                max=65535,
-                                step=1,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Required(
-                            CONF_SLAVE_ID,
-                            default=int(
-                                user_input.get(
-                                    CONF_SLAVE_ID,
-                                    existing_data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID),
-                                )
-                            ),
-                        ): selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=1,
-                                max=255,
-                                step=1,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Required(
-                            "firmware_version",
-                            default=user_input.get(
-                                "firmware_version",
-                                existing_data.get("firmware_version", DEFAULT_FIRMWARE),
-                            ),
-                        ): selector.SelectSelector(
-                            selector.SelectSelectorConfig(
-                                options=firmware_options,
-                                mode=selector.SelectSelectorMode.DROPDOWN,
-                            )
-                        ),
-                    }
-                ),
-                errors=errors,
-            )
-
-        try:
-            # Convert numeric values to integers
-            for key in ["port", "slave_id"]:
-                if key in user_input:
-                    user_input[key] = int(user_input[key])
-
-            # Auto-detect modules by setting defaults - will be detected during setup
-            user_input["num_hps"] = DEFAULT_NUM_HPS
-            user_input["num_boil"] = DEFAULT_NUM_BOIL
-            user_input["num_hc"] = DEFAULT_NUM_HC
-            user_input["num_buff"] = DEFAULT_NUM_BUFFER
-            user_input["num_sol"] = DEFAULT_NUM_SOLAR
-
-            # Ergänze fehlende Pflichtfelder aus existing_data oder Default
-            if CONF_NAME not in user_input or not user_input[CONF_NAME]:
-                user_input[CONF_NAME] = existing_data.get(CONF_NAME, DEFAULT_NAME)
-
-            # Prüfe, ob bereits eine Config mit diesem Namen existiert
-            if CONF_NAME in user_input and user_input[CONF_NAME]:
-                existing_entries = self._async_current_entries()
-                for entry in existing_entries:
-                    if entry.data.get(CONF_NAME) == user_input[CONF_NAME]:
-                        errors["base"] = "name_already_exists"
-                        _LOGGER.warning(
-                            "Config mit Namen '%s' existiert bereits (Entry ID: %s)",
-                            user_input[CONF_NAME],
-                            entry.entry_id,
-                        )
-                        break
-
-            # Prüfe, ob bereits eine Config mit der gleichen Host/Port/Slave-ID
-            # Kombination existiert
-            if not errors and all(
-                key in user_input for key in [CONF_HOST, CONF_PORT, CONF_SLAVE_ID]
-            ):
-                for entry in existing_entries:
-                    if (
-                        entry.data.get(CONF_HOST) == user_input[CONF_HOST]
-                        and entry.data.get(CONF_PORT) == user_input[CONF_PORT]
-                        and entry.data.get(CONF_SLAVE_ID) == user_input[CONF_SLAVE_ID]
-                    ):
-                        errors["base"] = "connection_already_exists"
-                        _LOGGER.warning(
-                            "Config mit Host '%s', Port %d, Slave ID %d existiert "
-                            "bereits (Entry ID: %s)",
-                            user_input[CONF_HOST],
-                            user_input[CONF_PORT],
-                            user_input[CONF_SLAVE_ID],
-                            entry.entry_id,
-                        )
-                        break
-
-            if not errors:
-                await validate_input(self.hass, user_input)
-                if CONF_NAME not in user_input or not user_input[CONF_NAME]:
-                    errors["base"] = "name_required"
-                else:
-                    # Erstelle den Eintrag mit Standard-Optionen
-                    # Entferne firmware_version aus user_input für data
-                    data_for_entry = {
-                        k: v for k, v in user_input.items() if k != "firmware_version"
-                    }
-
-                default_options = {
-                    # Immer false beim initialen Setup
-                    "room_thermostat_control": False,
-                    "pv_surplus": DEFAULT_PV_SURPLUS,
-                    "hot_water_min_temp": user_input.get(
-                        "hot_water_min_temp",
-                        existing_options.get(
-                            "hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT
-                        ),
-                    ),
-                    "hot_water_max_temp": user_input.get(
-                        "hot_water_max_temp",
-                        existing_options.get(
-                            "hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT
-                        ),
-                    ),
-                    "heating_circuit_min_temp": user_input.get(
-                        "heating_circuit_min_temp",
-                        existing_options.get(
-                            "heating_circuit_min_temp",
-                            DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
-                        ),
-                    ),
-                    "heating_circuit_max_temp": user_input.get(
-                        "heating_circuit_max_temp",
-                        existing_options.get(
-                            "heating_circuit_max_temp",
-                            DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
-                        ),
-                    ),
-                    "heating_circuit_temp_step": user_input.get(
-                        "heating_circuit_temp_step",
-                        existing_options.get(
-                            "heating_circuit_temp_step",
-                            DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
-                        ),
-                    ),
-                    "firmware_version": user_input.get(
-                        "firmware_version",
-                        existing_options.get("firmware_version", DEFAULT_FIRMWARE),
-                    ),
-                }
-                _LOGGER.debug(
-                    "ConfigFlow: Erstelle neuen Eintrag mit data=%s, options=%s",
-                    user_input,
-                    default_options,
-                )
-                return self.async_create_entry(
-                    title=user_input[CONF_NAME],
-                    data=data_for_entry,
-                    options=default_options,
-                )
-        except CannotConnectError:
-            errors["base"] = "cannot_connect"
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception")
-            errors["base"] = "unknown"
-
-        # Zeige das vollständige Formular mit allen Feldern an
-        firmware_options = list(FIRMWARE_VERSION.keys())
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
+        if user_input is not None:
+            data = {
+                **user_input,
+                CONF_PORT: int(user_input[CONF_PORT]),
+                CONF_SLAVE_ID: int(user_input[CONF_SLAVE_ID]),
+                # Entries made from here on name their entities the way Home
+                # Assistant does; only older ones carry the name prefix.
+                CONF_USE_LEGACY_MODBUS_NAMES: False,
+            }
+            self._async_abort_entries_match(
                 {
-                    vol.Required(
-                        CONF_NAME,
-                        default=user_input.get(
-                            CONF_NAME,
-                            existing_data.get(CONF_NAME, DEFAULT_NAME),
-                        ),
-                    ): selector.TextSelector(),
-                    vol.Required(
-                        CONF_HOST,
-                        default=user_input.get(
-                            CONF_HOST,
-                            self._discovered_host
-                            or existing_data.get(CONF_HOST, DEFAULT_HOST),
-                        ),
-                    ): selector.TextSelector(),
-                    vol.Required(
-                        CONF_PORT,
-                        default=int(
-                            user_input.get(
-                                CONF_PORT,
-                                existing_data.get(CONF_PORT, DEFAULT_PORT),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1,
-                            max=65535,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(
-                        CONF_SLAVE_ID,
-                        default=int(
-                            user_input.get(
-                                CONF_SLAVE_ID,
-                                existing_data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1,
-                            max=255,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(
-                        "num_hps",
-                        default=int(
-                            user_input.get(
-                                "num_hps",
-                                existing_data.get("num_hps", DEFAULT_NUM_HPS),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=1,
-                            max=MAX_NUM_HPS,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(
-                        "num_boil",
-                        default=int(
-                            user_input.get(
-                                "num_boil",
-                                existing_data.get("num_boil", DEFAULT_NUM_BOIL),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=0,
-                            max=MAX_NUM_BOIL,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(
-                        "num_hc",
-                        default=int(
-                            user_input.get(
-                                "num_hc",
-                                existing_data.get("num_hc", DEFAULT_NUM_HC),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=0,
-                            max=MAX_NUM_HC,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(
-                        "num_buff",
-                        default=int(
-                            user_input.get(
-                                "num_buff",
-                                existing_data.get("num_buff", DEFAULT_NUM_BUFFER),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=0,
-                            max=MAX_NUM_BUFFER,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Required(
-                        "num_sol",
-                        default=int(
-                            user_input.get(
-                                "num_sol",
-                                existing_data.get("num_sol", DEFAULT_NUM_SOLAR),
-                            )
-                        ),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=0,
-                            max=MAX_NUM_SOLAR,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    ),
-                    vol.Optional(
-                        "firmware_version",
-                        default=user_input.get(
-                            "firmware_version",
-                            existing_data.get("firmware_version", DEFAULT_FIRMWARE),
-                        ),
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=firmware_options,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
+                    CONF_HOST: data[CONF_HOST],
+                    CONF_PORT: data[CONF_PORT],
+                    CONF_SLAVE_ID: data[CONF_SLAVE_ID],
                 }
-            ),
-            errors=errors,
+            )
+            if await async_can_connect(data):
+                return self.async_create_entry(title=data[CONF_NAME], data=data)
+            errors["base"] = "cannot_connect"
+
+        schema = self.add_suggested_values_to_schema(
+            CONNECTION_SCHEMA,
+            user_input or ({CONF_HOST: self._discovered_host} if self._discovered_host else {}),
         )
+        return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle reconfiguration of the integration."""
+    ) -> ConfigFlowResult:
+        """The controller moved, or was given a different address."""
+        entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
-
-        # Get the config entry from the reconfigure context
-        entry_id = self.context.get("entry_id")
-        if not entry_id:
-            return self.async_abort(reason="reconfigure_failed")
-
-        config_entry = self.hass.config_entries.async_get_entry(entry_id)
-        if not config_entry:
-            return self.async_abort(reason="reconfigure_failed")
-
-        if user_input is None:
-            # Show the reconfiguration form with current values
-            firmware_options = list(FIRMWARE_VERSION.keys())
-            return self.async_show_form(
-                step_id="reconfigure",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            CONF_NAME,
-                            default=config_entry.data.get(CONF_NAME, DEFAULT_NAME),
-                        ): selector.TextSelector(),
-                        vol.Required(
-                            CONF_HOST,
-                            default=config_entry.data.get(CONF_HOST, DEFAULT_HOST),
-                        ): selector.TextSelector(),
-                        vol.Required(
-                            CONF_PORT,
-                            default=config_entry.data.get(CONF_PORT, DEFAULT_PORT),
-                        ): selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=1,
-                                max=65535,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Required(
-                            CONF_SLAVE_ID,
-                            default=config_entry.data.get(
-                                CONF_SLAVE_ID, DEFAULT_SLAVE_ID
-                            ),
-                        ): selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=1,
-                                max=247,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Required(
-                            "firmware_version",
-                            default=config_entry.data.get(
-                                "firmware_version", DEFAULT_FIRMWARE
-                            ),
-                        ): selector.SelectSelector(
-                            selector.SelectSelectorConfig(
-                                options=firmware_options,
-                                mode=selector.SelectSelectorMode.DROPDOWN,
-                            )
-                        ),
-                    }
-                ),
-                errors=errors,
-            )
-
-        # Validate the input
-        try:
-            await validate_input(self.hass, user_input)
-        except CannotConnectError:
-            errors["base"] = "cannot_connect"
-        except Exception:  # pylint: disable=broad-except
-            _LOGGER.exception("Unexpected exception during reconfiguration")
-            errors["base"] = "unknown"
-
-        if errors:
-            firmware_options = list(FIRMWARE_VERSION.keys())
-            return self.async_show_form(
-                step_id="reconfigure",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required(
-                            CONF_NAME,
-                            default=user_input.get(
-                                CONF_NAME,
-                                config_entry.data.get(CONF_NAME, DEFAULT_NAME),
-                            ),
-                        ): selector.TextSelector(),
-                        vol.Required(
-                            CONF_HOST,
-                            default=user_input.get(
-                                CONF_HOST,
-                                config_entry.data.get(CONF_HOST, DEFAULT_HOST),
-                            ),
-                        ): selector.TextSelector(),
-                        vol.Required(
-                            CONF_PORT,
-                            default=user_input.get(
-                                CONF_PORT,
-                                config_entry.data.get(CONF_PORT, DEFAULT_PORT),
-                            ),
-                        ): selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=1,
-                                max=65535,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Required(
-                            CONF_SLAVE_ID,
-                            default=user_input.get(
-                                CONF_SLAVE_ID,
-                                config_entry.data.get(CONF_SLAVE_ID, DEFAULT_SLAVE_ID),
-                            ),
-                        ): selector.NumberSelector(
-                            selector.NumberSelectorConfig(
-                                min=1,
-                                max=247,
-                                mode=selector.NumberSelectorMode.BOX,
-                            )
-                        ),
-                        vol.Required(
-                            "firmware_version",
-                            default=user_input.get(
-                                "firmware_version",
-                                config_entry.data.get(
-                                    "firmware_version", DEFAULT_FIRMWARE
-                                ),
-                            ),
-                        ): selector.SelectSelector(
-                            selector.SelectSelectorConfig(
-                                options=firmware_options,
-                                mode=selector.SelectSelectorMode.DROPDOWN,
-                            )
-                        ),
-                    }
-                ),
-                errors=errors,
-            )
-
-        # Create updated data
-        updated_data = {**config_entry.data}
-        updated_data.update(
-            {
-                CONF_NAME: user_input[CONF_NAME],
-                CONF_HOST: user_input[CONF_HOST],
-                CONF_PORT: user_input[CONF_PORT],
-                CONF_SLAVE_ID: user_input[CONF_SLAVE_ID],
-                "firmware_version": user_input["firmware_version"],
+        if user_input is not None:
+            data = {
+                **entry.data,
+                **user_input,
+                CONF_PORT: int(user_input[CONF_PORT]),
+                CONF_SLAVE_ID: int(user_input[CONF_SLAVE_ID]),
             }
+            if await async_can_connect(data):
+                return self.async_update_reload_and_abort(entry, data_updates=data)
+            errors["base"] = "cannot_connect"
+
+        schema = self.add_suggested_values_to_schema(
+            CONNECTION_SCHEMA, user_input or entry.data
         )
-
-        # Update the config entry
-        self.hass.config_entries.async_update_entry(
-            config_entry,
-            data=updated_data,
-            title=user_input[CONF_NAME],
+        return self.async_show_form(
+            step_id="reconfigure", data_schema=schema, errors=errors
         )
-
-        # Reload the integration to apply changes
-        await self.hass.config_entries.async_reload(config_entry.entry_id)
-
-        return self.async_abort(reason="Reconfiguration successful!")
 
     @staticmethod
     @callback
-    def async_get_options_flow(
-        config_entry: ConfigEntry,
-    ) -> OptionsFlow:
-        """Create the options flow."""
-        # config_entry argument is unused, kept for interface compatibility
-        return LambdaOptionsFlow(config_entry)
+    def async_get_options_flow(config_entry) -> OptionsFlow:
+        """Get the options flow."""
+        return LambdaOptionsFlow()
 
 
-class LambdaOptionsFlow(OptionsFlow):
-    """Handle options."""
+class LambdaOptionsFlow(OptionsFlowWithReload):
+    """Everything about the controller that is a preference, not a fact."""
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        self._config_entry = config_entry
-        # Stelle sicher, dass options ein Dictionary ist
-        # und alle erforderlichen Schlüssel enthält
-        self._options = {
-            "room_thermostat_control": DEFAULT_ROOM_THERMOSTAT_CONTROL,
-            "pv_surplus": DEFAULT_PV_SURPLUS,
-            "cooling_mode_enabled": DEFAULT_COOLING_MODE_ENABLED,
-            "pv_surplus_mode": DEFAULT_PV_SURPLUS_MODE,
-            "hot_water_min_temp": HOT_WATER_MIN_TEMP_LIMIT,
-            "hot_water_max_temp": HOT_WATER_MAX_TEMP_LIMIT,
-            "heating_circuit_min_temp": DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
-            "heating_circuit_max_temp": DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
-            "heating_circuit_temp_step": DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
-            "firmware_version": DEFAULT_FIRMWARE,
-        }
-        if config_entry.options:
-            self._options.update(dict(config_entry.options))
-
-    def _cleanup_disabled_options(self) -> None:
-        """Clean up sensor configurations when options are disabled."""
-        # Clean up room thermostat configurations if disabled
-        # (room_temperature_entity_X is also needed for cooling mode, since
-        # the actual room temperature is required there as well)
-        if not self._options.get(
-            "room_thermostat_control", False
-        ) and not self._options.get("cooling_mode_enabled", False):
-            num_hc = self._config_entry.data.get("num_hc", 1)
-            for hc_idx in range(1, num_hc + 1):
-                entity_key = CONF_ROOM_TEMPERATURE_ENTITY.format(hc_idx)
-                if entity_key in self._options:
-                    del self._options[entity_key]
-
-        # Clean up PV sensor configuration if disabled
-        if (
-            not self._options.get("pv_surplus", False)
-            and CONF_PV_POWER_SENSOR_ENTITY in self._options
-        ):
-            del self._options[CONF_PV_POWER_SENSOR_ENTITY]
+    def __init__(self) -> None:
+        """Collect the options across the steps."""
+        self._options: dict[str, Any] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step of the options flow."""
+    ) -> ConfigFlowResult:
+        """Ask for the setpoint bounds, the features, and the polling."""
         errors: dict[str, str] = {}
-
         if user_input is not None:
-            # Validierung der Temperaturwerte
-            min_temp = user_input.get("hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT)
-            max_temp = user_input.get("hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT)
-            if min_temp >= max_temp:
-                errors["hot_water_min_temp"] = "min_temp_higher"
-
-            hc_min_temp = user_input.get(
-                "heating_circuit_min_temp",
-                DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
-            )
-            hc_max_temp = user_input.get(
-                "heating_circuit_max_temp",
-                DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
-            )
-            if hc_min_temp >= hc_max_temp:
-                errors["heating_circuit_min_temp"] = "min_temp_higher"
-
+            if user_input[CONF_HOT_WATER_MIN_TEMP] >= user_input[CONF_HOT_WATER_MAX_TEMP]:
+                errors[CONF_HOT_WATER_MIN_TEMP] = "min_temp_higher"
+            if (
+                user_input[CONF_HEATING_CIRCUIT_MIN_TEMP]
+                >= user_input[CONF_HEATING_CIRCUIT_MAX_TEMP]
+            ):
+                errors[CONF_HEATING_CIRCUIT_MIN_TEMP] = "min_temp_higher"
             if not errors:
-                # Store the updated options
-                self._options.update(user_input)
-                self._cleanup_disabled_options()
-
-                # Entscheiden, welcher Schritt als nächstes kommt
-                # Cooling-Modus benötigt ebenfalls die Raumtemperatur-Entity,
-                # da der IST-Wert des Raumes auch beim Kühlen erforderlich ist
-                if self._options.get("room_thermostat_control") or self._options.get(
-                    "cooling_mode_enabled"
-                ):
-                    return await self.async_step_thermostat_sensor()
-                if self._options.get("pv_surplus"):
+                self._options = dict(user_input)
+                if user_input[CONF_ROOM_THERMOSTAT_CONTROL] or user_input[
+                    CONF_COOLING_MODE
+                ]:
+                    return await self.async_step_room_sensors()
+                if user_input[CONF_PV_SURPLUS]:
                     return await self.async_step_pv_sensor()
+                return self.async_create_entry(data=self._options)
 
-                return self.async_create_entry(title="", data=self._options)  # type: ignore[return-value]
+        options = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_HOT_WATER_MIN_TEMP,
+                    default=options.get(
+                        CONF_HOT_WATER_MIN_TEMP, DEFAULT_HOT_WATER_MIN_TEMP
+                    ),
+                ): _number(25, 65),
+                vol.Required(
+                    CONF_HOT_WATER_MAX_TEMP,
+                    default=options.get(
+                        CONF_HOT_WATER_MAX_TEMP, DEFAULT_HOT_WATER_MAX_TEMP
+                    ),
+                ): _number(25, 65),
+                vol.Required(
+                    CONF_HEATING_CIRCUIT_MIN_TEMP,
+                    default=options.get(
+                        CONF_HEATING_CIRCUIT_MIN_TEMP,
+                        DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
+                    ),
+                ): _number(10, 40),
+                vol.Required(
+                    CONF_HEATING_CIRCUIT_MAX_TEMP,
+                    default=options.get(
+                        CONF_HEATING_CIRCUIT_MAX_TEMP,
+                        DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
+                    ),
+                ): _number(10, 40),
+                vol.Required(
+                    CONF_HEATING_CIRCUIT_TEMP_STEP,
+                    default=options.get(
+                        CONF_HEATING_CIRCUIT_TEMP_STEP,
+                        DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
+                    ),
+                ): _number(0.1, 2.0, step=0.1),
+                vol.Required(
+                    CONF_UPDATE_INTERVAL,
+                    default=options.get(
+                        CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
+                    ),
+                ): _number(10, 300),
+                vol.Required(
+                    CONF_INT32_REGISTER_ORDER,
+                    default=options.get(
+                        CONF_INT32_REGISTER_ORDER, DEFAULT_INT32_REGISTER_ORDER
+                    ),
+                ): _select([REGISTER_ORDER_HIGH_FIRST, REGISTER_ORDER_LOW_FIRST]),
+                vol.Required(
+                    CONF_ROOM_THERMOSTAT_CONTROL,
+                    default=options.get(CONF_ROOM_THERMOSTAT_CONTROL, False),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_COOLING_MODE,
+                    default=options.get(CONF_COOLING_MODE, False),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_PV_SURPLUS, default=options.get(CONF_PV_SURPLUS, False)
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_PV_SURPLUS_MODE,
+                    default=options.get(
+                        CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE
+                    ),
+                ): _select(PV_SURPLUS_MODE_OPTIONS),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
 
-        return await self._show_init_form(errors)
-
-    async def _show_init_form(self, errors: dict[str, str] | None = None) -> FlowResult:
-        """Show the initial options form."""
-        options_schema = {
-            vol.Optional(
-                "hot_water_min_temp",
-                default=self._options.get(
-                    "hot_water_min_temp", HOT_WATER_MIN_TEMP_LIMIT
-                ),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=HOT_WATER_MIN_TEMP_LIMIT,
-                    max=HOT_WATER_MAX_TEMP_LIMIT,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
-            vol.Optional(
-                "hot_water_max_temp",
-                default=self._options.get(
-                    "hot_water_max_temp", HOT_WATER_MAX_TEMP_LIMIT
-                ),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=HOT_WATER_MIN_TEMP_LIMIT,
-                    max=HOT_WATER_MAX_TEMP_LIMIT,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
-            vol.Optional(
-                "heating_circuit_min_temp",
-                default=self._options.get(
-                    "heating_circuit_min_temp",
-                    DEFAULT_HEATING_CIRCUIT_MIN_TEMP,
-                ),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=10,
-                    max=40,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
-            vol.Optional(
-                "heating_circuit_max_temp",
-                default=self._options.get(
-                    "heating_circuit_max_temp",
-                    DEFAULT_HEATING_CIRCUIT_MAX_TEMP,
-                ),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=10,
-                    max=40,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
-            vol.Optional(
-                "heating_circuit_temp_step",
-                default=self._options.get(
-                    "heating_circuit_temp_step",
-                    DEFAULT_HEATING_CIRCUIT_TEMP_STEP,
-                ),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=0.1,
-                    max=2.0,
-                    step=0.1,
-                    mode=selector.NumberSelectorMode.BOX,
-                )
-            ),
-            vol.Optional(
-                "firmware_version",
-                default=self._options.get("firmware_version", DEFAULT_FIRMWARE),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=list(FIRMWARE_VERSION.keys()),
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-            vol.Optional(
-                "update_interval",
-                default=self._options.get("update_interval", DEFAULT_UPDATE_INTERVAL),
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=10,
-                    max=300,
-                    step=1,
-                    mode=selector.NumberSelectorMode.BOX,
-                    unit_of_measurement="Sekunden",
-                )
-            ),
-            vol.Optional(
-                "room_thermostat_control",
-                default=self._options.get(
-                    "room_thermostat_control", DEFAULT_ROOM_THERMOSTAT_CONTROL
-                ),
-            ): (selector.BooleanSelector()),
-            vol.Optional(
-                "pv_surplus",
-                default=self._options.get("pv_surplus", DEFAULT_PV_SURPLUS),
-            ): selector.BooleanSelector(),
-            vol.Optional(
-                "cooling_mode_enabled",
-                default=self._options.get(
-                    "cooling_mode_enabled", DEFAULT_COOLING_MODE_ENABLED
-                ),
-            ): selector.BooleanSelector(),
-            vol.Optional(
-                "pv_surplus_mode",
-                default=self._options.get("pv_surplus_mode", DEFAULT_PV_SURPLUS_MODE),
-            ): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[
-                        {"value": k, "label": v}
-                        for k, v in PV_SURPLUS_MODE_OPTIONS.items()
-                    ],
-                    mode=selector.SelectSelectorMode.DROPDOWN,
-                )
-            ),
-        }
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(options_schema),
-            errors=errors or {},
-        )  # type: ignore[return-value]
-
-    async def async_step_thermostat_sensor(
+    async def async_step_room_sensors(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the thermostat sensor selection step."""
+    ) -> ConfigFlowResult:
+        """Ask which entity knows the temperature in each circuit's room."""
         if user_input is not None:
             self._options.update(user_input)
-            # Decide if we need to show the PV sensor step
-            if self._options.get("pv_surplus"):
+            if self._options[CONF_PV_SURPLUS]:
                 return await self.async_step_pv_sensor()
-            return self.async_create_entry(title="", data=self._options)  # type: ignore[return-value]
+            return self.async_create_entry(data=self._options)
 
-        # Dynamically build schema for thermostat sensors
-        num_hc = self._config_entry.data.get("num_hc", 0)
-        temperature_sensors = await self._get_entities("temperature")
-        schema = {}
-
-        for i in range(1, num_hc + 1):
-            entity_key = CONF_ROOM_TEMPERATURE_ENTITY.format(i)
-            schema[
+        options = self.config_entry.options
+        temperature = EntitySelector(
+            EntitySelectorConfig(domain="sensor", device_class="temperature")
+        )
+        schema = vol.Schema(
+            {
                 vol.Optional(
-                    entity_key,
-                    description={"suggested_value": self._options.get(entity_key)},
-                )
-            ] = selector.EntitySelector(
-                selector.EntitySelectorConfig(include_entities=temperature_sensors)
-            )
-
-        return self.async_show_form(
-            step_id="thermostat_sensor", data_schema=vol.Schema(schema)
-        )  # type: ignore[return-value]
+                    key,
+                    description={"suggested_value": options.get(key)},
+                ): temperature
+                for index in range(1, self._num_heating_circuits() + 1)
+                if (key := CONF_ROOM_TEMPERATURE_ENTITY.format(index))
+            }
+        )
+        return self.async_show_form(step_id="room_sensors", data_schema=schema)
 
     async def async_step_pv_sensor(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the PV sensor selection step."""
+    ) -> ConfigFlowResult:
+        """Ask which entity knows how much solar power is going spare."""
         if user_input is not None:
             self._options.update(user_input)
-            return self.async_create_entry(title="", data=self._options)  # type: ignore[return-value]
+            return self.async_create_entry(data=self._options)
 
-        # Logik zur Abfrage der Entitäten
-        power_sensors = await self._get_entities("power")
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_PV_POWER_SENSOR_ENTITY,
+                    description={
+                        "suggested_value": self.config_entry.options.get(
+                            CONF_PV_POWER_SENSOR_ENTITY
+                        )
+                    },
+                ): EntitySelector(
+                    EntitySelectorConfig(domain="sensor", device_class="power")
+                )
+            }
+        )
+        return self.async_show_form(step_id="pv_sensor", data_schema=schema)
 
-        schema = {
-            vol.Optional(
-                "pv_power_sensor_entity",
-                description={
-                    "suggested_value": self._options.get("pv_power_sensor_entity")
-                },
-            ): selector.EntitySelector(
-                selector.EntitySelectorConfig(include_entities=power_sensors)
-            )
-        }
-
-        return self.async_show_form(step_id="pv_sensor", data_schema=vol.Schema(schema))  # type: ignore[return-value]
-
-    async def _get_entities(self, device_class: str) -> list[str]:
-        """Get a list of external entities with a specific device class."""
-        from homeassistant.helpers.entity_registry import async_get
-
-        registry = async_get(self.hass)
-        own_entity_ids = {
-            entity.entity_id
-            for entity in registry.entities.values()
-            if entity.config_entry_id == self._config_entry.entry_id
-        }
-
-        entities = []
-        for entity in self.hass.states.async_all():
-            if entity.entity_id in own_entity_ids:
-                continue
-
-            if entity.domain != "sensor":
-                continue
-
-            attributes = entity.attributes
-            is_match = False
-            if device_class == "temperature":
-                if attributes.get("device_class") == "temperature":
-                    is_match = True
-            elif device_class == "power":
-                if attributes.get("device_class") == "power" or attributes.get(
-                    "unit_of_measurement"
-                ) in ("W", "kW"):
-                    is_match = True
-
-            if is_match:
-                entities.append(entity.entity_id)
-
-        # Sort by friendly name
-        def _get_name(eid: str) -> str:
-            state = self.hass.states.get(eid)
-            return state.name.lower() if state and hasattr(state, "name") else eid
-
-        entities.sort(key=_get_name)
-
-        return entities
-
-    async def _test_connection(self, user_input: dict[str, Any]) -> None:
-        """Test the connection to the Modbus device."""
-        # user_input argument is unused, kept for interface compatibility
-        # nothing to do
-
-
-class CannotConnectError(HomeAssistantError):
-    """Error to indicate we cannot connect."""
+    def _num_heating_circuits(self) -> int:
+        """How many circuits the controller was found to have."""
+        return self.config_entry.runtime_data.counts["hc"]
