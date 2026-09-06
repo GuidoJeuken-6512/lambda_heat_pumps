@@ -4,7 +4,7 @@ title: "FAQ – Falsche / keine Sensorwerte"
 
 # Falsche oder keine Sensorwerte
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Hier finden Sie die häufigsten Ursachen und Lösungen, wenn Sensoren **falsche Werte** anzeigen oder **gar keine Werte** liefern.
 
@@ -75,3 +75,28 @@ Damit wird das Register nicht mehr gelesen; der zugehörige Sensor bleibt ohne W
 Der betreffende Sensor kann dann aus dem Dashboard in Home Assistant gelöscht werden.
 
 Ausführliche Anleitung zur Konfiguration: [lambda_wp_config.yaml – disabled_registers](../Anwender/lambda-wp-config.md) bzw. [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md).
+
+---
+
+## 3. Außentemperatur oder Puffer-Anforderung zeigt -300 °C / eine unrealistische Anforderung
+
+### Problematik
+
+- Die Außentemperatur (`ambient_temperature`) zeigt exakt **-300 °C**, oder eine
+  Puffer-Anforderung (z. B. Vorlauf-/Rücklauf-Sollwert) zeigt einen
+  unrealistischen, konstanten Wert.
+- Betroffen sind Installationen ohne extern eingespeisten Außenfühler bzw.
+  ohne aktive Anforderung an einen Puffer.
+
+**Ursache:** Die Lambda-Steuerung meldet auf diesen Registern `0xFFFF` (−1),
+wenn kein externer Sensor eingespeist ist bzw. keine Anforderung besteht.
+Skaliert sieht das wie ein echter Messwert aus (−300,0 °C), ist aber keiner.
+Bis einschließlich Version 3.5.1 wurde dieser Sonderwert bei diesen Registern
+nicht herausgefiltert.
+
+### Lösung
+
+Ab Version 3.5.2 wird `0xFFFF` bei den betroffenen Registern (Außentemperatur
+sowie den Puffer-/Heizkreis-Anforderungsregistern) als „nicht verfügbar“
+(`unknown`) statt als Messwert angezeigt. Ein Update der Integration behebt
+dies ohne weitere Konfiguration.

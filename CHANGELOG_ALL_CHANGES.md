@@ -6,7 +6,36 @@
 ## English Version
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
- 
+
+### [3.5.2] - 2026-09-06
+
+Follow-up to 3.5.0: three gaps found while auditing every 2.7.x/2.8.x bugfix made on the pre-rewrite `main` branch against the rewritten codebase, to see which still applied.
+
+#### Fixed
+- **`via_device` deprecation warning on sub-devices**: `LambdaCoordinator.device_info()` still passed the legacy `via_device` (identifiers-tuple) kwarg, logging a Home Assistant removal warning (targeted for 2027.8.0) on every setup. Since 3.x requires Home Assistant ≥ 2026.9 unconditionally, it now always resolves and passes `via_device_id` (the parent device's registry id) instead — unlike the 2.8.5 fix on `main`, no HA-version gate is needed here.
+- **0xFFFF ("no request"/"no external sensor") read as a real value**: the outside-air temperature (no external ambient sensor connected) and a buffer's request registers (no active request) report `0xFFFF` (-1) instead of a measurement — scaled, that looked like a plausible reading (e.g. exactly -300.0 °C) instead of `unknown`. This sentinel is now filtered on the affected fields (`Ambient.temperature`, `Buffer.request_type`/`request_flow_line_temp_setpoint`/`request_return_line_temp_setpoint`/`request_heat_sink_temp_diff_setpoint`/`modbus_request_heating_capacity`, `HeatingCircuit.operating_mode`) — global sentinel filtering was left untouched, since -1 is a genuine value on other registers (e.g. temperature offsets).
+- **Modbus reads and writes were not actually serialized**: `modbus-connection`'s own request-pacing lock only activates when a nonzero `message_spacing`/`unit_spacing` is configured on the connection — with neither set (the default), it is a no-op. The poll loop and the write timer for PV-surplus/room-temperature control run on independent schedules against the same connection, so without this the same class of transaction desync GitHub Issue #105 reported (a write logged as successful, but never actually reaching the device) could reproduce. A `message_spacing` of 50 ms is now set when the connection is built.
+
+#### Tests
+- Added a regression test asserting a second heat pump's COP, energy and cycling counters come from its own registers, independent of the first (Issue #107/#93's original symptom).
+- Added a regression test combining a counter restart-restore with a changed configured offset in the same run, asserting the offset moves the total by the delta exactly once.
+- Added a regression test for an implausibly large single-poll energy jump (above the existing delta ceiling) not being booked, mirroring the existing tests for a negative delta.
+- Added a regression test asserting the connection is always built with a nonzero `message_spacing`.
+- Strengthened the existing device-info test to assert the coordinator never hands out the deprecated `via_device` kwarg, not just the resulting `via_device_id` value.
+
+### [3.5.0] - 2026-09-06
+
+Adoption of a ground-up rewrite of the integration (PR #115, "fork-takeover"), replacing the `main`-branch 2.8.x codebase's Modbus layer and much of its entity code.
+
+#### Changed
+- **Modbus layer**: `pymodbus` and the hand-rolled `modbus_utils.py` wrapper are replaced by [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection) with the `tmodbus` backend. The register model is now declared declaratively per sub-system (`lambda_modbus/`), rather than as data-driven dictionaries.
+- **Multi-heat-pump addressing**: heat pumps (and every other module) are addressed by an integer index and modelled as in-process objects throughout, rather than by reconstructing an `entity_id` string from the device name — the class of bug behind GitHub Issues #93/#107 (a second heat pump's sensors silently wired to the wrong source, or never found) cannot occur in this shape any more.
+- **Energy/cycling counter persistence**: counters are plain Home Assistant `RestoreSensor`s with a self-tracked offset baseline; the previous coordinator-owned `cycle_energy_persist.json` file (and the restart/offset-persistence bug class fixed in 2.8.4/2.8.6 on `main`) no longer exists in this shape.
+- **Minimum Home Assistant version**: now 2026.9.0 (required by `modbus-connection[tmodbus]`), enforced in `hacs.json`. Earlier Home Assistant versions are not supported by this line.
+
+#### Note
+- See [3.5.2](#352---2026-09-06) above for the gaps this audit found and fixed. The [Entwickler documentation](https://guidojeuken-6512.github.io/lambda_heat_pumps/Entwickler/modbus-serialisierung/) covers the new Modbus-serialization design in detail.
+
 ### [2.6.0] - 2026-06-24
 
 #### New Features
@@ -350,6 +379,34 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
 
+### [3.5.2] - 2026-09-06
+
+Nachzieharbeiten zu 3.5.0: drei Lücken, gefunden bei der Prüfung aller 2.7.x/2.8.x-Bugfixes des Vor-Rewrite-Branches `main` gegen den neu geschriebenen Code — ob sie dort noch galten.
+
+#### Behoben
+- **`via_device`-Deprecation-Warnung bei Sub-Geräten**: `LambdaCoordinator.device_info()` übergab bei Sub-Geräten weiterhin das veraltete `via_device` (Identifiers-Tupel), was bei jedem Setup eine Home-Assistant-Entfernungswarnung protokollierte (Entfernung angekündigt für 2027.8.0). Da 3.x durchgängig Home Assistant ≥ 2026.9 voraussetzt, wird jetzt immer `via_device_id` (die Registry-ID des übergeordneten Geräts) aufgelöst und gesetzt — anders als beim 2.8.5-Fix auf `main` ist dafür keine Versions-Weiche nötig.
+- **0xFFFF ("keine Anforderung"/"kein externer Sensor") als echter Wert gelesen**: Die Außentemperatur (ohne eingespeisten externen Fühler) und die Anforderungsregister eines Puffers (ohne aktive Anforderung) melden `0xFFFF` (-1) statt eines Messwerts — skaliert sah das wie ein plausibler Wert aus (exakt -300,0 °C) statt `unknown`. Dieser Sonderwert wird jetzt bei den betroffenen Feldern gefiltert (`Ambient.temperature`, `Buffer.request_type`/`request_flow_line_temp_setpoint`/`request_return_line_temp_setpoint`/`request_heat_sink_temp_diff_setpoint`/`modbus_request_heating_capacity`, `HeatingCircuit.operating_mode`) — die globale Sentinel-Filterung blieb unverändert, da -1 bei anderen Registern (z. B. Temperatur-Offsets) ein gültiger Wert ist.
+- **Modbus-Lese-/Schreibvorgänge wurden nicht tatsächlich serialisiert**: Der eigene Anfrage-Pacing-Lock von `modbus-connection` greift nur, wenn der Verbindung ein `message_spacing`/`unit_spacing` größer als 0 mitgegeben wird — ohne das (dem Standard) ist er wirkungslos. Poll-Loop und der Schreib-Timer für PV-Überschuss-/Raumtemperatur-Steuerung laufen mit unabhängigen Intervallen auf derselben Verbindung; ohne diesen Fix konnte dieselbe Fehlerklasse wie in GitHub Issue #105 beschrieben (ein Schreibvorgang wird als erfolgreich geloggt, kommt am Gerät aber nie an) erneut auftreten. Beim Verbindungsaufbau wird jetzt ein `message_spacing` von 50 ms gesetzt.
+
+#### Tests
+- Regressionstest ergänzt: die COP-, Energie- und Zyklus-Zähler einer zweiten Wärmepumpe stammen aus ihren eigenen Registern, unabhängig von der ersten (ursprüngliches Symptom von Issue #107/#93).
+- Regressionstest ergänzt: Neustart-Restore eines Zählers kombiniert mit einem geänderten konfigurierten Offset im selben Lauf — der Offset verschiebt den Gesamtwert exakt einmal um die Differenz.
+- Regressionstest ergänzt: ein unplausibel großer Sprung eines Energiezählers in einem Poll (über der bestehenden Delta-Obergrenze) wird nicht verbucht, analog zu den bestehenden Tests für einen negativen Delta.
+- Regressionstest ergänzt: die Verbindung wird immer mit einem `message_spacing` größer 0 aufgebaut.
+- Bestehenden Device-Info-Test verschärft: prüft jetzt, dass der Coordinator nie das veraltete `via_device`-Kwarg übergibt, nicht nur das resultierende `via_device_id`.
+
+### [3.5.0] - 2026-09-06
+
+Übernahme eines von Grund auf neu geschriebenen Codes für die Integration (PR #115, „fork-takeover"), der die Modbus-Schicht und einen Großteil des Entity-Codes der `main`-2.8.x-Codebasis ersetzt.
+
+#### Geändert
+- **Modbus-Schicht**: `pymodbus` und der handgeschriebene `modbus_utils.py`-Wrapper werden durch [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection) mit dem `tmodbus`-Backend ersetzt. Das Registermodell wird jetzt je Teilsystem deklarativ beschrieben (`lambda_modbus/`), statt als datengetriebene Dictionaries.
+- **Adressierung mehrerer Wärmepumpen**: Wärmepumpen (und jedes andere Modul) werden durchgehend über einen Integer-Index adressiert und als In-Process-Objekte modelliert, statt eine `entity_id` aus dem Gerätenamen zu rekonstruieren — die Fehlerklasse hinter den GitHub Issues #93/#107 (Sensoren einer zweiten Wärmepumpe wurden still auf die falsche Quelle verdrahtet oder gar nicht gefunden) kann in dieser Form nicht mehr auftreten.
+- **Persistenz der Energie-/Zyklus-Zähler**: Zähler sind jetzt normale Home-Assistant-`RestoreSensor`s mit einer selbst nachgeführten Offset-Basislinie; die bisherige, vom Coordinator verwaltete Datei `cycle_energy_persist.json` (und die dort auf `main` in 2.8.4/2.8.6 behobene Fehlerklasse bei Neustart/Offset-Persistenz) existiert in dieser Form nicht mehr.
+- **Mindest-Home-Assistant-Version**: jetzt 2026.9.0 (vorausgesetzt von `modbus-connection[tmodbus]`), durchgesetzt in `hacs.json`. Ältere Home-Assistant-Versionen werden von dieser Linie nicht mehr unterstützt.
+
+#### Hinweis
+- Die bei dieser Prüfung gefundenen und behobenen Lücken siehe [3.5.2](#352---2026-09-06) oben. Die [Entwickler-Dokumentation](https://guidojeuken-6512.github.io/lambda_heat_pumps/Entwickler/modbus-serialisierung/) beschreibt das neue Modbus-Serialisierungs-Design im Detail.
 
 ### [2.6.0] - 2026-06-24
 
