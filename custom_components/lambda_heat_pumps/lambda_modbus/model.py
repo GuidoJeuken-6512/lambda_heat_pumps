@@ -27,6 +27,12 @@ NO_REGISTER = 0x8000  # the firmware does not have this register
 NO_SENSOR = 0xF448  # -3000: nothing is connected to it
 SENTINELS = (NO_REGISTER, NO_SENSOR)
 
+# 0xFFFF (-1) means "no request"/"nothing fed in" on a handful of registers —
+# not declared on SENTINELS itself, because -1 is a genuine value on others
+# (e.g. a temperature offset). Pass ``nan=SENTINELS + (NO_REQUEST,)`` on those
+# specific fields instead (see buffer.py, heating_circuit.py, general.py).
+NO_REQUEST = 0xFFFF
+
 
 def gauge(address: int, scale: float, /, **kwargs: Any):
     """A scaled measurement, reading as unknown when the controller has none."""

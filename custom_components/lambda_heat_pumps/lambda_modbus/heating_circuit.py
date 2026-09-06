@@ -5,7 +5,7 @@ from __future__ import annotations
 from modbus_connection.model import integer
 
 from .enums import HeatingCircuitOperatingMode, HeatingCircuitOperatingState
-from .model import LambdaComponent, enum, gauge
+from .model import NO_REQUEST, SENTINELS, LambdaComponent, enum, gauge
 
 
 class HeatingCircuit(LambdaComponent):
@@ -17,7 +17,12 @@ class HeatingCircuit(LambdaComponent):
     return_line_temperature = gauge(3, 0.1, unit="°C")
     room_device_temperature = gauge(4, 0.1, writable=True, unit="°C")
     set_flow_line_temperature = gauge(5, 0.1, writable=True, unit="°C")
-    operating_mode = enum(6, HeatingCircuitOperatingMode, signed=True, writable=True)
+    # 0xFFFF (-1) means "no request" here — not a real HeatingCircuitOperatingMode
+    # code, so it reads as unknown instead of a bogus mode.
+    operating_mode = enum(
+        6, HeatingCircuitOperatingMode, signed=True, writable=True,
+        nan=SENTINELS + (NO_REQUEST,),
+    )
     flow_line_temperature_setpoint = gauge(7, 0.1, writable=True, unit="°C")
 
     # Firmware 3+ reports the setpoint the controller actually acts on at the

@@ -41,6 +41,12 @@ CONF_FIRMWARE_VERSION: Final = "firmware_version"
 DEFAULT_PORT: Final = 502
 DEFAULT_SLAVE_ID: Final = 1
 DEFAULT_NAME: Final = "EU08L"
+# modbus-connection only serializes concurrent reads/writes on a connection
+# (via its internal Pacer lock) when a nonzero spacing is configured — with
+# none, the poll loop and the write timer can hit the wire at the same time,
+# which is exactly the transaction desync that Issue #105 reported. 50ms is
+# imperceptible next to the multi-second poll/write intervals.
+DEFAULT_MODBUS_MESSAGE_SPACING: Final = 0.05
 
 # How the controller lays out the two registers of a 32-bit value. It varies by
 # controller, so the user picks it; everything else about the wire format is

@@ -5,7 +5,7 @@ from __future__ import annotations
 from modbus_connection.model import integer
 
 from .enums import AmbientOperatingState, EManagerOperatingState
-from .model import LambdaComponent, enum, gauge
+from .model import NO_REQUEST, SENTINELS, LambdaComponent, enum, gauge
 
 
 class Ambient(LambdaComponent):
@@ -13,7 +13,10 @@ class Ambient(LambdaComponent):
 
     error_number = integer(0)
     operating_state = enum(1, AmbientOperatingState)
-    temperature = gauge(2, 0.1, unit="°C")
+    # 0xFFFF (-1) means "no external ambient sensor fed in", not a real -300 °C
+    # reading; unlike the other sentinels this is opt-in, since -1 is a
+    # genuine value on some other registers (e.g. temperature offsets).
+    temperature = gauge(2, 0.1, unit="°C", nan=SENTINELS + (NO_REQUEST,))
     temperature_1h = gauge(3, 0.1, unit="°C")
     temperature_calculated = gauge(4, 0.1, unit="°C")
 

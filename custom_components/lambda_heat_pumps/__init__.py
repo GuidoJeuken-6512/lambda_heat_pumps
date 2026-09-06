@@ -28,6 +28,7 @@ from .const import (
     CONF_SLAVE_ID,
     CONF_USE_LEGACY_MODBUS_NAMES,
     DEFAULT_INT32_REGISTER_ORDER,
+    DEFAULT_MODBUS_MESSAGE_SPACING,
     ENTRY_VERSION,
     FIRMWARE_VERSIONS,
     REGISTER_ORDER_HIGH_FIRST,
@@ -55,7 +56,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bo
     # a normal unload and every way the rest of this function can fail, so there
     # is no path that leaks a connection on a setup that is about to be retried.
     connection = ModbusConnection(
-        ModbusTcpParams(host=entry.data[CONF_HOST], port=port)
+        ModbusTcpParams(host=entry.data[CONF_HOST], port=port),
+        # Without a nonzero spacing, modbus-connection's own request-pacing
+        # lock never engages (see DEFAULT_MODBUS_MESSAGE_SPACING) and the poll
+        # loop / write timer can talk to the controller concurrently.
+        message_spacing=DEFAULT_MODBUS_MESSAGE_SPACING,
     )
     entry.async_on_unload(connection.close)
 

@@ -63,6 +63,25 @@ async def test_setup_detects_the_modules_the_controller_has(
     assert entry.runtime_data.counts == {"hp": 1, "boil": 1, "buff": 0, "sol": 0, "hc": 1}
 
 
+async def test_the_connection_paces_its_requests(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Reads and writes on the connection are actually serialized.
+
+    modbus-connection only takes its own internal lock around a request when a
+    nonzero message (or unit) spacing is configured - with neither, two
+    requests can hit the wire at the same time, which is the same class of
+    transaction desync GitHub Issue #105 reported. Regression guard for that:
+    assert the integration always hands over a nonzero spacing, rather than
+    relying on the library's (unserialized) default.
+    """
+    await setup_entry(hass, controller)
+
+    assert controller.connection_kwargs
+    for kwargs in controller.connection_kwargs:
+        assert kwargs.get("message_spacing", 0) > 0
+
+
 def state_of(hass: HomeAssistant, unique_id: str) -> str:
     """A sensor's state, found the way its identity is actually defined."""
     entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, unique_id)
@@ -212,6 +231,34 @@ async def test_a_register_with_nothing_behind_it_reads_unknown(
     assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
 
 
+async def test_a_no_request_or_no_sensor_register_reads_unknown(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """0xFFFF ("no request" / "nothing fed in") is not read as a measurement.
+
+    Unlike 0x8000 and 0xF448 this is not a global sentinel — -1 is a genuine
+    value on other registers (e.g. temperature offsets) — so it is only
+    filtered on the handful of fields that actually use it this way: the
+    ambient temperature (no external sensor connected) and a buffer's request
+    registers (no active request).
+    """
+    controller.install(3000)  # buffer 1
+    controller.registers[2] = 0xFFFF  # ambient temperature: no external sensor
+    controller.registers[3005] = 0xFFFF  # buffer request type: no request
+    controller.registers[3006] = 0xFFFF  # buffer request flow line setpoint
+    await setup_entry(hass, controller, legacy=True)
+
+    for unique_id in (
+        "eu08l_ambient_temperature",
+        "eu08l_buff1_request_type",
+        "eu08l_buff1_request_flow_line_temp_setpoint",
+    ):
+        assert state_of(hass, unique_id) in ("unknown", "unavailable"), unique_id
+
+    # A register where -1 is a real value is untouched.
+    assert state_of(hass, "eu08l_hc1_set_flow_line_offset_temperature") == "0.0"
+
+
 async def test_modules_are_their_own_devices(
     hass: HomeAssistant, controller: Controller
 ) -> None:
@@ -229,6 +276,16 @@ async def test_modules_are_their_own_devices(
     assert heat_pump is not None
     assert heat_pump.name == "EU08L - HP1"
     assert heat_pump.via_device_id == main.id
+
+    # via_device (an identifiers-tuple) is deprecated in favour of via_device_id
+    # (the registry's own id for the parent device) and logs a removal warning
+    # on current Home Assistant. Checking the resulting field above is not
+    # enough to catch a regression back to the deprecated kwarg, since some HA
+    # versions silently translate it — so also assert the coordinator itself
+    # never hands it out.
+    device_info = entry.runtime_data.device_info("hp", 1)
+    assert "via_device" not in device_info
+    assert device_info["via_device_id"] == main.id
 
 
 async def test_unload_closes_the_connection(

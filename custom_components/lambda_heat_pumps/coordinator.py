@@ -26,6 +26,7 @@ from types import MappingProxyType
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -230,13 +231,23 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         name = entry.data[CONF_NAME_PREFIX]
         if module is None:
             return DeviceInfo(identifiers={controller}, name=name, **shared)
-        return DeviceInfo(
+        device_info = DeviceInfo(
             # A four-part identifier, as the integration has always used.
             identifiers={(DOMAIN, entry.entry_id, module, index)},
             name=f"{name} - {_MODULE_NAMES[module]}{index}",
-            via_device=controller,
             **shared,
         )
+        # via_device (an identifiers-tuple) is deprecated in favour of
+        # via_device_id (the registry's own UUID for the parent device) and
+        # logs a removal warning on current Home Assistant. The controller
+        # device is always registered before any sub-device (see __init__.py),
+        # so the lookup below should always succeed in practice; the key is
+        # simply omitted if it does not, rather than falling back to the
+        # deprecated kwarg.
+        main_device = dr.async_get(self.hass).async_get_device(identifiers={controller})
+        if main_device is not None:
+            device_info["via_device_id"] = main_device.id
+        return device_info
 
     async def _async_setup(self) -> None:
         """Probe the register map, then arm the fast poll and period rollovers."""

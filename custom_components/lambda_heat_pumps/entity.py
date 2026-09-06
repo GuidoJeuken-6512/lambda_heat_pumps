@@ -2,8 +2,8 @@
 
 Every module the controller has — each heat pump, boiler, buffer, solar module
 and heating circuit — is its own sub-device, linked to the controller via
-`via_device`. The two always-present sub-systems (ambient and the e-manager)
-belong to the controller itself.
+`via_device_id`. The two always-present sub-systems (ambient and the
+e-manager) belong to the controller itself.
 
 The unique-id shape here is load-bearing: it is what keeps an existing
 installation's entities attached to their history.

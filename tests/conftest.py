@@ -90,6 +90,11 @@ class Controller:
     # What the integration handed the backend, for asserting it passed ints.
     ports: list = field(default_factory=list)
     unit_ids: list = field(default_factory=list)
+    # The keyword arguments `ModbusConnection` was built with, one dict per
+    # connection opened - e.g. `message_spacing`, which is what makes
+    # modbus-connection's own request-pacing lock actually serialize reads and
+    # writes on the connection (see DEFAULT_MODBUS_MESSAGE_SPACING).
+    connection_kwargs: list[dict] = field(default_factory=list)
     _units: list[MockModbusUnit] = field(default_factory=list)
     # Registers the controller refuses, beyond the absent-module blocks. Kept so
     # a refusal armed before setup is applied to the connection setup opens too —
@@ -229,6 +234,7 @@ def controller() -> Iterator[Controller]:
 
     def build(params, **kwargs) -> MockModbusConnection:
         device.ports.append(params.port)
+        device.connection_kwargs.append(kwargs)
         connection = MockModbusConnection()
         device._connections.append(connection)
 
