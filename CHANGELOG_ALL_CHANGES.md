@@ -7,6 +7,17 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.5.3] - 2026-09-06
+
+Fixed a functional regression from 3.5.0 found via live testing against real hardware: every Modbus write used the wrong function code.
+
+#### Fixed
+- **Every Modbus write used FC06 (Write Single Register) for a single-register write; Lambda's own Modbus documentation mandates FC16 (Write Multiple Registers) for every write and does not implement FC06 at all** — it answers FC06 with Illegal Function (exception 0x01). This made every write-capable feature fail, logged or silent depending on the path: room-thermostat control (register 5004, logged every ~9s), PV-surplus export, the hot-water/heating-circuit/cooling-circuit setpoints, the flow-line offset, and the generic `write_modbus_register` service. The pre-3.5 `pymodbus`-based code never hit this, because it always wrote through `write_registers()` (FC16), even for a single register. Every `writable=True` field in `lambda_modbus/` now sets `force_fc16=True` (a flag `modbus-connection` provides for exactly this case), and the two call sites that wrote directly (`services.py`'s PV-surplus writer and the generic register-write service) now call `write_registers()` instead of `write_register()`.
+- Verified live against real hardware (firmware `V0.0.8-3K`): the room-temperature write (register 5004) and a hot-water setpoint change via `climate.set_temperature` both landed correctly after the fix; before it, both failed with `Modbus Exception 0x01 for function code 0x06`.
+
+#### Note
+- No `PackedBitsField`/bit-field register exists in the current model, so the one FC06-only path inside `modbus-connection`'s `write_register_field()` (used for read-modify-write of packed bit registers, which ignores `force_fc16`) never applies here.
+
 ### [3.5.2] - 2026-09-06
 
 Follow-up to 3.5.0: three gaps found while auditing every 2.7.x/2.8.x bugfix made on the pre-rewrite `main` branch against the rewritten codebase, to see which still applied.
@@ -378,6 +389,17 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.5.3] - 2026-09-06
+
+Eine Funktionsregression aus 3.5.0 behoben, gefunden beim Live-Test gegen echte Hardware: jeder Modbus-Schreibvorgang nutzte den falschen Funktionscode.
+
+#### Behoben
+- **Jeder Modbus-Schreibvorgang nutzte für ein einzelnes Register FC06 (Write Single Register); Lambdas eigene Modbus-Dokumentation schreibt für jeden Schreibvorgang FC16 (Write Multiple Registers) vor und implementiert FC06 überhaupt nicht** — FC06 wird mit Illegal Function (Exception 0x01) beantwortet. Dadurch scheiterte, je nach Pfad protokolliert oder still, jede schreibende Funktion: die Raumthermostat-Steuerung (Register 5004, protokolliert alle ~9s), der PV-Überschuss-Export, die Warmwasser-/Heizkreis-/Kühlkreis-Sollwerte, der Vorlauf-Offset sowie der generische `write_modbus_register`-Service. Der Vor-3.5-Code auf Basis von `pymodbus` hatte dieses Problem nie, da er ausnahmslos über `write_registers()` (FC16) schrieb, auch für ein einzelnes Register. Jedes `writable=True`-Feld in `lambda_modbus/` setzt jetzt `force_fc16=True` (ein von `modbus-connection` genau für diesen Fall vorgesehenes Flag), und die beiden Stellen mit direktem Schreibzugriff (PV-Überschuss-Writer und der generische Register-Schreib-Service in `services.py`) rufen jetzt `write_registers()` statt `write_register()` auf.
+- Live gegen echte Hardware verifiziert (Firmware `V0.0.8-3K`): Der Raumtemperatur-Schreibzugriff (Register 5004) sowie eine Warmwasser-Sollwertänderung über `climate.set_temperature` kamen nach dem Fix korrekt an; zuvor scheiterten beide mit `Modbus Exception 0x01 for function code 0x06`.
+
+#### Hinweis
+- Im aktuellen Modell existiert kein `PackedBitsField`/Bit-Feld-Register, daher greift der eine FC06-Sonderpfad innerhalb von `modbus-connection`s `write_register_field()` (für Read-Modify-Write gepackter Bit-Register, ignoriert `force_fc16`) hier nie.
 
 ### [3.5.2] - 2026-09-06
 

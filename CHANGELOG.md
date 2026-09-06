@@ -9,6 +9,10 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.5.3] - 2026-09-06
+
+Fixed a functional regression from the 3.5.0 rewrite found via live testing: every Modbus write used FC06 (Write Single Register), which Lambda's own protocol documentation says is not implemented at all — every write (room-thermostat control, PV-surplus export, hot-water/heating-circuit/cooling-circuit setpoints, the generic register-write service) failed with "Illegal Function". Every writable register now writes via FC16 (Write Multiple Registers), matching the pre-3.5 code and Lambda's documented protocol. See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details.
+
 ### [3.5.2] - 2026-09-06
 
 Follow-up to the 3.5.0 rewrite adoption: fixed three gaps found by auditing every 2.7.x/2.8.x bugfix from the pre-rewrite `main` branch against the rewritten codebase — a `via_device` deprecation warning on sub-devices, a `0xFFFF` sentinel ("no request"/"no external sensor") read as a real value (e.g. exactly -300.0 °C for the outside temperature), and Modbus reads/writes not actually being serialized against each other (the class of issue behind #105). See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details and the new regression tests.
@@ -17,17 +21,16 @@ Follow-up to the 3.5.0 rewrite adoption: fixed three gaps found by auditing ever
 
 Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves from `pymodbus` to [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, heat pumps and other modules are addressed by index and object reference instead of reconstructed entity-id strings (removing the bug class behind Issues #93/#107), and counters persist via plain Home Assistant `RestoreSensor`s. Minimum Home Assistant version is now 2026.9.0. See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for the full breakdown.
 
-### [2.6.0] - 2026-06-24
-
-#### New Features
-- **Cooling Circuit Climate Entity**: New `climate.<prefix>_hc<n>_cooling_circuit` entity per detected heating circuit, analogous to the existing `heating_circuit` climate entity. Shares the same current-temperature source (room device temperature) as `heating_circuit`, but writes its setpoint to the dedicated cooling setpoint register (offset 52, e.g. register 5052 for HC1, 5152 for HC2, …). Disabled by default — enable via the new `cooling_mode_enabled` option in the integration's Options Flow.
-
 <!-- /lang:en -->
 ## Deutsche Version {#deutsche-version}
 
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.5.3] - 2026-09-06
+
+Eine Funktionsregression aus dem 3.5.0-Rewrite behoben, gefunden beim Live-Test: Jeder Modbus-Schreibvorgang nutzte FC06 (Write Single Register), das laut Lambdas eigener Protokolldokumentation gar nicht implementiert ist — jeder Schreibvorgang (Raumthermostat-Steuerung, PV-Überschuss-Export, Warmwasser-/Heizkreis-/Kühlkreis-Sollwerte, der generische Register-Schreib-Service) scheiterte mit "Illegal Function". Jedes schreibbare Register nutzt jetzt FC16 (Write Multiple Registers), wie schon der Vor-3.5-Code und wie von Lambda dokumentiert. Details siehe [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md).
 
 ### [3.5.2] - 2026-09-06
 
@@ -36,10 +39,5 @@ Nachzieharbeiten zur 3.5.0-Rewrite-Übernahme: drei Lücken behoben, gefunden be
 ### [3.5.0] - 2026-09-06
 
 Übernahme eines von Grund auf neu geschriebenen Codes für die Integration (PR #115): Die Modbus-Schicht wechselt von `pymodbus` zu [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Wärmepumpen und andere Module werden über Index und Objektreferenz statt rekonstruierter entity_id-Strings adressiert (behebt die Fehlerklasse hinter den Issues #93/#107), und Zähler persistieren über normale Home-Assistant-`RestoreSensor`s. Mindest-Home-Assistant-Version ist jetzt 2026.9.0. Vollständige Aufschlüsselung siehe [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md).
-
-### [2.6.0] - 2026-06-24
-
-#### Neue Funktionen
-- **Kühlkreis-Climate-Entity**: Neue Entity `climate.<prefix>_hc<n>_cooling_circuit` je erkanntem Heizkreis, analog zur bestehenden `heating_circuit`-Climate-Entity. Nutzt dieselbe Quelle für die Ist-Temperatur (Raum-Gerätetemperatur) wie `heating_circuit`, schreibt den Sollwert aber auf das dedizierte Kühl-Sollwert-Register (Offset 52, z. B. Register 5052 für HC1, 5152 für HC2, …). Standardmäßig deaktiviert — Aktivierung über die neue Option `cooling_mode_enabled` im Options-Flow der Integration.
 
 <!-- /lang:de -->
