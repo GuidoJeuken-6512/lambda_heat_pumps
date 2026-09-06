@@ -18,8 +18,9 @@ class Solar(LambdaComponent):
     power_current = gauge(4, 0.1, unit="kW")
     energy_total = int32(5, unit="kWh")
 
-    maximum_buffer_temperature = gauge(50, 0.1, writable=True, unit="°C")
-    buffer_changeover_temperature = gauge(51, 0.1, writable=True, unit="°C")
+    # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
+    maximum_buffer_temperature = gauge(50, 0.1, writable=True, force_fc16=True, unit="°C")
+    buffer_changeover_temperature = gauge(51, 0.1, writable=True, force_fc16=True, unit="°C")
 
 
 class SolarLowFirst(Solar):

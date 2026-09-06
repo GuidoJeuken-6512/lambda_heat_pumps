@@ -125,7 +125,10 @@ async def async_write_pv_surplus(coordinator: LambdaCoordinator) -> None:
         raw = max(0, min(65535, int(power)))
 
     try:
-        await coordinator.unit.write_register(PV_SURPLUS_REGISTER, raw)
+        # write_registers (FC16), not write_register (FC06): Lambda's own
+        # Modbus documentation mandates FC16 for every write and does not
+        # implement FC06 at all — this is what the pre-3.5 code always used.
+        await coordinator.unit.write_registers(PV_SURPLUS_REGISTER, [raw])
     except ModbusError as err:
         _LOGGER.warning("Could not send the PV surplus: %s", err)
 
@@ -176,8 +179,11 @@ def async_setup_services(hass: HomeAssistant) -> None:
         coordinator = _only_controller(hass)
         address = call.data[ATTR_REGISTER_ADDRESS]
         try:
-            await coordinator.unit.write_register(
-                address, call.data[ATTR_VALUE] & 0xFFFF
+            # write_registers (FC16), not write_register (FC06) — Lambda's own
+            # Modbus documentation mandates FC16 for every write; see the note
+            # on async_write_pv_surplus above.
+            await coordinator.unit.write_registers(
+                address, [call.data[ATTR_VALUE] & 0xFFFF]
             )
         except ModbusError as err:
             raise HomeAssistantError(

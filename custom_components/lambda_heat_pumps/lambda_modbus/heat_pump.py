@@ -33,11 +33,12 @@ class HeatPump(LambdaComponent):
     inverter_power_consumption = integer(12, unit="W")
     cop = gauge(13, 0.01)
 
-    request_type = integer(15, writable=True)
-    requested_flow_line_temperature = gauge(16, 0.1, writable=True, unit="°C")
-    requested_return_line_temperature = gauge(17, 0.1, writable=True, unit="°C")
+    # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
+    request_type = integer(15, writable=True, force_fc16=True)
+    requested_flow_line_temperature = gauge(16, 0.1, writable=True, force_fc16=True, unit="°C")
+    requested_return_line_temperature = gauge(17, 0.1, writable=True, force_fc16=True, unit="°C")
     requested_flow_to_return_line_temperature_difference = gauge(
-        18, 0.1, writable=True, unit="°C"
+        18, 0.1, writable=True, force_fc16=True, unit="°C"
     )
     relais_state_2nd_heating_stage = enum(19, RelaisState, signed=True)
 
@@ -67,19 +68,32 @@ class HeatPumpCapacityLimits(LambdaComponent):
     """
 
     config_parameter_50 = integer(50, signed=False)
-    dhw_output_power_15c = gauge(51, 0.1, signed=False, writable=True, unit="kW")
-    heating_min_output_power_15c = gauge(52, 0.1, signed=False, writable=True, unit="kW")
-    heating_max_output_power_15c = gauge(53, 0.1, signed=False, writable=True, unit="kW")
-    heating_min_output_power_0c = gauge(54, 0.1, signed=False, writable=True, unit="kW")
-    heating_max_output_power_0c = gauge(55, 0.1, signed=False, writable=True, unit="kW")
+    # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
+    dhw_output_power_15c = gauge(51, 0.1, signed=False, writable=True, force_fc16=True, unit="kW")
+    heating_min_output_power_15c = gauge(
+        52, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
+    )
+    heating_max_output_power_15c = gauge(
+        53, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
+    )
+    heating_min_output_power_0c = gauge(
+        54, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
+    )
+    heating_max_output_power_0c = gauge(
+        55, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
+    )
     heating_min_output_power_minus15c = gauge(
-        56, 0.1, signed=False, writable=True, unit="kW"
+        56, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
     )
     heating_max_output_power_minus15c = gauge(
-        57, 0.1, signed=False, writable=True, unit="kW"
+        57, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
     )
-    cooling_min_output_power = gauge(58, 0.1, signed=False, writable=True, unit="kW")
-    cooling_max_output_power = gauge(59, 0.1, signed=False, writable=True, unit="kW")
+    cooling_min_output_power = gauge(
+        58, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
+    )
+    cooling_max_output_power = gauge(
+        59, 0.1, signed=False, writable=True, force_fc16=True, unit="kW"
+    )
     config_parameter_60 = integer(60, signed=False)
 
 

@@ -21,11 +21,12 @@ class Buffer(LambdaComponent):
     operating_state = enum(1, BufferOperatingState)
     actual_high_temperature = gauge(2, 0.1, unit="°C")
     actual_low_temperature = gauge(3, 0.1, unit="°C")
-    buffer_temperature_high_setpoint = gauge(4, 0.1, writable=True, unit="°C")
+    # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
+    buffer_temperature_high_setpoint = gauge(4, 0.1, writable=True, force_fc16=True, unit="°C")
     request_type = enum(5, BufferRequestType, signed=True, nan=_NAN_WITH_NO_REQUEST)
     request_flow_line_temp_setpoint = gauge(6, 0.1, unit="°C", nan=_NAN_WITH_NO_REQUEST)
     request_return_line_temp_setpoint = gauge(7, 0.1, unit="°C", nan=_NAN_WITH_NO_REQUEST)
     request_heat_sink_temp_diff_setpoint = gauge(8, 0.1, unit="K", nan=_NAN_WITH_NO_REQUEST)
     modbus_request_heating_capacity = gauge(9, 0.1, unit="kW", nan=_NAN_WITH_NO_REQUEST)
 
-    maximum_buffer_temp = gauge(50, 0.1, writable=True, unit="°C")
+    maximum_buffer_temp = gauge(50, 0.1, writable=True, force_fc16=True, unit="°C")

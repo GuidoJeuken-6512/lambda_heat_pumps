@@ -18,4 +18,5 @@ class Boiler(LambdaComponent):
     actual_circulation_temperature = gauge(4, 0.1, unit="°C")
     actual_circulation_pump_state = enum(5, RelaisState, signed=True)
 
-    target_high_temperature = gauge(50, 0.1, writable=True, unit="°C")
+    # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
+    target_high_temperature = gauge(50, 0.1, writable=True, force_fc16=True, unit="°C")
