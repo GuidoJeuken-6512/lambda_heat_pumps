@@ -12,12 +12,15 @@ dashboard with it, so those stay available whatever the controller said.
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 
 import pytest
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from modbus_connection import ModbusTimeoutError
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.lambda_heat_pumps.coordinator import _TIMEOUTS_BEFORE_RECYCLING
 
@@ -44,6 +47,26 @@ async def test_a_healthy_poll_reads_every_installed_module(
 
     assert coordinator.updated == {"ambient", "e_manager", "hp1", "boil1", "hc1"}
     assert not coordinator.failed
+
+
+async def test_a_fast_poll_that_cannot_reach_the_controller_does_not_crash(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A missed fast poll costs at most one counted cycle, not the integration.
+
+    The full poll is what decides whether the device is available; the fast
+    poll only closes the gap between full polls, so its own failure is logged
+    and dropped rather than surfacing anywhere.
+    """
+    caplog.set_level(logging.DEBUG, logger="custom_components.lambda_heat_pumps.coordinator")
+    entry = await setup_entry(hass, controller, legacy=True)
+    controller.stop_answering_for(1003)  # hp1's operating state
+
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=3))
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert "Fast poll failed" in caplog.text
 
 
 async def test_a_module_that_stops_answering_keeps_the_values_it_had(

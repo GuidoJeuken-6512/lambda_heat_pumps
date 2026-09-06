@@ -4,682 +4,189 @@ title: "Cycling-Sensoren - Technische Dokumentation"
 
 # Cycling-Sensoren - Technische Dokumentation
 
-*Zuletzt geändert am 16.04.2026*
+*Zuletzt geändert am 06.09.2026*
+
+**Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
 Diese Dokumentation beschreibt die technische Implementierung der Cycling-Sensoren in der Lambda Heat Pumps Integration.
 
 ## Übersicht
 
-Cycling-Sensoren zählen, wie oft die Wärmepumpe in einen bestimmten Betriebsmodus (Heizen, Warmwasser, Kühlen, Abtauen) gewechselt wurde. Sie messen die Anzahl der Zustandswechsel (Flanken) zwischen verschiedenen Betriebsmodi.
+Cycling-Sensoren zählen, wie oft die Wärmepumpe in einen bestimmten Betriebsmodus (Heizen, Warmwasser, Kühlen, Abtauen) gewechselt oder der Kompressor gestartet ist. Betroffene Modi (`CYCLE_MODES` in `const.py`):
 
-Die Integration bietet Cycling-Sensoren für folgende Betriebsarten:
 - **Heating** (Heizen)
 - **Hot Water** (Warmwasser)
 - **Cooling** (Kühlen)
 - **Defrost** (Abtauen)
 - **Compressor Start** (Kompressorstart)
 
-Die verfügbaren Zeiträume unterscheiden sich je nach Betriebsart:
+Welche Perioden ein Modus bekommt, ist absichtlich nicht symmetrisch — das
+entspricht genau den Entities, die die Integration schon immer angelegt hat,
+und eine Änderung würde bestehende Entities verwaisen lassen:
+
+```python
+# sensor.py
+CYCLE_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY, PERIOD_2H, PERIOD_4H)
+COMPRESSOR_START_PERIODS = (*CYCLE_PERIODS, PERIOD_MONTHLY)
+```
 
 | Zeitraum | Heating | Hot Water | Cooling | Defrost | Compressor Start |
-|----------|---------|-----------|---------|---------|-----------------|
-| **Total** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Yesterday** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Daily** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **2h** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **4h** | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **Monthly** | — | — | — | — | ✓ |
+|----------|:---:|:---:|:---:|:---:|:---:|
+| **Total** | x | x | x | x | x |
+| **Daily** | x | x | x | x | x |
+| **2h** | x | x | x | x | x |
+| **4h** | x | x | x | x | x |
+| **Monthly** | - | - | - | - | x |
+| **Yesterday** | x | x | x | x | x |
 
-- **Total**: Gesamtzähler seit Installation (wird nie zurückgesetzt)
-- **Yesterday**: Wert von gestern (wird täglich vor dem Daily-Reset gespeichert)
-- **Daily**: Täglich (wird um Mitternacht auf 0 zurückgesetzt)
-- **2h**: Alle 2 Stunden (wird alle 2 Stunden auf 0 zurückgesetzt)
-- **4h**: Alle 4 Stunden (wird alle 4 Stunden auf 0 zurückgesetzt)
-- **Monthly**: Monatlich (wird am 1. des Monats auf 0 zurückgesetzt, **nur für Compressor Start**)
+„Yesterday" ist keine eigene Periode des Zählers selbst, sondern eine eigene
+Sensor-Klasse, die den Tageszähler beim Rollover mitschneidet — siehe unten.
 
 ## Architektur
 
-### Komponenten
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Coordinator                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  _async_fast_update()  [alle 2 Sekunden]              │  │
-│  │    └─ _run_cycling_edge_detection()                   │  │
-│  │         └─ increment_cycling_counter()                │  │
-│  └──────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  _async_update_data()  [alle 30 Sekunden, konfigur.] │  │
-│  │    └─ Nur Energieintegration (kWh), keine Cycling-   │  │
-│  │       Flankenerkennung                                │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    utils.py                                 │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  increment_cycling_counter()                          │  │
-│  │    - mode: "heating" | "hot_water" | "cooling" | ... │  │
-│  │    - hp_index: 1-based                                │  │
-│  │    - Erhöht: Total, Daily, 2h, 4h, Monthly           │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    sensor.py                                 │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  LambdaCyclingSensor                                  │  │
-│  │    - set_cycling_value()                              │  │
-│  │    - native_value (gibt _cycling_value zurück)       │  │
-│  │    - Reset-Handler für Daily/2h/4h/Monthly/Yearly    │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    reset_manager.py                          │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  ResetManager                                         │  │
-│  │    - setup_reset_automations()                        │  │
-│  │      - Daily Reset (Mitternacht)                      │  │
-│  │      - 2h Reset (alle 2 Stunden)                      │  │
-│  │      - 4h Reset (alle 4 Stunden)                      │  │
-│  │      - Monthly Reset (1. des Monats)                  │  │
-│  │      - Yearly Reset (1. Januar)                       │  │
-│  │      - Yesterday-Sensor Update (vor Daily Reset)      │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  automations.py                                       │  │
-│  │  _update_yesterday_sensors_async()                   │  │
-│  │    - Aktualisiert Yesterday-Sensoren                 │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Datenfluss
-
-1. **Coordinator** (`_async_fast_update`, alle 2 Sekunden) liest nur zwei Register pro Wärmepumpe:
-   - Register 1010 (`compressor_unit_rating`) — Kompressorstarterkennung durch Änderung von 0 auf > 0 
-   - Register 1003 (`HP_OPERATING_STATE`) — Betriebsmoduszustand
-   - Ruft `_run_cycling_edge_detection()` auf
-
-2. **Coordinator** (`_run_cycling_edge_detection`) erkennt Betriebsmodus-Wechsel:
-   - Vergleicht aktuellen Wert mit `_last_operating_state` / `_last_state`
-   - Erkennt Flanke (State Change)
-   - Ruft `increment_cycling_counter()` auf
-   - Aktualisiert `_last_operating_state` / `_last_state`
-
-3. **Coordinator** ruft `increment_cycling_counter()` auf:
-   - Übergibt Mode (heating, hot_water, etc.)
-   - Übergibt HP-Index
-
-3. **Utils** erhöhen alle Perioden:
-   - `increment_cycling_counter()` erhöht Total, Daily, 2h, 4h
-   - Für Compressor Start: auch Monthly
-   - Jeder Sensor wird um +1 erhöht
-
-4. **Entities** speichern Werte:
-   - `LambdaCyclingSensor.set_cycling_value()` setzt internen Wert
-   - `native_value` gibt den aktuellen Wert zurück
-
-5. **ResetManager** resetten Perioden:
-   - Daily: Um Mitternacht auf 0 (via `ResetManager.setup_reset_automations()`)
-   - 2h: Alle 2 Stunden auf 0
-   - 4h: Alle 4 Stunden auf 0
-   - Monthly: Am 1. des Monats auf 0
-   - Yearly: Am 1. Januar auf 0
-
-## Implementierung
-
-### 1. Sensor-Erstellung
-
-Sensoren werden in `sensor.py` erstellt:
+Cycling- und Energie-Zähler sind **dieselbe Klasse**, `LambdaCounterSensor`
+(`sensor.py`) — es gibt keine eigene `LambdaCyclingSensor`-Klasse mehr. Was
+einen Cycling- von einem Energie-Zähler unterscheidet, ist ausschließlich,
+welche `CounterDescription` ihn erzeugt hat (`_cycle_description()` vs.
+`_energy_description()`) und auf welches `Totals`-Feld sie zeigt:
 
 ```python
-# Total-Sensoren
-for hp_idx in range(1, num_hps + 1):
-    for mode in CYCLING_MODES:
-        sensor_id = f"{mode}_cycling_total"
-        sensor = LambdaCyclingSensor(
-            hass=hass,
-            entry=entry,
-            sensor_id=sensor_id,
-            name=names["name"],
-            entity_id=names["entity_id"],
-            unique_id=names["unique_id"],
-            unit=template["unit"],
-            state_class=template["state_class"],
-            device_class=template["device_class"],
-            device_type=template["device_type"],
-            hp_index=hp_idx,
-        )
-
-# Daily-Sensoren
-for hp_idx in range(1, num_hps + 1):
-    for mode in CYCLING_MODES:
-        sensor_id = f"{mode}_cycling_daily"
-        sensor = LambdaCyclingSensor(...)
-
-# Yesterday-Sensoren
-for hp_idx in range(1, num_hps + 1):
-    for mode in CYCLING_MODES:
-        sensor_id = f"{mode}_cycling_yesterday"
-        sensor = LambdaCyclingSensor(...)
-
-# 2h, 4h, Monthly, Yearly ähnlich
-```
-
-### 2. Sensor-Templates
-
-Sensor-Templates werden in `const.py` definiert:
-
-```python
-CALCULATED_SENSOR_TEMPLATES = {
-    "heating_cycling_total": {
-        "name": "Heating Cycling Total",
-        "unit": "cycles",
-        "precision": 0,
-        "data_type": "calculated",
-        "state_class": "total_increasing",
-        "device_class": None,
-        "mode_value": 1,  # CH
-        "operating_state": "heating",
-        "period": "total",
-        "reset_interval": None,
-    },
-    "heating_cycling_daily": {
-        "name": "Heating Cycling Daily",
-        "unit": "cycles",
-        "precision": 0,
-        "data_type": "calculated",
-        "state_class": "total",
-        "device_class": None,
-        "operating_state": "heating",
-        "period": "daily",
-        "reset_interval": "daily",
-    },
-    # ... weitere Sensoren
-}
-```
-
-### 3. Flankenerkennung
-
-Die Flankenerkennung erfolgt im Coordinator (`coordinator.py`) in `_run_cycling_edge_detection()`, aufgerufen von `_async_fast_update()` alle **2 Sekunden** (fest konfiguriert, kein UI-Option). Die Trennung vom 30-Sekunden-Vollupdate verhindert, dass kurze Modusübergänge übersehen werden.
-
-Zwei Register werden überwacht:
-
-| Register | Adresse HP1 | Variable | Überwachte Modi |
-|----------|-------------|----------|-----------------|
-| `HP_OPERATING_STATE` | 1003 | `_last_operating_state` | heating=1, hot_water=2, cooling=3, defrost=5 |
-| `compressor_unit_rating` | 1010 | `_last_state` | compressor_unit_rating von 0 auf  > 0 |
-
-```python
-# In _run_cycling_edge_detection()
-last_op_state = self._last_operating_state.get(str(hp_idx), "UNBEKANNT")
-op_state_val = data.get(f"hp{hp_idx}_operating_state")
-
-# Flankenerkennung: State hat sich geändert
-if (self._initialization_complete and
-    last_op_state != "UNBEKANNT" and
-    last_op_state != mode_val and
-    op_state_val == mode_val):
-
-    # Betriebsmodus-Wechsel erkannt!
-    await increment_cycling_counter(
-        self.hass,
-        mode=mode,
-        hp_index=hp_idx,
-        name_prefix=self.entry.data.get("name", "eu08l"),
-        use_legacy_modbus_names=self._use_legacy_names,
+# sensor.py
+def _cycle_description(mode: str, period: str) -> CounterDescription:
+    return CounterDescription(
+        key=f"{mode}_cycling_{period}",
+        ...
+        total=lambda coordinator, index, mode=mode: coordinator.totals[index].cycles.get(mode, 0),
     )
-
-# _last_operating_state wird NACH der Verarbeitung aktualisiert
-self._last_operating_state[str(hp_idx)] = op_state_val
 ```
 
-**Wichtig**: Flankenerkennung wird nur ausgelöst, wenn:
-- Initialisierung abgeschlossen ist (`_initialization_complete == True`)
-- Vorheriger State nicht "UNBEKANNT" war (verhindert Falscherkennung beim ersten Poll)
-- Pump war NICHT bereits in diesem Modus (`last != mode_val`)
-- Pump IST JETZT in diesem Modus (`cur == mode_val`) — reines Rising-Edge-Erkennen
-
-**Verhältnis zu `_async_update_data()`**: Der 30-Sekunden-Vollupdate liest ebenfalls Register 1003, verwendet den Wert aber ausschließlich für die Energieintegration (`kWh += power × interval`). Er schreibt `_last_operating_state` nicht mehr und ruft `increment_cycling_counter()` nicht auf.
-
-### 4. Increment-Logik
-
-Die Increment-Logik ist in `utils.py` implementiert:
-
-```python
-async def increment_cycling_counter(
-    hass: HomeAssistant,
-    mode: str,
-    hp_index: int,
-    name_prefix: str,
-    use_legacy_modbus_names: bool = True,
-):
-    """
-    Increment ALL cycling counters for a given mode and heat pump index.
-    This should be called only on a real flank (state change)!
-
-    Increments: Total, Daily, 2H, 4H sensors
-    """
-    device_prefix = f"hp{hp_index}"
-
-    # Liste aller Sensor-Typen, die erhöht werden sollen
-    sensor_types = [
-        f"{mode}_cycling_total",
-        f"{mode}_cycling_daily",
-        f"{mode}_cycling_2h",
-        f"{mode}_cycling_4h"
-    ]
-
-    # Für compressor_start: auch monthly hinzufügen
-    if mode == "compressor_start":
-        sensor_types.append(f"{mode}_cycling_monthly")
-
-    for sensor_id in sensor_types:
-        # Finde Entity
-        names = generate_sensor_names(...)
-        entity_id = names["entity_id"]
-
-        # Hole aktuellen Wert
-        state_obj = hass.states.get(entity_id)
-        current = int(float(state_obj.state)) if state_obj else 0
-
-        # Erhöhe um 1 – kein Offset hier
-        new_value = int(current + 1)
-
-        # Setze neuen Wert
-        cycling_entity = find_cycling_entity(hass, entity_id)
-        if cycling_entity:
-            cycling_entity.set_cycling_value(new_value)
-        else:
-            # Fallback: State setzen
-            hass.states.async_set(entity_id, new_value, ...)
+```
+Coordinator (coordinator.py)
+├── _async_fast_poll()  [alle 2 Sekunden]
+│     └── _track_cycles(index, operating_state, compressor_running)
+├── _async_update_data() [voller Poll, Default 30 Sekunden]
+│     └── ruft _track_cycles ebenfalls je HP auf
+└── Totals.cycles: dict[mode, int]   [nur seit HA-Start]
+        │
+        ▼
+sensor.py – LambdaCounterSensor
+  ├── restauriert eigenen Stand über RestoreSensor
+  ├── addiert bei jedem Coordinator-Update die Differenz zu Totals.cycles
+  └── setzt sich beim Rollover-Signal seiner Periode auf 0
 ```
 
-**Wichtig**:
-- Alle Perioden (Total, Daily, 2h, 4h) werden gleichzeitig um +1 erhöht
-- **Kein Offset in dieser Funktion** — Offsets werden ausschließlich durch `_apply_cycling_offset()` in `sensor.py` beim Start angewendet
-- Die Funktion sollte nur bei echten Flanken (State Changes) aufgerufen werden
+Vollständiger Ablauf mit Diagramm:
+[Ablaufdiagramm – Schneller Poll und Flankenerkennung](Ablaufdiagramm.md#6-schneller-poll-und-flankenerkennung).
 
-### 5. LambdaCyclingSensor Klasse
-
-Die `LambdaCyclingSensor` Klasse ist in `sensor.py` implementiert:
+## Flankenerkennung (`_track_cycles`, `coordinator.py`)
 
 ```python
-class LambdaCyclingSensor(RestoreEntity, SensorEntity):
-    """Cycling total sensor (echte Entity, Wert wird von increment_cycling_counter gesetzt)."""
-    
-    def __init__(self, ...):
-        self._cycling_value = 0
-        self._yesterday_value = 0  # Nur für Total-Sensoren
-        self._last_2h_value = 0    # Nur für Total-Sensoren
-        self._last_4h_value = 0    # Nur für Total-Sensoren
-        self._applied_offset = 0   # Nur für Total-Sensoren
-    
-    def set_cycling_value(self, value):
-        """Set the cycling value and update state."""
-        self._cycling_value = int(value)
-        self.async_write_ha_state()
-    
-    @property
-    def native_value(self):
-        """Return the current cycling value."""
-        value = getattr(self, "_cycling_value", 0)
-        return int(value) if value is not None else 0
-```
-
-### 6. Reset-Logik
-
-Die Reset-Logik verwendet Home Assistant Dispatcher-Signale:
-
-```python
-# In LambdaCyclingSensor.async_added_to_hass()
-from .automations import (
-    SIGNAL_RESET_DAILY, 
-    SIGNAL_RESET_2H, 
-    SIGNAL_RESET_4H, 
-    SIGNAL_RESET_MONTHLY, 
-    SIGNAL_RESET_YEARLY
-)
-
-# Wrapper-Funktion für asynchrone Handler (einheitlich für alle Perioden)
 @callback
-def _wrap_reset(entry_id: str):
-    self.hass.async_create_task(self._handle_reset(entry_id))
+def _track_cycles(self, index: int, operating_state: int, compressor_running: bool) -> None:
+    totals = self.totals[index]
 
-# Registriere für alle Perioden
-self._unsub_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_DAILY, _wrap_reset
-)
-self._unsub_2h_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_2H, _wrap_reset
-)
-self._unsub_4h_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_4H, _wrap_reset
-)
-self._unsub_monthly_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_MONTHLY, _wrap_reset
-)
-self._unsub_yearly_dispatcher = async_dispatcher_connect(
-    self.hass, SIGNAL_RESET_YEARLY, _wrap_reset
-)
+    previous = self._last_operating_state.get(index)
+    self._last_operating_state[index] = operating_state
+    mode = OPERATING_STATE_MODE.get(operating_state, MODE_STBY)
+    if previous is not None and previous != operating_state and mode in CYCLE_MODES:
+        totals.cycles[mode] = totals.cycles.get(mode, 0) + 1
 
-async def _handle_reset(self, entry_id: str):
-    """Handle reset signal for all periods (einheitlich, wie Energy)."""
-    if entry_id != self._entry.entry_id:
-        return
-    
-    # Prüfe Periode basierend auf sensor_id und reset_interval
-    if self._sensor_id.endswith("_daily") and self._reset_interval == "daily":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"Daily sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_2h") and self._reset_interval == "2h":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"2H sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_4h") and self._reset_interval == "4h":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"4H sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_monthly") and self._reset_interval == "monthly":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"Monthly sensor {self.entity_id} reset to 0")
-    elif self._sensor_id.endswith("_yearly") and self._reset_interval == "yearly":
-        self._cycling_value = 0
-        self.async_write_ha_state()
-        _LOGGER.info(f"Yearly sensor {self.entity_id} reset to 0")
+    was_running = self._last_compressor_running.get(index)
+    self._last_compressor_running[index] = compressor_running
+    if was_running is False and compressor_running:
+        totals.cycles[MODE_COMPRESSOR_START] = totals.cycles.get(MODE_COMPRESSOR_START, 0) + 1
 ```
 
-**Reset-Intervall**:
-- **Daily**: Um Mitternacht (`SIGNAL_RESET_DAILY`)
-- **2h**: Alle 2 Stunden (`SIGNAL_RESET_2H`)
-- **4h**: Alle 4 Stunden (`SIGNAL_RESET_4H`)
-- **Monthly**: Am 1. des Monats (`SIGNAL_RESET_MONTHLY`)
-- **Yearly**: Am 1. Januar (`SIGNAL_RESET_YEARLY`)
+Diese Methode wird **sowohl** vom schnellen Poll (alle 2 Sekunden, liest nur
+die Register `HP+3`/`HP+10` direkt) **als auch** vom vollen Poll (alle 30
+Sekunden, liest das komplette Modell) mit denselben Argumenten aufgerufen.
+Beide teilen sich dieselben `_last_*`-Dicts im Coordinator, ein Ereignis wird
+also nie doppelt gezählt — der schnelle Poll schließt nur die Lücke für
+Kompressorstarts, die vollständig innerhalb eines 30-Sekunden-Fensters
+beginnen und enden.
 
-**Wichtig**: 
-- Reset wird direkt auf 0 gesetzt (nicht wie bei Energy-Sensoren Differenzberechnung)
-- Jeder Perioden-Sensor hat seinen eigenen Wert
-- Total-Sensoren werden nie zurückgesetzt
+**Betriebsmodus-Wechsel** braucht einen vorherigen bekannten Zustand
+(`previous is not None`) — beim allerersten Poll nach dem Start wird also
+kein Zähler erhöht, nur der Ausgangszustand gemerkt.
 
-### 7. Yesterday-Sensoren
+**Kompressorstart** ist unabhängig vom Betriebsmodus: erkannt wird der
+Übergang von `compressor_unit_rating == 0` zu `> 0`, gleich in welchem Modus
+die Wärmepumpe gerade läuft.
 
-Yesterday-Sensoren speichern die Werte von gestern, bevor der Daily-Sensor zurückgesetzt wird:
+## `LambdaCounterSensor`: Zähler-Logik
 
 ```python
-# In automations.py
-async def _update_yesterday_sensors_async(hass: HomeAssistant, entry_id: str) -> None:
-    """Update yesterday sensors with current daily values before reset."""
-    cycling_entities = hass.data["lambda_heat_pumps"][entry_id]["cycling_entities"]
-    
-    # Für jeden Daily-Sensor den entsprechenden Yesterday-Sensor aktualisieren
-    for entity_id, entity in cycling_entities.items():
-        if entity_id.endswith("_daily"):
-            # Erstelle Yesterday-Entity-ID
-            yesterday_entity_id = entity_id.replace("_daily", "_yesterday")
-            
-            # Hole den aktuellen Daily-Wert
-            daily_state = hass.states.get(entity_id)
-            daily_value = int(float(daily_state.state))
-            
-            # Setze Yesterday-Sensor auf Daily-Wert
-            yesterday_entity = cycling_entities.get(yesterday_entity_id)
-            if yesterday_entity:
-                yesterday_entity.set_cycling_value(daily_value)
+# sensor.py
+@callback
+def _handle_coordinator_update(self) -> None:
+    total = self._total()
+    self._value += total - self._counted
+    self._counted = total
+    super()._handle_coordinator_update()
 ```
 
-**Ablauf**:
-1. Vor dem Daily-Reset (um Mitternacht) wird `_update_yesterday_sensors_async()` aufgerufen
-2. Für jeden Daily-Sensor wird der aktuelle Wert gelesen
-3. Der entsprechende Yesterday-Sensor wird auf diesen Wert gesetzt
-4. Anschließend wird der Daily-Sensor auf 0 zurückgesetzt
+`_value` ist der einzige gespeicherte Zustand — restauriert über
+`RestoreSensor`, seit dem letzten Blick auf `Totals` um die Differenz erhöht.
+Es gibt keine `increment_cycling_counter()`-Funktion mehr, die die Entity über
+den State-Store sucht und per Service-Call aktualisiert; die Entity liest den
+Coordinator direkt als Python-Objekt.
 
-**Unterschied zu Energy-Sensoren**:
-- Energy-Sensoren verwenden Differenzberechnung (`daily = total - yesterday`)
-- Cycling-Sensoren speichern Yesterday-Wert in separatem Sensor
+## Reset-Logik
 
-### 8. Cycling-Offsets
+Beim Rollover-Signal ihrer Periode (siehe
+[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zähler-reset))
+wird `_value` schlicht auf `0.0` gesetzt — bei einem **Tages**-Zähler geht der
+zuletzt erreichte Wert vorher an den passenden `YesterdayCycleSensor`:
 
-Cycling-Offsets werden in `lambda_wp_config.yaml` konfiguriert:
+```python
+# sensor.py
+@callback
+def _handle_rollover(self) -> None:
+    if self._yesterday is not None:
+        self._yesterday.set_value(self._value)
+    self._value = 0.0
+    self.async_write_ha_state()
+```
+
+`YesterdayCycleSensor` (`sensor.py`) hält selbst keinen laufenden Zähler — er
+existiert nur, um den letzten Tageswert bis zum nächsten Rollover
+festzuhalten, und wird beim Start ebenfalls über `RestoreSensor`
+wiederhergestellt.
+
+## Cycling-Offsets
+
+Offsets für Total-Zähler kommen aus `lambda_wp_config.yaml`
+(`cycling_offsets`) und werden **einmalig** beim Hinzufügen der Entity
+angewendet — derselbe Mechanismus wie bei Energie-Zählern, siehe
+[Offset-System](offset-system.md).
 
 ```yaml
 cycling_offsets:
   hp1:
-    heating_cycling_total: 1500    # Positive Werte addieren
-    hot_water_cycling_total: -50   # Negative Werte subtrahieren (z. B. zur Korrektur)
+    heating_cycling_total: 1500
+    hot_water_cycling_total: -50   # negative Werte sind erlaubt
 ```
 
-Offsets werden **ausschließlich** durch `_apply_cycling_offset()` in `sensor.py` angewendet — einmalig beim Start jedes Total-Sensors:
+## Unterschiede zu Energie-Zählern
 
-```python
-# In LambdaCyclingSensor._apply_cycling_offset()
-async def _apply_cycling_offset(self):
-    """Apply cycling offset from configuration."""
-    config = await load_lambda_config(self.hass)
-    cycling_offsets = config.get("cycling_offsets", {})
-
-    device_key = f"hp{self._hp_index}"
-    current_offset = cycling_offsets[device_key].get(self._sensor_id, 0)
-    applied_offset = getattr(self, "_applied_offset", 0)
-
-    # Berechne Differenz zwischen konfiguriertem und bereits angewendetem Offset
-    offset_difference = current_offset - applied_offset
-
-    if offset_difference != 0:
-        old_value = self._cycling_value
-        self._cycling_value = int(self._cycling_value + offset_difference)
-        self._applied_offset = current_offset
-        self.async_write_ha_state()
-```
-
-**`increment_cycling_counter()` kennt keinen Offset** — das war ein früherer Bug (B-1), der dazu führte, dass der volle YAML-Offset bei jedem Zyklus-Ereignis erneut addiert wurde. Nach dem Fix liegt die alleinige Verantwortung bei `_apply_cycling_offset()`.
-
-**Wichtig**:
-- Offsets werden nur beim HA-Start angewendet (in `async_added_to_hass()` → `_apply_cycling_offset()`)
-- Nur Total-Sensoren unterstützen Offsets
-- Der angewendete Offset wird in `_applied_offset` gespeichert und über `applied_offset`-Attribut persistiert
-- Bei YAML-Änderung wird nach Neustart nur die **Differenz** zum bisher angewendeten Wert addiert — keine Doppelanwendung
-- Positive und **negative** Offsets sind erlaubt
-
-### 9. Persistenz
-
-Cycling-Sensoren verwenden Home Assistant's `RestoreEntity`:
-
-```python
-class LambdaCyclingSensor(RestoreEntity, SensorEntity):
-    async def async_added_to_hass(self):
-        """Initialize the sensor when added to Home Assistant."""
-        await super().async_added_to_hass()
-        
-        # RestoreEntity provides async_get_last_state() method
-        last_state = await self.async_get_last_state()
-        await self.restore_state(last_state)
-    
-    async def restore_state(self, last_state):
-        """Restore state from database to prevent reset on reload."""
-        if last_state is not None:
-            last_value = last_state.state
-            if last_value not in (None, "unknown", "unavailable"):
-                self._cycling_value = int(float(last_value))
-            
-            # Restore applied offset
-            if hasattr(last_state, 'attributes') and last_state.attributes:
-                self._applied_offset = last_state.attributes.get("applied_offset", 0)
-        
-        # Apply cycling offset for total sensors
-        if self._sensor_id.endswith("_total"):
-            await self._apply_cycling_offset()
-```
-
-**Persistierte Daten**:
-- `_cycling_value`: Der aktuelle Zählerwert
-- `_applied_offset`: Der bereits angewendete Offset (nur Total-Sensoren)
-
-**Wichtig**: 
-- Werte werden automatisch von Home Assistant persistiert
-- Bei Neustart werden die Werte wiederhergestellt
-- Offsets werden nach der Wiederherstellung angewendet
-
-### 10. Entity-Registrierung
-
-Cycling-Entities werden in `hass.data` registriert:
-
-```python
-# In sensor.py async_setup_entry()
-if entry.entry_id not in hass.data["lambda_heat_pumps"]:
-    hass.data["lambda_heat_pumps"][entry.entry_id] = {}
-
-if "cycling_entities" not in hass.data["lambda_heat_pumps"][entry.entry_id]:
-    hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"] = {}
-
-# Registriere Entity
-hass.data["lambda_heat_pumps"][entry.entry_id]["cycling_entities"][entity_id] = sensor
-```
-
-Die Registrierung ermöglicht:
-- Zugriff auf Entity-Instanzen von `increment_cycling_counter()`
-- Zugriff auf Entity-Instanzen von Automations (Yesterday-Update)
-- Fehlerbehandlung bei nicht registrierten Entities
-
-### 11. Unterschiede zu Energy-Sensoren
-
-| Aspekt | Cycling-Sensoren | Energy-Sensoren |
+| Aspekt | Cycling-Zähler | Energie-Zähler |
 |--------|------------------|-----------------|
-| **Berechnung** | Zählt State-Wechsel | Misst kumulative Energie |
-| **Reset-Logik** | Direkt auf 0 setzen | Differenzberechnung (`daily = total - yesterday`) |
-| **Yesterday** | Separater Sensor | Attribut `_yesterday_value` |
-| **Increment** | +1 bei Flanke | Delta-Addition (kWh) |
-| **Offsets** | Nur Total-Sensoren | Nur Total-Sensoren |
-| **Perioden-Synchronisation** | Alle Perioden unabhängig | Alle Perioden gleichzeitig (gleiches Delta) |
-| **Quellsensor** | Operating State Register | Compressor Power/Thermal Energy Register |
-
-## Fehlerbehandlung
-
-### 1. Entity nicht registriert
-
-Wenn `increment_cycling_counter()` eine Entity nicht findet:
-
-```python
-cycling_entity = find_cycling_entity(hass, entity_id)
-if cycling_entity is None:
-    # Fallback: State setzen
-    hass.states.async_set(entity_id, final_value, ...)
-    _LOGGER.warning(f"Cycling entity {entity_id} not found, using fallback state update")
-```
-
-**Dynamische Meldungsunterdrückung**: Die ersten 3 Fehler werden als Debug, weitere als Warning geloggt.
-
-### 2. State nicht verfügbar
-
-Wenn der State nicht verfügbar ist:
-
-```python
-state_obj = hass.states.get(entity_id)
-if state_obj is None:
-    # Dynamische Meldungsunterdrückung
-    warning_count = coordinator._cycling_warnings.get(entity_id, 0)
-    if warning_count < coordinator._max_cycling_warnings:
-        _LOGGER.debug(f"Entity {entity_id} state not available yet")
-    else:
-        _LOGGER.warning(f"Entity {entity_id} state not available after {max} attempts")
-    continue
-```
-
-### 3. Initialisierung während Flankenerkennung
-
-Flankenerkennung wird während der Initialisierung unterdrückt:
-
-```python
-if not self._initialization_complete:
-    _LOGGER.debug("Flankenerkennung während Initialisierung unterdrückt")
-    return
-```
-
-## Erweiterbarkeit
-
-### Neue Betriebsmodi hinzufügen
-
-1. Sensor-Template in `const.py` hinzufügen:
-```python
-"new_mode_cycling_total": {
-    "name": "New Mode Cycling Total",
-    "unit": "cycles",
-    "precision": 0,
-    "data_type": "calculated",
-    "state_class": "total_increasing",
-    "device_class": None,
-    "mode_value": X,  # Modbus-Wert
-    "operating_state": "new_mode",
-    "period": "total",
-}
-```
-
-2. Mode-Wert im `MODES`-Dict in `_run_cycling_edge_detection()` ergänzen:
-```python
-MODES = {
-    "heating": 1,
-    "hot_water": 2,
-    "cooling": 3,
-    "defrost": 5,
-    "new_mode": NEW_MODE_VALUE,  # neu
-}
-```
-
-### Neue Perioden hinzufügen
-
-1. Sensor-Template in `const.py` hinzufügen
-2. Reset-Signal in `automations.py` hinzufügen (falls nicht vorhanden)
-3. Reset-Handler in `LambdaCyclingSensor._handle_reset()` erweitern (einheitliche Methode)
-4. Sensor-Erstellung in `sensor.py` erweitern
-5. Reset-Automatisierung in `reset_manager.py` hinzufügen
-6. Increment-Logik in `utils.py` erweitern (falls nötig)
+| Klasse | `LambdaCounterSensor` | `LambdaCounterSensor` (identisch) |
+| Coordinator-Quelle | `Totals.cycles[mode]` | `Totals.electrical[mode]` / `Totals.thermal[mode]` |
+| Erhöhung pro Ereignis | +1 pro erkannter Flanke | Delta aus Controller-Register oder externem Zähler |
+| Reset-Verhalten | Identisch: `_value = 0.0`, ggf. an Yesterday übergeben | Identisch |
+| Yesterday-Sensor | Ja, für `_cycling_daily` | Nein — es gibt kein Energie-Äquivalent mehr |
 
 ## Debugging
 
-### Logging
+In Home Assistant: Entwicklertools → Zustände, z. B.
+`sensor.eu08l_hp1_heating_cycling_total`. Diagnose-Download (siehe
+[Features – Diagnose-Download](features.md#diagnose-download)) enthält
+zusätzlich `coordinator.totals`, also die vom Coordinator seit HA-Start
+gezählten Rohwerte unabhängig vom Entity-eigenen Restore-Stand.
 
-Cycling-Sensoren verwenden strukturiertes Logging:
+## Verwandte Dokumentation
 
-```python
-_LOGGER.info(f"Cycling counter incremented: {entity_id} = {new_value} (was {current}) [entity updated]")
-_LOGGER.debug(f"Cycling sensor {entity_id} value set to {value}")
-_LOGGER.warning(f"Cycling entity {entity_id} not found, using fallback state update")
-```
-
-### Entity-Attribute
-
-Total-Sensoren haben folgende Attribute:
-- `yesterday_value`: Wert von gestern (nur Total)
-- `hp_index`: Index der Wärmepumpe
-- `sensor_type`: "cycling_total"
-- `applied_offset`: Angewendeter Offset (nur Total)
-
-### State-Überprüfung
-
-In Home Assistant:
-- Developer Tools > States: `sensor.eu08l_hp1_heating_cycling_total`
-- Developer Tools > Services: `homeassistant.reload_config_entry`
-- Logs: Suche nach "Cycling counter incremented"
-
-## Zusammenfassung
-
-Cycling-Sensoren sind einfacher als Energy-Sensoren, da sie:
-- Direkt auf 0 zurückgesetzt werden (keine Differenzberechnung)
-- State-Wechsel zählen (keine kontinuierliche Messung)
-- Unabhängige Perioden haben (keine Synchronisation nötig)
-
-Die Architektur ermöglicht:
-- Robuste Flankenerkennung
-- Persistenz über Neustarts
-- Konfigurierbare Offsets
-- Yesterday-Werte für Daily-Sensoren
-- Automatische Reset-Logik
-
+- [Features – Cycling- und Energie-Zähler](features.md)
+- [Offset-System](offset-system.md)
+- [Ablaufdiagramm](Ablaufdiagramm.md)

@@ -4,7 +4,7 @@ title: "Features"
 
 # Features der Lambda Heat Pumps Integration
 
-*Zuletzt geändert am 16.04.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und Überwachung Ihrer Lambda-Wärmepumpe über Home Assistant. Hier finden Sie eine Übersicht aller verfügbaren Features.
 
@@ -101,22 +101,25 @@ Ein beliebiger Sensor, der den PV-Überschuss eurer PV-Anlage darstellt, kann hi
 ## 🎛️ Erweiterte Konfiguration
 
 ### YAML-basierte Konfiguration
-- **`lambda_wp_config.yaml`**: Erweiterte Konfigurationsmöglichkeiten
-- **Register-Deaktivierung**: Deaktivierung einzelner Register bei Firmware-Inkompatibilitäten
-- **Sensor-Namensüberschreibungen**: Anpassung von Sensor-Namen
+- **`lambda_wp_config.yaml`**: Für die Dinge, die es sonst nirgends gibt
 - **Cycling-Offsets**: Anpassung von Zählerständen
+- **Energieverbrauchs-Offsets**: Anpassung von Energie-Zählerständen
 - **Energieverbrauchssensoren**: Konfiguration externer Energiezähler
-- **Register-Reihenfolge**: Konfiguration für 32-Bit-Register
 
-Die optionene Konfiguration über die Lambda_wp_config.yaml ist hier erklärt [Optionale Konfiguration](lambda-wp-config.md)
+Register deaktivieren oder Sensoren umbenennen geht seit Version 3.5 direkt in Home Assistant (Entität deaktivieren/umbenennen), nicht mehr über diese Datei. Die optionale Konfiguration über die `lambda_wp_config.yaml` ist hier erklärt: [Optionale Konfiguration](lambda-wp-config.md)
 
 ### Integration-Optionen
 Nach der Ersteinrichtung können Sie zusätzliche Einstellungen anpassen:
 - Warmwassertemperaturbereich (min/max)
 - Heizkreistemperaturbereich (min/max)
 - Temperaturstufengröße
+- Abfrage-Intervall
+- Register-Reihenfolge (für 32-Bit-Register)
 - Raumthermostatsteuerung
+- Kühlmodus-Steuerung
 - PV-Überschuss-Steuerung
+
+Die Firmware-Version gehört **nicht** zu diesen Optionen – sie wird nur beim Ersteinrichten oder über „Neu konfigurieren" gesetzt (siehe [Optionen des config_flow](optionen-config-flow.md)).
 
 ## 🔧 Modbus-Aktionen
 

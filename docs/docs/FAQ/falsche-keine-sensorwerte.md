@@ -24,24 +24,20 @@ Leider kann nicht automatisch ermittelt werden, welche Register Reihenfolge die 
 
 ### Lösung
 
-In der **lambda_wp_config.yaml** die Register-Reihenfolge für 32-Bit-Werte anpassen:
+Seit Version 3.5 stellen Sie die Register-Reihenfolge für 32-Bit-Werte als **Integrations-Option** ein, nicht mehr in der `lambda_wp_config.yaml`:
 
-```yaml
-modbus:
-  # "high_first" = Höherwertiges Register zuerst (Standard)
-  # "low_first" = Niedrigwertiges Register zuerst
-  int32_register_order: "high_first"   # oder "low_first"
-```
+1. **Einstellungen** → **Geräte & Dienste** → Ihre Lambda-Integration → **Konfigurieren**
+2. Option **Register-Reihenfolge** auf `high_first` oder `low_first` stellen
 
 **Vorgehen:**
 
 1. Zeigen Ihre Sensoren **falsche** Werte → probieren Sie die andere Einstellung:
    - bisher `high_first` → auf `low_first` wechseln  
    - bisher `low_first` → auf `high_first` wechseln  
-2. Nach Änderung die Integration neu laden oder Home Assistant neu starten.
+2. Die Änderung lädt die Integration automatisch neu.
 3. Werte prüfen; bei korrekter Einstellung sollten die Anzeigen mit der Lambda-Software übereinstimmen.
 
-Weitere Hinweise und Firmware-Anpassungen: [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md). Die technische Beschreibung (Register-Reihenfolge, Implementierung) ist in der Projekt-Dokumentation unter `docs_md/issue22_endianness_fix.md` (Issue #22) zu finden.
+Weitere Hinweise und Firmware-Anpassungen: [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md).
 
 ---
 
@@ -56,25 +52,17 @@ Weitere Hinweise und Firmware-Anpassungen: [Anpassungen der Sensoren abhängig v
 
 ### Lösung
 
-Nicht unterstützte oder fehlerhafte Register in der **lambda_wp_config.yaml** deaktivieren:
-
-```yaml
-disabled_registers:
-  - 2004   # Beispiel: boil1_actual_circulation_temp (nicht verfügbar)
-  - 2005   # Weitere Register, die Fehler verursachen
-```
+Seit Version 3.5 gibt es kein `disabled_registers` in der `lambda_wp_config.yaml` mehr – deaktivieren Sie stattdessen die betroffene **Entität** direkt in Home Assistant:
 
 **Vorgehen:**
 
-1. Im Home-Assistant-Log die **Register-Adresse** des fehlschlagenden Zugriffs ermitteln. Oder die Register Info aus den Attributen des Sensors auslesen. [Attribute des Sensors auslesen](../Anwender/attribute-sensoren-de.md).
-2. Diese Adresse (als Zahl) unter `disabled_registers` in der **lambda_wp_config.yaml** eintragen.
-3. Konfiguration speichern und Integration neu laden (oder Home Assistant neu starten).
+1. Den betroffenen Sensor in Home Assistant öffnen (Einstellungen → Geräte & Dienste → Entitäten, oder direkt über die Detailseite).
+2. Auf das **Zahnrad** klicken und die Entität **deaktivieren**.
+3. Optional: Bei zusätzlichen Log-Fehlern die Firmware-Version in den Integrations-Optionen prüfen – ein Register, das Ihre Firmware laut Konfiguration nicht haben sollte, wird ohnehin nicht gelesen (siehe [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md)).
 
-Damit wird das Register nicht mehr gelesen; der zugehörige Sensor bleibt ohne Wert oder wird nicht angeboten, dafür verschwinden die Fehler und andere Sensoren arbeiten normal.
+Eine deaktivierte Entität wird nicht mehr abgefragt, dadurch verschwinden die zugehörigen Fehler im Log.
 
-Der betreffende Sensor kann dann aus dem Dashboard in Home Assistant gelöscht werden.
-
-Ausführliche Anleitung zur Konfiguration: [lambda_wp_config.yaml – disabled_registers](../Anwender/lambda-wp-config.md) bzw. [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md).
+Ausführliche Anleitung: [Entitäten löschen](../Anwender/entitaeten_loeschen.md).
 
 ---
 

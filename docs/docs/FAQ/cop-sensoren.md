@@ -4,7 +4,7 @@ title: "FAQ – COP-Sensoren"
 
 # COP-Sensoren: Periodische Werte und Anzeige
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 ## Periodische COP-Werte bauen sich erst auf
 
@@ -14,19 +14,16 @@ Die **periodischen** COP-Sensoren (Daily, Monthly, Yearly) beziehen ihre Werte a
 - **Monthly (Monatlich)**: Erst im Lauf des Monats füllen sich die zugrundeliegenden Monatswerte; der COP ist erst nach einiger Zeit aussagekräftig.
 - **Yearly (Jährlich)**: Der Jahres-COP wird erst im Lauf des Jahres mit Werten gefüllt.
 
-## Unknown oder 0, wenn noch keine Berechnung stattgefunden hat
+## Unknown, wenn noch keine Berechnung möglich ist
 
-Bis die Quellsensoren (thermische und elektrische Energie) für den jeweiligen Zeitraum Werte liefern, kann der COP-Sensor
-
-- **`unknown`** anzeigen (wenn die Berechnung noch nicht möglich ist), oder  
-- **`0`** anzeigen (wenn z. B. noch keine elektrische Energie erfasst wurde).
+Bis die Quellsensoren (thermische und elektrische Energie) für den jeweiligen Zeitraum Werte liefern, zeigt der COP-Sensor **`unknown`** – nie `0`, weil ein COP von 0 fälschlich eine (schlechte) Effizienz behaupten würde statt „noch keine Daten“.
 
 Das ist **kein Fehler**: Sobald in der Periode sowohl thermische als auch elektrische Energie anfällt, wird der COP berechnet und angezeigt.
 
-So sind die COP Entitäten für das Kühlen solange "unknown" oder "0", bis die Wärmepumpe im Betriebsmodus Kühlen gewesen ist.
+So bleiben die COP-Entitäten für das Kühlen so lange `unknown`, bis die Wärmepumpe im Betriebsmodus Kühlen gelaufen ist.
 
-## Total-COP und Baseline
+## Kein Baseline-Mechanismus mehr nötig (seit 3.5)
 
-Der **Total-COP** nutzt eine **Baseline** (Stichtag), weil die elektrischen Verbrauchssensoren oft länger im System sind als die thermischen. Der Total-COP entspricht dem COP **seit Einführung der thermischen Sensoren** (Deltas seit Baseline). Direkt nach dem Setzen der Baseline kann der Total-COP kurzzeitig noch `unknown` oder `0` sein, bis beide Deltas (thermisch und elektrisch) positiv sind.
+Bis Version 3.4 nutzte der Total-COP eine **Baseline** (Stichtag), weil die thermischen Energiezähler erst nachträglich zur Integration hinzukamen, während die elektrischen schon länger liefen. Seit dem 3.5-Rewrite werden pro Wärmepumpe **beide** Zähler eines Modus gleichzeitig angelegt und zählen ab demselben Zeitpunkt; eine Baseline-Korrektur ist dafür nicht mehr nötig, der Total-COP ist eine direkte Division der beiden Zähler.
 
 Vollständige Beschreibung der COP-Sensoren: [Anwender – COP-Sensoren (Leistungszahl)](../Anwender/cop-sensoren.md).

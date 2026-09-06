@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
+import yaml
 from homeassistant.core import HomeAssistant, State
 import pytest
 from pytest_homeassistant_custom_component.common import mock_restore_cache_with_extra_data
@@ -137,6 +139,50 @@ async def test_a_broken_section_does_not_cost_the_others(
     assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "0"
 
 
+async def test_a_malformed_value_is_dropped_but_the_rest_of_the_file_is_kept(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A value that cannot be coerced costs only the section it is in."""
+    write_config(
+        hass,
+        "cycling_offsets:\n"
+        "  hp1:\n"
+        "    heating_cycling_total: not_a_number\n"
+        "energy_consumption_offsets:\n"
+        "  hp1:\n"
+        "    heating_energy_total: 12.5\n",
+    )
+    await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_hp1_heating_energy_total") == "12.5"
+    assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "0"
+
+
+async def test_a_file_that_is_not_a_mapping_is_ignored(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A file that does not even describe sections changes nothing, and says so."""
+    write_config(hass, "- just\n- a\n- list\n")
+
+    await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "0"
+    assert "should describe sections" in caplog.text
+
+
+async def test_a_file_that_cannot_be_read_is_ignored(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A read failure (permissions, a symlink loop, ...) costs nothing either."""
+    write_config(hass, "cycling_offsets:\n  hp1:\n    heating_cycling_total: 5\n")
+
+    with patch("yaml.safe_load", side_effect=yaml.YAMLError("broken")):
+        await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_hp1_heating_cycling_total") == "0"
+    assert "Could not read" in caplog.text
+
+
 async def test_energy_is_counted_from_a_meter_when_one_is_given(
     hass: HomeAssistant, controller: Controller
 ) -> None:
@@ -186,3 +232,48 @@ async def test_a_meter_that_is_not_reporting_books_nothing(
     await hass.async_block_till_done()
 
     assert not coordinator.totals[1].electrical
+
+
+async def test_a_meter_reading_that_is_not_a_number_books_nothing(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A meter stuck on some non-numeric string is not booked either."""
+    caplog.set_level("DEBUG", logger="custom_components.lambda_heat_pumps.coordinator")
+    write_config(
+        hass,
+        "energy_consumption_sensors:\n"
+        "  hp1:\n"
+        "    sensor_entity_id: sensor.house_heat_pump_meter\n",
+    )
+    hass.states.async_set(
+        "sensor.house_heat_pump_meter", "not_a_number", {"unit_of_measurement": "kWh"}
+    )
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert not coordinator.totals[1].electrical
+    assert "does not read as a number" in caplog.text
+
+
+async def test_a_meter_with_an_uncountable_unit_books_nothing(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A meter that is not reporting an energy at all is not guessed at."""
+    write_config(
+        hass,
+        "energy_consumption_sensors:\n"
+        "  hp1:\n"
+        "    sensor_entity_id: sensor.house_heat_pump_meter\n",
+    )
+    hass.states.async_set(
+        "sensor.house_heat_pump_meter", "40", {"unit_of_measurement": "W"}
+    )
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert not coordinator.totals[1].electrical
+    assert "is not an energy this can count" in caplog.text

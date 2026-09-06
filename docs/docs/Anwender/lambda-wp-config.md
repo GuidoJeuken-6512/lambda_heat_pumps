@@ -4,9 +4,15 @@ title: "lambda_wp_config.yaml Konfiguration"
 
 # lambda_wp_config.yaml Konfiguration
 
-*Zuletzt geändert am 28.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
-Die `lambda_wp_config.yaml` Datei ist die Hauptkonfigurationsdatei für erweiterte Einstellungen der Lambda Heat Pumps Integration. Sie ermöglicht es, Sensoreinstellungen, Energieverbrauchserfassung und Modbus-Kommunikationsparameter anzupassen.
+Die `lambda_wp_config.yaml` Datei deckt seit Version 3.5 nur noch drei Dinge ab, für die Home Assistant selbst keinen Platz hat: manuelle Zähler-Offsets (Cycling und Energie) und externe Energiezähler. Alles andere, was diese Datei früher regelte, hat einen eigenen Home-Assistant-Weg bekommen:
+
+| Frühere Einstellung | Heutiger Weg |
+|---|---|
+| Register deaktivieren | Entität in Home Assistant deaktivieren (siehe [Entitäten löschen](entitaeten_loeschen.md)) |
+| Sensor-Namen überschreiben | Entität in Home Assistant umbenennen |
+| Register-Reihenfolge für 32-Bit-Werte | Integrations-Option „Register-Reihenfolge" (siehe [Optionen des config_flow](optionen-config-flow.md)) |
 
 ## Datei-Location
 
@@ -16,7 +22,7 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 /config/lambda_wp_config.yaml
 ```
 
-**Hinweis**: Falls die Datei nicht existiert, wird sie beim ersten Start der Integration automatisch erstellt.
+**Hinweis**: Falls die Datei nicht existiert, wird sie beim ersten Start der Integration automatisch erstellt – vollständig auskommentiert, als Vorlage zum Eintragen eigener Werte.
 
 ## Datei bearbeiten
 
@@ -39,68 +45,13 @@ Die Konfigurationsdatei befindet sich im folgenden Verzeichnis:
 
 - **Einrückungen**: Verwenden Sie **Leerzeichen** (keine Tabs)
 - **Doppelpunkt**: Nach jedem Schlüssel muss ein Doppelpunkt (`:`) folgen
-- **Bindestriche**: Für Listen verwenden Sie Bindestriche (`-`)
 - **Anführungszeichen**: Verwenden Sie Anführungszeichen für Strings mit Sonderzeichen
 
+Ein fehlerhafter Abschnitt wird beim Einlesen übersprungen und in den Logs gemeldet; die übrigen Abschnitte bleiben davon unberührt.
 
 ## Konfigurationsoptionen
 
-### 1. Deaktivierte Register
-
-Deaktiviert spezifische Modbus-Register, die nicht benötigt werden oder Probleme verursachen.
-
-Wie Sie die Register-Nummer eines Sensors herausfinden (Attribut „register“), beschreibt die Anleitung [Register eines Sensors herausfinden](attribute-sensoren-de.md).
-
-```yaml
-disabled_registers:
-  - 2004  # boil1_actual_circulation_temp
-  - 100000  # Beispiel deaktiviertes Register
-```
-
-**Wann verwenden?**
-- Register verursacht Fehler im Log
-- Register wird von Ihrer Firmware-Version nicht unterstützt
-- Register wird nicht benötigt und reduziert Modbus-Traffic z.B. nicht vorhandene Zirkulationspumpe
-
-**Beispiel:**
-```yaml
-disabled_registers:
-  - 2004  # Kessel-Zirkulationstemperatur (nicht verfügbar)
-  - 2005
-```
-
-Die zugehörigen Entitäten werden von der Integration nicht mehr bereitgestellt und erscheinen in Home Assistant als „nicht verfügbar“. Um sie zu entfernen, siehe [Entitäten löschen](entitaeten_loeschen.md).
-
-### 2. Sensor-Name-Überschreibungen
-
-Überschreibt Standard-Sensornamen für bessere Lesbarkeit oder Lokalisierung.
-**Bitte sehr vorsichtig mit dieser Option sein und auf jeden Fall vorher ein Backup von Home Assistant  machen** 
-Um hsitorische Daten anderer Sensoren zu übernehmen ist dieser Schritt besser geeignet:  [Historische Daten übernehmen](historische-daten.md)
-
-```yaml
-sensors_names_override:
-  - id: hp1_flow_temp
-    override_name: "Wohnzimmer Temperatur"
-  - id: hp1_return_temp
-    override_name: "Rücklauf Temperatur"
-```
-
-**Wann verwenden?**
-- bei Migration von einer anderen Lösung zu dieser Integration um historische Daten der alten Sensoren zu erhalten
-
-
-**Beispiel:**
-```yaml
-sensors_names_override:
-  - id: hp1_flow_temp
-    override_name: "Vorlauf Wohnzimmer"
-  - id: hp1_return_temp
-    override_name: "Rücklauf Wohnzimmer"
-  - id: hp1_operating_state
-    override_name: "Betriebszustand"
-```
-
-### 3. Cycling-Zähler-Offsets
+### 1. Cycling-Zähler-Offsets
 
 Fügt Offsets zu Cycling-Zählern für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen, nach einem Zählerreset oder zur Korrektur eines falschen Ausgangswertes. Positive und **negative** Werte sind erlaubt.
 
@@ -116,7 +67,7 @@ cycling_offsets:
 
 Ausführliche Beschreibung, alle Szenarien und negative Offsets: [Offsets – Historische Daten übernehmen](offsets.md)
 
-### 4. Energieverbrauchs-Sensoren
+### 2. Energieverbrauchs-Sensoren
 
 Definiert, welche Sensoren die Basis-Energieverbrauchsdaten liefern. Pro Wärmepumpe können Sie **elektrischen** und **thermischen** Verbrauch getrennt konfigurieren.
 
@@ -140,7 +91,7 @@ energy_consumption_sensors:
 | Elektrisch | `sensor.eu08l_hp1_compressor_power_consumption_accumulated` | `sensor.eu08l_hp2_compressor_power_consumption_accumulated` | … |
 | Thermisch  | `sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated` | `sensor.eu08l_hp2_compressor_thermal_energy_output_accumulated` | … |
 
-**Hinweis:** Die Quellsensoren müssen kumulative Verbrauchswerte in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh.
+**Hinweis:** Die Quellsensoren müssen kumulative Verbrauchswerte in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh. Liefert ein konfigurierter externer Sensor gerade `unknown`/`unavailable`, wird für diesen Poll nichts gebucht – die Integration schaltet nicht automatisch auf das Controller-Register zurück.
 
 **Beispiel: Nur elektrischer externer Sensor (Shelly3EM), thermisch intern**
 ```yaml
@@ -151,7 +102,7 @@ energy_consumption_sensors:
 
 Weitere Informationen: [Energieverbrauchsberechnung](Energieverbrauchsberechnung.md)
 
-### 5. Energieverbrauchs-Offsets
+### 3. Energieverbrauchs-Offsets
 
 Fügt Offsets zu Energieverbrauchswerten für Total-Sensoren hinzu. Nützlich beim Austausch von Wärmepumpen, nach einem Zählerreset oder zur Korrektur eines falschen Ausgangswertes.
 
@@ -172,54 +123,9 @@ energy_consumption_offsets:
 
 Ausführliche Beschreibung, alle Szenarien, thermische Offsets und negative Offsets: [Offsets – Historische Daten übernehmen](offsets.md)
 
-### 6. Modbus-Konfiguration
-
-Konfiguriert Modbus-Kommunikationsparameter für 32-Bit-Register.
-
-```yaml
-modbus:
-  # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
-  # "high_first" = Höherwertiges Register zuerst (Standard)
-  # "low_first" = Niedrigwertiges Register zuerst
-  int32_register_order: "high_first"  # oder "low_first"
-```
-
-**Optionen:**
-- **"high_first"**: Höherwertiges Register zuerst (Standard für die meisten Lambda-Modelle)
-- **"low_first"**: Niedrigwertiges Register zuerst (für bestimmte Lambda-Modelle oder Firmware-Versionen)
-
-**Wann verwenden?**
-- Falsche Werte in 32-Bit-Sensoren (z.B. Energieverbrauchssensoren)
-- Nach Firmware-Update, wenn Sensoren falsche Werte anzeigen
-- Bei bestimmten Lambda-Modellen, die eine andere Register-Reihenfolge benötigen
-
-**Beispiel: Falsche Werte korrigieren**
-```yaml
-modbus:
-  int32_register_order: "low_first"  # Wechsel von "high_first" zu "low_first"
-```
-
-**Hinweis**: 
-- Alte Config mit `int32_byte_order` oder alten Werten (`big`/`little`) wird automatisch erkannt und migriert
-- Nach Änderung Home Assistant neu starten
-
-Weitere Informationen: [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md)
-
 ## Vollständiges Beispiel
 
 ```yaml
-# Problematische Register deaktivieren
-disabled_registers:
-  - 2004  # boil1_actual_circulation_temp
-  - 100000
-
-# Sensornamen überschreiben 
-sensors_names_override:
-  - id: hp1_flow_temp
-    override_name: "Wohnzimmer Temperatur"
-  - id: hp1_return_temp
-    override_name: "Rücklauf Temperatur"
-
 # Cycling-Zähler-Offsets
 cycling_offsets:
   hp1:
@@ -255,10 +161,6 @@ energy_consumption_offsets:
     hot_water_energy_total: 45.2
     cooling_energy_total: 12.8
     defrost_energy_total: 3.1
-
-# Modbus-Konfiguration
-modbus:
-  int32_register_order: "high_first"  # oder "low_first" für einige Geräte
 ```
 
 ## Anwendung der Konfiguration
@@ -266,7 +168,7 @@ modbus:
 ### Schritt 1: Datei bearbeiten
 
 1. **Datei öffnen:**
-   - Öffnen Sie `/config/lambda_heat_pumps/lambda_wp_config.yaml`
+   - Öffnen Sie `/config/lambda_wp_config.yaml`
    - Falls die Datei nicht existiert, wird sie beim nächsten Start automatisch erstellt
 
 2. **Konfiguration hinzufügen:**
@@ -278,19 +180,13 @@ modbus:
    - Speichern Sie die Datei
    - Überprüfen Sie die YAML-Syntax (z.B. mit einem Online-YAML-Validator)
 
-### Schritt 2: Home Assistant neu starten
+### Schritt 2: Home Assistant neu starten (oder Integration neu laden)
 
-1. **Home Assistant neu starten:**
-   - Starten Sie Home Assistant vollständig neu
-   - Die Konfiguration wird beim Start automatisch geladen
+Die Datei wird einmal pro Setup gelesen – ein Reload der Integration genügt, ein voller HA-Neustart ist nicht zwingend nötig.
 
-2. **Überprüfen Sie die Logs:**
-   - Überprüfen Sie die Home Assistant Logs auf Konfigurationsfehler
-   - Die Integration validiert die Konfiguration beim Start
-
-3. **Überprüfen Sie die Sensoren:**
-   - Überprüfen Sie, ob die Änderungen korrekt angewendet wurden
-   - Überprüfen Sie die Sensor-Namen, Offsets, etc.
+1. **Integration neu laden oder Home Assistant neu starten**
+2. **Überprüfen Sie die Logs** auf Konfigurationsfehler
+3. **Überprüfen Sie die Sensoren:** Offsets, Quellsensoren etc. korrekt angewendet?
 
 ## Häufige Probleme
 
@@ -304,15 +200,9 @@ modbus:
 - Überprüfen Sie Doppelpunkte nach Schlüsseln
 - Überprüfen Sie Anführungszeichen für Strings
 
-
 ## Validierung
 
-Die Integration validiert die Konfiguration automatisch beim Start:
-
-- **YAML-Syntax**: Überprüfung der Datei-Syntax
-- **Sensor-Existenz**: Überprüfung, ob konfigurierte Sensoren existieren
-- **Werte-Bereiche**: Überprüfung von Temperatur- und Offset-Werten
-- **Log-Meldungen**: Alle Probleme werden in den Logs protokolliert
+Die Integration validiert die Konfiguration automatisch beim Start. Ein fehlerhafter Abschnitt wird übersprungen und in den Logs gemeldet, statt die gesamte Datei zu verwerfen.
 
 **Tipp**: Überprüfen Sie die Home Assistant Logs nach jedem Neustart, um Konfigurationsfehler frühzeitig zu erkennen.
 
@@ -324,5 +214,4 @@ Nach der Konfiguration der `lambda_wp_config.yaml` können Sie:
 
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) mit externen Sensoren einrichten
-- [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md) vornehmen
-
+- [Optionen des config_flow](optionen-config-flow.md) – dort finden Sie u. a. die Register-Reihenfolge

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+import yaml
 from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER, ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import HomeAssistant
@@ -129,6 +131,33 @@ async def test_an_older_entry_is_brought_forward(
     assert entry.options[CONF_INT32_REGISTER_ORDER] == REGISTER_ORDER_LOW_FIRST
 
 
+async def test_an_unreadable_old_config_file_falls_back_to_the_default_order(
+    hass: HomeAssistant,
+    controller: Controller,
+    old_config_file,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A migration should not fail the whole entry over an unreadable old file."""
+    with patch("yaml.safe_load", side_effect=yaml.YAMLError("broken")):
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            version=8,
+            data={
+                CONF_NAME: "EU08L",
+                CONF_HOST: HOST,
+                CONF_PORT: float(PORT),
+                CONF_SLAVE_ID: float(SLAVE_ID),
+            },
+            options={CONF_FIRMWARE_VERSION: "V0.0.8-3K"},
+        )
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert entry.options[CONF_INT32_REGISTER_ORDER] == DEFAULT_INT32_REGISTER_ORDER
+    assert "Could not read the old config file" in caplog.text
+
+
 async def test_an_older_entry_without_the_config_file(
     hass: HomeAssistant, controller: Controller
 ) -> None:
@@ -183,3 +212,84 @@ async def test_dhcp_does_not_reoffer_a_configured_controller(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_reconfiguring_a_controller_that_moved(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A new address is accepted once it answers, and the entry is reloaded."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=ENTRY_VERSION,
+        data={
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V0.0.8-3K",
+            CONF_USE_LEGACY_MODBUS_NAMES: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await entry.start_reconfigure_flow(hass)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "EU08L",
+            CONF_HOST: "192.168.1.99",
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V0.0.8-3K",
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_HOST] == "192.168.1.99"
+
+
+async def test_reconfiguring_to_an_address_that_does_not_answer(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The old address is kept until the new one proves it is reachable."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=ENTRY_VERSION,
+        data={
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V0.0.8-3K",
+            CONF_USE_LEGACY_MODBUS_NAMES: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Refused only now, so the probe made at setup already succeeded.
+    controller.refuse(0)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "EU08L",
+            CONF_HOST: "192.168.1.100",
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V0.0.8-3K",
+        },
+    )
+
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "cannot_connect"}
+    assert entry.data[CONF_HOST] == HOST

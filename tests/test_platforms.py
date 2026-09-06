@@ -15,9 +15,13 @@ from homeassistant.components.number import (
 )
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
+from modbus_connection import ModbusTimeoutError
 
 from custom_components.lambda_heat_pumps.const import (
+    CONF_COOLING_MODE,
+    CONF_ROOM_TEMPERATURE_ENTITY,
     CONF_ROOM_THERMOSTAT_CONTROL,
     DOMAIN,
 )
@@ -154,6 +158,71 @@ async def test_the_hot_water_climate_keeps_its_controls_when_part_is_refused(
     )
     await hass.async_block_till_done()
     assert controller.registers[2050] == 550
+
+
+async def test_a_room_controlled_circuit_gets_its_own_thermostat(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """With a room sensor assigned, the circuit's own setpoint becomes settable."""
+    await setup_entry(
+        hass,
+        controller,
+        legacy=True,
+        options={
+            CONF_ROOM_THERMOSTAT_CONTROL: True,
+            CONF_ROOM_TEMPERATURE_ENTITY.format(1): "sensor.living_room",
+        },
+    )
+    climate = entity_id(hass, CLIMATE_DOMAIN, "eu08l_hc1_heating_circuit")
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: climate, ATTR_TEMPERATURE: 22.0},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # target_room_temperature, hc1: 5000 + 51.
+    assert controller.registers[5051] == 220
+
+
+async def test_cooling_mode_gives_the_circuit_its_own_thermostat(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Cooling mode adds a second climate entity, independent of room control."""
+    await setup_entry(
+        hass, controller, legacy=True, options={CONF_COOLING_MODE: True}
+    )
+    climate = entity_id(hass, CLIMATE_DOMAIN, "eu08l_hc1_cooling_circuit")
+
+    await hass.services.async_call(
+        CLIMATE_DOMAIN,
+        SERVICE_SET_TEMPERATURE,
+        {ATTR_ENTITY_ID: climate, ATTR_TEMPERATURE: 24.0},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    # set_cooling_mode_room_temperature, hc1: 5000 + 52.
+    assert controller.registers[5052] == 240
+
+
+async def test_a_refused_temperature_write_becomes_a_home_assistant_error(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The controller refusing a setpoint write is surfaced, not swallowed."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    climate = entity_id(hass, CLIMATE_DOMAIN, "eu08l_boil1_hot_water")
+    entry.runtime_data.unit.fail_write(2050, ModbusTimeoutError("no answer"))
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            CLIMATE_DOMAIN,
+            SERVICE_SET_TEMPERATURE,
+            {ATTR_ENTITY_ID: climate, ATTR_TEMPERATURE: 55.0},
+            blocking=True,
+        )
 
 
 async def test_a_circuit_only_becomes_a_thermostat_when_it_has_a_room(

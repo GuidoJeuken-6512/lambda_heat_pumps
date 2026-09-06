@@ -4,7 +4,7 @@ title: "Aktionen (read / write Modbus register)"
 
 # Aktionen (read / write Modbus register)
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Die Lambda Heat Pumps Integration bietet Actions zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für Automatisierungen, erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
 
@@ -20,15 +20,16 @@ Liest einen Wert aus einem Modbus-Register.
 - `register_address` (erforderlich): Die Adresse des zu lesenden Registers (Integer)
 
 **Rückgabewert:**
-- `value`: Der gelesene Wert (Integer)
+
+Der Service liefert seine Antwort als **Service-Response** zurück (`value`: der gelesene Wert, Integer) – es gibt **keinen** Sensor, der den zuletzt gelesenen Wert automatisch speichert. In Automatisierungen fangen Sie die Antwort mit `response_variable` ab:
 
 **Beispiel:**
 ```yaml
 actions:
   - action: lambda_heat_pumps.read_modbus_register
-    metadata: {}
     data:
       register_address: 1003
+    response_variable: register_result
 mode: single
 ```
 
@@ -41,13 +42,12 @@ automation:
         at: "12:00:00"
     actions:
       - action: lambda_heat_pumps.read_modbus_register
-        metadata: {}
         data:
           register_address: 1003
+        response_variable: register_result
       - action: system_log.write
-        metadata: {}
         data:
-          message: "Register 1003 Wert: {{ states('sensor.last_modbus_read') }}"
+          message: "Register 1003 Wert: {{ register_result.value }}"
     mode: single
 ```
 
@@ -59,7 +59,7 @@ Schreibt einen Wert in ein Modbus-Register.
 
 **Parameter:**
 - `register_address` (erforderlich): Die Adresse des zu schreibenden Registers (Integer)
-- `value` (erforderlich): Der zu schreibende Wert (Integer, Bereich: -32768 bis 32767)
+- `value` (erforderlich): Der zu schreibende Wert (Integer, Bereich: -32768 bis 65535 – negative Werte werden für signierte Register als Zweierkomplement interpretiert)
 
 **Beispiel:**
 ```yaml
@@ -105,7 +105,7 @@ automation:
 
 4. **Service aufrufen:**
    - Klicken Sie auf **Service aufrufen**
-   - Der gelesene Wert wird in den Logs angezeigt
+   - Der gelesene Wert erscheint direkt im Ergebnis-Feld unten im Dialog (die Aktion liefert eine Antwort zurück; es gibt keinen Sensor, der den Wert protokolliert)
 
 ### Register schreiben
 
@@ -137,9 +137,9 @@ automation:
 
 - **Register 5000**: HC1 Error Number (lesbar)
 - **Register 5001**: HC1 Operating State (lesbar)
-- **Register 5004**: HC1 Room Device Temperature (lesbar / schreibbar)
-- **Register 5007**: HC1 Target Flow Temperature (lesbar, wird von Raumthermostat geschrieben)
-- **Register 5051**: HC1 Target Room Temperature (lesbar / schreibbar)
+- **Register 5004**: HC1 Room Device Temperature (lesbar / schreibbar, wird bei aktivierter Raumthermostat-Steuerung alle 9s aus dem gewählten HA-Sensor beschrieben)
+- **Register 5007**: HC1 Flow Line Temperature Setpoint (lesbar / schreibbar)
+- **Register 5051**: HC1 Target Room Temperature (lesbar / schreibbar, wird auch vom `climate.set_temperature`-Service des Heizkreises geschrieben)
 
 ### Kessel (Boil1)
 
@@ -205,13 +205,12 @@ automation:
         hours: /1  # Jede Stunde
     actions:
       - action: lambda_heat_pumps.read_modbus_register
-        metadata: {}
         data:
           register_address: 1003
+        response_variable: register_result
       - action: system_log.write
-        metadata: {}
         data:
-          message: "Register 1003: {{ states('sensor.last_modbus_read') }}"
+          message: "Register 1003: {{ register_result.value }}"
     mode: single
 ```
 

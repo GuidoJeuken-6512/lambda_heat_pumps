@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen des config_flow
 
-*Zuletzt geändert am 16.04.2026*
+*Zuletzt geändert am 06.09.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -77,34 +77,17 @@ title: "Optionen des config_flow"
 
 **Hinweis**: Diese Grenzen gelten für alle Heizkreise und beeinflussen die verfügbaren Werte für Heizkreis-Temperatur-Number-Entities.
 
-### Firmware-Version
+### Firmware-Version gehört NICHT zu diesen Optionen
 
-**Beschreibung**: Aktualisieren Sie die Firmware-Version Ihrer Lambda-Wärmepumpe.
+Anders als bis Version 3.4 lässt sich die Firmware-Version **nicht** über diese Options-Seite ändern. Sie wird nur beim Ersteinrichten sowie über **„Neu konfigurieren"** (Menü ⋮ bei der Integration, nicht das Zahnrad-Symbol) gesetzt. Details: [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md).
 
-- **Standard**: `V0.0.8-3K` (häufigste Feldversion)
-- **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren verfügbar sind
+### Register-Reihenfolge
 
-**Verfügbare Firmware-Versionen:**
+**Beschreibung**: Reihenfolge der beiden 16-Bit-Register bei 32-Bit-Werten (Energiezähler, Solar-Ertrag).
 
-| Version | Firmware-Level |
-|---------|----------------|
-| `V1.1.0-3K` | 8 (neueste) |
-| `V0.0.10-3K` | 8 |
-| `V0.0.9-3K` | 7 |
-| `V0.0.8-3K` | 6 (Standard) |
-| `V0.0.7-3K` | 5 |
-| `V0.0.6-3K` | 4 |
-| `V0.0.5-3K` | 3 |
-| `V0.0.4-3K` | 2 |
-| `V0.0.3-3K` | 1 |
-
-**So finden Sie die Firmware-Version:**
-1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
-2. Klicken Sie auf die "i" Taste auf der linken Seite
-3. Klicken Sie auf die Taste auf der rechten Seite, die wie ein Computerchip aussieht (letzte Taste)
-4. Die Firmware-Version wird dort angezeigt
-
-**Hinweis**: Nach Änderung der Firmware-Version müssen Sie Home Assistant neu starten, damit die neuen Sensoren erkannt werden.
+- **Optionen**: `high_first` (höherwertiges Register zuerst) / `low_first` (niedrigwertiges Register zuerst)
+- **Standard**: richtet sich nach der gewählten Firmware-Version und wird automatisch vorbelegt
+- **Wann ändern?**: Wenn 32-Bit-Sensoren (z. B. Energieverbrauch) unrealistische Werte zeigen, probieren Sie die jeweils andere Einstellung.
 
 ### Abfrage-Intervall
 
@@ -124,13 +107,21 @@ title: "Optionen des config_flow"
 **Nach Aktivierung:**
 - Sie müssen für jeden Heizkreis einen Raumtemperatur-Sensor auswählen
 - Die Integration berechnet automatisch Anpassungen der Vorlauftemperatur
-- Weitere Informationen: [Raumthermostat](raumthermostat.md)
+- Weitere Informationen: [Raumthermostat](raumthermometer.md)
 
 **Konfiguration:**
 1. Aktivieren Sie "Raumthermostat-Steuerung"
 2. Klicken Sie auf **Weiter**
 3. Wählen Sie für jeden Heizkreis einen Raumtemperatur-Sensor aus
 4. Klicken Sie auf **Absenden**
+
+### Kühlmodus-Steuerung
+
+**Beschreibung**: Blendet zusätzlich zur Heizkreis-Thermostat-Entität eine eigene **Kühlkreis**-Climate-Entität pro Heizkreis ein, die den Kühl-Sollwert (`set_cooling_mode_room_temperature`) schreibt.
+
+- **Standard**: Deaktiviert
+- **Optionen**: Aktiviert / Deaktiviert
+- **Hinweis**: Unabhängig von der Raumthermostat-Steuerung aktivierbar; beide zusammen fragen im selben Schritt nach den Raumtemperatur-Sensoren, weil der Kühlbetrieb denselben Ist-Wert braucht wie die Heizkreis-Regelung.
 
 ### PV-Überschuss-Steuerung
 
@@ -154,15 +145,14 @@ title: "Optionen des config_flow"
 
 | Schlüssel | Beschreibung |
 |-----------|-------------|
-| `pos` (Standard) | Pos. E-Überschuss – nur positive Werte, UINT16 |
-| `entry` | E-Eintrag – nur positive Werte, UINT16 |
-| `neg` | Neg. E-Überschuss – positive und negative Werte, INT16 |
+| `pos` (Standard) | Pos. E-Überschuss – nur positive Werte, UINT16 (0–65535) |
+| `neg` | Neg. E-Überschuss – positive und negative Werte, INT16 (−32768–32767) |
 
 Der Modus bestimmt, wie der Leistungswert des PV-Sensors an das Lambda-Register 102 (E-Manager Actual Power) übertragen wird.
 
 Nach der Anpassung der Optionen können Sie:
 
-- [Raumthermostat](raumthermostat.md) konfigurieren (falls aktiviert)
+- [Raumthermostat](raumthermometer.md) konfigurieren (falls aktiviert)
 - [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) verwenden (falls aktiviert)
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) verwenden
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten

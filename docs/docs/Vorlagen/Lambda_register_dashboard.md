@@ -4,7 +4,10 @@ title: "Lambda Register-Dashboard"
 
 # Lambda Register-Dashboard (Vorlage)
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
+
+!!! warning "Seit Version 3.5 angepasst"
+    Frühere Fassungen dieser Vorlage filterten über ein Attribut `register`, das die Integration an jedem Sensor gesetzt hat. Dieses Attribut gibt es seit dem 3.5-Rewrite nicht mehr. Die Vorlage unten trägt die Register-Adressen deshalb fest im Template ein und prüft nur noch, ob die Entität überhaupt existiert (ein Sensor, dessen Register die Firmware oder der Controller nicht bedient, wird von der Integration gar nicht erst angelegt).
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 320px;">
@@ -21,7 +24,7 @@ title: "Lambda Register-Dashboard"
       <li><strong>Warmwasser (Boiler)</strong> – Boiler-Sensoren (ab R2000)</li>
       <li><strong>Heizkreis (HC1)</strong> – Heizkreis-Sensoren (ab R5000)</li>
     </ul>
-    <p>Die Anzeige nutzt das von der Integration gesetzte Attribut <code>register</code> pro Sensor. Sensoren ohne dieses Attribut (z. B. nicht vorhanden oder andere FW-Version) werden automatisch ausgeblendet.</p>
+    <p>Die Register-Adressen sind fest im Template hinterlegt. Sensoren, die es bei deiner Firmware oder Konfiguration nicht gibt (z. B. andere FW-Version), werden automatisch ausgeblendet, weil ihre Entität schlicht nicht existiert.</p>
   </div>
 </div>
 
@@ -37,6 +40,8 @@ title: "Lambda Register-Dashboard"
 ```yaml
 # Lambda Register-Dashboard – nur native Modbus-Sensoren
 # Anzeige: Register | Name | Wert. Präfix "eu08l" ggf. durch deinen ersetzen.
+# Register-Adressen sind fest im Template hinterlegt (siehe Hinweis oben);
+# eine Zeile erscheint nur, wenn die Entität tatsächlich existiert.
 
 title: Lambda Register
 views:
@@ -48,22 +53,22 @@ views:
         title: General / Ambient & E-Manager
         content: |
           {% set list = [
-            'sensor.eu08l_ambient_error_number',
-            'sensor.eu08l_ambient_operating_state',
-            'sensor.eu08l_ambient_temperature',
-            'sensor.eu08l_ambient_temperature_1h',
-            'sensor.eu08l_ambient_temperature_calculated',
-            'sensor.eu08l_emgr_error_number',
-            'sensor.eu08l_emgr_operating_state',
-            'sensor.eu08l_emgr_actual_power',
-            'sensor.eu08l_emgr_actual_power_consumption',
-            'sensor.eu08l_emgr_power_consumption_setpoint'
+            (0, 'sensor.eu08l_ambient_error_number'),
+            (1, 'sensor.eu08l_ambient_operating_state'),
+            (2, 'sensor.eu08l_ambient_temperature'),
+            (3, 'sensor.eu08l_ambient_temperature_1h'),
+            (4, 'sensor.eu08l_ambient_temperature_calculated'),
+            (100, 'sensor.eu08l_emgr_error_number'),
+            (101, 'sensor.eu08l_emgr_operating_state'),
+            (102, 'sensor.eu08l_emgr_actual_power'),
+            (103, 'sensor.eu08l_emgr_actual_power_consumption'),
+            (104, 'sensor.eu08l_emgr_power_consumption_setpoint')
           ] %}
           | Register | Name | Wert |
           |----------|------|------|
-          {% for e in list %}
-          {% if state_attr(e, 'register') is not none %}
-          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% for reg, e in list %}
+          {% if states[e] is not none %}
+          | R{{ reg }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
           {% endif %}
           {% endfor %}
 
@@ -75,54 +80,54 @@ views:
         title: HP1 – Native Register
         content: |
           {% set list = [
-            'sensor.eu08l_hp1_error_state',
-            'sensor.eu08l_hp1_error_number',
-            'sensor.eu08l_hp1_state',
-            'sensor.eu08l_hp1_operating_state',
-            'sensor.eu08l_hp1_flow_line_temperature',
-            'sensor.eu08l_hp1_return_line_temperature',
-            'sensor.eu08l_hp1_volume_flow_heat_sink',
-            'sensor.eu08l_hp1_energy_source_inlet_temperature',
-            'sensor.eu08l_hp1_energy_source_outlet_temperature',
-            'sensor.eu08l_hp1_volume_flow_energy_source',
-            'sensor.eu08l_hp1_compressor_unit_rating',
-            'sensor.eu08l_hp1_actual_heating_capacity',
-            'sensor.eu08l_hp1_inverter_power_consumption',
-            'sensor.eu08l_hp1_cop',
-            'sensor.eu08l_hp1_request_type',
-            'sensor.eu08l_hp1_requested_flow_line_temperature',
-            'sensor.eu08l_hp1_requested_return_line_temperature',
-            'sensor.eu08l_hp1_requested_flow_to_return_line_temperature_difference',
-            'sensor.eu08l_hp1_relais_state_2nd_heating_stage',
-            'sensor.eu08l_hp1_compressor_power_consumption_accumulated',
-            'sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated',
-            'sensor.eu08l_hp1_config_parameter_24',
-            'sensor.eu08l_hp1_vda_rating',
-            'sensor.eu08l_hp1_hot_gas_temperature',
-            'sensor.eu08l_hp1_subcooling_temperature',
-            'sensor.eu08l_hp1_suction_gas_temperature',
-            'sensor.eu08l_hp1_condensation_temperature',
-            'sensor.eu08l_hp1_evaporation_temperature',
-            'sensor.eu08l_hp1_eqm_rating',
-            'sensor.eu08l_hp1_expansion_valve_opening_angle',
-            'sensor.eu08l_hp1_config_parameter_33',
-            'sensor.eu08l_hp1_config_parameter_50',
-            'sensor.eu08l_hp1_dhw_output_power_15c',
-            'sensor.eu08l_hp1_heating_min_output_power_15c',
-            'sensor.eu08l_hp1_heating_max_output_power_15c',
-            'sensor.eu08l_hp1_heating_min_output_power_0c',
-            'sensor.eu08l_hp1_heating_max_output_power_0c',
-            'sensor.eu08l_hp1_heating_min_output_power_minus15c',
-            'sensor.eu08l_hp1_heating_max_output_power_minus15c',
-            'sensor.eu08l_hp1_cooling_min_output_power',
-            'sensor.eu08l_hp1_cooling_max_output_power',
-            'sensor.eu08l_hp1_config_parameter_60'
+            (1000, 'sensor.eu08l_hp1_error_state'),
+            (1001, 'sensor.eu08l_hp1_error_number'),
+            (1002, 'sensor.eu08l_hp1_state'),
+            (1003, 'sensor.eu08l_hp1_operating_state'),
+            (1004, 'sensor.eu08l_hp1_flow_line_temperature'),
+            (1005, 'sensor.eu08l_hp1_return_line_temperature'),
+            (1006, 'sensor.eu08l_hp1_volume_flow_heat_sink'),
+            (1007, 'sensor.eu08l_hp1_energy_source_inlet_temperature'),
+            (1008, 'sensor.eu08l_hp1_energy_source_outlet_temperature'),
+            (1009, 'sensor.eu08l_hp1_volume_flow_energy_source'),
+            (1010, 'sensor.eu08l_hp1_compressor_unit_rating'),
+            (1011, 'sensor.eu08l_hp1_actual_heating_capacity'),
+            (1012, 'sensor.eu08l_hp1_inverter_power_consumption'),
+            (1013, 'sensor.eu08l_hp1_cop'),
+            (1015, 'sensor.eu08l_hp1_request_type'),
+            (1016, 'sensor.eu08l_hp1_requested_flow_line_temperature'),
+            (1017, 'sensor.eu08l_hp1_requested_return_line_temperature'),
+            (1018, 'sensor.eu08l_hp1_requested_flow_to_return_line_temperature_difference'),
+            (1019, 'sensor.eu08l_hp1_relais_state_2nd_heating_stage'),
+            (1020, 'sensor.eu08l_hp1_compressor_power_consumption_accumulated'),
+            (1022, 'sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated'),
+            (1024, 'sensor.eu08l_hp1_config_parameter_24'),
+            (1025, 'sensor.eu08l_hp1_vda_rating'),
+            (1026, 'sensor.eu08l_hp1_hot_gas_temperature'),
+            (1027, 'sensor.eu08l_hp1_subcooling_temperature'),
+            (1028, 'sensor.eu08l_hp1_suction_gas_temperature'),
+            (1029, 'sensor.eu08l_hp1_condensation_temperature'),
+            (1030, 'sensor.eu08l_hp1_evaporation_temperature'),
+            (1031, 'sensor.eu08l_hp1_eqm_rating'),
+            (1032, 'sensor.eu08l_hp1_expansion_valve_opening_angle'),
+            (1033, 'sensor.eu08l_hp1_config_parameter_33'),
+            (1050, 'sensor.eu08l_hp1_config_parameter_50'),
+            (1051, 'sensor.eu08l_hp1_dhw_output_power_15c'),
+            (1052, 'sensor.eu08l_hp1_heating_min_output_power_15c'),
+            (1053, 'sensor.eu08l_hp1_heating_max_output_power_15c'),
+            (1054, 'sensor.eu08l_hp1_heating_min_output_power_0c'),
+            (1055, 'sensor.eu08l_hp1_heating_max_output_power_0c'),
+            (1056, 'sensor.eu08l_hp1_heating_min_output_power_minus15c'),
+            (1057, 'sensor.eu08l_hp1_heating_max_output_power_minus15c'),
+            (1058, 'sensor.eu08l_hp1_cooling_min_output_power'),
+            (1059, 'sensor.eu08l_hp1_cooling_max_output_power'),
+            (1060, 'sensor.eu08l_hp1_config_parameter_60')
           ] %}
           | Register | Name | Wert |
           |----------|------|------|
-          {% for e in list %}
-          {% if state_attr(e, 'register') is not none %}
-          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% for reg, e in list %}
+          {% if states[e] is not none %}
+          | R{{ reg }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
           {% endif %}
           {% endfor %}
 
@@ -134,19 +139,19 @@ views:
         title: Boiler1 – Native Register
         content: |
           {% set list = [
-            'sensor.eu08l_boil1_error_number',
-            'sensor.eu08l_boil1_operating_state',
-            'sensor.eu08l_boil1_actual_high_temperature',
-            'sensor.eu08l_boil1_actual_low_temperature',
-            'sensor.eu08l_boil1_actual_circulation_temperature',
-            'sensor.eu08l_boil1_actual_circulation_pump_state',
-            'sensor.eu08l_boil1_target_high_temperature'
+            (2000, 'sensor.eu08l_boil1_error_number'),
+            (2001, 'sensor.eu08l_boil1_operating_state'),
+            (2002, 'sensor.eu08l_boil1_actual_high_temperature'),
+            (2003, 'sensor.eu08l_boil1_actual_low_temperature'),
+            (2004, 'sensor.eu08l_boil1_actual_circulation_temperature'),
+            (2005, 'sensor.eu08l_boil1_actual_circulation_pump_state'),
+            (2050, 'sensor.eu08l_boil1_target_high_temperature')
           ] %}
           | Register | Name | Wert |
           |----------|------|------|
-          {% for e in list %}
-          {% if state_attr(e, 'register') is not none %}
-          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% for reg, e in list %}
+          {% if states[e] is not none %}
+          | R{{ reg }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
           {% endif %}
           {% endfor %}
 
@@ -158,24 +163,24 @@ views:
         title: HC1 – Native Register
         content: |
           {% set list = [
-            'sensor.eu08l_hc1_error_number',
-            'sensor.eu08l_hc1_operating_state',
-            'sensor.eu08l_hc1_flow_line_temperature',
-            'sensor.eu08l_hc1_return_line_temperature',
-            'sensor.eu08l_hc1_room_device_temperature',
-            'sensor.eu08l_hc1_set_flow_line_temperature',
-            'sensor.eu08l_hc1_operating_mode',
-            'sensor.eu08l_hc1_flow_line_temperature_setpoint',
-            'sensor.eu08l_hc1_target_temp_flow_line',
-            'sensor.eu08l_hc1_set_flow_line_offset_temperature',
-            'sensor.eu08l_hc1_target_room_temperature',
-            'sensor.eu08l_hc1_set_cooling_mode_room_temperature'
+            (5000, 'sensor.eu08l_hc1_error_number'),
+            (5001, 'sensor.eu08l_hc1_operating_state'),
+            (5002, 'sensor.eu08l_hc1_flow_line_temperature'),
+            (5003, 'sensor.eu08l_hc1_return_line_temperature'),
+            (5004, 'sensor.eu08l_hc1_room_device_temperature'),
+            (5005, 'sensor.eu08l_hc1_set_flow_line_temperature'),
+            (5006, 'sensor.eu08l_hc1_operating_mode'),
+            (5007, 'sensor.eu08l_hc1_flow_line_temperature_setpoint'),
+            (5007, 'sensor.eu08l_hc1_target_temp_flow_line'),
+            (5050, 'sensor.eu08l_hc1_set_flow_line_offset_temperature'),
+            (5051, 'sensor.eu08l_hc1_target_room_temperature'),
+            (5052, 'sensor.eu08l_hc1_set_cooling_mode_room_temperature')
           ] %}
           | Register | Name | Wert |
           |----------|------|------|
-          {% for e in list %}
-          {% if state_attr(e, 'register') is not none %}
-          | R{{ state_attr(e, 'register') }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
+          {% for reg, e in list %}
+          {% if states[e] is not none %}
+          | R{{ reg }} | {{ state_attr(e, 'friendly_name') or '—' }} | {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }} |
           {% endif %}
           {% endfor %}
 ```

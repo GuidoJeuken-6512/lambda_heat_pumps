@@ -4,399 +4,135 @@ title: "COP-Sensoren - Technische Dokumentation"
 
 # COP-Sensoren - Technische Dokumentation
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
+
+**Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
 Diese Dokumentation beschreibt die technische Implementierung der COP-Sensoren (Coefficient of Performance) in der Lambda Heat Pumps Integration.
 
 ## Übersicht
 
-Die COP-Sensoren berechnen automatisch die Leistungszahl (COP) einer Wärmepumpe basierend auf dem Verhältnis von thermischer Energie zu elektrischer Energie:
-
 **Formel:** `COP = Thermal Energy (kWh) / Electrical Energy (kWh)`
 
-Die Sensoren werden als echte Python-Entities (`LambdaCOPSensor`) implementiert, nicht als Template-Sensoren, um bessere Performance und direkte Kontrolle zu ermöglichen.
+Es gibt zwei Arten von COP-Sensoren, beide in `sensor.py`, beide zustandslos
+— keiner der beiden hält einen eigenen Wert oder muss über einen Neustart
+restauriert werden:
 
-## Architektur
+| Klasse | Rechnet mit | Deckt ab |
+|---|---|---|
+| `LambdaCopSensor` | Zwei `LambdaCounterSensor`-Instanzen (von der Integration seit HA-Start gezählt) | Je Modus und Periode: `heating`/`hot_water`/`cooling` × `daily`/`monthly`/`yearly`/`total` (`heating` zusätzlich `hourly`) |
+| `LambdaLifetimeCopSensor` | Die zwei Lifetime-Register des Controllers selbst | Ein Wert pro Wärmepumpe, unique_id-Schlüssel `cop_calc` |
 
-### Komponenten
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    sensor.py                                 │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  LambdaCOPSensor (RestoreEntity, SensorEntity)        │  │
-│  │    - _calculate_cop()                                  │  │
-│  │    - _update_cop()                                     │  │
-│  │    - State-Tracking (async_track_state_change_event)  │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                            │                                 │
-│                            │ Liest States                   │
-│                            ▼                                 │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  LambdaEnergyConsumptionSensor (Quellsensoren)       │  │
-│  │    - thermal_energy_{period}                         │  │
-│  │    - energy_{period}                                 │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Datenfluss
-
-1. **Sensor-Erstellung** (in `async_setup_entry`):
-   - Für jede Wärmepumpe (hp1, hp2, ...)
-   - Für jeden Mode (heating, hot_water, cooling)
-   - Für jeden Period (daily, monthly, total)
-   - Generiere Entity-IDs für Quellsensoren
-   - Erstelle `LambdaCOPSensor`-Instanz
-
-2. **Initialisierung** (`async_added_to_hass`):
-   - RestoreState von vorherigem Wert (falls vorhanden)
-   - Registriere State-Change-Tracker für Quellsensoren
-   - Berechne initialen COP-Wert
-
-3. **State-Tracking**:
-   - `async_track_state_change_event` überwacht beide Quellsensoren
-   - Bei State-Änderung wird `_update_cop()` aufgerufen
-   - COP wird neu berechnet und State aktualisiert
-
-4. **COP-Berechnung** (`_calculate_cop`):
-   - Liest States von thermal_energy und energy Sensoren
-   - Prüft Verfügbarkeit beider Sensoren
-   - Berechnet COP = thermal / electrical
-   - Division durch Null Schutz (COP = 0.0 wenn electrical <= 0)
-   - Rundet auf 2 Dezimalstellen
-
-**Hinweis:** Periodische COP-Sensoren (daily, monthly, yearly, hourly) bauen sich erst im Lauf der Zeit auf; bis keine Berechnung stattgefunden hat, können sie `unknown` oder `0` anzeigen. Total-COP nutzt eine Baseline (Deltas seit Stichtag). Zyklische COP (inkl. stündlich) nutzen eigene Zyklus-Baselines aus den Quellsensoren. Siehe [FAQ – COP-Sensoren](../FAQ/cop-sensoren.md).
-
-### Warum Baseline?
-
-Die Baseline wird **nur** benötigt, weil **ein Quellsensor früher in der Integration vorhanden ist, der andere später angelegt wird.** Mit diesem Release kommen die **thermischen** Energy-Sensoren dazu; die **elektrischen** Energy-Sensoren gab es bereits. Ohne Baseline wäre `COP = Total_thermal / Total_electrical` verfälscht: Die elektrische Total-Summe umfasst einen längeren Zeitraum als die thermische (die erst ab Einführung der thermischen Sensoren zählt). Mit Baseline speichert man die Werte beider Quellen zu einem **Stichtag** (z. B. beim ersten Start, an dem beide vorhanden sind) und rechnet nur die **Deltas** seit diesem Stichtag: `COP = (Total_thermal − thermal_baseline) / (Total_electrical − electrical_baseline)`. So gilt die COP ausschließlich für den Zeitraum, in dem **beide** Quellsensoren aktiv sind.
-
-- **Total-COP:** Verwendet immer die Baseline (einmalig beim ersten Start bzw. aus Restore).
-- **Zyklische COP (daily, monthly, yearly, hourly):** Jeder hat **eigene** Zyklus-Baselines (Werte der Quellsensoren zu Zyklusstart). **Sind Baselines gesetzt, wird immer** `COP = (Quellsensor_thermal − thermal_baseline) / (Quellsensor_electrical − electrical_baseline)` **gerechnet.** Sind beide Quellsensoren 0 oder einer nicht verfügbar, dient Total − Baseline als Fallback. Ohne Baselines: direkte Division `period_thermal / period_electrical`.
-
-## Implementierung
-
-### 1. Sensor-Klasse
-
-Die `LambdaCOPSensor` Klasse ist in `sensor.py` implementiert:
+## `LambdaCopSensor`: Verhältnis zweier Zähler
 
 ```python
-class LambdaCOPSensor(RestoreEntity, SensorEntity):
-    """COP (Coefficient of Performance) sensor."""
-    
-    def __init__(
-        self,
-        hass,
-        entry,
-        sensor_id,
-        name,
-        entity_id,
-        unique_id,
-        unit,
-        state_class,
-        device_class,
-        device_type,
-        hp_index,
-        mode,
-        period,
-        thermal_energy_entity_id,
-        electrical_energy_entity_id,
-    ):
-        # ... Initialisierung ...
-        self._thermal_energy_entity_id = thermal_energy_entity_id
-        self._electrical_energy_entity_id = electrical_energy_entity_id
-        self._precision = 2
-        self._cop_value = None
+# sensor.py
+class LambdaCopSensor(LambdaEntity, SensorEntity):
+    def __init__(self, coordinator, mode, period, index, *, thermal, electrical):
+        ...
+        self._thermal = thermal        # LambdaCounterSensor (thermisch)
+        self._electrical = electrical  # LambdaCounterSensor (elektrisch)
+
+    @property
+    def native_value(self) -> float | None:
+        electrical = self._electrical.native_value
+        if not electrical:
+            return None
+        return round(self._thermal.native_value / electrical, 2)
 ```
 
-### 2. Sensor-Registrierung
-
-COP-Sensoren werden in `async_setup_entry` erstellt (nach thermal energy Sensoren):
-
-```python
-# COP sensors (per HP, per mode, per period)
-cop_modes = ["heating", "hot_water", "cooling"]
-cop_periods = ["daily", "monthly", "total"]
-
-for hp_idx in range(1, num_hps + 1):
-    for mode in cop_modes:
-        for period in cop_periods:
-            # Generiere Entity-IDs für Quell-Sensoren
-            thermal_entity_id = ...  # z.B. sensor.eu08l_hp1_heating_thermal_energy_daily
-            electrical_entity_id = ...  # z.B. sensor.eu08l_hp1_heating_energy_daily
-            
-            # Erstelle COP-Sensor
-            cop_sensor = LambdaCOPSensor(
-                hass, entry, sensor_id, name, entity_id, unique_id,
-                None,  # Keine Einheit (COP ist dimensionslos)
-                "measurement",  # State class
-                None,  # Keine device_class
-                "hp", hp_idx, mode, period,
-                thermal_entity_id, electrical_entity_id,
-            )
-            sensors.append(cop_sensor)
-```
-
-### 3. COP-Berechnung
-
-Die `_calculate_cop()` Methode implementiert die Berechnung:
+Die beiden `LambdaCounterSensor`-Instanzen werden bereits bei der
+Sensor-Erstellung als Paar übergeben (`sensor.py::async_setup_entry`) —
+`LambdaCopSensor` sucht sie nicht selbst über den State-Store, sondern liest
+sie als Python-Objekte direkt aus:
 
 ```python
-def _calculate_cop(self) -> float | None:
-    """Berechne COP aus thermal_energy und electrical_energy."""
-    thermal_state = self.hass.states.get(self._thermal_energy_entity_id)
-    electrical_state = self.hass.states.get(self._electrical_energy_entity_id)
-    
-    # Prüfe Verfügbarkeit
-    if not thermal_state or thermal_state.state in (None, "unknown", "unavailable"):
-        return None
-    if not electrical_state or electrical_state.state in (None, "unknown", "unavailable"):
-        return None
-    
-    # Konvertiere zu float
-    thermal_value = float(thermal_state.state)
-    electrical_value = float(electrical_state.state)
-    
-    # Division durch Null Schutz
-    if electrical_value <= 0:
-        return 0.0
-    
-    # Berechne COP
-    cop = thermal_value / electrical_value
-    return round(cop, self._precision)  # 2 Dezimalstellen
-```
-
-### 4. State-Tracking
-
-State-Tracking wird in `async_added_to_hass` registriert:
-
-```python
-async def async_added_to_hass(self):
-    await super().async_added_to_hass()
-    
-    # RestoreState
-    last_state = await self.async_get_last_state()
-    await self.restore_state(last_state)
-    
-    # Registriere State-Change-Tracker
-    track_entities = [
-        self._thermal_energy_entity_id,
-        self._electrical_energy_entity_id,
+for mode in COP_MODES:                       # heating, hot_water, cooling
+    periods = COP_HEATING_PERIODS if mode == MODE_HEATING else COP_PERIODS
+    entities += [
+        LambdaCopSensor(
+            coordinator, mode, period, index,
+            thermal=counters[f"{mode}_thermal_energy_{period}"],
+            electrical=counters[f"{mode}_energy_{period}"],
+        )
+        for period in periods
     ]
-    
-    @callback
-    def _state_change_callback(event):
-        new_state = event.data.get("new_state")
-        old_state = event.data.get("old_state")
-        entity_id = event.data.get("entity_id")
-        
-        if new_state is None:
-            return
-        
-        if old_state is None or old_state.state != new_state.state:
-            self._update_cop()
-    
-    self._unsub_state_changes = async_track_state_change_event(
-        self.hass, track_entities, _state_change_callback
-    )
-    
-    # Initialisiere State
-    if self._cop_value is None:
-        self._update_cop()
-    else:
-        self.async_write_ha_state()
 ```
 
-### 5. State-Update
+Weil eine Wärmepumpe im Standby zwar elektrisch, aber nicht thermisch
+gezählt wird (siehe [Features – Cycling- und Energie-Zähler](features.md)),
+gibt es keinen COP für `stby`/`defrost` — nur für die drei Modi, in denen
+beide Seiten der Division existieren (`COP_MODES`).
 
-Die `_update_cop()` Methode wird bei Quellsensor-Änderungen aufgerufen:
+### Warum keine Baseline mehr nötig ist
+
+In der Vor-Rewrite-Integration kamen die thermischen Energy-Sensoren zeitlich
+**nach** den bereits vorhandenen elektrischen hinzu — ein reiner
+`Total_thermal / Total_electrical` hätte den COP über einen längeren
+elektrischen als thermischen Zeitraum berechnet und verfälscht. Eine
+"Baseline" (Differenz seit Stichtag) glich das aus.
+
+Seit 3.5 werden **beide** Zähler eines Modus gleichzeitig mit derselben
+Integration angelegt und zählen ab demselben Zeitpunkt (HA-Start bzw.
+Neustart-Restore). Es gibt keinen Zeitversatz mehr auszugleichen — die
+direkte Division ist bereits korrekt, `LambdaCopSensor` braucht keinen
+eigenen State.
+
+## `LambdaLifetimeCopSensor`: Controller-eigene Lifetime-Zähler
 
 ```python
-@callback
-def _update_cop(self):
-    """Update COP value when source sensors change."""
-    old_cop = self._cop_value
-    new_cop = self._calculate_cop()
-    
-    if new_cop != old_cop:
-        self._cop_value = new_cop
-        self.async_write_ha_state()
+# sensor.py
+class LambdaLifetimeCopSensor(LambdaEntity, SensorEntity):
+    @property
+    def native_value(self) -> float | None:
+        heat_pump = self.coordinator.component("hp", self._index)
+        electrical = heat_pump.compressor_power_consumption_accumulated
+        thermal = heat_pump.compressor_thermal_energy_output_accumulated
+        if not electrical or thermal is None:
+            return None
+        return round(thermal / electrical, 2)
 ```
 
-## Quellsensoren
-
-Die COP-Sensoren lesen ihre Werte aus den **Energy-Consumption-Sensoren** (thermal_energy_*, energy_*). Deren Daten stammen von den **konfigurierbaren** Quellsensoren: In der [lambda_wp_config.yaml](../Anwender/lambda-wp-config.md#4-energieverbrauchs-sensoren) (Abschnitt `energy_consumption_sensors`) können pro HP `sensor_entity_id` (elektrisch) und `thermal_sensor_entity_id` (thermisch, optional) gesetzt werden. Ohne Konfiguration werden die Lambda-Modbus-Sensoren verwendet.
-
-### Thermische Energie (Quellen der Energy-Sensoren)
-
-- **Entity-ID Pattern**: `sensor.{prefix}_hp{idx}_{mode}_thermal_energy_{period}`
-- **Beispiel**: `sensor.eu08l_hp1_heating_thermal_energy_daily`
-- **Typ**: `LambdaEnergyConsumptionSensor` mit `sensor_type="thermal"`
-- **Quelle**: In Config gesetzter `thermal_sensor_entity_id`, sonst Standard `compressor_thermal_energy_output_accumulated` (Modbus Register 1022). Siehe [Energieverbrauchssensoren – Quellsensoren](energieverbrauchssensoren.md#quellsensoren).
-
-### Elektrische Energie (Quellen der Energy-Sensoren)
-
-- **Entity-ID Pattern**: `sensor.{prefix}_hp{idx}_{mode}_energy_{period}`
-- **Beispiel**: `sensor.eu08l_hp1_heating_energy_daily`
-- **Typ**: `LambdaEnergyConsumptionSensor` mit `sensor_type="electrical"`
-- **Quelle**: In Config gesetzter `sensor_entity_id`, sonst Standard `compressor_power_consumption_accumulated` (Modbus Register 1021). Siehe [Energieverbrauchssensoren – Quellsensoren](energieverbrauchssensoren.md#quellsensoren).
+Dieser Sensor liest nicht die von der Integration gezählten Werte, sondern
+die zwei 32-Bit-Register, die der Controller selbst seit seiner Installation
+führt (`compressor_power_consumption_accumulated`/
+`..._thermal_energy_output_accumulated`, siehe
+[Sensoren-Übersicht](sensoren-uebersicht.md)). Das ist der einzige COP-Wert,
+der auch Betriebsstunden vor der ersten Home-Assistant-Installation
+einschließt — und der einzige, der bei einem Firmware- oder Zählerreset des
+Controllers ebenfalls zurückspringt.
 
 ## Sensoren pro Wärmepumpe
 
-Für jede Wärmepumpe werden folgende COP-Sensoren erstellt:
+| Mode | Perioden | Anzahl |
+|------|----------|-------:|
+| `heating` | daily, monthly, yearly, total, **hourly** | 5 |
+| `hot_water` | daily, monthly, yearly, total | 4 |
+| `cooling` | daily, monthly, yearly, total | 4 |
+| Lifetime (`cop_calc`) | — | 1 |
 
-| Mode | Period | Sensor-ID | Entity-ID (Beispiel) |
-|------|--------|-----------|---------------------|
-| heating | daily | `heating_cop_daily` | `sensor.eu08l_hp1_heating_cop_daily` |
-| heating | monthly | `heating_cop_monthly` | `sensor.eu08l_hp1_heating_cop_monthly` |
-| heating | total | `heating_cop_total` | `sensor.eu08l_hp1_heating_cop_total` |
-| hot_water | daily | `hot_water_cop_daily` | `sensor.eu08l_hp1_hot_water_cop_daily` |
-| hot_water | monthly | `hot_water_cop_monthly` | `sensor.eu08l_hp1_hot_water_cop_monthly` |
-| hot_water | total | `hot_water_cop_total` | `sensor.eu08l_hp1_hot_water_cop_total` |
-| cooling | daily | `cooling_cop_daily` | `sensor.eu08l_hp1_cooling_cop_daily` |
-| cooling | monthly | `cooling_cop_monthly` | `sensor.eu08l_hp1_cooling_cop_monthly` |
-| cooling | total | `cooling_cop_total` | `sensor.eu08l_hp1_cooling_cop_total` |
+**Total: 14 COP-Sensoren pro Wärmepumpe.** Nur die Total-Perioden (`_cop_total`
+je Modus) sowie `cop_calc` sind standardmäßig aktiviert
+(`entity_registry_enabled_default=period == PERIOD_TOTAL` in
+`LambdaCopSensor.__init__`) — die übrigen Perioden folgen den
+Zählern, die sie dividieren, welche ihrerseits nur als Total aktiviert sind.
 
-**Total: 9 COP-Sensoren pro Wärmepumpe**
+## Division durch Null
 
-## State-Management
+`native_value` gibt `None` zurück, solange die Wärmepumpe in diesem Modus und
+dieser Periode noch keine Elektroenergie verbraucht hat (`if not electrical`)
+— nicht `0.0`. Ein COP von exakt 0 wäre eine irreführende Aussage über die
+Effizienz; „noch keine Daten“ ist das, was tatsächlich der Fall ist.
 
-### RestoreEntity
+## Betroffene Dateien
 
-Die `LambdaCOPSensor` Klasse erbt von `RestoreEntity`, um State-Persistenz zu ermöglichen:
-
-- Werte werden beim HA-Neustart automatisch wiederhergestellt
-- `restore_state()` wird in `async_added_to_hass()` aufgerufen
-- Falls kein vorheriger State vorhanden ist, wird COP initial berechnet
-
-### State-Class
-
-- **Type**: `SensorStateClass.MEASUREMENT`
-- **Zweck**: Für momentane Werte (nicht kumulativ)
-- **Recorder**: Werte werden automatisch im Home Assistant Recorder gespeichert
-- **Grafana/InfluxDB**: Kompatibel für Visualisierung
-
-## Fehlerbehandlung
-
-### Division durch Null
-
-Wenn `electrical_energy <= 0`, wird COP = 0.0 zurückgegeben:
-
-```python
-if electrical_value <= 0:
-    return 0.0
-```
-
-### Unavailable Quellsensoren
-
-Wenn ein Quellsensor nicht verfügbar ist, wird COP = `None` (unavailable) zurückgegeben:
-
-```python
-if not thermal_state or thermal_state.state in (None, "unknown", "unavailable"):
-    return None
-```
-
-### Fehlerhafte Werte
-
-Bei Konvertierungsfehlern (ValueError, TypeError) wird ein Warning geloggt und `None` zurückgegeben.
-
-### Konsistenz Total-COP (Baseline nach Neustart)
-
-**Problem:** Nach Neustart oder Reset der Quellsensoren können persistierte Baselines (`thermal_baseline`, `electrical_baseline`) höher sein als die aktuellen Werte der thermischen bzw. elektrischen Total-Sensoren. Dann wären die effektiven Deltas negativ (effective_thermal = current − baseline &lt; 0), was zu falschem oder „unavailable“ COP führt.
-
-**Lösung:** Beim Restore der Total-COP-Baselines aus den Attributen wird geprüft:
-
-- Ist `thermal_baseline` größer als der aktuelle State des thermischen Quellsensors → Baseline wird auf den aktuellen Wert gesetzt.
-- Ist `electrical_baseline` größer als der aktuelle State des elektrischen Quellsensors → Baseline wird auf den aktuellen Wert gesetzt.
-
-Damit gilt nach dem Restore stets: Baseline ≤ aktueller Quellwert; negative Deltas und daraus resultierende Fehlanzeigen werden vermieden. Die Prüfung erfolgt in `LambdaCOPSensor.restore_state()` (sensor.py).
-
-**Hinweis:** Zyklische COP (daily, monthly, yearly, hourly) haben **eigene** Zyklus-Baselines; sofern gesetzt, wird immer (Quellsensor − Baseline) gerechnet, sonst direkte Division (siehe Abschnitt „Warum Baseline?“).
-
-## Performance
-
-### Vorteile gegenüber Template-Sensoren
-
-1. **Kein Template-Rendering**: Direkte Berechnung ohne Jinja2-Overhead
-2. **Direkter State-Zugriff**: Kein Template-Parsing nötig
-3. **Optimiertes State-Tracking**: Nur bei tatsächlichen Änderungen
-4. **Eigene Entity-Klasse**: Bessere Kontrolle über Update-Verhalten
-
-### State-Tracking-Optimierung
-
-- Nur bei State-Änderungen wird COP neu berechnet
-- `old_state.state != new_state.state` Prüfung verhindert unnötige Updates
-- Callback-Funktion ist mit `@callback` dekoriert (nicht-blockierend)
-
-## Erweiterbarkeit
-
-### Weitere Zeiträume hinzufügen
-
-Um weitere Zeiträume (z.B. yearly, 2h, 4h) hinzuzufügen:
-
-1. Erweitere `cop_periods` in `async_setup_entry`:
-```python
-cop_periods = ["daily", "monthly", "total", "yearly", "2h", "4h"]
-```
-
-2. Stelle sicher, dass Quellsensoren für diese Perioden existieren
-3. Keine weiteren Code-Änderungen nötig
-
-### Weitere Modi hinzufügen
-
-Um weitere Modi (z.B. defrost) hinzuzufügen:
-
-1. Erweitere `cop_modes` in `async_setup_entry`:
-```python
-cop_modes = ["heating", "hot_water", "cooling", "defrost"]
-```
-
-2. Stelle sicher, dass Quellsensoren für diese Modi existieren
-
-## Testing
-
-Die COP-Sensoren können getestet werden durch:
-
-1. **Unit-Tests**: Teste `_calculate_cop()` mit verschiedenen Inputs
-2. **Integration-Tests**: Teste Sensor-Erstellung und State-Updates
-3. **Manuelle Tests**: Überwache COP-Werte in Home Assistant UI
-
-### Beispiel-Test
-
-```python
-def test_cop_calculation():
-    sensor = LambdaCOPSensor(...)
-    
-    # Mock Quellsensoren
-    sensor.hass.states.get = Mock(return_value=Mock(state="10.0"))  # thermal
-    sensor.hass.states.get = Mock(return_value=Mock(state="2.0"))   # electrical
-    
-    cop = sensor._calculate_cop()
-    assert cop == 5.0
-    
-    # Division durch Null
-    sensor.hass.states.get = Mock(return_value=Mock(state="0.0"))   # electrical
-    cop = sensor._calculate_cop()
-    assert cop == 0.0
-```
-
-## Abhängigkeiten
-
-Die COP-Sensoren sind abhängig von:
-
-- **LambdaEnergyConsumptionSensor**: Quellsensoren müssen existieren
-- **State-Tracking**: `async_track_state_change_event` aus Home Assistant
-- **RestoreEntity**: Für State-Persistenz
-
-## Code-Stellen
-
-- **Klasse**: `custom_components/lambda_heat_pumps/sensor.py` (Zeile 1413-1641)
-- **Registrierung**: `custom_components/lambda_heat_pumps/sensor.py` (Zeile 688-743)
+- **Klassen**: `custom_components/lambda_heat_pumps/sensor.py`
+  (`LambdaCopSensor`, `LambdaLifetimeCopSensor`)
+- **Registrierung**: `sensor.py::async_setup_entry`
 - **Translations**: `custom_components/lambda_heat_pumps/translations/de.json` und `en.json`
 
 ## Verwandte Dokumentation
 
-- [Energieverbrauchssensoren](energieverbrauchssensoren.md) - Technische Details zu Quellsensoren
-- [Sensor-Implementierung](../Anwender/cop-sensoren.md) - Anwenderdokumentation
-
+- [Features – COP-Sensoren](features.md#cop-sensoren)
+- [Cycling- und Energie-Zähler](features.md) – Quelle der beiden Zähler pro COP
+- [Sensoren-Übersicht](sensoren-uebersicht.md) – alle Sensoren im Überblick

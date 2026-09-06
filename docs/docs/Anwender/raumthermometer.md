@@ -4,7 +4,7 @@ title: "Raumthermometer"
 
 # Raumthermometer
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Die Lambda Heat Pumps Integration unterstützt die Integration externer Raumthermometer-Sensoren für eine präzise Temperatursteuerung. Diese Funktion ermöglicht es, die Heizkurven-Vorlauftemperatur basierend auf der tatsächlichen Raumtemperatur anzupassen.
 
@@ -52,7 +52,7 @@ Nach der Aktivierung werden für jeden Heizkreis folgende Number-Entities erstel
 
 ### Raumthermostat-Offset
 
-- **Entity-ID**: `number.*_hc1_room_thermostat_offset`
+- **Entity-ID**: `number.*_hc1_room_thermostat_offset_number`
 - **Bereich**: -10.0 bis +10.0
 - **Schrittweite**: 0.1
 - **Standardwert**: 0.0
@@ -60,8 +60,8 @@ Nach der Aktivierung werden für jeden Heizkreis folgende Number-Entities erstel
 
 ### Raumthermostat-Faktor
 
-- **Entity-ID**: `number.*_hc1_room_thermostat_factor`
-- **Bereich**: 0.1 bis 5.0
+- **Entity-ID**: `number.*_hc1_room_thermostat_factor_number`
+- **Bereich**: 1.0 bis 5.0
 - **Schrittweite**: 0.1
 - **Standardwert**: 1.0
 - **Beschreibung**: Faktor für die Raumtemperatur-Berechnung
@@ -120,9 +120,8 @@ Der Offset ermöglicht eine Feinabstimmung der Raumtemperatur-Berechnung:
 
 Der Faktor bestimmt, wie stark die Raumtemperatur-Differenz die Vorlauftemperatur beeinflusst:
 
-- **Faktor 1.0**: Standard-Anpassung (1:1)
+- **Faktor 1.0**: Standard-Anpassung (1:1) – zugleich der kleinstmögliche Wert
 - **Faktor > 1.0**: Stärkere Anpassung (z.B. 2.0 = doppelte Anpassung)
-- **Faktor < 1.0**: Schwächere Anpassung (z.B. 0.5 = halbe Anpassung)
 
 **Beispiel:**
 - Wenn die Raumtemperatur 1°C zu niedrig ist und der Faktor 2.0 ist, wird die Vorlauftemperatur um 2.0°C erhöht
@@ -145,7 +144,7 @@ automation:
       - action: number.set_value
         metadata: {}
         target:
-          entity_id: number.eu08l_hc1_room_thermostat_offset
+          entity_id: number.eu08l_hc1_room_thermostat_offset_number
         data:
           value: -0.5
     mode: single

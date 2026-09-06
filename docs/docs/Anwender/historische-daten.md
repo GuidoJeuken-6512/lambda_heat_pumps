@@ -4,7 +4,7 @@ title: "Historische Daten übernehmen"
 
 # Historische Daten übernehmen
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Wenn Sie eine Wärmepumpe austauschen oder die Zählerstände zurücksetzen, können Sie historische Daten in die Integration übernehmen. Dies ermöglicht es, die Kontinuität der Daten zu erhalten und historische Trends beizubehalten.
 
@@ -160,7 +160,7 @@ Bevor Sie die Offsets konfigurieren, müssen Sie die historischen Werte ermittel
 ### Schritt 2: lambda_wp_config.yaml bearbeiten
 
 1. **Datei öffnen:**
-   - Die Datei befindet sich in `/config/lambda_heat_pumps/lambda_wp_config.yaml`
+   - Die Datei befindet sich in `/config/lambda_wp_config.yaml`
    - Falls die Datei nicht existiert, wird sie beim ersten Start automatisch erstellt
 
 2. **Offsets hinzufügen:**

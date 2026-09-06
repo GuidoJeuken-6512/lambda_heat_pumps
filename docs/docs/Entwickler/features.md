@@ -4,506 +4,350 @@ title: "Features (Technische Übersicht)"
 
 # Features – Technische Übersicht
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
-Diese Seite bietet eine technische Übersicht der wichtigsten Features der Lambda Heat Pumps Integration mit Code-Beispielen und Implementierungsdetails.
+**Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
+
+Diese Seite bietet eine technische Übersicht der wichtigsten Features der
+Lambda Heat Pumps Integration mit Code-Beispielen aus dem aktuellen Code. Für
+die Abläufe und Mermaid-Diagramme siehe [Ablaufdiagramm](Ablaufdiagramm.md).
 
 ## Architektur-Übersicht
 
-Die Integration basiert auf dem **Coordinator-Pattern** von Home Assistant:
-
-```python
-# custom_components/lambda_heat_pumps/coordinator.py
-class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
-    """Class to manage fetching Lambda data."""
-    
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry):
-        super().__init__(
-            hass,
-            _LOGGER,
-            name="Lambda Coordinator",
-            update_interval=timedelta(seconds=update_interval),
-        )
-        self.client = None  # Modbus-Client
-        self._last_operating_state = {}  # Für Flankenerkennung
-        self._heating_cycles = {}  # Cycling-Tracking
-        self._energy_consumption = {}  # Energie-Tracking
+```
+custom_components/lambda_heat_pumps/
+├── __init__.py           Setup, Unload, Entry-Migration
+├── coordinator.py        Poll-Loop, Cycle-/Energie-Tracking, Rollover
+├── entity.py             Gemeinsame Basis aller Entities
+├── sensor.py             Register-, Zähler-, COP-, Heizkurven-Sensoren
+├── climate.py            Thermostat-Entities
+├── number.py             Heizkurven-Einstellungen, Flow-Line-Offset
+├── services.py           PV-/Raumthermostat-Schreiber, Modbus-Debug-Services
+├── config_flow.py        Verbindungs-Setup, Optionen
+├── module_auto_detect.py Einmalige Modul-Erkennung
+├── firmware.py           Firmware→Register-Kompatibilität
+├── config_file.py        lambda_wp_config.yaml (Offsets, externe Zähler)
+├── diagnostics.py        Rohregister-Dump
+└── lambda_modbus/        Das Register-Modell selbst (kein HA-Import)
+    ├── model.py           Basisklasse, Sentinel-Behandlung (gauge/enum)
+    ├── ranges.py          Adress-Layout, lesbare Register-Läufe
+    ├── heat_pump.py, boiler.py, buffer.py, solar.py,
+    │   heating_circuit.py, general.py   je Modultyp ein Komponenten-Modell
+    └── enums.py           Zustandscodes (LambdaState-Unterklassen)
 ```
 
-**Hauptkomponenten:**
-- `coordinator.py`: Datenkoordinator für Modbus-Kommunikation
-- `sensor.py`: Sensor-Entities (über 100 verschiedene Sensoren)
-- `climate.py`: Climate-Entities für Heizung/Warmwasser
-- `number.py`: Number-Entities für Heizkurven-Parameter
-- `services.py`: Custom Services (PV-Überschuss, Raumthermostat)
-- `utils.py`: Hilfsfunktionen und Konfigurations-Loading
+`lambda_modbus/` ist bewusst von Home Assistant entkoppelt – es kennt nur
+[`modbus_connection.ModbusUnit`](https://github.com/home-assistant-libs/modbus-connection)
+und ist so geschnitten, dass es unverändert als eigenständiges PyPI-Paket
+lebensfähig wäre (siehe Docstring in `lambda_modbus/__init__.py`).
 
 ## Modbus-Kommunikation
 
-### Asynchrone Modbus-Operationen
-
-Die Integration nutzt asynchrone Modbus-Operationen für nicht-blockierende Kommunikation:
-
-```python
-# custom_components/lambda_heat_pumps/modbus_utils.py
-async def async_read_holding_registers(
-    client, address: int, count: int, unit: int
-) -> list[int]:
-    """Asynchrones Lesen von Holding-Registern."""
-    try:
-        result = await client.read_holding_registers(address, count, unit=unit)
-        return result.registers
-    except Exception as e:
-        _LOGGER.error("Modbus read error: %s", e)
-        raise
-```
-
-### Batch-Reading mit Fallback
-
-Optimiertes Batch-Reading mit automatischem Fallback auf Einzel-Lesevorgänge:
+Die Integration öffnet eine `ModbusConnection` (Bibliothek
+[`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection),
+Backend `tmodbus`) und nimmt darauf einen `ModbusUnit`-Handle für die
+konfigurierte Slave-ID:
 
 ```python
-# custom_components/lambda_heat_pumps/coordinator.py
-async def _read_registers_batch(self, registers: list[tuple]) -> dict:
-    """Batch-Reading mit Fehlerbehandlung."""
-    # Versuche Batch-Read
-    try:
-        result = await self._read_consecutive_registers(start_addr, count)
-        return result
-    except Exception:
-        # Fallback: Einzel-Lesevorgänge
-        for addr, count in registers:
-            result[addr] = await self._read_single_register(addr)
+# __init__.py
+connection = ModbusConnection(
+    ModbusTcpParams(host=entry.data[CONF_HOST], port=port),
+    message_spacing=DEFAULT_MODBUS_MESSAGE_SPACING,  # 50 ms
+)
+entry.async_on_unload(connection.close)
+unit = connection.for_unit(slave_id)
 ```
 
-### Register-Deduplizierung
+`message_spacing` ist kein Performance-Tuning, sondern erzwingt, dass die
+Bibliothek ihr eigenes Serialisierungs-Lock tatsächlich benutzt – ohne
+Spacing wäre es ein reiner Durchreicher und Poll-Loop und Schreib-Timer
+könnten gleichzeitig auf derselben Verbindung senden. Details, warum das nötig
+ist und was ohne es passiert: [Modbus-Serialisierung](modbus-serialisierung.md).
 
-Globale Register-Deduplizierung reduziert Modbus-Traffic um ~80%:
+Weder `__init__.py` noch `lambda_modbus/` schreiben eigene Retry- oder
+Timeout-Logik – das übernimmt `modbus-connection`/`tmodbus`. Was die
+Integration selbst behandelt, ist eine **hartnäckig** hängende Verbindung
+(drei Timeouts am Stück trennt der Coordinator sie, siehe
+[Ablaufdiagramm](Ablaufdiagramm.md#5-voller-poll-zyklus-_async_update_data))
+und ein Register, das der Controller nach dem Setup nicht mehr bedient (löst
+einen Reload aus).
+
+## Register-Modell: Sentinel-Werte
+
+Der Controller lässt kein Register leer – ein nicht vorhandenes gibt `0x8000`
+zurück, ein nicht angeschlossener Sensor `0xFFF448` (-3000). Skaliert sehen
+diese wie plausible Messwerte aus (-327,68 °C bzw. -300,0 °C) und würden ohne
+Behandlung in die Statistik einfließen:
 
 ```python
-# custom_components/lambda_heat_pumps/coordinator.py
-async def _async_update_data(self):
-    """Daten-Update mit Register-Cache."""
-    # Sammle alle benötigten Register
-    all_registers = self._collect_all_registers()
-    
-    # Dedupliziere Register-Adressen
-    unique_registers = self._deduplicate_registers(all_registers)
-    
-    # Batch-Read für deduplizierte Register
-    data = await self._read_registers_batch(unique_registers)
-    
-    # Verteile Daten an alle Module
-    return self._distribute_data(data)
+# lambda_modbus/model.py
+NO_REGISTER = 0x8000  # die Firmware hat dieses Register nicht
+NO_SENSOR = 0xF448    # -3000: nichts angeschlossen
+SENTINELS = (NO_REGISTER, NO_SENSOR)
+
+def gauge(address: int, scale: float, /, **kwargs):
+    """Ein skalierter Messwert, der als unknown gelesen wird, wenn keiner da ist."""
+    kwargs.setdefault("nan", SENTINELS)
+    return _gauge(address, scale, **kwargs)
 ```
+
+Ein weiterer Sentinel, `0xFFFF` (-1, „keine Anforderung“), gilt nur für
+einzelne Felder (z. B. `Buffer.request_type`, `Ambient.temperature`) und wird
+dort gezielt mit `nan=SENTINELS + (NO_REQUEST,)` ergänzt – global gilt er
+nicht, weil -1 auf anderen Registern (z. B. Temperatur-Offsets) ein echter Wert
+ist.
 
 ## Automatische Modulerkennung
 
-### Background-Auto-Detection
-
-Hardware-Erkennung läuft im Hintergrund, ohne Startverzögerungen:
+Beim Setup wird für jeden Modultyp hochgezählt, bis der Controller nicht mehr
+antwortet – nicht mehr in `entry.data` gespeichert, sondern bei **jedem**
+Setup neu ermittelt:
 
 ```python
-# custom_components/lambda_heat_pumps/module_auto_detect.py
-async def auto_detect_modules(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> dict:
-    """Automatische Erkennung verfügbarer Module."""
-    detected = {
-        "heat_pumps": [],
-        "boilers": [],
-        "buffers": [],
-        "solar": [],
-        "heating_circuits": [],
-    }
-    
-    # Prüfe Register für jedes Modul
-    for module_type in detected.keys():
-        if await _check_module_exists(module_type):
-            detected[module_type].append(module_index)
-    
-    return detected
+# module_auto_detect.py
+async def _count(unit: ModbusUnit, module: str, maximum: int) -> int:
+    for index in range(1, maximum + 1):
+        register = base_address(module, index) + _PROBE_REGISTER
+        try:
+            await unit.read_holding_registers(register, 1)
+        except (IllegalDataAddressError, ModbusTimeoutError):
+            return index - 1
+    return maximum
 ```
 
-### Dynamische Entity-Erstellung
+`MAX_MODULE_COUNTS = {"hp": 3, "boil": 5, "buff": 5, "sol": 2, "hc": 12}`
+begrenzt, wie weit hochgezählt wird. Jeder andere Modbus-Fehler (nicht „Register
+gibt es nicht“) propagiert als `ConfigEntryNotReady` – ein beschäftigter oder
+gestörter Controller wird nicht fälschlich als kleineres System interpretiert.
 
-Sensoren werden basierend auf erkannten Modulen erstellt:
+## Firmware-Kompatibilität
+
+Ein Sensor deklariert entweder gar nichts (gilt für jede Firmware),
+`firmware_version` (ab dieser Version) oder `firmware_versions` (exakte,
+möglicherweise lückenhafte Menge, Notation `"1-7"`, `"-4"`, `7`):
 
 ```python
-# custom_components/lambda_heat_pumps/sensor.py
-async def async_setup_entry(hass, entry, async_add_entities):
-    """Dynamische Sensor-Erstellung."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    
-    # Erkenne verfügbare Module
-    modules = coordinator.detected_modules
-    
-    # Erstelle Sensoren für jedes Modul
-    for module_type, module_list in modules.items():
-        for module_idx in module_list:
-            sensors = _create_sensors_for_module(module_type, module_idx)
-            async_add_entities(sensors)
+# firmware.py
+def serves(description, level: int) -> bool:
+    if description.firmware_versions is not None:
+        return level in parse_firmware_versions(description.firmware_versions)
+    if description.firmware_version is not None:
+        return description.firmware_version <= level
+    return True
 ```
 
-## Cycling-Sensoren
-
-### Flankenerkennung
-
-Robuste Flankenerkennung für Betriebszustandsänderungen:
-
 ```python
-# custom_components/lambda_heat_pumps/coordinator.py
-def _detect_operating_state_change(
-    self, hp_idx: int, current_state: int, last_state: int
-) -> str | None:
-    """Erkenne Betriebszustandsänderung (Flanke)."""
-    if current_state != last_state:
-        # Mapping: Betriebszustand → Modus
-        mode_map = {
-            1: "heating",      # CH
-            2: "hot_water",    # DHW
-            3: "cooling",       # CC
-            5: "defrost",       # DEFROST
-        }
-        return mode_map.get(current_state)
-    return None
+# sensor.py – Beispiel: Außentemperatur nur bis einschließlich Firmware 7 lesbar
+_temperature("ambient_temperature", firmware_versions=("1-7",)),
 ```
 
-### Cycling-Counter-Inkrementierung
+`firmware_level(entry)` löst den in den Config-Flow-Optionen gewählten
+Firmware-Namen (`"V0.0.8-3K"`, …) über `FIRMWARE_CONFIG` in `const.py` auf die
+Versions-Ordinalzahl auf; ein unbekannter Name (z. B. eine Entry aus einer
+neueren Integrationsversion) fällt auf `1` zurück – die älteste, von jedem
+Controller bediente Registerkarte.
 
-Automatische Inkrementierung der Cycling-Counter:
+## Cycling- und Energie-Zähler
+
+Der Coordinator führt **keine** persistente Zählerdatei mehr – `Totals`
+(`coordinator.py`) zählt nur, was seit dem Start von Home Assistant beobachtet
+wurde:
 
 ```python
-# custom_components/lambda_heat_pumps/utils.py
-async def increment_cycling_counter(
-    hass: HomeAssistant,
-    entry_id: str,
-    device_id: str,
-    mode: str,
-    period: str,
-) -> None:
-    """Inkrementiere Cycling-Counter."""
-    entity_id = f"sensor.{device_id}_{mode}_cycling_{period}"
-    
-    # Lade aktuellen Wert
-    state = hass.states.get(entity_id)
-    current_value = int(state.state) if state else 0
-    
-    # Wende Offset an
-    offset = get_cycling_offset(device_id, mode, period)
-    new_value = current_value + 1 + offset
-    
-    # Speichere neuen Wert
-    await hass.services.async_call(
-        "lambda_heat_pumps",
-        "set_cycling_value",
-        {"entity_id": entity_id, "value": new_value},
-    )
+@dataclass
+class Totals:
+    cycles: dict[str, int] = field(default_factory=dict)
+    electrical: dict[str, float] = field(default_factory=dict)
+    thermal: dict[str, float] = field(default_factory=dict)
 ```
 
-### Automatische Resets
-
-Tägliche Sensoren werden um Mitternacht automatisch zurückgesetzt:
+`LambdaCounterSensor` (`sensor.py`) macht daraus einen absoluten Zähler: Er
+restauriert seinen eigenen Stand über `RestoreSensor`, merkt sich beim
+Hinzufügen den aktuellen `Totals`-Wert als Baseline (`_counted`) und addiert
+bei jedem Coordinator-Update nur die **Differenz**:
 
 ```python
-# custom_components/lambda_heat_pumps/automations.py
-def setup_cycling_automations(hass: HomeAssistant, entry_id: str):
-    """Richte Automatisierungen für Cycling-Resets ein."""
-    # Täglicher Reset um Mitternacht
-    hass.services.async_call(
-        "automation",
-        "trigger",
-        {
-            "entity_id": f"automation.{entry_id}_daily_reset",
-            "at": "00:00:00",
-        },
-    )
+@callback
+def _handle_coordinator_update(self) -> None:
+    total = self._total()
+    self._value += total - self._counted
+    self._counted = total
+    super()._handle_coordinator_update()
 ```
 
-## Energieverbrauchssensoren
-
-### Sensor-Wechsel-Erkennung
-
-Intelligente Erkennung von Sensor-Änderungen zur Vermeidung falscher Berechnungen:
+Welche Perioden ein Zähler bekommt, ist absichtlich nicht symmetrisch – ändern
+würde bestehende Entities verwaisen lassen:
 
 ```python
-# custom_components/lambda_heat_pumps/coordinator.py
-async def _detect_energy_sensor_change(
-    self, hp_idx: int, current_sensor_id: str
-) -> bool:
-    """Erkenne Sensor-Wechsel."""
-    last_sensor_id = self._sensor_ids.get(hp_idx)
-    
-    if last_sensor_id and last_sensor_id != current_sensor_id:
-        _LOGGER.warning(
-            "Energy sensor changed for HP%d: %s → %s",
-            hp_idx, last_sensor_id, current_sensor_id
-        )
-        # Setze Tracking zurück
-        self._last_energy_reading[hp_idx] = None
-        return True
-    
-    self._sensor_ids[hp_idx] = current_sensor_id
-    return False
+CYCLE_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY, PERIOD_2H, PERIOD_4H)
+COMPRESSOR_START_PERIODS = (*CYCLE_PERIODS, PERIOD_MONTHLY)
+ENERGY_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY, PERIOD_MONTHLY, PERIOD_YEARLY)
+HEATING_ENERGY_PERIODS = (*ENERGY_PERIODS, PERIOD_HOURLY)  # nur "heating"
 ```
 
-### Energie-Tracking
+Nur die laufenden Total-Zähler sind standardmäßig aktiviert
+(`entity_registry_enabled_default=period == PERIOD_TOTAL`) – die
+Perioden-Zähler lassen sich aus dem Total ableiten (Energie-Dashboard,
+`utility_meter`), und werden daher nicht als Dutzende zusätzliche Entities pro
+Wärmepumpe ausgeliefert.
 
-Automatisches Tracking des Energieverbrauchs nach Betriebsart:
+## COP-Sensoren
 
-```python
-# custom_components/lambda_heat_pumps/coordinator.py
-async def _track_energy_consumption(self, data: dict):
-    """Tracke Energieverbrauch für alle Wärmepumpen."""
-    for hp_idx in range(1, 4):  # HP1, HP2, HP3
-        current_state = data.get(f"hp{hp_idx}_operating_state")
-        if current_state is None:
-            continue
-        
-        # Bestimme Betriebsmodus
-        mode = self._get_operating_mode(current_state)
-        
-        # Tracke Energie für diesen Modus
-        await self._track_hp_energy_consumption(hp_idx, mode, data)
-```
-
-### Einheitenkonvertierung
-
-Automatische Konvertierung zwischen Wh/kWh/MWh:
+Ein COP ist nichts weiter als zwei bereits vorhandene Zähler (thermisch,
+elektrisch) über dieselbe Periode geteilt – der Sensor hält selbst keinen
+Zustand:
 
 ```python
-# custom_components/lambda_heat_pumps/utils.py
-def convert_energy_to_kwh(value: float, unit: str) -> float:
-    """Konvertiere Energie-Wert zu kWh."""
-    unit_map = {
-        "Wh": 0.001,
-        "kWh": 1.0,
-        "MWh": 1000.0,
-    }
-    return value * unit_map.get(unit, 1.0)
-```
-
-## Heizkurven-Berechnung
-
-### Template-Sensor für Vorlauftemperatur
-
-Automatische Berechnung der Vorlauftemperatur basierend auf Außentemperatur:
-
-```python
-# custom_components/lambda_heat_pumps/template_sensor.py
-class LambdaHeatingCurveCalcSensor(CoordinatorEntity, SensorEntity):
-    """Sensor für berechnete Heizkurven-Vorlauftemperatur."""
-    
-    @property
-    def native_value(self) -> float | None:
-        """Berechne Vorlauftemperatur aus Heizkurven-Stützpunkten."""
-        outside_temp = self._get_outside_temperature()
-        cold_point = self._get_cold_point()  # -22°C
-        mid_point = self._get_mid_point()    # 0°C
-        warm_point = self._get_warm_point()  # +22°C
-        
-        # Lineare Interpolation
-        if outside_temp <= -22:
-            return cold_point
-        elif outside_temp >= 22:
-            return warm_point
-        else:
-            # Interpolation zwischen Stützpunkten
-            return self._interpolate(outside_temp, cold_point, mid_point, warm_point)
-```
-
-### Number-Entities mit Modbus-Synchronisation
-
-Bidirektionale Synchronisation zwischen Home Assistant und Modbus:
-
-```python
-# custom_components/lambda_heat_pumps/number.py
-class LambdaFlowLineOffsetNumber(CoordinatorEntity, NumberEntity):
-    """Number-Entity für Vorlauf-Offset mit Modbus-Sync."""
-    
-    async def async_set_native_value(self, value: float) -> None:
-        """Setze Wert und schreibe nach Modbus."""
-        # Validiere Wert
-        if not -10.0 <= value <= 10.0:
-            raise ValueError("Value out of range")
-        
-        # Schreibe nach Modbus
-        await self.coordinator.write_modbus_register(
-            self._register_address, int(value * 10)  # Skalierung
-        )
-        
-        # Aktualisiere lokalen Wert
-        self._attr_native_value = value
-```
-
-## PV-Überschuss-Steuerung
-
-### Service-Scheduler
-
-Intelligenter Service-Scheduler, der nur aktiviert wird, wenn benötigt:
-
-```python
-# custom_components/lambda_heat_pumps/services.py
-async def setup_pv_surplus_service(hass: HomeAssistant, entry: ConfigEntry):
-    """Richte PV-Überschuss-Service ein."""
-    if not entry.options.get("pv_surplus_control"):
-        return  # Service nicht aktivieren
-    
-    async def update_pv_power(call: ServiceCall):
-        """Schreibe PV-Leistung nach Modbus Register 102."""
-        sensor_id = entry.options.get("pv_surplus_sensor")
-        power_w = await _get_power_from_sensor(hass, sensor_id)
-        
-        # Konvertiere kW → W falls nötig
-        if power_w < 1000:
-            power_w = power_w * 1000
-        
-        # Schreibe nach Modbus
-        await coordinator.write_modbus_register(102, int(power_w))
-    
-    # Registriere Service mit Intervall
-    hass.services.async_register(
-        DOMAIN, "update_pv_power", update_pv_power
-    )
-```
-
-## Raumthermostat-Steuerung
-
-### Externe Sensor-Integration
-
-Integration externer Temperatursensoren für Raumthermostat-Steuerung:
-
-```python
-# custom_components/lambda_heat_pumps/services.py
-async def _handle_update_room_temperature(
-    hass: HomeAssistant,
-    coordinator: LambdaDataUpdateCoordinator,
-    sensor_id: str,
-    hc_idx: int,
-) -> None:
-    """Aktualisiere Raumtemperatur aus externem Sensor."""
-    # Lese Sensor-Wert
-    state = hass.states.get(sensor_id)
-    if not state:
-        return
-    
-    room_temp = float(state.state)
-    
-    # Wende Offset und Faktor an
-    offset = coordinator.entry.options.get(f"hc{hc_idx}_room_thermostat_offset", 0)
-    factor = coordinator.entry.options.get(f"hc{hc_idx}_room_thermostat_factor", 1.0)
-    
-    adjusted_temp = (room_temp + offset) * factor
-    
-    # Schreibe nach Modbus
-    register = 5004 + (hc_idx - 1) * 100  # HC Room Device Temperature
-    await coordinator.write_modbus_register(register, int(adjusted_temp * 10))
-```
-
-## Konfigurations-Management
-
-### YAML-Konfiguration mit Caching
-
-Effizientes Laden und Caching der `lambda_wp_config.yaml`:
-
-```python
-# custom_components/lambda_heat_pumps/utils.py
-async def load_lambda_config(hass: HomeAssistant) -> dict:
-    """Lade Lambda-Konfiguration mit Caching."""
-    # Prüfe Cache
-    if "_lambda_config_cache" in hass.data:
-        return hass.data["_lambda_config_cache"]
-    
-    # Lade YAML
-    config_path = os.path.join(hass.config.config_dir, "lambda_wp_config.yaml")
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    
-    # Parse Konfiguration
-    result = {
-        "disabled_registers": set(config.get("disabled_registers", [])),
-        "sensors_names_override": _parse_sensor_overrides(config),
-        "cycling_offsets": config.get("cycling_offsets", {}),
-        "energy_consumption_sensors": config.get("energy_consumption_sensors", {}),
-        "modbus": config.get("modbus", {}),
-    }
-    
-    # Cache Ergebnis
-    hass.data["_lambda_config_cache"] = result
-    return result
-```
-
-## Performance-Optimierungen
-
-### Register-Cache
-
-Globale Register-Deduplizierung reduziert Modbus-Traffic:
-
-```python
-# custom_components/lambda_heat_pumps/coordinator.py
-class RegisterCache:
-    """Cache für Modbus-Register-Lesevorgänge."""
-    
-    def __init__(self):
-        self._cache = {}  # {address: (value, timestamp)}
-        self._cache_ttl = 1.0  # 1 Sekunde TTL
-    
-    def get(self, address: int) -> int | None:
-        """Hole Wert aus Cache."""
-        if address in self._cache:
-            value, timestamp = self._cache[address]
-            if time.time() - timestamp < self._cache_ttl:
-                return value
+# sensor.py – LambdaCopSensor.native_value
+@property
+def native_value(self) -> float | None:
+    electrical = self._electrical.native_value
+    if not electrical:
         return None
-    
-    def set(self, address: int, value: int):
-        """Setze Wert im Cache."""
-        self._cache[address] = (value, time.time())
+    return round(self._thermal.native_value / electrical, 2)
 ```
 
-### Background-Template-Loading
+Daneben gibt es pro Wärmepumpe einen `LambdaLifetimeCopSensor`
+(`sensor.py`, `unique_id`-Schlüssel `cop_calc`), der nicht die von der
+Integration gezählten `Totals` verwendet, sondern die beiden **Lifetime**-Register
+des Controllers selbst (`compressor_power_consumption_accumulated` /
+`..._thermal_energy_output_accumulated`) – der einzige COP-Wert, der auch
+zählt, was vor der ersten Home-Assistant-Installation passiert ist.
 
-Template-Sensoren laden im Hintergrund, ohne Start zu blockieren:
+## Heizkurve
+
+`LambdaHeatingCurveSensor` (`sensor.py`) liest die drei vom Nutzer gesetzten
+Stützpunkte, interpoliert linear und addiert die konfigurierten Korrekturen:
 
 ```python
-# custom_components/lambda_heat_pumps/sensor.py
-async def _setup_template_sensors_async(hass, coordinator, async_add_entities):
-    """Lade Template-Sensoren im Hintergrund."""
-    # Starte Background-Task
-    hass.async_create_task(
-        _load_templates_in_background(hass, coordinator, async_add_entities)
-    )
+# const.py
+CURVE_POINTS: Final = (
+    (-22.0, "heating_curve_cold_outside_temp", 48.3),
+    (0.0, "heating_curve_mid_outside_temp", 39.0),
+    (22.0, "heating_curve_warm_outside_temp", 32.0),
+)
 ```
-
-## Mehrsprachige Unterstützung
-
-### Translation-System
-
-Automatisches Laden und Anwenden von Übersetzungen:
 
 ```python
-# custom_components/lambda_heat_pumps/utils.py
-def load_sensor_translations(hass: HomeAssistant, language: str) -> dict:
-    """Lade Sensor-Übersetzungen."""
-    translation_file = f"custom_components/lambda_heat_pumps/translations/{language}.json"
-    with open(translation_file, "r") as f:
-        translations = json.load(f)
-    return translations.get("entity", {}).get("sensor", {})
+# sensor.py
+flow = _read_curve(outside, curve)          # lineare Interpolation
+circuit = self.coordinator.component("hc", self._index)
+flow += self._room_correction(circuit)      # nur wenn Raumthermostat aktiv
+flow += circuit.set_flow_line_offset_temperature or 0.0
+if circuit.operating_state == HeatingCircuitOperatingState.ECO:
+    flow += self._setting("eco_temp_reduction", DEFAULT_ECO_TEMP_REDUCTION)
 ```
+
+Die drei Stützpunkte, die Eco-Reduktion sowie Offset/Faktor der
+Raumthermostat-Korrektur sind **keine Register** – sie werden von
+`LambdaSettingNumber`-Entities (`number.py`) gehalten, über einen Neustart
+restauriert und direkt in `coordinator.settings` publiziert, damit der
+Heizkurven-Sensor sie ohne Umweg über den State-Store lesen kann:
+
+```python
+# number.py – LambdaSettingNumber._publish
+def _publish(self, value: float) -> None:
+    self.coordinator.settings[(self._index, self.entity_description.key)] = value
+```
+
+Der **Flow-Line-Offset** dagegen ist ein echtes Register
+(`LambdaFlowLineOffsetNumber`) – er wird geschrieben und vom Controller selbst
+gehalten, es gibt nichts zu restaurieren.
+
+## PV-Überschuss und Raumthermostat
+
+Zwei Werte kann der Controller nicht selbst messen: die Raumtemperatur (kennt
+eine andere Thermostat-Entity) und den PV-Überschuss (kennt der
+Wechselrichter). Beide werden ihm auf einem Timer geschrieben, solange das
+Feature aktiv ist – der Controller reagiert nur, solange der Wert
+**weiterhin** ankommt:
+
+```python
+# services.py
+async def async_write_pv_surplus(coordinator: LambdaCoordinator) -> None:
+    ...
+    if options.get(CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE) == "neg":
+        raw = max(-32768, min(32767, int(power))) & 0xFFFF  # signed möglich
+    else:
+        raw = max(0, min(65535, int(power)))
+    await coordinator.unit.write_register(PV_SURPLUS_REGISTER, raw)
+```
+
+`async_setup_writers` armt den gemeinsamen Timer (`CONF_WRITE_INTERVAL`,
+Default 9 s) nur, wenn mindestens eines der beiden Features in den Optionen
+aktiv ist, und meldet ihn über `entry.async_on_unload` wieder ab.
+
+Zwei weitere Services, `read_modbus_register`/`write_modbus_register`, lesen
+oder schreiben ein beliebiges Register per Adresse – gedacht, um ein noch
+undokumentiertes Register zu erkunden. Sie adressieren immer den (einzigen)
+aktuell eingerichteten Controller und lehnen ab, sobald mehr als einer läuft
+(`_only_controller`).
+
+## Konfigurationsdatei (`lambda_wp_config.yaml`)
+
+Fast alles, was früher in dieser Datei stand, hat heute einen
+Home-Assistant-eigenen Weg (Entity umbenennen/deaktivieren in der
+Entity-Registry, `int32_register_order` in den Integrations-Optionen). Übrig
+bleiben drei Dinge, für die es keinen HA-eigenen Ort gibt – siehe
+`config_file.py`:
+
+```python
+TEMPLATE = """# ...
+#cycling_offsets:
+#  hp1:
+#    heating_cycling_total: 0
+#energy_consumption_offsets:
+#  hp1:
+#    heating_energy_total: 0.0
+#energy_consumption_sensors:
+#  hp1:
+#    sensor_entity_id: sensor.heat_pump_electricity_meter
+#    thermal_sensor_entity_id: sensor.heat_pump_heat_meter
+"""
+```
+
+Die Datei wird beim ersten Start aus diesem Template angelegt (vollständig
+auskommentiert) und **einmal pro Setup** gelesen; ein fehlerhafter Abschnitt
+wird gemeldet und einzeln übersprungen (`_salvage`), statt die ganze Datei zu
+verwerfen. Details: [modbus_wp_config.yaml – Entwicklereinstellungen](modbus-wp-config.md).
+
+## Diagnose-Download
+
+Der Diagnose-Download liest die rohen, unskalierten Register – genau wie sie
+auf dem Draht ankommen – block- oder registerweise, je nachdem, was der
+Controller tatsächlich beantwortet:
+
+```python
+# diagnostics.py
+async def _async_read_registers(coordinator) -> dict[str, Any]:
+    for low, high in readable_ranges(coordinator.counts):
+        try:
+            values = await coordinator.unit.read_holding_registers(low, high - low + 1)
+        except ModbusExceptionError:
+            await _read_by_register(coordinator, low, high, registers)
+        else:
+            registers.update(zip(range(low, high + 1), values, strict=True))
+```
+
+Damit lässt sich ein falsch wirkender Wert direkt gegen das Lambda-Datenblatt
+prüfen, ohne ein separates Modbus-Tool zu benötigen – und ein noch nicht
+modelliertes Register ist im Dump trotzdem sichtbar. Der Download enthält
+außerdem `coordinator.totals` (die von der Integration selbst gezählten
+Zyklen/Energiewerte) und den Status des letzten Polls
+(`coordinator.updated`/`coordinator.failed`), damit sich ein falscher
+Zählerstand von einem falsch gelesenen Register unterscheiden lässt.
 
 ## Zusammenfassung
 
-Die Integration bietet:
-
-- **Asynchrone Modbus-Kommunikation** mit Batch-Reading und Fallback
-- **Automatische Modulerkennung** im Hintergrund
-- **Cycling-Sensoren** mit Flankenerkennung und automatischen Resets
-- **Energieverbrauchssensoren** mit Sensor-Wechsel-Erkennung
-- **Heizkurven-Berechnung** mit Template-Sensoren
-- **PV-Überschuss-Steuerung** mit Service-Scheduler
-- **Raumthermostat-Integration** mit externen Sensoren
-- **Performance-Optimierungen** durch Register-Caching und Deduplizierung
-- **Mehrsprachige Unterstützung** mit automatischem Translation-Loading
-
-Alle Features sind modular aufgebaut und können unabhängig erweitert werden.
-
+- **Modbus-Kommunikation** über `modbus-connection`/`tmodbus`, mit erzwungenem
+  Pacing statt eigenem Lock.
+- **Registermodell** probiert sich selbst gegen die tatsächliche Firmware ein,
+  statt eine feste Karte anzunehmen.
+- **Zähler** sind reine Home-Assistant-`RestoreSensor`s ohne eigene
+  Persistenzdatei; der Coordinator liefert nur Deltas seit dem letzten Blick.
+- **COP** und **Heizkurve** sind zustandslose Ableitungen aus anderen
+  Sensoren bzw. aus vom Nutzer gesetzten Werten.
+- **PV-Überschuss/Raumthermostat** laufen als eigener Schreib-Timer, unabhängig
+  vom Poll-Loop.
+- **Konfigurationsdatei** ist auf die drei Dinge geschrumpft, für die
+  Home Assistant selbst keinen Platz hat.

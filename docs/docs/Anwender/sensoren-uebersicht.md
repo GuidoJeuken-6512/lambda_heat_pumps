@@ -4,7 +4,7 @@ title: "Alle Sensoren der Integration"
 
 # Alle Sensoren der Integration
 
-*Zuletzt geändert am 20.04.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Diese Seite listet alle Sensoren auf, die die Lambda Heat Pumps Integration in Home Assistant erzeugt. Die Sensoren sind nach Gerät und Funktion gruppiert.
 
@@ -140,7 +140,7 @@ Entsprechend wie oben, aber für die thermische Wärmeabgabe (Suffix `_thermal_e
 | **Kühlen** | `cooling_thermal_energy_daily` | `cooling_thermal_energy_monthly` | `cooling_thermal_energy_yearly` | `cooling_thermal_energy_total` |
 | **Abtauen** | `defrost_thermal_energy_daily` | `defrost_thermal_energy_monthly` | `defrost_thermal_energy_yearly` | `defrost_thermal_energy_total` |
 
-Alle mit Präfix `sensor.eu08l_hp1_`, Einheit: **kWh**.
+Alle mit Präfix `sensor.eu08l_hp1_`, Einheit: **kWh**. Zusätzlich gibt es `heating_thermal_energy_hourly` für stündliche Auflösung.
 
 ### Effizienz – COP-Sensoren (berechnet)
 
@@ -150,6 +150,8 @@ Alle mit Präfix `sensor.eu08l_hp1_`, Einheit: **kWh**.
 | `sensor.eu08l_hp1_heating_cop_monthly` | Monats-COP Heizen |
 | `sensor.eu08l_hp1_heating_cop_yearly` | Jahres-COP Heizen |
 | `sensor.eu08l_hp1_heating_cop_total` | Gesamt-COP Heizen |
+| `sensor.eu08l_hp1_heating_cop_hourly` | Stunden-COP Heizen |
+| `sensor.eu08l_hp1_cop_calc` | Lifetime-COP (aus Controller-eigenen Registern, unabhängig von Home Assistant) |
 | `sensor.eu08l_hp1_hot_water_cop_daily` | Tages-COP Warmwasser |
 | `sensor.eu08l_hp1_hot_water_cop_monthly` | Monats-COP Warmwasser |
 | `sensor.eu08l_hp1_hot_water_cop_yearly` | Jahres-COP Warmwasser |
@@ -276,11 +278,13 @@ Bei mehreren Heizkreisen: `hc1`, `hc2`, `hc3`, …
 | Gerät | Nativ | Berechnet | Gesamt |
 |-------|-------|-----------|--------|
 | Hauptgerät (Main) | 10 | 0 | 10 |
-| Wärmepumpe (HP) | 42 | 89 | 131 |
+| Wärmepumpe (HP) | 42 (31 + 11 Konfigurationsparameter) | 78 | 120 |
 | Boiler | 7 | 0 | 7 |
 | Pufferspeicher | 11 | 0 | 11 |
 | Solarmodul | 8 | 0 | 8 |
-| Heizkreis | 11 | 1 | 12 |
+| Heizkreis | 12 | 1 | 13 |
+
+Von den 78 berechneten Sensoren pro Wärmepumpe sind standardmäßig 18 aktiviert (die Total-Zähler, die drei Total-COPs und der Lifetime-COP); der Rest lässt sich bei Bedarf in der Entity-Registry aktivieren.
 
 > Alle Sensoren außer dem Hauptgerät werden je Instanz erstellt. Mit 2 Wärmepumpen, 2 Heizkreisen, 1 Boiler usw. verdoppeln sich die entsprechenden Sensoren.
 

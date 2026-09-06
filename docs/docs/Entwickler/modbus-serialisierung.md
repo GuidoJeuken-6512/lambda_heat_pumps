@@ -6,20 +6,12 @@ title: "Modbus-Serialisierung - Technische Dokumentation"
 
 *Zuletzt geändert am 06.09.2026*
 
-Diese Dokumentation beschreibt, wie die Lambda Heat Pumps Integration (ab dem
-Rewrite auf Basis von `modbus-connection`/`tmodbus`, Branch `3.5`) Race
+**Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
+
+Diese Dokumentation beschreibt, wie die Lambda Heat Pumps Integration Race
 Conditions und Transaction-ID-Mismatches bei gleichzeitigen Modbus-Requests
 vermeidet — und einen Konfigurationsfehler, der genau das bis einschließlich
-`3.4.1`/Version 3.5.1 **nicht** getan hat.
-
-!!! info "Für die alte (2.8.x) Architektur"
-    Diese Seite beschrieb bis Version 3.5.1 die Locking-Strategie der
-    Vor-Rewrite-Integration (`modbus_utils.py`, zwei eigene `asyncio.Lock`s um
-    einen `pymodbus`-Client). Diese Datei existiert seit dem Rewrite nicht mehr
-    — die Modbus-Kommunikation läuft jetzt vollständig über die externe
-    Bibliothek [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)
-    mit dem `tmodbus`-Backend. Die Seite ist unten für die neue Architektur
-    neu geschrieben.
+Version 3.5.1 **nicht** getan hat.
 
 ## Übersicht
 

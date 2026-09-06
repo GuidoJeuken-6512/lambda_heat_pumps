@@ -4,7 +4,7 @@ title: "COP-Sensoren (Leistungszahl)"
 
 # COP-Sensoren (Leistungszahl)
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Die Lambda Heat Pumps Integration bietet **COP-Sensoren** (Coefficient of Performance / Leistungszahl), die das Verhältnis von erzeugter Wärme zu eingesetztem Strom anzeigen. Diese Sensoren helfen Ihnen, die Effizienz Ihrer Wärmepumpe zu überwachen und zu analysieren.
 
@@ -33,26 +33,30 @@ Die Integration erstellt automatisch COP-Sensoren für folgende Betriebsarten:
 
 ### Zeiträume
 
-Für jede Betriebsart werden drei Zeiträume angeboten:
+Für Warmwasser und Kühlen werden vier Zeiträume angeboten, für Heizen zusätzlich ein fünfter:
 
 - **Daily (Täglich)**: COP-Wert für den aktuellen Tag
 - **Monthly (Monatlich)**: COP-Wert für den aktuellen Monat
-- **Total (Gesamt)**: COP-Wert seit Installation
+- **Yearly (Jährlich)**: COP-Wert für das aktuelle Jahr
+- **Total (Gesamt)**: COP-Wert seit dem letzten Neustart von Home Assistant (siehe Hinweis unten)
+- **Hourly (Stündlich, nur Heizen)**: COP-Wert für die aktuelle Stunde
+
+Nur die Total-Sensoren sind standardmäßig aktiviert; die übrigen Perioden lassen sich in der Entity-Registry bei Bedarf einschalten.
+
+Daneben gibt es pro Wärmepumpe einen zusätzlichen `cop_calc`-Sensor, der nicht auf den oben genannten Zählern basiert, sondern direkt aus den beiden **Lifetime**-Registern des Controllers berechnet wird (siehe Abschnitt „Zusammenhang mit Energieverbrauchssensoren" unten) – der einzige COP-Wert, der auch die Zeit vor der ersten Home-Assistant-Installation einschließt.
 
 ### Entity-IDs
 
-Die Sensoren werden mit folgenden Entity-IDs erstellt:
+Die Sensoren werden mit folgenden Entity-IDs erstellt (Beispiel Legacy-Namensschema):
 
-**Legacy-Modus** (Standard):
 - `sensor.{name_prefix}_hp1_heating_cop_daily`
 - `sensor.{name_prefix}_hp1_heating_cop_monthly`
+- `sensor.{name_prefix}_hp1_heating_cop_yearly`
 - `sensor.{name_prefix}_hp1_heating_cop_total`
-- `sensor.{name_prefix}_hp1_hot_water_cop_daily`
-- `sensor.{name_prefix}_hp1_hot_water_cop_monthly`
-- `sensor.{name_prefix}_hp1_hot_water_cop_total`
-- `sensor.{name_prefix}_hp1_cooling_cop_daily`
-- `sensor.{name_prefix}_hp1_cooling_cop_monthly`
-- `sensor.{name_prefix}_hp1_cooling_cop_total`
+- `sensor.{name_prefix}_hp1_heating_cop_hourly`
+- `sensor.{name_prefix}_hp1_hot_water_cop_daily` / `_monthly` / `_yearly` / `_total`
+- `sensor.{name_prefix}_hp1_cooling_cop_daily` / `_monthly` / `_yearly` / `_total`
+- `sensor.{name_prefix}_hp1_cop_calc` (Lifetime-COP, siehe oben)
 
 **Beispiel:** `sensor.eu08l_hp1_heating_cop_daily`
 
@@ -72,9 +76,8 @@ Die COP-Sensoren aktualisieren sich automatisch, wenn sich die Quellsensoren (th
 ### Berechnungslogik
 
 1. **COP-Berechnung**: `COP = Thermische Energie / Elektrische Energie`
-2. **Division durch Null Schutz**: Wenn elektrische Energie = 0, wird COP = 0.0 zurückgegeben
+2. **Division durch Null**: Solange in der Periode noch keine elektrische Energie erfasst wurde, zeigt der Sensor `unknown` (nicht `0.0`) – ein COP von 0 wäre eine falsche Effizienzaussage
 3. **Präzision**: 2 Dezimalstellen (z.B. 3.45)
-4. **Unavailable State**: Wenn Quellsensoren nicht verfügbar sind, ist COP = `unavailable`
 
 ### Periodische Werte und Anzeige
 
@@ -161,23 +164,13 @@ severity:
 
 ## Häufige Probleme & Lösungen
 
-### COP = 0.0
+### COP zeigt unknown
 
-**Ursache**: Elektrische Energie ist 0 oder nicht verfügbar.
-
-**Lösung**:
-- Prüfen Sie, ob die Energieverbrauchssensoren verfügbar sind
-- Prüfen Sie, ob die Wärmepumpe tatsächlich läuft
-- Prüfen Sie die Quellsensoren-Konfiguration
-
-### COP = unavailable
-
-**Ursache**: Einer oder beide Quellsensoren sind nicht verfügbar.
+**Ursache**: In der jeweiligen Periode wurde noch keine elektrische Energie für diesen Modus erfasst – normal direkt nach einem Neustart oder bevor die Wärmepumpe in diesem Modus überhaupt gelaufen ist.
 
 **Lösung**:
-- Prüfen Sie, ob die Energieverbrauchssensoren existieren
-- Prüfen Sie die Logs auf Fehlermeldungen
-- Warten Sie auf die Initialisierung der Sensoren nach HA-Neustart
+- Abwarten, bis die Wärmepumpe im entsprechenden Modus (Heizen/Warmwasser/Kühlen) gelaufen ist
+- Prüfen Sie, ob die zugrundeliegenden Energieverbrauchssensoren existieren und Werte liefern
 
 ### COP-Werte erscheinen unrealistisch (sehr hoch oder sehr niedrig)
 

@@ -4,7 +4,7 @@ title: "Initiale Konfiguration"
 
 # Initiale Konfiguration
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
 
 Nach der Installation der Lambda Heat Pumps Integration über HACS müssen Sie die Integration in Home Assistant einrichten. Dieser Abschnitt führt Sie durch den Konfigurationsprozess.
 
@@ -123,7 +123,7 @@ Nach der erfolgreichen Initialkonfiguration können Sie:
 
 - [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md) vornehmen
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
-- [Raumthermostat](raumthermostat.md) konfigurieren
+- [Raumthermostat](raumthermometer.md) konfigurieren
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
 
