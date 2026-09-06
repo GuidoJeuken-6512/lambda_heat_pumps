@@ -188,8 +188,6 @@ modbus:
 - **"high_first"**: Höherwertiges Register zuerst (Standard für die meisten Lambda-Modelle)
 - **"low_first"**: Niedrigwertiges Register zuerst (für bestimmte Lambda-Modelle oder Firmware-Versionen)
 
-**Seit V2.7.0:** Der Default wird automatisch anhand der eingestellten Firmware-Version gesetzt (für `V1.1.0-3K` und `V0.0.10-3K` bereits `"low_first"`). Die manuelle Einstellung hier überschreibt diesen Default weiterhin.
-
 **Wann verwenden?**
 - Falsche Werte in 32-Bit-Sensoren (z.B. Energieverbrauchssensoren)
 - Nach Firmware-Update, wenn Sensoren falsche Werte anzeigen

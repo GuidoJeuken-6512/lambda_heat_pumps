@@ -1,156 +1,292 @@
-"""Common test fixtures for Lambda Heat Pumps integration tests."""
+"""A Lambda controller, backed by modbus-connection's in-memory mock backend.
 
+The mock implements the same `ModbusConnection` / `ModbusUnit` protocols the real
+backends do, so the integration runs against it unchanged — the register model,
+the decoding and the entities are all exercised for real; only the wire is not.
+
+All this adds is what makes the device a *Lambda*: the registers it reports, and
+which of its modules are installed.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field
+from unittest.mock import Mock, patch
+
+from modbus_connection import (
+    IllegalDataAddressError,
+    ModbusConnectionError,
+    ModbusTimeoutError,
+    ServerDeviceBusyError,
+)
+from modbus_connection.mock import MockModbusConnection, MockModbusUnit
 import pytest
-import threading
-from types import SimpleNamespace
-from unittest.mock import Mock
 
-from homeassistant.helpers import frame
+SLAVE_ID = 1
+
+# Where the controller is. Nothing dials it — the mock backend stands in for the
+# wire — but the config entry has to say something, and the integration hands
+# these to the connection it builds.
+HOST = "192.168.1.50"
+PORT = 502
+
+# One heat pump, one boiler, one heating circuit.
+HOLDING: dict[int, int] = {
+    # The controller itself.
+    0: 0,  # ambient error number
+    1: 1,  # ambient operating state -> AUTOMATIK
+    2: 42,  # ambient temperature -> 4.2 °C
+    3: 40,
+    4: 38,  # ambient temperature calculated -> 3.8 °C
+    100: 0,
+    101: 1,
+    102: 1500,  # e-manager actual power -> 1500 W
+    103: 800,
+    104: 0,
+    # Heat pump 1.
+    1000: 0,  # error state -> NONE
+    1002: 5,  # state -> START COMPRESSOR
+    1003: 1,  # operating state -> CH (heating)
+    1004: 3412,  # flow line -> 34.12 °C
+    1005: 2890,
+    1010: 6500,  # compressor rating -> 65 %
+    1011: 82,  # heating capacity -> 8.2 kW
+    1013: 431,  # COP -> 4.31
+    1020: 0x0001,  # electrical counter, high word
+    1021: 0x86A0,  # -> 100000 Wh = 100 kWh
+    1022: 0x0006,  # thermal counter, high word
+    1023: 0x1A80,  # -> 400000 Wh = 400 kWh
+    # Boiler 1.
+    2000: 0,
+    2001: 1,  # operating state -> DHW
+    2002: 480,  # actual high -> 48.0 °C
+    2050: 520,  # target high -> 52.0 °C
+    # Heating circuit 1.
+    5000: 0,
+    5001: 0,  # operating state -> HEATING
+    5002: 340,
+    5004: 215,  # room device temperature -> 21.5 °C
+    5006: 1,  # operating mode -> MANUAL
+    5050: 0,  # flow line offset -> 0.0 °C
+    5051: 210,  # target room temperature -> 21.0 °C
+}
+
+# The first register of each module that is not installed. A read that reaches
+# one of these is refused, which is how the controller says the module is not
+# there — and how the probe counts the ones that are.
+ABSENT_BLOCKS = (1100, 2100, 3000, 4000, 5100)
 
 
-class DummyLoop:
-    """Minimal event loop replacement for frame helper."""
+@dataclass
+class Controller:
+    """The device under test.
 
-    def __init__(self):
-        self._thread_id = None
+    `registers` is the controller's memory — seed it before setup, read it back
+    after a write, change it mid-test to make the controller do something.
+    """
 
-    def call_soon_threadsafe(self, callback):
-        callback()
+    registers: dict[int, int]
+    # What the integration handed the backend, for asserting it passed ints.
+    ports: list = field(default_factory=list)
+    unit_ids: list = field(default_factory=list)
+    _units: list[MockModbusUnit] = field(default_factory=list)
+    # Registers the controller refuses, beyond the absent-module blocks. Kept so
+    # a refusal armed before setup is applied to the connection setup opens too —
+    # which is how a controller that serves only part of a module block is set up.
+    _refused: set[int] = field(default_factory=set)
 
-    def call_at(self, when, callback, *args):
-        """Stub for loop.call_at — required by async_track_time_interval."""
-        from unittest.mock import Mock
-        return Mock()
+    _connections: list[MockModbusConnection] = field(default_factory=list)
+    _busy: set[int] = field(default_factory=set)
+    # The first register of each module this controller does not have. Per
+    # controller rather than fixed, so a test can install one.
+    _absent: set[int] = field(default_factory=lambda: set(ABSENT_BLOCKS))
 
-    def time(self):
-        """Stub for loop.time — required by async_track_time_interval."""
-        return 0.0
+    def install(self, base: int) -> None:
+        """Start answering for a module block, as a controller with one does.
+
+        Applied to the connections opened later too, so a test can add a module
+        before setup — which is the only time the probe counts them.
+        """
+        self._absent.discard(base)
+        for unit in self._units:
+            unit.fail_read(base, None)
+
+    def refuse(self, address: int) -> None:
+        """Stop answering for any block covering this register, as a controller
+        does for a register its firmware does not serve."""
+        self._refused.add(address)
+        for unit in self._units:
+            unit.fail_read(address, IllegalDataAddressError())
+
+    _offline: bool = False
+
+    def drop_the_link(self) -> None:
+        """The link goes down, as a momentary network blip takes it down.
+
+        The controller is still there, so the next request re-establishes it —
+        which is what makes this different from `go_offline`.
+        """
+        for connection in self._connections:
+            connection.simulate_connection_lost()
+
+    @property
+    def reads(self) -> list[tuple[int, int]]:
+        """Every holding-register read made of this controller, (address, count).
+
+        The mock logs them, so a test can assert not just what was decoded but
+        where the planner actually went and how wide — which is the only way to
+        see pooling quietly collapse into one read per field, since the values
+        come out correct either way.
+        """
+        return [
+            (event.address, event.count)
+            for unit in self._units
+            for event in unit.read_events
+            if event.register_type == "holding"
+        ]
+
+    def forget_reads(self) -> None:
+        """Start counting reads again."""
+        for unit in self._units:
+            unit.read_events.clear()
+
+    def answer_busy(self, address: int) -> None:
+        """Be too busy to serve any block covering this register.
+
+        It is saying "not now", not "there is nothing here", and the difference
+        matters: the register map is read once and kept.
+
+        Applied to the connections opened later too, so a test can arm it before
+        setup — which is when being busy does the damage.
+        """
+        self._busy.add(address)
+        for unit in self._units:
+            unit.fail_read(address, ServerDeviceBusyError())
+
+    def stop_answering_for(self, address: int) -> None:
+        """Answer nothing for any block covering this register.
+
+        One module going quiet while the rest keep answering, which is a timeout
+        belonging to that module rather than to the link.
+        """
+        for unit in self._units:
+            unit.fail_read(address, ModbusTimeoutError("no answer"))
+
+    def answer_again_for(self, address: int) -> None:
+        """Answer for this register again."""
+        for unit in self._units:
+            unit.fail_read(address, None)
+
+    def stop_answering(self) -> None:
+        """Keep the link up but answer nothing, as a wedged bridge does."""
+        for unit in self._units:
+            unit.fail_requests(ModbusTimeoutError("no answer"))
+
+    def answer_again(self) -> None:
+        """Start answering again."""
+        for unit in self._units:
+            unit.fail_requests(None)
+
+    def go_offline(self) -> None:
+        """The controller becomes unreachable until `come_back_online`.
+
+        Nothing answers, rather than one address refusing: an unreachable
+        controller is not selective about which register it fails to serve.
+        """
+        self._offline = True
+        for unit in self._units:
+            unit.fail_requests(ModbusConnectionError("no route to host"))
+        self.drop_the_link()
+
+    def come_back_online(self) -> None:
+        """The controller answers again."""
+        self._offline = False
+        for unit in self._units:
+            unit.fail_requests(None)
 
 
-class FrameHelperContext(SimpleNamespace):
-    """Minimal object to satisfy frame helper expectations."""
+def _refuse_absent_modules(unit: MockModbusUnit, absent: set[int]) -> None:
+    """Make the controller answer for the modules it has, and no others.
 
-    def __init__(self):
-        super().__init__(loop=DummyLoop(), loop_thread_id=threading.get_ident())
-
-
-@pytest.fixture(autouse=True)
-def setup_frame_helper():
-    """Ensure Home Assistant frame helper is always initialized."""
-    frame._hass = SimpleNamespace(hass=FrameHelperContext())
-    yield
-    frame._hass = None
-
-
-@pytest.fixture(autouse=True)
-def patch_async_get_translations(monkeypatch):
-    """Stub translation loading during tests."""
-
-    async def _fake_async_get_translations(hass, language, category, integrations):
-        return {}
-
-    monkeypatch.setattr(
-        "custom_components.lambda_heat_pumps.utils.async_get_translations",
-        _fake_async_get_translations,
-    )
-    # Ensure frame helper usage checks don't explode in unit tests
-    monkeypatch.setattr(
-        frame,
-        "report_usage",
-        lambda *args, **kwargs: None,
-    )
-    monkeypatch.setattr(
-        frame,
-        "report_non_thread_safe_operation",
-        lambda *args, **kwargs: None,
-    )
+    A block read that reaches into one of these refuses, exactly as a controller
+    does for a module that is not installed — which is the only way it ever says
+    so.
+    """
+    for base in absent:
+        unit.fail_read(base, IllegalDataAddressError())
 
 
 @pytest.fixture
-def mock_hass():
-    """Mock Home Assistant instance."""
-    hass = Mock()
-    hass.data = {}  # Make hass.data a dictionary so it's iterable
-    hass.config = Mock()
-    hass.config.config_dir = "/tmp/test_config"
-    hass.config.language = "en"
-    hass.config.locale = SimpleNamespace(language="en")
-    return hass
+def controller() -> Iterator[Controller]:
+    """A Lambda controller, reached over the mock backend.
+
+    Every connection built opens a fresh link to the same controller, as it
+    would in life: the config flow closing the link it probed with does not stop
+    setup from opening its own.
+    """
+    device = Controller(dict(HOLDING))
+
+    def build(params, **kwargs) -> MockModbusConnection:
+        device.ports.append(params.port)
+        connection = MockModbusConnection()
+        device._connections.append(connection)
+
+        base_for_unit = connection.for_unit
+
+        def for_unit(unit_id: int) -> MockModbusUnit:
+            device.unit_ids.append(unit_id)
+            unit = base_for_unit(unit_id)
+            # The controller's memory, not this connection's — what is written
+            # over one link is there to be read over the next.
+            unit.holding = device.registers
+            _refuse_absent_modules(unit, device._absent)
+            for address in device._refused:
+                unit.fail_read(address, IllegalDataAddressError())
+            for address in device._busy:
+                unit.fail_read(address, ServerDeviceBusyError())
+            if device._offline:
+                unit.fail_requests(ModbusConnectionError("no route to host"))
+            if unit not in device._units:
+                device._units.append(unit)
+            return unit
+
+        connection.for_unit = for_unit
+        return connection
+
+    # Building a connection does no I/O now, so this stands in for the
+    # constructor rather than a connect factory.
+    connector: Callable[..., MockModbusConnection] = Mock(side_effect=build)
+    with (
+        patch("custom_components.lambda_heat_pumps.ModbusConnection", connector),
+        patch("custom_components.lambda_heat_pumps.config_flow.ModbusConnection", connector),
+    ):
+        yield device
 
 
 @pytest.fixture
-def mock_entry():
-    """Mock ConfigEntry instance."""
-    entry = Mock()
-    entry.entry_id = "test_entry_id"
-    entry.data = {
-        "name": "eu08l",
-        "host": "192.168.1.100",
-        "port": 502,
-        "num_hps": 1,
-        "num_boil": 1,
-        "num_buff": 0,
-        "num_sol": 0,
-        "num_hc": 1,
-        "use_legacy_modbus_names": True,
-        "firmware_version": "V1.0.0",
-    }
-    entry.version = 1
-    return entry
+def unreachable() -> Iterator[None]:
+    """A controller that does not answer.
 
+    Building a connection no longer reaches out, so it is the read that fails —
+    which is exactly how an unreachable controller shows up now.
+    """
 
-@pytest.fixture
-def mock_coordinator():
-    """Mock LambdaCoordinator instance."""
-    coordinator = Mock()
-    coordinator.sensor_overrides = {}
-    coordinator.disabled_registers = set()
-    return coordinator
+    def build(params, **kwargs) -> MockModbusConnection:
+        connection = MockModbusConnection()
+        base_for_unit = connection.for_unit
 
+        def for_unit(unit_id: int) -> MockModbusUnit:
+            unit = base_for_unit(unit_id)
+            unit.fail_requests(ModbusConnectionError("no route to host"))
+            return unit
 
-@pytest.fixture
-def mock_entity_registry():
-    """Mock Entity Registry instance."""
-    registry = Mock()
-    registry.entities.get_entries_for_config_entry_id.return_value = []
-    return registry
+        connection.for_unit = for_unit
+        return connection
 
-
-@pytest.fixture
-def sample_sensor_data():
-    """Sample sensor data for testing."""
-    return {
-        "ambient_temp": {
-            "name": "Ambient Temperature",
-            "address": 1000,
-            "unit": "°C",
-            "device_class": "temperature",
-            "state_class": "measurement",
-        },
-        "hp1_flow_temp": {
-            "name": "Flow Temperature",
-            "address": 1100,
-            "unit": "°C",
-            "device_class": "temperature",
-            "state_class": "measurement",
-        },
-    }
-
-
-@pytest.fixture
-def sample_climate_data():
-    """Sample climate data for testing."""
-    return {
-        "hot_water": {
-            "name": "Hot Water",
-            "device_type": "boil",
-            "target_temp_address": 2000,
-            "current_temp_address": 2001,
-        },
-        "heating_circuit": {
-            "name": "Heating Circuit",
-            "device_type": "hc",
-            "target_temp_address": 3000,
-            "current_temp_address": 3001,
-        },
-    }
+    connector = Mock(side_effect=build)
+    with (
+        patch("custom_components.lambda_heat_pumps.ModbusConnection", connector),
+        patch("custom_components.lambda_heat_pumps.config_flow.ModbusConnection", connector),
+    ):
+        yield

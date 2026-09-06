@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - "main"
-      - "V2.8.1"
     paths:
       - 'docs/**'
       - '.github/workflows/docsz.yml'
@@ -24,7 +23,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: 3.x
-      - run: pip install -r requirements_docs.txt
+      - run: pip install zensical
       - name: Build documentation
         working-directory: docs
         run: zensical build --clean

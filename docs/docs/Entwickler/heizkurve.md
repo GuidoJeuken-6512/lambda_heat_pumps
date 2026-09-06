@@ -154,8 +154,6 @@ Die Entity `sensor.*_hc1_heating_curve_flow_line_temperature_calc` wird in der K
 
 *Hinweis:* `*` steht für deinen Geräte-/Namenspräfix (z. B. `eu08l`), `hc1` für Heizkreis 1 (bei mehreren Heizkreisen `hc2` usw.).
 
-*Technischer Hinweis (seit v2.8.3):* Der Außentemperatur-Sensor sowie die Fallback-Referenzen auf `operating_state`/`eco_temp_reduction` (Schritt 7, greift nur, wenn die Coordinator-Daten den Wert nicht liefern) werden intern über die Entity Registry aufgelöst (`unique_id` statt rekonstruierter Name), nicht mehr aus dem Gerätenamen zusammengesetzt. Betrifft nur den internen Lookup, nicht die hier gezeigten Entity-IDs selbst. Details: [Energie-Sensor-Lookup über die Entity Registry](energie-sensor-lookup-registry.md).
-
 ## Template-Sensor ohne Lambda-Integration (Standalone)
 
 Wenn Sie Home Assistant nutzen, aber **nicht** diese Lambda-Integration (z. B. andere Wärmepumpe oder manuelle Heizungssteuerung), können Sie die gleiche Heizkurven-Berechnung mit einem **Template-Sensor** nachbilden. Der Sensor berechnet die Vorlauftemperatur aus der Außentemperatur und drei Stützpunkten (lineare Interpolation wie oben).
@@ -292,6 +290,6 @@ Die Log-Meldung zeigt:
 
 ## Weitere Informationen
 
-- [Raumthermomenter](../Anwender/raumthermometer.md) - Integration externer Raumthermomenter-Sensoren
-- `HEATING_CURVE_CALCULATION.md` (interne Notiz, nicht Teil der veröffentlichten Doku) - Detaillierte Beschreibung der Berechnungslogik
+- [Raumthermomenter](raumthermostat.md) - Integration externer Raumthermomenter-Sensoren
+- [Technische Berechnungsdetails](../../docs_md/HEATING_CURVE_CALCULATION.md) - Detaillierte Beschreibung der Berechnungslogik
 

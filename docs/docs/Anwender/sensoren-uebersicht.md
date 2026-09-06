@@ -91,6 +91,11 @@ Bei mehreren Wärmepumpen wird die Nummer hochgezählt: `hp1`, `hp2`, `hp3`.
 
 ### Maximalleistungen (Konfigurationsparameter)
 
+Diese Register werden stündlich abgefragt, nicht im normalen Abfrageintervall:
+Es sind Einstellungen des Installateurs, und die Steuerung liefert sie nur
+einzeln aus. Sie im normalen Intervall mitzulesen kostete elf der
+dreiundzwanzig Anfragen pro Abfrage.
+
 | Sensor | Einheit | Beschreibung |
 |--------|---------|--------------|
 | `sensor.eu08l_hp1_dhw_output_power_15c` | kW | Warmwasser-Leistung bei +15 °C |

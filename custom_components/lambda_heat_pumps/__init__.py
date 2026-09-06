@@ -1,481 +1,174 @@
-"""The Lambda Heat Pumps integration."""
+"""The Lambda Heat Pumps integration.
+
+The integration owns the Modbus link: it opens one connection to the controller,
+takes a unit handle on it, and hands that to the `lambda_modbus` device library.
+Which modules the controller has is discovered here, once, by probing it — a
+Lambda system's hardware is fixed, so there is nothing for the user to configure
+and nothing to re-detect until the entry is reloaded.
+"""
 
 from __future__ import annotations
 
 import logging
-import asyncio
+from pathlib import Path
 
-from homeassistant.config_entries import ConfigEntry
+import yaml
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.typing import ConfigType
-from homeassistant.helpers import config_validation as cv
-
+from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers import device_registry
+from modbus_connection import ModbusError, ModbusTcpParams
+from modbus_connection.tmodbus import ModbusConnection
 
 from .const import (
-    DOMAIN,
-    DEBUG_PREFIX,
+    CONF_FIRMWARE_VERSION,
+    CONF_HOST,
+    CONF_INT32_REGISTER_ORDER,
+    CONF_PORT,
+    CONF_SLAVE_ID,
+    CONF_USE_LEGACY_MODBUS_NAMES,
+    DEFAULT_INT32_REGISTER_ORDER,
+    ENTRY_VERSION,
+    FIRMWARE_VERSIONS,
+    REGISTER_ORDER_HIGH_FIRST,
+    REGISTER_ORDER_LOW_FIRST,
 )
-
-from .coordinator import LambdaDataUpdateCoordinator
-from .services import async_setup_services, async_unload_services
-from .utils import generate_base_addresses, ensure_lambda_config
-from .reset_manager import ResetManager
-from .migration import async_migrate_entry, async_remove_duplicate_entity_suffixes
-from .module_auto_detect import auto_detect_modules, update_entry_with_detected_modules
-from .const import AUTO_DETECT_RETRIES, AUTO_DETECT_RETRY_DELAY
-from .modbus_utils import wait_for_stable_connection
+from .config_file import FILENAME as CONFIG_FILENAME
+from .coordinator import LambdaConfigEntry, LambdaCoordinator
+from .module_auto_detect import async_detect_modules
+from .services import async_setup_services, async_setup_writers
 
 _LOGGER = logging.getLogger(__name__)
 
-
-# Diese Konstante teilt Home Assistant mit, dass die Integration
-# Übersetzungen hat
-TRANSLATION_SOURCES = {DOMAIN: "translations"}
-
-# Per-Entry Reload-State: eigener Lock + Flag pro entry_id.
-# Verhindert, dass ein Reload von Entry A den Reload von Entry B blockiert
-# und eliminiert Race-Conditions bei parallelen Reload-Triggern.
-_entry_reload_locks: dict[str, asyncio.Lock] = {}
-_entry_reload_flags: dict[str, bool] = {}
-
-_LOG_RELOAD = "RELOAD"
-_LOG_AUTODETECT = "AUTO-DETECT"
-_LOG_SETUP = "SETUP"
-
-# Tracks which entries have been set up at least once in this HA session.
-# Used to distinguish a first-time setup from a reload (H-04):
-# after async_unload_entry clears hass.data, checking hass.data is unreliable.
-_previously_setup_entries: set[str] = set()
-
-PLATFORMS = [
-    Platform.SENSOR,
-    Platform.CLIMATE,
-    Platform.NUMBER,
-]
-
-# Config schema - only config entries are supported
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+PLATFORMS = [Platform.CLIMATE, Platform.NUMBER, Platform.SENSOR]
 
 
-def setup_debug_logging(hass: HomeAssistant, config: ConfigType) -> None:
-    """Set up debug logging for the integration."""
-    if config.get("debug", False):
-        logging.getLogger(DEBUG_PREFIX).setLevel(logging.DEBUG)
-        _LOGGER.info("Debug logging enabled for %s", DEBUG_PREFIX)
+async def async_setup_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bool:
+    """Set up a Lambda controller from a config entry."""
+    # The port and unit id are read straight into a Modbus frame, which needs
+    # ints; the number selector that set them hands back floats, and older
+    # entries were stored that way.
+    port = int(entry.data[CONF_PORT])
+    slave_id = int(entry.data[CONF_SLAVE_ID])
+    # Building the connection does no I/O — the first read establishes the link,
+    # and re-establishes it after a drop. Registering the close here covers both
+    # a normal unload and every way the rest of this function can fail, so there
+    # is no path that leaks a connection on a setup that is about to be retried.
+    connection = ModbusConnection(
+        ModbusTcpParams(host=entry.data[CONF_HOST], port=port)
+    )
+    entry.async_on_unload(connection.close)
 
+    unit = connection.for_unit(slave_id)
+    try:
+        counts = await async_detect_modules(unit)
+    except ModbusError as err:
+        raise ConfigEntryNotReady(f"Could not reach the controller: {err}") from err
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Lambda integration."""
-    _LOGGER.info("Setting up Lambda Heat Pumps integration")
+    coordinator = LambdaCoordinator(hass, entry, connection, unit, counts)
+    await coordinator.async_config_entry_first_refresh()
+    entry.runtime_data = coordinator
 
-    # Set up debug logging if configured
-    setup_debug_logging(hass, config)
+    # The capacity limits are read on their own slow schedule. A first read that
+    # fails is not worth failing setup over — they are settings, the rest of the
+    # controller is answering, and their entities say so on their own until the
+    # next read lands an hour later.
+    for capacity in coordinator.capacity_limits:
+        await capacity.async_refresh()
 
-    # Initialize domain data structure
-    if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
+    # Nothing here reloads the entry, and the two things that used to are both
+    # better off without it: a dropped link is re-established by the next poll,
+    # which keeps the entities and the probed register map in place rather than
+    # rebuilding them for a blip, and an options change is reloaded by the
+    # options flow itself, being an OptionsFlowWithReload.
 
+    # Every module is a device hanging off the controller, so the controller has
+    # to exist before any of them — a platform that only creates modules would
+    # otherwise be pointing its entities at a device that is not there yet.
+    device_registry.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, **coordinator.device_info(None, None)
+    )
+
+    async_setup_services(hass)
+    async_setup_writers(coordinator)
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Reload config entry."""
-    entry_id = entry.entry_id
-    reload_lock = _entry_reload_locks.setdefault(entry_id, asyncio.Lock())
-
-    # Non-blocking fast-path: if the lock is already held, a reload is in progress
-    if reload_lock.locked():
-        _LOGGER.warning("RELOAD: Reload already in progress for entry %s, skipping", entry_id)
-        return True
-
-    _LOGGER.info("RELOAD: Starting reload for entry: %s", entry_id)
-
-    async with reload_lock:
-        _entry_reload_flags[entry_id] = True
-        _LOGGER.info("RELOAD: Reload lock acquired for entry %s, proceeding", entry_id)
-
-        try:
-            _LOGGER.info("RELOAD: Unloading current entry...")
-            unload_ok = await async_unload_entry(hass, entry)
-            if not unload_ok:
-                _LOGGER.error("RELOAD: Failed to unload entry during reload")
-                return False
-
-            _LOGGER.info("RELOAD: Setting up entry again...")
-            # skip_auto_detect=True: Dieser Pfad wird ausschließlich durch den
-            # Options-Flow-Update-Listener ausgelöst (entry.options geändert).
-            # Die Modul-Hardware hat sich dabei nicht geändert, daher ist der
-            # 38s-verzögerte Hintergrund-Modbus-Scan hier unnötig und blockiert
-            # nur den globalen Modbus-Lock für die neue Coordinator-Generation.
-            setup_ok = await async_setup_entry(hass, entry, skip_auto_detect=True)
-            if not setup_ok:
-                _LOGGER.error("RELOAD: Failed to setup entry during reload")
-                return False
-
-            _LOGGER.info("RELOAD: Successfully reloaded Lambda Heat Pumps integration")
-            return True
-
-        except Exception as ex:
-            _LOGGER.error("RELOAD: Error during reload: %s", ex, exc_info=True)
-            return False
-        finally:
-            _entry_reload_flags[entry_id] = False
-            _LOGGER.info("RELOAD: Reload lock released for entry %s", entry_id)
+async def async_unload_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bool:
+    """Unload a config entry; the coordinator closes the connection it owns."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: ConfigEntry, skip_auto_detect: bool = False
-) -> bool:
-    """Set up Lambda Heat Pumps from a config entry.
+async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bool:
+    """Bring an older entry up to date.
 
-    skip_auto_detect: Internal flag, set by async_reload_entry for reloads
-    triggered by an options-flow change. Module hardware can't have changed
-    from a pure options update, so the background auto-detect Modbus scan
-    is skipped to avoid contending with the new coordinator for the global
-    Modbus lock right after a reload.
+    Everything the integration is configured with now lives on the entry. What
+    used to live in `lambda_wp_config.yaml` was either something Home Assistant
+    already does — disabling an entity, renaming one — or, in the single case of
+    the 32-bit register order, a real setting, which is moved here.
     """
-    _LOGGER.info("SETUP: Setting up Lambda Heat Pumps integration for entry: %s", entry.entry_id)
-
-    # Check if entry is already loaded
-    if DOMAIN in hass.data and entry.entry_id in hass.data[DOMAIN]:
-        _LOGGER.warning("SETUP: Entry %s already loaded, skipping setup", entry.entry_id)
+    if entry.version >= ENTRY_VERSION:
         return True
 
-    _LOGGER.debug("Setting up Lambda integration with config: %s", entry.data)
+    data = dict(entry.data)
+    options = dict(entry.options)
 
-    # Config-Cache invalidieren (M-07): Bei jedem Setup/Reload die gecachte
-    # lambda_wp_config.yaml verwerfen, damit Änderungen sofort wirksam werden.
-    hass.data.pop("_lambda_config_cache", None)
-    hass.data.pop("_lambda_migration_done", None)
+    # The module counts are probed on every setup now.
+    for key in ("num_hps", "num_boil", "num_buff", "num_sol", "num_hc"):
+        data.pop(key, None)
 
-    # Ensure lambda_wp_config.yaml exists (create from template if missing)
-    await ensure_lambda_config(hass)
+    # The number selector stored these as floats; the Modbus frame needs ints.
+    data[CONF_PORT] = int(data[CONF_PORT])
+    data[CONF_SLAVE_ID] = int(data[CONF_SLAVE_ID])
 
-    # --- Intelligente Auto-Detection mit Performance-Optimierungen ---
-    # Erstelle einen Coordinator für beide Zwecke (Auto-Detection + Produktivbetrieb)
-    coordinator = LambdaDataUpdateCoordinator(hass, entry)
-    await coordinator.async_init()
-    
-    # Prüfe ob Module Counts bereits vorhanden sind (bestehendes Setup)
-    has_module_counts = (
-        "num_hps" in entry.data and 
-        "num_hc" in entry.data
+    # Entries that predate this were all named with the prefix.
+    data.setdefault(CONF_USE_LEGACY_MODBUS_NAMES, True)
+    # The firmware version was written to the options by some flows and the data
+    # by others; the entry is the one place it belongs.
+    firmware = data.get(CONF_FIRMWARE_VERSION) or options.pop(
+        CONF_FIRMWARE_VERSION, None
     )
-    
-    if has_module_counts:
-        if skip_auto_detect:
-            # Reload durch Options-Flow-Änderung: Modul-Hardware kann sich dabei
-            # nicht geändert haben, daher kein Hintergrund-Scan nötig. Vermeidet
-            # unnötige Konkurrenz um den globalen Modbus-Lock direkt nach einem
-            # Reload (siehe Fix für "Sensoren ohne Werte nach Config-Änderung").
-            _LOGGER.debug(
-                "AUTO-DETECT: Skipping background auto-detection (reload triggered "
-                "by options-flow change, module hardware unaffected) (coordinator_id=%s)",
-                id(coordinator),
-            )
-        else:
-            # Bestehende Config: Auto-Detection im Hintergrund (non-blocking)
-            _LOGGER.info("Using existing module counts, starting background auto-detection")
+    data[CONF_FIRMWARE_VERSION] = (
+        firmware if firmware in FIRMWARE_VERSIONS else FIRMWARE_VERSIONS[-1]
+    )
 
-            # Zuverlässige Reload-Erkennung: hass.data wird beim Unload geleert,
-            # daher ist es keine brauchbare Quelle für diese Information (H-04).
-            is_reload = entry.entry_id in _previously_setup_entries
+    options.setdefault(
+        CONF_INT32_REGISTER_ORDER, await _async_read_register_order(hass)
+    )
 
-            async def background_auto_detect():
-                try:
-                    _LOGGER.info("AUTO-DETECT: Background auto-detection started (coordinator_id=%s)", id(coordinator))
-
-                    if is_reload:
-                        # RELOAD: 38 Sekunden Verzögerung für stabile Verbindung
-                        _LOGGER.info("AUTO-DETECT: Reload detected - waiting 38 seconds for coordinator to complete initial read cycles...")
-                        await asyncio.sleep(38)  # 38 Sekunden warten
-                        _LOGGER.info("AUTO-DETECT: 38 seconds elapsed, starting auto-detection...")
-                    else:
-                        # ERSTER START: Sofort starten (Config Flow)
-                        _LOGGER.info("AUTO-DETECT: First startup detected - starting auto-detection immediately...")
-
-                    # Zusätzlich: Warte auf stabile Verbindung vor Auto-Detection
-                    _LOGGER.info("AUTO-DETECT: Waiting for stable connection before starting...")
-                    await wait_for_stable_connection(coordinator)
-                    _LOGGER.info("AUTO-DETECT: Connection stable, starting module detection...")
-
-                    detected = await auto_detect_modules(coordinator.client, coordinator.slave_id)
-                    updated = await update_entry_with_detected_modules(hass, entry, detected)
-                    if updated:
-                        _LOGGER.info("AUTO-DETECT: Background auto-detection updated module counts: %s (coordinator_id=%s)", detected, id(coordinator))
-                    else:
-                        _LOGGER.info("AUTO-DETECT: Background auto-detection: no module count changes needed (coordinator_id=%s)", id(coordinator))
-                except Exception as ex:
-                    _LOGGER.warning("AUTO-DETECT: Background auto-detection failed: %s (coordinator_id=%s)", ex, id(coordinator))
-
-            # FIX K-02: Task-Referenz speichern – wird beim Unload abgebrochen,
-            # sodass kein verwaister Task nach einem Reload einen weiteren Reload triggert.
-            _auto_detect_task = hass.async_create_task(background_auto_detect())
-            # Temporäre Zwischenspeicherung; endgültige Speicherung erfolgt nach
-            # hass.data-Initialisierung weiter unten.
-            hass.data.setdefault(DOMAIN, {}).setdefault(
-                entry.entry_id, {}
-            )["auto_detect_task"] = _auto_detect_task
-            _LOGGER.info("AUTO-DETECT: Started background auto-detection (non-blocking) (coordinator_id=%s)", id(coordinator))
-
-        # Verwende vorhandene Module Counts
-        num_hps = entry.data.get("num_hps", 1)
-        num_boil = entry.data.get("num_boil", 1)
-        num_buff = entry.data.get("num_buff", 0)
-        num_sol = entry.data.get("num_sol", 0)
-        num_hc = entry.data.get("num_hc", 1)
-    else:
-        # Neue Config: Auto-Detection mit Retry (blocking für Setup)
-        _LOGGER.info("AUTO-DETECT: New configuration detected, performing auto-detection (coordinator_id=%s)", id(coordinator))
-        # Warte auf stabile Verbindung auch beim ersten Start (Fix Issue #80):
-        # Das Gerät ist beim HA-Kaltstart oft noch nicht erreichbar.
-        _LOGGER.info("AUTO-DETECT: Waiting for stable connection before first-start auto-detection...")
-        await wait_for_stable_connection(coordinator)
-        _LOGGER.info("AUTO-DETECT: Connection stable, starting first-start module detection...")
-        detected_counts = None
-        for attempt in range(AUTO_DETECT_RETRIES):
-            try:
-                _LOGGER.info("AUTO-DETECT: Attempt %d/%d (coordinator_id=%s)", attempt + 1, AUTO_DETECT_RETRIES, id(coordinator))
-                if await coordinator.client.connect():
-                    _LOGGER.info("AUTO-DETECT: Connected, starting module detection (coordinator_id=%s)", id(coordinator))
-                    detected_counts = await auto_detect_modules(coordinator.client, coordinator.slave_id)
-                    updated = await update_entry_with_detected_modules(hass, entry, detected_counts)
-                    if updated:
-                        _LOGGER.info("AUTO-DETECT: Config entry updated with detected module counts: %s (coordinator_id=%s)", detected_counts, id(coordinator))
-                    else:
-                        _LOGGER.info("AUTO-DETECT: No module count changes needed (coordinator_id=%s)", id(coordinator))
-                    break
-                else:
-                    _LOGGER.info(
-                        "AUTO-DETECT: Could not connect to Modbus device for auto-detection (attempt %d/%d) (coordinator_id=%s)",
-                        attempt + 1, AUTO_DETECT_RETRIES, id(coordinator)
-                    )
-            except Exception as ex:
-                _LOGGER.info(
-                    "AUTO-DETECT: Module auto-detection failed (attempt %d/%d): %s (coordinator_id=%s)",
-                    attempt + 1, AUTO_DETECT_RETRIES, ex, id(coordinator)
-                )
-            finally:
-                if detected_counts is None and attempt < AUTO_DETECT_RETRIES - 1:
-                    _LOGGER.info("AUTO-DETECT: Retrying in %d seconds (coordinator_id=%s)", AUTO_DETECT_RETRY_DELAY, id(coordinator))
-                    await asyncio.sleep(AUTO_DETECT_RETRY_DELAY)
-        
-        # Use detected counts if available, else fallback to config
-        if detected_counts:
-            num_hps = detected_counts.get("hp", 1)
-            num_boil = detected_counts.get("boil", 1)
-            num_buff = detected_counts.get("buff", 0)
-            num_sol = detected_counts.get("sol", 0)
-            num_hc = detected_counts.get("hc", 1)
-        else:
-            num_hps = entry.data.get("num_hps", 1)
-            num_boil = entry.data.get("num_boil", 1)
-            num_buff = entry.data.get("num_buff", 0)
-            num_sol = entry.data.get("num_sol", 0)
-            num_hc = entry.data.get("num_hc", 1)
-
-    # Generate base addresses for all modules
-    base_addresses = {
-        **generate_base_addresses("hp", num_hps),
-        **generate_base_addresses("boil", num_boil),
-        **generate_base_addresses("buff", num_buff),
-        **generate_base_addresses("sol", num_sol),
-        **generate_base_addresses("hc", num_hc),
-    }
-
-    # Coordinator ist bereits erstellt und initialisiert - verwende den bestehenden
-    try:
-        # Register-Order-Konfiguration (muss vor async_refresh() erfolgen)
-        from .modbus_utils import get_int32_register_order
-        coordinator._int32_register_order = await get_int32_register_order(hass, entry)
-        _LOGGER.info("Register-Order konfiguriert: %s", coordinator._int32_register_order)
-
-        # Setze die generierten Base Addresses
-        coordinator.base_addresses = base_addresses
-
-        # Store coordinator in hass.data VOR Platform-Setup (wird von sensor.py benötigt).
-        # Bereits vorhandene Einträge (z.B. auto_detect_task) werden beibehalten.
-        if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {}
-        existing = hass.data[DOMAIN].get(entry.entry_id, {})
-        existing["coordinator"] = coordinator
-        hass.data[DOMAIN][entry.entry_id] = existing
-
-        # Duplikat-Entities (_2, _3, …) aus der Registry entfernen –
-        # VOR dem Platform-Setup (bereinigt Überreste vorheriger Sessions).
-        await async_remove_duplicate_entity_suffixes(hass, entry.entry_id)
-
-        # Set up platforms with error handling
-        try:
-            await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-        except Exception as platform_ex:
-            _LOGGER.error("Error setting up platforms: %s", platform_ex, exc_info=True)
-            # Clean up partially setup platforms
-            try:
-                await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-            except Exception as unload_ex:
-                _LOGGER.error(
-                    "Error cleaning up platforms: %s", unload_ex, exc_info=True
-                )
-            return False
-
-        # FIX K-03: Zweite Bereinigung NACH dem Platform-Setup.
-        # Fängt Duplikate ab, die durch nicht-abgebrochene Hintergrund-Tasks
-        # innerhalb dieses Setup-Laufs entstanden sind.
-        await async_remove_duplicate_entity_suffixes(hass, entry.entry_id)
-
-        # Starte den ersten Datenupdate NACH Platform-Setup (damit Entitäten bereits registriert sind)
-        _LOGGER.info("PRODUCTION: Starting first data update (coordinator_id=%s)", id(coordinator))
-        await coordinator.async_refresh()
-        _LOGGER.info("PRODUCTION: First data update completed (coordinator_id=%s)", id(coordinator))
-
-        # Set up services (only once, regardless of number of entries)
-        if not hass.services.has_service(DOMAIN, "read_modbus_register"):
-            await async_setup_services(hass)
-
-        # Set up reset automations using ResetManager
-        reset_manager = ResetManager(hass, entry.entry_id)
-        reset_manager.setup_reset_automations()
-
-        # Store reset_manager for cleanup
-        if "lambda_heat_pumps" not in hass.data:
-            hass.data["lambda_heat_pumps"] = {}
-        if entry.entry_id not in hass.data["lambda_heat_pumps"]:
-            hass.data["lambda_heat_pumps"][entry.entry_id] = {}
-        hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"] = reset_manager
-
-        # Add update listener
-        entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
-        # Nach erfolgreichem Setup als "bereits eingerichtet" markieren
-        # (für is_reload-Erkennung bei zukünftigen Reloads).
-        _previously_setup_entries.add(entry.entry_id)
-
-        _LOGGER.info("Lambda Heat Pumps integration setup completed")
-        return True
-
-    except Exception as ex:
-        _LOGGER.error("Failed to setup Lambda integration: %s", ex, exc_info=True)
-
-        # Clean up any partial setup
-        try:
-            from .utils import async_cleanup_all_components
-            await async_cleanup_all_components(hass, entry.entry_id)
-        except Exception as cleanup_ex:
-            _LOGGER.error(
-                "Error during cleanup after failed setup: %s", cleanup_ex, exc_info=True
-            )
-
-        return False
+    hass.config_entries.async_update_entry(
+        entry, data=data, options=options, version=ENTRY_VERSION
+    )
+    return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Unload a config entry."""
-    _LOGGER.info("🧹 UNLOAD: Unloading Lambda integration for entry: %s", entry.entry_id)
+async def _async_read_register_order(hass: HomeAssistant) -> str:
+    """The 32-bit register order the retired YAML config file was set to."""
+    # In the configuration folder itself, which is where it has always been.
+    path = Path(hass.config.path(CONFIG_FILENAME))
 
-    unload_ok = True
+    def _read() -> str:
+        if not path.is_file():
+            return DEFAULT_INT32_REGISTER_ORDER
+        config = yaml.safe_load(path.read_text()) or {}
+        modbus = config.get("modbus") or {}
+        # The key was renamed once, and before that used Modbus's own words for
+        # it, which described the wrong thing.
+        order = modbus.get("int32_register_order") or modbus.get("int32_byte_order")
+        return {
+            "high_first": REGISTER_ORDER_HIGH_FIRST,
+            "big": REGISTER_ORDER_HIGH_FIRST,
+            "low_first": REGISTER_ORDER_LOW_FIRST,
+            "little": REGISTER_ORDER_LOW_FIRST,
+        }.get(order, DEFAULT_INT32_REGISTER_ORDER)
 
     try:
-        entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-
-        # Modbus-Client SOFORT schließen, noch vor der Task-Cancellation unten.
-        # Grund: Die Task-Cancellation hat nur 2s Grace-Period; ein laufender
-        # Modbus-Read kann aber bis zu LAMBDA_MODBUS_TIMEOUT (60s) pro Versuch
-        # dauern. Ist der Client hier schon geschlossen, schlägt jeder weitere
-        # Read-Versuch eines noch laufenden Hintergrund-Tasks (z.B. auto_detect_task
-        # oder ein in-flight Poll-Zyklus) sofort über die "not connected"-Prüfung
-        # in modbus_utils.py fehl, statt den globalen Modbus-Lock minutenlang für
-        # die neue Coordinator-Generation zu blockieren (siehe Fix für "Sensoren
-        # ohne Werte nach Config-Änderung").
-        coordinator = entry_data.get("coordinator")
-        if coordinator is not None and getattr(coordinator, "client", None) is not None:
-            try:
-                coordinator.client.close()
-                _LOGGER.debug("🧹 UNLOAD: Closed Modbus client early (coordinator_id=%s)", id(coordinator))
-            except Exception:
-                _LOGGER.debug("UNLOAD: Error closing Modbus client early", exc_info=True)
-            finally:
-                coordinator.client = None
-
-        # FIX K-01 + K-02: Hintergrund-Tasks abbrechen, BEVOR Platforms entladen werden.
-        # Verhindert, dass verwaiste Tasks nach dem Reload async_add_entities erneut
-        # aufrufen (→ _2-Duplikate) oder einen weiteren Reload auslösen.
-        for task_key in ("template_setup_task", "auto_detect_task"):
-            task = entry_data.get(task_key)
-            if task is not None and not task.done():
-                _LOGGER.debug("🧹 UNLOAD: Cancelling background task '%s'", task_key)
-                task.cancel()
-                try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
-                except (asyncio.CancelledError, asyncio.TimeoutError):
-                    pass
-
-        # Clean up reset automations using ResetManager
-        if (
-            "lambda_heat_pumps" in hass.data
-            and entry.entry_id in hass.data["lambda_heat_pumps"]
-            and "reset_manager" in hass.data["lambda_heat_pumps"][entry.entry_id]
-        ):
-            reset_manager = hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"]
-            reset_manager.cleanup()
-            del hass.data["lambda_heat_pumps"][entry.entry_id]["reset_manager"]
-
-        # Try to unload platforms - handle gracefully if they weren't loaded
-        try:
-            platforms_unloaded = await hass.config_entries.async_unload_platforms(
-                entry, PLATFORMS
-            )
-            if not platforms_unloaded:
-                _LOGGER.warning("Some platforms failed to unload")
-                unload_ok = False
-        except ValueError as ve:
-            if "Config entry was never loaded" in str(ve):
-                _LOGGER.debug("Platforms were not loaded, skipping unload")
-                platforms_unloaded = True
-            else:
-                _LOGGER.warning("Error unloading platforms: %s", ve)
-                unload_ok = False
-                platforms_unloaded = False
-        except Exception:
-            _LOGGER.exception("Error unloading platforms")
-            unload_ok = False
-            platforms_unloaded = False
-
-        # Use centralized cleanup function
-        try:
-            from .utils import async_cleanup_all_components
-            await async_cleanup_all_components(hass, entry.entry_id)
-        except Exception:
-            _LOGGER.exception("Error during centralized cleanup")
-        
-        # Services cleanup is now handled by centralized cleanup function
-
-        # Persist-Flush bei Shutdown: Dirty-Daten vor dem Entladen sichern
-        try:
-            entry_data = hass.data.get(DOMAIN, {}).get(entry.entry_id, {})
-            coordinator = entry_data.get("coordinator")
-            if coordinator is not None and getattr(coordinator, "_persist_dirty", False):
-                _LOGGER.debug("UNLOAD: Flushing dirty persist data before unload")
-                await coordinator._persist_counters(force=True)
-        except Exception:
-            _LOGGER.exception("UNLOAD: Error during persist flush")
-
-        # Clean up domain data if this is the last entry
-        if DOMAIN in hass.data and len(hass.data[DOMAIN]) == 0:
-            hass.data.pop(DOMAIN, None)
-
-        if not unload_ok:
-            _LOGGER.warning("Failed to fully unload Lambda Heat Pumps integration")
-        else:
-            _LOGGER.info("Lambda Heat Pumps integration unloaded successfully")
-
-        return unload_ok
-
-    except Exception as ex:
-        _LOGGER.error("Error during unload: %s", ex, exc_info=True)
-        return False
-
-
-# Export für Home Assistant
-__all__ = ['async_migrate_entry']
+        return await hass.async_add_executor_job(_read)
+    except (OSError, yaml.YAMLError) as err:
+        _LOGGER.warning(
+            "Could not read the old config file, assuming the default "
+            "32-bit register order: %s",
+            err,
+        )
+        return DEFAULT_INT32_REGISTER_ORDER

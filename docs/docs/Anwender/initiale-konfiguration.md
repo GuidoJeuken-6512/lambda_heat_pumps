@@ -4,7 +4,7 @@ title: "Initiale Konfiguration"
 
 # Initiale Konfiguration
 
-*Zuletzt geändert am 04.08.2026*
+*Zuletzt geändert am 21.03.2026*
 
 Nach der Installation der Lambda Heat Pumps Integration über HACS müssen Sie die Integration in Home Assistant einrichten. Dieser Abschnitt führt Sie durch den Konfigurationsprozess.
 
@@ -49,9 +49,9 @@ Bei der Einrichtung müssen Sie folgende **Pflichtfelder** angeben:
 - **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren verfügbar sind
 - **So finden Sie die Firmware-Version:**
   1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
-  2. Die FW-Version wird in der unteren Statusleiste angezeigt.
-
-<img src="../assets/find_fw_version.gif" alt="Firmware-Version auf der Lambda-Bedienoberfläche finden" style="width: 100%; height: auto; border-radius: 8px;">
+  2. Klicken Sie auf die "i" Taste auf der linken Seite
+  3. Klicken Sie auf die Taste auf der rechten Seite, die wie ein Computerchip aussieht (letzte Taste)
+  4. Die Firmware-Version wird dort angezeigt
 
 ### Schritt 3: Automatische Konfiguration
 
@@ -123,7 +123,7 @@ Nach der erfolgreichen Initialkonfiguration können Sie:
 
 - [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md) vornehmen
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
-- [Raumthermostat](raumthermometer.md) konfigurieren
+- [Raumthermostat](raumthermostat.md) konfigurieren
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
 

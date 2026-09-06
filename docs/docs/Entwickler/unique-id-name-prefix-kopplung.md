@@ -195,4 +195,4 @@ Die Migrationsfunktion wird im `perform_structured_migration()`-Dispatcher als n
 | Implementierung | Offen |
 | Ziel-Release | nicht festgelegt |
 
-Verwandte Analyse: `integration_analysis.md` (interne Analyse, nicht Teil der veröffentlichten Doku) (H-02)
+Verwandte Analyse: [integration_analysis.md](../../analysis/integration_analysis.md) (H-02)

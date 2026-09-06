@@ -260,8 +260,6 @@ async def _handle_reset(self, entry_id: str):
 
 **Ergebnis**: 5 Methoden → 1 Methode (Code-Deduplizierung)
 
-> **Update v2.8.3**: Innerhalb dieser einen Methode gab es weiterhin fünf fast identische `if`/`elif`-Zweige (nur der geprüfte Suffix unterschied sich). Seit v2.8.3 eine Bedingung über die Modul-Konstante `CYCLING_RESET_INTERVALS = ("daily", "2h", "4h", "monthly", "yearly")`: `self._reset_interval in CYCLING_RESET_INTERVALS and self._sensor_id.endswith(f"_{self._reset_interval}")`. Verhaltensgleich, `total`/`yesterday` bleiben weiterhin ungerest. Details und aktueller Code: [Cycling-Sensoren – Reset-Logik](cycling-sensoren.md#6-reset-logik).
-
 ## Migration von setup_cycling_automations()
 
 Die alte `setup_cycling_automations()` Funktion wurde durch `ResetManager` ersetzt:

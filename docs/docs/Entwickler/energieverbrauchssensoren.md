@@ -4,7 +4,7 @@ title: "Energieverbrauchssensoren - Technische Dokumentation"
 
 # Energieverbrauchssensoren - Technische Dokumentation
 
-*Zuletzt geändert am 03.09.2026*
+*Zuletzt geändert am 21.03.2026*
 
 Diese Dokumentation beschreibt die technische Implementierung der Energieverbrauchssensoren (elektrisch und thermisch) in der Lambda Heat Pumps Integration.
 
@@ -307,15 +307,14 @@ def _convert_energy_to_kwh_cached(self, value, unit):
 - **Total-Werte**: Werden in `LambdaEnergyConsumptionSensor` gespeichert (RestoreEntity)
 - **Last Readings**: Werden im Coordinator gespeichert (`_last_energy_reading`, `_last_thermal_energy_reading`)
 - **JSON-Persistierung**: Coordinator speichert Werte in `cycle_energy_persist.json`
-- **Energy-Sensor-States**: Zusätzlich zu HA-Restore werden die Energy-Sensor-States (Total, Daily, Monthly, Yearly für elektrisch und thermisch) in `cycle_energy_persist.json` unter dem Schlüssel `energy_sensor_states` gespeichert; beim Neustart hat diese Quelle Vorrang, damit Anzeigewerte nicht fallen (z. B. 0,44 → 0,4) - **außer** der Snapshot ist selbst veraltet (niedriger als der bereits aus dem HA-Recorder restaurierte Wert), siehe Punkt 5 unten und [Monotonie-Schutz](#monotonie-schutz-beim-restore-energy_value).
+- **Energy-Sensor-States**: Zusätzlich zu HA-Restore werden die Energy-Sensor-States (Total, Daily, Monthly, Yearly für elektrisch und thermisch) in `cycle_energy_persist.json` unter dem Schlüssel `energy_sensor_states` gespeichert; beim Neustart hat diese Quelle Vorrang, damit Anzeigewerte nicht fallen (z. B. 0,44 → 0,4).
 
 ### Neustart-Werterhalt
 
 1. **`set_energy_value()` verringert nie**: Der gespeicherte Wert wird nicht verringert (vermeidet Überschreiben durch veraltete Coordinator-/Total-Werte nach Neustart).
 2. **Kein Fallback-`async_set`**: Kann der Coordinator die Entity-Referenz nicht auflösen, wird kein `async_set` mit möglicherweise veraltetem State ausgeführt.
 3. **`native_value` auf 2 Dezimalstellen gerundet**: Vermeidet Float-Artefakte im persistierten State (z. B. 0,39999… statt 0,44).
-4. **State aus `cycle_energy_persist` bevorzugt**: Nach `restore_state(last_state)` wird, falls der Coordinator einen State aus `cycle_energy_persist` für diese Entity hat, dieser angewendet (`_apply_persisted_energy_state`) - sofern er den Monotonie-Schutz aus Punkt 5 besteht.
-5. **Monotonie-Schutz beim Anwenden des Persist-Snapshots (2.8.4)**: `_apply_persisted_energy_state()` verwirft den kompletten Snapshot aus `cycle_energy_persist`, wenn dessen `energy_value` niedriger ist als der bereits von `restore_state()` gesetzte Wert (0,001 kWh Toleranz gegen Float-Rauschen) - der Snapshot wird dann komplett ignoriert statt nur `energy_value`, damit keine frische `energy_value` mit einer veralteten Baseline/`applied_offset` aus demselben Snapshot kombiniert wird. Betrifft alle Perioden, nicht nur `total` (siehe [Monotonie-Schutz für `energy_value` beim Restore](#monotonie-schutz-beim-restore-energy_value)).
+4. **State aus `cycle_energy_persist` bevorzugt**: Nach `restore_state(last_state)` wird, falls der Coordinator einen State aus `cycle_energy_persist` für diese Entity hat, dieser angewendet (`_apply_persisted_energy_state`).
 
 ## Konfiguration
 
@@ -402,14 +401,6 @@ Die Anzeige bleibt durch `native_value = max(0.0, _energy_value - _yesterday_val
 4. **Daily-Init** (`_initialize_daily_yesterday_value`): Erkennt die Integration weiterhin negativen Tageswert (z. B. weil Total-Sensor beim Start noch nicht verfügbar war), setzt sie `yesterday_value = energy_value` und markiert Persist als „dirty“, damit die Korrektur beim nächsten Zyklus mitgespeichert wird.
 
 Damit können nach Neustart keine negativen Daily-/Monthly-/Yearly-Werte mehr aus inkonsistenten persistierten Daten entstehen; die Korrektur ist an Restore, Persist-Anwendung und Persist-Schreiben verankert.
-
-### Monotonie-Schutz beim Restore energy_value
-
-**Problem:** `cycle_energy_persist.json` wird nur aktualisiert, wenn der Dirty-Flag *irgendeiner* Entity einen Persist-Write auslöst (`set_energy_persist_dirty()`). Eine Entity, die zeitweise nicht erfolgreich zu Home Assistant hinzugefügt wurde - z. B. ein Sub-Device-Sensor während eines `via_device`-bedingten Setup-Fehlers (siehe Release 2.8.4) - durchläuft `set_energy_value()` in dieser Zeit nie, wodurch ihr Eintrag im Snapshot beim Konstruktor-Default `0.0` einfriert. `_apply_persisted_energy_state()` vertraute diesem Snapshot bislang bedingungslos und überschrieb damit den von `restore_state()` (HA-Recorder) korrekt restaurierten, höheren Wert - beim `total`-Sensor **ohne jede Warnung**, da `ENERGY_PERIOD_CONFIG` die Periode `total` nicht kennt und die Baseline-Warnschleife dort nie greift. Live an einer laufenden Installation über den Home-Assistant-MCP-Server bestätigt: ein `_total`-Sensor stand nach `restore_state()` korrekt bei `2518.51` kWh, ein veralteter JSON-Snapshot (`0.0`) setzte ihn kommentarlos zurück.
-
-**Lösung:** `_apply_persisted_energy_state()` prüft vor jeder Übernahme, ob das `energy_value` aus dem Snapshot niedriger ist als der bereits gesetzte `_energy_value` (0,001 kWh Toleranz gegen Float-Rauschen). Ist das der Fall, wird der **komplette** Snapshot verworfen (nicht nur `energy_value`) - sonst würde eine frische `energy_value` mit einer aus demselben veralteten Snapshot stammenden Baseline/`applied_offset` kombiniert und wieder ein inkonsistentes Paar erzeugen. `energy_value` ist für jede Periode ein monoton steigender kumulativer Zähler (dieselbe Invariante wie in `set_energy_value()`, „nie verringern“) - die Prüfung gilt daher unabhängig von der Periode, nicht nur für `total`.
-
-Ein bereits vor diesem Fix beschädigter Snapshot heilt sich dadurch **nicht** automatisch: der Sensor bleibt bei `0.0` stehen, bis er real wieder Verbrauch akkumuliert; die verlorene historische Summe muss ggf. manuell über `energy_consumption_offsets` in `lambda_wp_config.yaml` nachgetragen werden.
 
 ### Migration Electrical (erstes Release)
 

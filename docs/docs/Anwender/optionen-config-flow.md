@@ -8,7 +8,7 @@ title: "Optionen des config_flow"
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
     <p>Nach der Initialkonfiguration können Sie erweiterte Einstellungen in den Integration-Optionen anpassen. Diese Optionen ermöglichen es, das Verhalten der Integration zu optimieren und erweiterte Funktionen zu aktivieren.</p>
@@ -124,7 +124,7 @@ title: "Optionen des config_flow"
 **Nach Aktivierung:**
 - Sie müssen für jeden Heizkreis einen Raumtemperatur-Sensor auswählen
 - Die Integration berechnet automatisch Anpassungen der Vorlauftemperatur
-- Weitere Informationen: [Raumthermostat](raumthermometer.md)
+- Weitere Informationen: [Raumthermostat](raumthermostat.md)
 
 **Konfiguration:**
 1. Aktivieren Sie "Raumthermostat-Steuerung"
@@ -162,7 +162,7 @@ Der Modus bestimmt, wie der Leistungswert des PV-Sensors an das Lambda-Register 
 
 Nach der Anpassung der Optionen können Sie:
 
-- [Raumthermostat](raumthermometer.md) konfigurieren (falls aktiviert)
+- [Raumthermostat](raumthermostat.md) konfigurieren (falls aktiviert)
 - [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) verwenden (falls aktiviert)
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) verwenden
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
