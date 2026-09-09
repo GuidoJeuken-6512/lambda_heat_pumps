@@ -107,6 +107,7 @@ nav = [
     { "FAQ" = "FAQ/FAQ.md" },
     { "COP-Sensoren" = "FAQ/cop-sensoren.md" },
     { "Falsche / keine Sensorwerte" = "FAQ/falsche-keine-sensorwerte.md" },
+    { "Known Issue: async_get_device-Deprecation" = "FAQ/known-issue-async-get-device-deprecation.md" },
   ] },
   { "Tips&Tricks" = [
     { "Tips&Tricks" = "TippsTricks/index.md" },
