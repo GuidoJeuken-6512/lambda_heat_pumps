@@ -7,6 +7,16 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.5.4] - 2026-09-09
+
+Fixed a second Home Assistant deprecation warning, surfaced by auditing the real system log of two live installations after a Home Assistant 2026.9.1 upgrade.
+
+#### Fixed
+- **`device_registry.async_get_device()` is deprecated, scheduled for removal in Home Assistant 2027.8.0**: `LambdaCoordinator.device_info()` used the identifiers-set lookup (`async_get_device(identifiers={controller})`) to find the controller device and set a sub-device's `via_device_id`. Home Assistant 2026.9 warns that device identifiers are no longer guaranteed unique across config entries and directs callers to `async_get_device_by_identifier()`, `async_get_device_by_connection()`, or `async_get_devices()` instead. Switched to `async_get_device_by_identifier(controller, entry.entry_id)`, which scopes the lookup to this config entry and so cannot be ambiguous — the same fix as the `via_device` deprecation resolved in 3.5.2 for the same underlying reason.
+
+#### Tests
+- Verified against real hardware on both live installations: the full suite (143 tests) passes unchanged; a live remove-and-recreate of the config entry (delete the entry, its devices and entities from storage, restart, recreate the entry, restart again) reproduces the identical 156 entities across 4 devices, with `via_device_id` correctly resolved on all three sub-devices; and a full end-to-end run of the actual config flow (`async_step_user` → `async_can_connect` → `async_create_entry` → `async_setup_entry`, including the real module auto-detection) against the real controller registers the same 156 entities and leaves the entry `LOADED`.
+
 ### [3.5.3] - 2026-09-06
 
 Fixed a functional regression from 3.5.0 found via live testing against real hardware: every Modbus write used the wrong function code.
@@ -389,6 +399,16 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.5.4] - 2026-09-09
+
+Eine weitere Home-Assistant-Deprecation-Warnung behoben, gefunden bei der Auswertung der echten System-Logs zweier laufender Installationen nach einem Update auf Home Assistant 2026.9.1.
+
+#### Behoben
+- **`device_registry.async_get_device()` ist deprecated und wird in Home Assistant 2027.8.0 entfernt**: `LambdaCoordinator.device_info()` nutzte den Identifiers-Set-Lookup (`async_get_device(identifiers={controller})`), um das Controller-Gerät zu finden und `via_device_id` eines Untergeräts zu setzen. Home Assistant 2026.9 warnt, dass Geräte-Identifier nicht mehr über Config-Entries hinweg eindeutig garantiert sind, und verweist stattdessen auf `async_get_device_by_identifier()`, `async_get_device_by_connection()` oder `async_get_devices()`. Umgestellt auf `async_get_device_by_identifier(controller, entry.entry_id)`, was den Lookup auf diesen Config-Entry eingrenzt und damit nicht mehrdeutig sein kann — derselbe Fix aus demselben Grund wie die in 3.5.2 behobene `via_device`-Deprecation.
+
+#### Tests
+- Gegen echte Hardware auf beiden laufenden Installationen verifiziert: Die volle Testsuite (143 Tests) läuft unverändert durch; ein Live-Entfernen-und-Neuanlegen des Config-Entry (Entry, Geräte und Entities aus der Storage löschen, neu starten, Entry neu anlegen, erneut neu starten) reproduziert exakt dieselben 156 Entities auf 4 Geräten, mit korrekt aufgelöster `via_device_id` bei allen drei Untergeräten; und ein vollständiger End-to-End-Durchlauf des echten Config-Flows (`async_step_user` → `async_can_connect` → `async_create_entry` → `async_setup_entry`, inklusive echter automatischer Modul-Erkennung) gegen den echten Controller registriert dieselben 156 Entities und hinterlässt den Entry im Zustand `LOADED`.
 
 ### [3.5.3] - 2026-09-06
 

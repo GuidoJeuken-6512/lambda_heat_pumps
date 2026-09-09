@@ -244,7 +244,9 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         # so the lookup below should always succeed in practice; the key is
         # simply omitted if it does not, rather than falling back to the
         # deprecated kwarg.
-        main_device = dr.async_get(self.hass).async_get_device(identifiers={controller})
+        main_device = dr.async_get(self.hass).async_get_device_by_identifier(
+            controller, entry.entry_id
+        )
         if main_device is not None:
             device_info["via_device_id"] = main_device.id
         return device_info

@@ -9,6 +9,10 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.5.4] - 2026-09-09
+
+Fixed another Home Assistant deprecation warning, found by auditing the real system log of two live installations after a Home Assistant 2026.9.1 upgrade: `device_registry.async_get_device()`, used to resolve a sub-device's parent for `via_device_id`, is deprecated and scheduled for removal in Home Assistant 2027.8.0. Replaced with `async_get_device_by_identifier()`. Verified against real hardware — the full test suite, a live remove/recreate of the config entry, and an end-to-end run of the actual config flow all pass unchanged. See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details.
+
 ### [3.5.3] - 2026-09-06
 
 Fixed a functional regression from the 3.5.0 rewrite found via live testing: every Modbus write used FC06 (Write Single Register), which Lambda's own protocol documentation says is not implemented at all — every write (room-thermostat control, PV-surplus export, hot-water/heating-circuit/cooling-circuit setpoints, the generic register-write service) failed with "Illegal Function". Every writable register now writes via FC16 (Write Multiple Registers), matching the pre-3.5 code and Lambda's documented protocol. See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details.
@@ -27,6 +31,10 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.5.4] - 2026-09-09
+
+Eine weitere Home-Assistant-Deprecation-Warnung behoben, gefunden bei der Auswertung der echten System-Logs zweier laufender Installationen nach einem Update auf Home Assistant 2026.9.1: `device_registry.async_get_device()`, genutzt um das übergeordnete Gerät eines Untergeräts für `via_device_id` zu finden, ist deprecated und wird in Home Assistant 2027.8.0 entfernt. Ersetzt durch `async_get_device_by_identifier()`. Gegen echte Hardware verifiziert — die volle Testsuite, ein Live-Entfernen/Neuanlegen des Config-Entry sowie ein kompletter Durchlauf des echten Config-Flows laufen unverändert durch. Details siehe [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md).
 
 ### [3.5.3] - 2026-09-06
 
