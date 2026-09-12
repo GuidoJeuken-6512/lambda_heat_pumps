@@ -111,6 +111,7 @@ nav = [
   ] },
   { "Tips&Tricks" = [
     { "Tips&Tricks" = "TippsTricks/index.md" },
+    { "Nebenverbraucher schätzen" = "TippsTricks/nebenverbraucher-schaetzen.md" },
   ] },
 
   { "Releases" = [
