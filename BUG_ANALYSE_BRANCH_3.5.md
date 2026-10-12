@@ -7,6 +7,10 @@
 
 Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `pymodbus`, neue Entity-/Register-Modelle). Viele Issues, die gegen 2.x gemeldet wurden, betreffen Code, den es so nicht mehr gibt. Sie wurden deshalb gegen die neue Implementierung neu bewertet.
 
+> **Release-Stand (geprüft):** Branch `3.5` ist **noch nicht veröffentlicht**. Letzter Tag bzw. Release ist `V2.8.6`, `main` steht auf 2.8.6, und es gibt keinen Tag auf einem 3.5-Commit. Für die Migrationsbefunde heißt das:
+> - Es gibt **keine Endanwender-Installationen von 3.5**. Eine *zusätzliche* Migration (neue `ENTRY_VERSION`) oder Repair-Logik für „bereits auf 3.5 migrierte Einträge“ ist **nicht nötig**. Die eigenen Testinstallationen lassen sich von Hand korrigieren (Option neu setzen bzw. Eintrag neu anlegen).
+> - Die Migration **2.x → 3.5** (`async_migrate_entry`, `ENTRY_VERSION = 9`) läuft dagegen beim ersten Start für **jeden** 2.8.x-Anwender. Fehler darin treffen alle Upgrader. Die Befunde zu #104/#90, #82 und #122/#85 bleiben deshalb relevant, werden aber **direkt im bestehenden Migrationsschritt 9** behoben, ohne neue Version.
+
 ---
 
 ## Übersicht
@@ -45,7 +49,7 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 1. In `async_migrate_entry` die Registerreihenfolge **nur** setzen, wenn die alte YAML einen expliziten Wert enthält. `_async_read_register_order()` gibt dann `None` statt `DEFAULT_…` zurück, und `options.setdefault` wird nur bei einem Wert ungleich `None` ausgeführt. Ohne expliziten Wert bleibt der Firmware-Default aus dem Coordinator wirksam.
 2. Im Options-Flow den Default aus der Firmware ableiten: `options.get(CONF_INT32_REGISTER_ORDER) or default_register_order(entry.data[CONF_FIRMWARE_VERSION]) or DEFAULT_INT32_REGISTER_ORDER`.
 3. Besser noch: einen Wert `"auto"` (= Firmware-Default) einführen und als Default anbieten. Dann bleibt ein Firmwarewechsel über `reconfigure` konsistent.
-4. **Reparatur bestehender 3.5-Installationen:** In einer Migration (ENTRY_VERSION 10) `int32_register_order` aus den Options entfernen, wenn er `high_first` ist, die Firmware aber `low_first` erwartet **und** die YAML keinen expliziten Wert hatte. Alternativ ein Repair-Issue (`homeassistant.helpers.issue_registry`) anlegen, wenn ein 32-Bit-Zähler negativ ist oder unplausibel springt.
+4. ~~Reparatur bestehender 3.5-Installationen über eine neue Migration (ENTRY_VERSION 10)~~ – **entfällt**, weil 3.5 unveröffentlicht ist. Der Fix in Punkt 1 kommt direkt in den bestehenden Migrationsschritt 9. Eigene Testinstallationen: die Option im Options-Dialog einmal korrekt setzen.
 5. Tests: Migration ohne YAML bei `V0.0.10-3K` → keine `int32_register_order` in den Options. Options-Flow bei `V1.1.0-3K` → Default `low_first`.
 6. Doku/FAQ: Nach einer Korrektur der Reihenfolge springen die `TOTAL_INCREASING`-Sensoren. Beschreiben, wie man die Statistik bereinigt (`recorder.purge_entities`, Statistik-Korrektur).
 
@@ -62,7 +66,7 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 
 **Lösungsansatz:**
 1. Den Fix aus #104 umsetzen. Damit ist #90 im Kern erledigt.
-2. Zusätzlich eine Plausibilitätswarnung einbauen: Ist ein 32-Bit-Zähler ≤ 0 oder liegt er über z. B. 10⁹ Wh, einmalig ein Warning bzw. Repair-Issue auslösen mit dem Hinweis „Registerreihenfolge prüfen“, statt still 0 zu buchen.
+2. Zusätzlich eine Plausibilitätswarnung einbauen: Ist ein 32-Bit-Zähler ≤ 0 oder liegt er über z. B. 10⁹ Wh, einmalig ein Warning (optional ein Repair-Issue) auslösen mit dem Hinweis „Registerreihenfolge prüfen“, statt still 0 zu buchen.
 3. Den Reporter nach Umstellung auf 3.5.x um Rückmeldung bitten, danach das Issue schließen. Die bestehenden falschen Langzeitstatistiken muss der Anwender selbst bereinigen (Offset in den Optionen oder Statistik löschen, wie im Issue-Kommentar beschrieben).
 
 ---
@@ -77,7 +81,7 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 - Ein unbekannter Firmware-Name fällt still auf `FIRMWARE_VERSIONS[-1]` zurück (`V0.0.3-3K`, die älteste). Das betrifft z. B. Einträge mit Namen, die es nur in einem Testbranch gab.
 
 **Lösungsansatz:**
-1. In `async_migrate_entry` die 2.x-Priorität übernehmen: `firmware = options.pop(CONF_FIRMWARE_VERSION, None) or data.get(CONF_FIRMWARE_VERSION)`. Den Options-Schlüssel dabei immer entfernen.
+1. Im bestehenden Migrationsschritt (`async_migrate_entry`, Version 9, **keine neue Version nötig**, da 3.5 unveröffentlicht ist) die 2.x-Priorität übernehmen: `firmware = options.pop(CONF_FIRMWARE_VERSION, None) or data.get(CONF_FIRMWARE_VERSION)`. Den Options-Schlüssel dabei immer entfernen.
 2. Bei einem unbekannten Namen nicht still auf die älteste Version zurückfallen. Stattdessen ein Warning loggen und ein Repair-Issue mit Verweis auf „Neu konfigurieren“ erzeugen.
 3. Test: Eintrag mit `data.firmware_version="V0.0.9-3K"` und `options.firmware_version="V0.0.10-3K"` → nach der Migration `V0.0.10-3K`.
 
@@ -113,10 +117,10 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 
 **Prüfung in 3.5:**
 - Im Code behoben: `entity.py:84-86` schlägt die Entity-ID aus `_entity_domain` vor, und `climate.py:105` setzt `_entity_domain = "climate"`. `number.py` und `sensor.py` setzen ebenfalls ihre eigene Domain. Neue Installationen erzeugen also `climate.<prefix>_hc1_heating_circuit` bzw. `climate.<prefix>_boil1_hot_water`.
-- **Offen:** Bestehende Installationen, die unter 2.x die Climate-Entities mit `sensor.*`-ID registriert haben, behalten diese ID in der Entity-Registry, denn die Registry-ID hat Vorrang vor dem Vorschlag. Ob HA bei solchen Registry-Einträgen ab 2027.5 ebenfalls warnt bzw. sie ablehnt, sollte mit einem Test gegen eine aktuelle HA-Version geprüft werden. Sicher ist: Die IDs bleiben inkonsistent.
+- **Offen (Upgrade-Pfad 2.x → 3.5):** Geprüft in `main`: 2.x setzt in `climate.py` `self.entity_id = names["entity_id"]` aus `generate_sensor_names()`. Die Climate-Entities wurden also tatsächlich mit `sensor.*`-ID registriert. Installationen, die von 2.x upgraden, behalten diese ID in der Entity-Registry, denn die Registry-ID hat Vorrang vor dem Vorschlag. Ob HA bei solchen Registry-Einträgen ab 2027.5 ebenfalls warnt bzw. sie ablehnt, sollte mit einem Test gegen eine aktuelle HA-Version geprüft werden. Sicher ist: Die IDs bleiben inkonsistent.
 
 **Lösungsansatz:**
-1. In `async_setup_entry` (oder in einer neuen Migration) die Entity-Registry durchgehen: `er.async_entries_for_config_entry(registry, entry.entry_id)`. Jeden Eintrag mit `entry.domain == "climate"`, dessen `entity_id` nicht mit `climate.` beginnt, über `registry.async_update_entity(entity_id, new_entity_id=f"climate.{object_id}")` umbenennen. Vorher auf Kollisionen prüfen (`registry.async_get(new_id)`).
+1. Im bestehenden Migrationsschritt 9 (`async_migrate_entry`; als unveröffentlichte Version ist **keine neue `ENTRY_VERSION` nötig**) die Entity-Registry durchgehen: `er.async_entries_for_config_entry(registry, entry.entry_id)`. Jeden Eintrag mit `entry.domain == "climate"`, dessen `entity_id` nicht mit `climate.` beginnt, über `registry.async_update_entity(entity_id, new_entity_id=f"climate.{object_id}")` umbenennen. Vorher auf Kollisionen prüfen (`registry.async_get(new_id)`).
 2. Den Anwender im Changelog darauf hinweisen, dass Automationen/Dashboards mit `sensor.*_heating_circuit` bzw. `sensor.*_hot_water` angepasst werden müssen.
 3. Test: Ein Registry-Eintrag `sensor.x_boil1_hot_water` auf Plattform `climate` wird nach dem Setup zu `climate.x_boil1_hot_water`.
 4. #85 als Duplikat von #122 schließen (oder umgekehrt).
@@ -244,6 +248,8 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | Timeout bei der Modulerkennung wird als „Modul fehlt“ gewertet | `module_auto_detect.py:64` | siehe #101/#90 |
 
 ## Empfohlene Reihenfolge
+
+Da 3.5 noch nicht veröffentlicht ist, sollten die Punkte 1, 3 und 4 **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration.
 
 1. **#104/#90**: Registerreihenfolge in Migration und Options-Flow korrigieren und bestehende Einträge reparieren. Das hat den größten Effekt: falsche Energiewerte und kaputte Langzeitstatistik.
 2. **#100/#108**: Regression bei `ambient_temperature` beheben und `V1.0.4-3K` aufnehmen.
