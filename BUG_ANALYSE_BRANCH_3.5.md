@@ -247,16 +247,99 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | Options-Flow-Default für die Registerreihenfolge ignoriert die Firmware | `config_flow.py:281` | siehe #104/#90 |
 | Timeout bei der Modulerkennung wird als „Modul fehlt“ gewertet | `module_auto_detect.py:64` | siehe #101/#90 |
 
+## Bewertung der Fixes: Komplexität, Kritikalität, Testaufwand
+
+**Skalen:**
+- **Komplexität:** S = wenige Zeilen, lokal · M = mehrere Stellen oder neue Logik · L = Design- oder Abstimmungsbedarf
+- **Kritikalität:** Auswirkung × Wahrscheinlichkeit, jeweils bezogen auf den Upgrade 2.8.x → 3.5. 🔴 hoch: viele Anwender, Datenschaden oder Funktionsverlust · 🟠 mittel · 🟢 niedrig
+- **Testaufwand:** *Unit* = pytest mit dem vorhandenen simulierten `Controller` (`tests/conftest.py`) · *HW* = Verifikation an echter Anlage bzw. echtem Upgrade
+
+Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für Migrationen gibt es `tests/test_config_flow.py` (Einträge mit `version=8`), für die Registry und Firmware-Gates `tests/test_init.py`, für Optionen `tests/test_options_flow.py`, für Timeouts `fail_read(...)` in `conftest.py`.
+
+| # | Fix | Issue | Komplexität | Kritikalität | Testaufwand |
+|---|---|---|---|---|---|
+| F1 | Migration: Registerreihenfolge nur übernehmen, wenn die YAML sie explizit setzt | #104/#90 | **S** (~10 Zeilen, `__init__.py:141-179`) | 🔴 **hoch** | Unit **M** + HW **M** |
+| F2 | Options-Flow: Default der Registerreihenfolge aus der Firmware | #104 | **S** (~3 Zeilen, `config_flow.py:281`); Variante „auto“: **M** | 🔴 **hoch** | Unit **S**; mit „auto“ **M** |
+| F3 | `ambient_temperature`: Firmware-Range 1-7 entfernen | #100/#108 | **S** (1 Zeile, `sensor.py:177`) | 🟠 **mittel–hoch** | Unit **M** (Test schreibt Bug fest) + HW **S** |
+| F4 | Migration: Firmware aus Options vor Data, Warnung bei unbekanntem Namen | #82 | **S** (~5 Zeilen, `__init__.py:134`) | 🟠 **mittel** | Unit **S** |
+| F5 | Climate-Entity-IDs `sensor.*` → `climate.*` in der Registry umbenennen | #122/#85 | **M** (~30–40 Zeilen + Klärung des HA-Verhaltens) | 🟠 **mittel** (ab HA 2027.5 hoch) | Unit **M** + HW **M** |
+| F6 | `V1.0.4-3K` in `FIRMWARE_CONFIG` aufnehmen | #100 | **S** im Code, **L** in der Klärung (Ordinal, `reg_order`) | 🟠 **mittel** | Unit **S** + HW durch Tester |
+| F7 | `volume_flow_heat_sink`: Einheit/Skala prüfen und korrigieren | #100 | **S** im Code, **M** in der Verifikation | 🟢–🟠 **niedrig–mittel** | Unit **S** + HW **M** (Rohwert-Dump) |
+| F8 | `config_parameter_*`: 32768 ausblenden bzw. Default aus | #100 | **S** (4 Felder) | 🟢 **niedrig** | Unit **S** |
+| F9 | Modulerkennung: Retry bei Timeout | #101/#90 | **S–M** (~15 Zeilen) | 🟢 **niedrig** (selten, Reload hilft) | Unit **M** |
+| F10 | PV-Überschuss: Debug-Log und optionales Rücklesen | #105 | **S** | 🟠 **mittel** (falls der Bug noch existiert; unbestätigt) | HW **M** (Beobachtung über Stunden) |
+| F11 | Plausibilitätswarnung für 32-Bit-Zähler | #90/#104 | **S–M** | 🟢 **niedrig** (Absicherung, F1/F2 sind der Fix) | Unit **S** |
+| F12 | #132: Eingaberegister standardmäßig deaktivieren bzw. als Diagnose führen | #132 | **S** | 🟢 **niedrig** (UX) | Unit **S** |
+| F13 | #95/#120: Doku bzw. Live-Seite prüfen | #95/#120 | **S** | 🟢 **niedrig** | manuell |
+
+### Begründungen im Detail
+
+**F1 – Registerreihenfolge in der Migration (🔴 hoch, S, Test M)**
+- *Wer ist betroffen:* Jeder 2.8.x-Anwender mit Firmware V0.0.10-3K oder V1.1.0-3K, der **keinen** expliziten Wert in `lambda_wp_config.yaml` hat. Genau diesen Anwendern wurde in #104 geraten, die Zeile wieder auszukommentieren. Auch alle Neuinstallationen ab 2.8.0 mit neuer Steuerung gehören dazu. Das ist vermutlich der Großteil der aktiven Nutzer.
+- *Folge:* Unmittelbar nach dem Upgrade liefern die akkumulierten Zähler wieder Unsinn. `TOTAL_INCREASING`-Sensoren springen, die **Langzeitstatistik im Energie-Dashboard wird beschädigt**. Das ist irreversibel, nur manuell zu bereinigen, und es tritt genau beim Release auf.
+- *Code:* Klein. `_async_read_register_order()` gibt `None` zurück, wenn kein expliziter Wert existiert, und `setdefault` läuft nur bei einem Wert ungleich `None`. Der Firmware-Fallback im Coordinator existiert bereits und ist getestet (`test_the_register_order_defaults_to_what_the_firmware_uses`).
+- *Tests:*
+  - `test_an_older_entry_without_the_config_file` und `test_an_unreadable_old_config_file_falls_back_to_the_default_order` **schreiben das Fehlverhalten fest** (`== DEFAULT_INT32_REGISTER_ORDER` in den Options). Beide müssen umgeschrieben werden: Erwartet wird „kein Options-Eintrag“, die effektive Reihenfolge folgt der Firmware.
+  - Neu: Die Tests mit V0.0.10-3K **und** V0.0.8-3K parametrisieren (beide `reg_order`-Werte), jeweils mit explizitem YAML-Wert, ohne Datei, mit auskommentiertem Wert und mit unlesbarer Datei.
+  - HW: einen echten Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage durchführen und Zählerwerte und Statistik vor und nach dem Upgrade vergleichen.
+
+**F2 – Default im Options-Flow (🔴 hoch, S, Test S)**
+- *Wer ist betroffen:* Jeder Anwender mit `low_first`-Firmware ohne gespeicherte Option, der den Options-Dialog speichert, egal aus welchem Grund. Das trifft Neuinstallationen und, nach F1, auch alle Upgrader. Ohne F2 macht der Options-Dialog F1 also wieder kaputt. **F1 und F2 gehören zusammen.**
+- *Code:* Die einfache Variante ist ein Default aus `default_register_order(firmware)`. Sie speichert den Wert beim Speichern aber fest. Ein späterer Firmwarewechsel über *Neu konfigurieren* zieht die Reihenfolge dann nicht mehr nach. Die Variante „auto“ (eigener Wert, Übersetzungen in `strings.json`/`translations/*.json`, Auswertung im Coordinator) ist sauberer, aber M. **Empfehlung:** vor dem Release die einfache Variante, „auto“ später als Verbesserung.
+- *Tests:* In `tests/test_options_flow.py` den Default für V1.1.0-3K (`low_first`) und V0.0.8-3K (`high_first`) prüfen, außerdem, dass ein gespeicherter Wert erhalten bleibt.
+
+**F3 – `ambient_temperature` (🟠 mittel–hoch, S, Test M)**
+- *Wer ist betroffen:* Alle Anwender mit V0.0.10-3K oder V1.1.0-3K. In 2.8.x existiert die Entity (Fix #108), nach dem Upgrade auf 3.5 verschwindet sie: „nicht mehr bereitgestellt“. Automationen und Dashboards mit der Außentemperatur brechen. Das ist eine sichtbare Regression bei einem zentralen Sensor.
+- *Code:* 1 Zeile. Die Sentinel-Filterung (`general.py`, `nan=SENTINELS + (NO_REQUEST,)`) fängt ungültige Werte bereits ab.
+- *Tests:* `test_a_register_its_firmware_withdrew_is_not_modelled` (`tests/test_init.py:176`) nutzt **genau `ambient_temperature`** als Beispiel für den Firmware-Range-Mechanismus und prüft, dass die Entity bei V1.1.0 **fehlt**. Der Test muss auf ein anderes Register umgestellt werden (oder auf ein Test-Template), damit der Mechanismus weiter abgedeckt bleibt. Neu kommt ein Regressionstest für #108 hinzu: V1.1.0 mit gültigem Wert → Entity vorhanden, Wert korrekt; 0xFFFF → `unknown`. HW: kurzer Blick auf eine V1.1.0-Anlage.
+- *Hinweis:* Die Range 1-7 wurde im Rewrite bewusst gesetzt, siehe Test und Kommentar „newer controllers … report nothing through it (0x8000)“. Das widerspricht dem Hardware-Befund aus #108. Vor dem Fix kurz mit dem Autor des Rewrites abstimmen.
+
+**F4 – Firmware-Priorität in der Migration (🟠 mittel, S, Test S)**
+- *Wer ist betroffen:* Nur 2.x-Anwender, die die Firmware nachträglich über den Options-Dialog geändert haben, sodass `options` und `data` voneinander abweichen. Das kommt seltener vor, ist aber typisch nach einem Steuerungstausch (#100) oder einem Firmware-Update.
+- *Folge:* Falsche Firmware-Gates (Sensoren fehlen oder sind zu viel), dazu über F1 eventuell die falsche Registerreihenfolge. Die Folgen sind dieselben wie bei #104, nur seltener.
+- *Tests:* Ein neuer Migrationstest, in dem `data` und `options` unterschiedliche Firmware haben und die Options gewinnen müssen. `test_an_older_entry_is_brought_forward` (nur Options) bleibt gültig.
+
+**F5 – Registry-Umbenennung der Climate-IDs (🟠 mittel, M, Test M)**
+- *Wer ist betroffen:* Alle 2.x-Anwender mit Warmwasser-Climate (praktisch alle) bzw. mit Heizkreis-Climate. Heute gibt es nur eine Log-Warnung, ab **HA 2027.5** droht ein Funktionsverlust.
+- *Komplexität:* Der Code selbst (`er.async_entries_for_config_entry`, `async_update_entity(new_entity_id=…)`) ist überschaubar. Aufwand machen:
+  1. Zuerst klären, wie HA solche Registry-Einträge heute behandelt und ab 2027.5 behandeln wird. Möglicherweise korrigiert HA sie selbst, dann entfällt F5.
+  2. Kollisionen behandeln (Ziel-ID belegt).
+  3. **Breaking Change für Anwender:** Automationen, Skripte und Dashboards mit `sensor.*_hot_water` bzw. `sensor.*_heating_circuit` müssen angepasst werden. Das gehört in die Release Notes. Da 3.5 ohnehin ein großer Versionssprung ist, passt der Zeitpunkt gut.
+- *Tests:* Unit mit vorbereitetem Registry-Eintrag (Plattform `climate`, ID `sensor.…`) für drei Fälle: umbenannt, Kollision, bereits korrekt (Idempotenz). HW: echter Upgrade einer 2.8.6-Installation, danach prüfen, ob die Warnung weg ist und die Historie an der neuen ID hängt.
+
+**F6 – Firmware `V1.0.4-3K` (🟠 mittel, Code S, Klärung L)**
+- Der Code ist ein Eintrag in `FIRMWARE_CONFIG`. Die eigentliche Arbeit ist die Klärung: Ist V1.0.4-3K funktional neuer als V1.1.0-3K oder ein paralleler Zweig (Steuerungs-SW vs. WP-Firmware, siehe #100)? Davon hängt das Ordinal ab. Ein Einschub zwischen bestehende Ordinals würde **alle** `firmware_version`/`firmware_versions`-Angaben verschieben und **bestehende Einträge** (die den Namen speichern, nicht das Ordinal) still umgaten. Ordinal ≥ 10 ist risikoarm.
+- *Tests:* `tests/test_firmware.py` (Ordinal, `reg_order`) erweitern. Die Verifikation an echter Hardware muss durch die Tester aus #100 erfolgen. Das ist die Abhängigkeit mit der größten Unsicherheit beim Zeitplan.
+
+**F7 – `volume_flow_heat_sink` (🟢–🟠, Code S, Verifikation M)**
+- Der Code ist trivial, aber ein Einheitenwechsel (l/h → l/min) löst bei bestehenden Statistiken einen HA-Statistik-Konflikt aus. Der Anwender muss die Statistik bereinigen. Vor dem 3.5-Release ist dafür der richtige Zeitpunkt, danach wäre es ein eigener Breaking Change.
+- *Voraussetzung:* ein Rohwert-Dump plus Displaywert von mindestens zwei Anlagen (alte und neue Steuerung). Ändert die neue Steuerung die Bedeutung, braucht es zusätzlich ein Firmware-Gating (zwei Felder an Adresse 6, analog zu #112).
+
+**F8 bis F13 (🟢 niedrig):** Kleine, lokale Änderungen ohne Datenrisiko.
+- **F9 (Retry bei Timeout):** Laut Kommentar in `module_auto_detect.py` antworten manche Controller auf ein **fehlendes** Modul mit Schweigen. Jeder Retry verlängert dann das Setup pro fehlendem Modultyp um Timeout × Retries. Retries deshalb begrenzen (1×) und testen, dass das Setup bei schweigenden Controllern nicht spürbar langsamer wird. Dafür eignet sich `fail_read(..., ModbusTimeoutError)` in `conftest.py`: einmal Timeout, dann Antwort → Modul erkannt.
+- **F8:** Achtung, `model.py` sagt ausdrücklich, dass bei Config-Parametern jede Zahl gültig sein kann. Daher lieber `entity_registry_enabled_default=False` als `nan=SENTINELS`.
+- **F12:** `entity_registry_enabled_default` wirkt nur auf **neu** angelegte Entities. Upgrader behalten den bisherigen Zustand, es besteht also kein Risiko.
+
+### Gesamtaufwand (grobe Schätzung)
+
+| Paket | Fixes | Implementierung | Unit-Tests | HW-Verifikation |
+|---|---|---|---|---|
+| **A: vor dem Release zwingend** | F1, F2, F3, F4 | ~0,5 Tag | ~1 Tag (inkl. Umschreiben von 3 bestehenden Tests) | 1 echter Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage (~0,5 Tag) |
+| **B: vor dem Release empfohlen** | F5, F7 | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
+| **C: abhängig von Externen** | F6 | ~1 h | ~1 h | Tester aus #100 (Termin unklar) |
+| **D: nach dem Release möglich** | F8–F13 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
+
+**Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
+
 ## Empfohlene Reihenfolge
 
-Da 3.5 noch nicht veröffentlicht ist, sollten die Punkte 1, 3 und 4 **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration.
+Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F4, F5) **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration. Die Pakete beziehen sich auf die Bewertung oben.
 
-1. **#104/#90**: Registerreihenfolge in Migration und Options-Flow korrigieren und bestehende Einträge reparieren. Das hat den größten Effekt: falsche Energiewerte und kaputte Langzeitstatistik.
-2. **#100/#108**: Regression bei `ambient_temperature` beheben und `V1.0.4-3K` aufnehmen.
-3. **#82**: Firmware-Priorität in der Migration korrigieren.
-4. **#122/#85**: Registry-Migration für Climate-Entity-IDs (Frist HA 2027.5).
-5. **#101**: Retry bei Timeout in der Modulerkennung.
-6. Die Issues #121 und #112 schließen, #94/#95/#132 nach Rückmeldung schließen, #105 nach Retest schließen, #120 an der Live-Seite prüfen.
+1. **Paket A, vor dem Release zwingend:** F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
+2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F7 (`volume_flow_heat_sink`, nur nach Hardware-Verifikation). Beides sind Breaking Changes, die am besten mit dem ohnehin großen Versionssprung 3.5 kommen.
+3. **Paket C, abhängig von Testern:** F6 (`V1.0.4-3K`).
+4. **Paket D, nach dem Release:** F8–F13.
+5. **Issues pflegen:** #121 und #112 schließen, #94/#95/#132 nach Rückmeldung schließen, #105 nach Retest schließen, #120 an der Live-Seite prüfen.
 
 ---
 
