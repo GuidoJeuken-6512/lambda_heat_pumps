@@ -2,7 +2,9 @@ name: Rebuild Release Assets
 
 # Rebuilds lambda_heat_pumps.zip for existing releases with the HACS
 # zip_release layout (integration files at the ZIP root), so downgrades via
-# HACS keep working. Runs once when this file is pushed, or on demand.
+# HACS keep working. Deletes the old-layout ZIP from older releases, so HACS
+# fails cleanly instead of installing a nested, broken copy.
+# Runs once when this file is pushed, or on demand.
 on:
   push:
     branches:
@@ -15,6 +17,10 @@ on:
         description: "Space-separated release tags to rebuild"
         required: true
         default: "V2.8.0 V2.8.3 V2.8.4 V2.8.6"
+      delete_tags:
+        description: "Space-separated release tags whose ZIP asset is deleted"
+        required: false
+        default: "V2.0.0 Release2.2 v2.3 V2.3.4 V2.4.0 V2.5.0 V2.6.0"
 
 jobs:
   rebuild:
@@ -25,6 +31,7 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAGS: ${{ github.event.inputs.tags || 'V2.8.0 V2.8.3 V2.8.4 V2.8.6' }}
+      DELETE_TAGS: ${{ github.event_name == 'push' && 'V2.0.0 Release2.2 v2.3 V2.3.4 V2.4.0 V2.5.0 V2.6.0' || github.event.inputs.delete_tags }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -43,4 +50,17 @@ jobs:
             unzip -l lambda_heat_pumps.zip | grep -qE ' manifest\.json$' || { echo "manifest.json not at ZIP root for $tag"; exit 1; }
             gh release upload "$tag" lambda_heat_pumps.zip --clobber --repo "$GITHUB_REPOSITORY"
             echo "::endgroup::"
+          done
+
+      - name: Delete old-layout assets
+        if: env.DELETE_TAGS != ''
+        run: |
+          set -euo pipefail
+          for tag in $DELETE_TAGS; do
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' | grep -qx lambda_heat_pumps.zip; then
+              gh release delete-asset "$tag" lambda_heat_pumps.zip --yes --repo "$GITHUB_REPOSITORY"
+              echo "$tag: deleted lambda_heat_pumps.zip"
+            else
+              echo "$tag: no lambda_heat_pumps.zip, skipping"
+            fi
           done
