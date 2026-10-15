@@ -9,6 +9,13 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+> **⚠️ Upgrading from 2.x to 3.5.x — Home Assistant will show "Repairs" about statistics (harmless):**
+> After the first start, Settings → Repairs lists about 14 warnings for `eu08l_…` sensors (names depend on your device name). They concern *long-term statistics recorded by 2.x*, not live data — nothing is lost and all sensors keep working.
+> - **"Unit changed" / "Mean type changed"** (`hp1_volume_flow_heat_sink`, `hp1_volume_flow_energy_source`): 2.x stored the units as `l/h` and `l/min`, 3.5 uses Home Assistant's standard `L/h` and `L/min`, which HA cannot convert automatically. → Open the repair and choose **"Update the unit of the old values"** (history is kept; the values are identical, only the unit label changes). Deleting the statistics instead also works but discards the history.
+> - **"State class removed"** (error numbers `*_error_number`, `hp1_request_type`, `hp1_config_parameter_24/33/50/60`): these are codes, not measurements, so 3.5 no longer records statistics for them (in 2.x they were wrongly recorded as `total`). → Safe to ignore, or delete their statistics under Developer Tools → Statistics ([how](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/historische_daten_loeschen/)).
+> - Repairs about *unknown entity references* in dashboards/templates mean a 2.x entity was renamed or removed in 3.5 — adjust the card/template.
+> - Back up before upgrading.
+
 ### [3.5.6] - 2026-09-15
 
 Fixed a data-loss bug found via a live v2.8.x→3.5.x upgrade on real hardware: every lifetime total counter (`heating_energy_total`, `heating_thermal_energy_total`, `hot_water_energy_total`, `stby_energy_total`, and their cycling-count equivalents) reset to zero (or the configured offset alone) instead of continuing from its accumulated value, because the old version's entities go `unavailable` while it unloads for the upgrade, and the new `RestoreSensor`-based restore only ever tried the entity's own last state — with no fallback once that state was `"unavailable"`. `_restored_value()` now falls back to Home Assistant's own long-term statistics, which still hold the real last value from before the gap; a configured offset is treated as already included in a value recovered this way, instead of being added a second time on top. A second bug in the same change — the `_cycling_yesterday` sensors crashing on restore because their own caller wasn't updated for the new return shape — was caught by the same live test and fixed alongside it. Verified against real hardware: every lifetime and cycling total (incl. five different configured offsets) survived the actual upgrade with its exact prior value, and the previously-crashing `_cycling_yesterday` sensors came back healthy after redeploying the fix.
@@ -39,6 +46,13 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+> **⚠️ Update von 2.x auf 3.5.x — Home Assistant zeigt „Reparaturen“ zu Statistiken an (harmlos):**
+> Nach dem ersten Start listet Einstellungen → Reparaturen rund 14 Warnungen zu `eu08l_…`-Sensoren (Namen je nach Gerätename). Sie betreffen die *von 2.x aufgezeichnete Langzeitstatistik*, nicht die Live-Daten — es geht nichts verloren und alle Sensoren funktionieren weiter.
+> - **„Maßeinheit geändert“ / „Mittelwert-Typ geändert“** (`hp1_volume_flow_heat_sink`, `hp1_volume_flow_energy_source`): 2.x speicherte die Einheiten als `l/h` und `l/min`, 3.5 nutzt die HA-Standardeinheiten `L/h` und `L/min`, die HA nicht automatisch umrechnen kann. → Reparatur öffnen und **„Maßeinheit der alten Werte aktualisieren“** wählen (Historie bleibt erhalten; die Werte sind identisch, nur das Einheiten-Label ändert sich). Alternativ die Statistik löschen — dann geht die Historie verloren.
+> - **„Statusklasse entfernt“** (Fehlernummern `*_error_number`, `hp1_request_type`, `hp1_config_parameter_24/33/50/60`): Das sind Codes, keine Messwerte, deshalb zeichnet 3.5 dafür keine Statistik mehr auf (in 2.x wurden sie fälschlich als `total` aufgezeichnet). → Kann ignoriert werden, oder die Statistik unter Entwicklerwerkzeuge → Statistiken löschen ([Anleitung](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/historische_daten_loeschen/)).
+> - Reparaturen zu *unbekannten Entitätsreferenzen* in Dashboards/Templates bedeuten, dass eine 2.x-Entität in 3.5 umbenannt oder entfernt wurde — Karte/Template anpassen.
+> - Vor dem Update ein Backup erstellen.
 
 ### [3.5.6] - 2026-09-15
 

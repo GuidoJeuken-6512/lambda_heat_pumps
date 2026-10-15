@@ -80,6 +80,11 @@ Adoption of a ground-up rewrite of the integration (PR #115, "fork-takeover"), r
 - **Energy/cycling counter persistence**: counters are plain Home Assistant `RestoreSensor`s with a self-tracked offset baseline; the previous coordinator-owned `cycle_energy_persist.json` file (and the restart/offset-persistence bug class fixed in 2.8.4/2.8.6 on `main`) no longer exists in this shape.
 - **Minimum Home Assistant version**: now 2026.9.0 (required by `modbus-connection[tmodbus]`), enforced in `hacs.json`. Earlier Home Assistant versions are not supported by this line.
 
+#### Upgrade note (statistics repairs)
+- **Unit label change**: `hp1_volume_flow_heat_sink` and `hp1_volume_flow_energy_source` are now declared with Home Assistant's `UnitOfVolumeFlowRate` (`L/h`, `L/min`) instead of the 2.x strings `l/h` / `l/min`. The recorder cannot convert the old labels, so HA raises "unit changed" and "mean type changed" repairs (2.x stored these as `state_class: total`, 3.5 as `measurement`). Fix: in the repair choose "update the unit of the old values" (history kept), or delete the statistics.
+- **State class removed**: code-like sensors (`*_error_number`, `request_type`, `config_parameter_24/33/50/60`) have no state class in 3.5 (`_count()` in `sensor.py`), they were `total`/`measurement` in 2.x. HA raises "state class removed" repairs; safe to ignore or delete the statistics.
+- Renamed/removed 2.x entities surface as Spook "unknown entity reference" repairs in dashboards/templates.
+
 #### Note
 - See [3.5.2](#352---2026-09-06) above for the gaps this audit found and fixed. The [Entwickler documentation](https://guidojeuken-6512.github.io/lambda_heat_pumps/Entwickler/modbus-serialisierung/) covers the new Modbus-serialization design in detail.
 
@@ -459,6 +464,11 @@ Eine Funktionsregression aus 3.5.0 behoben, gefunden beim Live-Test gegen echte 
 #### Behoben
 - **Jeder Modbus-Schreibvorgang nutzte für ein einzelnes Register FC06 (Write Single Register); Lambdas eigene Modbus-Dokumentation schreibt für jeden Schreibvorgang FC16 (Write Multiple Registers) vor und implementiert FC06 überhaupt nicht** — FC06 wird mit Illegal Function (Exception 0x01) beantwortet. Dadurch scheiterte, je nach Pfad protokolliert oder still, jede schreibende Funktion: die Raumthermostat-Steuerung (Register 5004, protokolliert alle ~9s), der PV-Überschuss-Export, die Warmwasser-/Heizkreis-/Kühlkreis-Sollwerte, der Vorlauf-Offset sowie der generische `write_modbus_register`-Service. Der Vor-3.5-Code auf Basis von `pymodbus` hatte dieses Problem nie, da er ausnahmslos über `write_registers()` (FC16) schrieb, auch für ein einzelnes Register. Jedes `writable=True`-Feld in `lambda_modbus/` setzt jetzt `force_fc16=True` (ein von `modbus-connection` genau für diesen Fall vorgesehenes Flag), und die beiden Stellen mit direktem Schreibzugriff (PV-Überschuss-Writer und der generische Register-Schreib-Service in `services.py`) rufen jetzt `write_registers()` statt `write_register()` auf.
 - Live gegen echte Hardware verifiziert (Firmware `V0.0.8-3K`): Der Raumtemperatur-Schreibzugriff (Register 5004) sowie eine Warmwasser-Sollwertänderung über `climate.set_temperature` kamen nach dem Fix korrekt an; zuvor scheiterten beide mit `Modbus Exception 0x01 for function code 0x06`.
+
+#### Update-Hinweis (Statistik-Reparaturen)
+- **Einheiten-Label**: `hp1_volume_flow_heat_sink` und `hp1_volume_flow_energy_source` nutzen jetzt `UnitOfVolumeFlowRate` (`L/h`, `L/min`) statt der 2.x-Strings `l/h` / `l/min`. Der Recorder kann die alten Labels nicht umrechnen, daher meldet HA die Reparaturen „Maßeinheit geändert“ und „Mittelwert-Typ geändert“ (2.x speicherte `state_class: total`, 3.5 `measurement`). Lösung: in der Reparatur „Maßeinheit der alten Werte aktualisieren“ wählen (Historie bleibt) oder die Statistik löschen.
+- **Statusklasse entfernt**: Code-artige Sensoren (`*_error_number`, `request_type`, `config_parameter_24/33/50/60`) haben in 3.5 keine state_class (`_count()` in `sensor.py`), in 2.x waren sie `total`/`measurement`. HA meldet „Statusklasse entfernt“; kann ignoriert oder die Statistik gelöscht werden.
+- Umbenannte/entfernte 2.x-Entitäten erscheinen als Spook-Reparaturen „unbekannte Entitätsreferenz“ in Dashboards/Templates.
 
 #### Hinweis
 - Im aktuellen Modell existiert kein `PackedBitsField`/Bit-Feld-Register, daher greift der eine FC06-Sonderpfad innerhalb von `modbus-connection`s `write_register_field()` (für Read-Modify-Write gepackter Bit-Register, ignoriert `force_fc16`) hier nie.
