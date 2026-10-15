@@ -4,7 +4,7 @@ name: Rebuild Release Assets
 # zip_release layout (integration files at the ZIP root), so downgrades via
 # HACS keep working. Deletes the old-layout ZIP from older releases, so HACS
 # fails cleanly instead of installing a nested, broken copy.
-# Runs once when this file is pushed, or on demand.
+# Runs once when this file is pushed to 3.5, or on demand via workflow_dispatch.
 on:
   push:
     branches:
