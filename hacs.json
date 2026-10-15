@@ -2,5 +2,6 @@
     "name": "Lambda Heat Pumps",
     "country": "DE",
     "homeassistant": "2024.3.3",
+    "zip_release": true,
     "filename": "lambda_heat_pumps.zip"
 } 

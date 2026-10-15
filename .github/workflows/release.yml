@@ -22,8 +22,10 @@ jobs:
 
       - name: Create ZIP archive
         run: |
-          cd custom_components
-          zip -r ../lambda_heat_pumps.zip lambda_heat_pumps/
+          # HACS (zip_release) extracts the ZIP directly into
+          # custom_components/lambda_heat_pumps/, so the files must sit at the ZIP root.
+          cd custom_components/lambda_heat_pumps
+          zip -r ../../lambda_heat_pumps.zip . -x '*__pycache__*'
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v3
