@@ -1,0 +1,46 @@
+name: Rebuild Release Assets
+
+# Rebuilds lambda_heat_pumps.zip for existing releases with the HACS
+# zip_release layout (integration files at the ZIP root), so downgrades via
+# HACS keep working. Runs once when this file is pushed, or on demand.
+on:
+  push:
+    branches:
+      - "3.5"
+    paths:
+      - ".github/workflows/rebuild-release-assets.yml"
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: "Space-separated release tags to rebuild"
+        required: true
+        default: "V2.8.0 V2.8.3 V2.8.4 V2.8.6"
+
+jobs:
+  rebuild:
+    name: Rebuild ZIP assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAGS: ${{ github.event.inputs.tags || 'V2.8.0 V2.8.3 V2.8.4 V2.8.6' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Rebuild and upload assets
+        run: |
+          set -euo pipefail
+          for tag in $TAGS; do
+            echo "::group::$tag"
+            rm -rf build lambda_heat_pumps.zip
+            mkdir build
+            git archive "$tag" custom_components/lambda_heat_pumps | tar -x -C build
+            (cd build/custom_components/lambda_heat_pumps && zip -r ../../../lambda_heat_pumps.zip . -x '*__pycache__*')
+            unzip -l lambda_heat_pumps.zip | grep -qE ' manifest\.json$' || { echo "manifest.json not at ZIP root for $tag"; exit 1; }
+            gh release upload "$tag" lambda_heat_pumps.zip --clobber --repo "$GITHUB_REPOSITORY"
+            echo "::endgroup::"
+          done
