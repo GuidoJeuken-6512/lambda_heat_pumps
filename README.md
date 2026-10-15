@@ -4,8 +4,6 @@
 [![Release](https://img.shields.io/github/v/release/GuidoJeuken-6512/lambda_heat_pumps)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/GuidoJeuken-6512/lambda_heat_pumps/total?label=downloads)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 ![Usage](https://img.shields.io/badge/dynamic/json?color=9932CC&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.lambda_heat_pumps.total)
-![HA min](https://img.shields.io/badge/dynamic/json?label=Home%20Assistant&logo=home-assistant&query=%24.homeassistant&url=https%3A%2F%2Fraw.githubusercontent.com%2FGuidoJeuken-6512%2Flambda_heat_pumps%2Fmain%2Fhacs.json)
-[![Validate](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/actions/workflows/ha.yml/badge.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/actions/workflows/ha.yml)
 [![Stars](https://img.shields.io/github/stars/GuidoJeuken-6512/lambda_heat_pumps?style=flat)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/stargazers)
 [![license](https://img.shields.io/github/license/GuidoJeuken-6512/lambda_heat_pumps.svg)](LICENSE)
 
