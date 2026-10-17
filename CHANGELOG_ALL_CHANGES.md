@@ -7,7 +7,7 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
-### [Unreleased]
+### [3.5.7] - 2026-10-17
 
 Fixed the 2.x→3.5 config-entry migration overriding the firmware's 32-bit register order, found via a live 2.8.6→3.5.6 upgrade on real hardware (EU10L, firmware `V1.1.0-3K`) ([Issue #133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133)).
 
@@ -445,7 +445,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
 
-### [Unveröffentlicht]
+### [3.5.7] - 2026-10-17
 
 Die Config-Entry-Migration 2.x→3.5 hat die 32-Bit-Registerreihenfolge der Firmware überschrieben, gefunden bei einem echten Upgrade 2.8.6→3.5.6 auf realer Hardware (EU10L, Firmware `V1.1.0-3K`) ([Issue #133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133)).
 
