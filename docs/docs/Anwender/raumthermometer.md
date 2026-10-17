@@ -4,7 +4,7 @@ title: "Raumthermometer"
 
 # Raumthermometer
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration kann der Lambda die Raumtemperatur eines beliebigen Home-Assistant-Sensors liefern. Die Lambda nutzt diesen Wert wie ein eigenes Raumthermometer.
 
