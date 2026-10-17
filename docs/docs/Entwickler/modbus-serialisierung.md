@@ -11,7 +11,7 @@ title: "Modbus-Serialisierung - Technische Dokumentation"
 Diese Dokumentation beschreibt zwei Modbus-Fehlerklassen, die der Rewrite
 eingeführt hatte: Race Conditions/Transaction-ID-Mismatches bei gleichzeitigen
 Requests (behoben in 3.5.2, unten) und den falschen Funktionscode bei
-Schreibvorgängen (behoben in 3.5.3, [siehe unten](#fc16-statt-fc06-bei-schreibvorgängen)).
+Schreibvorgängen (behoben in 3.5.3, [siehe unten](#fc16-statt-fc06-bei-schreibvorgangen)).
 
 ## Übersicht
 

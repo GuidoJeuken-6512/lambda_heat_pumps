@@ -108,9 +108,9 @@ dargestellt.
 ### Heat Pump – Zähler und COP (berechnet, kein eigenes Register)
 
 Vollständige Aufschlüsselung nach Modus und Periode:
-[Cycling-Sensoren](cycling-sensoren.md#Übersicht),
+[Cycling-Sensoren](cycling-sensoren.md#ubersicht),
 [Energieverbrauchssensoren](energieverbrauchssensoren.md),
-[COP-Sensoren](cop-sensoren.md#sensoren-pro-wärmepumpe). Kurzfassung:
+[COP-Sensoren](cop-sensoren.md#sensoren-pro-warmepumpe). Kurzfassung:
 
 | Familie | Modi | Perioden | Anzahl je HP |
 |---|---|---|---:|

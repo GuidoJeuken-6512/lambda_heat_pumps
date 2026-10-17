@@ -134,7 +134,7 @@ Coordinator direkt als Python-Objekt.
 ## Reset-Logik
 
 Beim Rollover-Signal ihrer Periode (siehe
-[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zähler-reset))
+[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zahler-reset))
 wird `_value` schlicht auf `0.0` gesetzt — bei einem **Tages**-Zähler geht der
 zuletzt erreichte Wert vorher an den passenden `YesterdayCycleSensor`:
 

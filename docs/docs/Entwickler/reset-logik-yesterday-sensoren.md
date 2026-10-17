@@ -34,7 +34,7 @@ def _handle_rollover(self) -> None:
 Es gibt kein separates „Total minus Vortag/Vormonat/Vorjahr“ mehr zu berechnen
 und keine zweite, aus dem State-Attribut rekonstruierte Kennzahl — der
 angezeigte Wert **ist** der gespeicherte Wert. Details zum Gesamtmechanismus:
-[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zähler-reset).
+[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zahler-reset).
 
 ## Was aus „Yesterday“ geworden ist
 

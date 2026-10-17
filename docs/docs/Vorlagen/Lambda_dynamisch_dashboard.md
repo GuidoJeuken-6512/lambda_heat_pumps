@@ -13,7 +13,7 @@ Diese Vorlage beschreibt ein **dynamisches** Lovelace-Dashboard für die Lambda 
 !!! info "Seit Version 3.5 angepasst"
     Frühere Fassungen dieser Vorlage sortierten über ein Attribut `register`, das die Integration an jedem Sensor gesetzt hat. Dieses Attribut gibt es seit dem 3.5-Rewrite nicht mehr. Die Register-Adressen sind deshalb fest im Template hinterlegt (wie beim [statischen Register-Dashboard](Lambda_register_dashboard.md)); nur die Präfix-Erkennung bleibt dynamisch.
 
-<a href="../assets/dashboard_lambda_dynamisch1.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../../assets/dashboard_lambda_dynamisch1.png" alt="Lambda Dynamisch Dashboard" width="500" style="max-width: 100%; height: auto;" /></a>
+<a href="../assets/dashboard_lambda_dynamisch1.png" target="_blank" rel="noopener noreferrer" title="Bild groß öffnen"><img src="../assets/dashboard_lambda_dynamisch1.png" alt="Lambda Dynamisch Dashboard" width="500" style="max-width: 100%; height: auto;" /></a>
 
 ## Funktionsweise
 

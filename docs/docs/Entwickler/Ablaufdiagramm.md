@@ -12,14 +12,14 @@ Entwicklung und Debugging.
 
 ## Inhaltsverzeichnis
 
-1. [Schnellübersicht – wichtige Dateien](#1-schnellübersicht--wichtige-dateien)
+1. [Schnellübersicht – wichtige Dateien](#1-schnellubersicht-wichtige-dateien)
 2. [Setup-Ablauf](#2-setup-ablauf)
 3. [Coordinator-Initialisierung (`_async_setup`)](#3-coordinator-initialisierung-_async_setup)
 4. [Entity-Klassen und Device-Hierarchie](#4-entity-klassen-und-device-hierarchie)
 5. [Voller Poll-Zyklus (`_async_update_data`)](#5-voller-poll-zyklus-_async_update_data)
 6. [Schneller Poll und Flankenerkennung](#6-schneller-poll-und-flankenerkennung)
 7. [Energie-Tracking](#7-energie-tracking)
-8. [Perioden-Rollover (Zähler-Reset)](#8-perioden-rollover-zähler-reset)
+8. [Perioden-Rollover (Zähler-Reset)](#8-perioden-rollover-zahler-reset)
 9. [Offset-Anwendung](#9-offset-anwendung)
 10. [Unload und Migration](#10-unload-und-migration)
 11. [Modbus-Adressschema](#11-modbus-adressschema)

@@ -24,7 +24,7 @@ eigene Klasse, kein eigenes Cleanup: Der Timer wird wie jeder andere über
 automatisch ab.
 
 Vollständiger Ablauf mit Diagramm:
-[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zähler-reset).
+[Ablaufdiagramm – Perioden-Rollover](Ablaufdiagramm.md#8-perioden-rollover-zahler-reset).
 
 ## Cycling- und Energie-Zähler laufen jetzt identisch
 

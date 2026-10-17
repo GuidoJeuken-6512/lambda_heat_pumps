@@ -248,7 +248,7 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 - Code-Beobachtung desselben Testers: siehe F15 (kein Weiterschreiben bei ausgefallener Quelle → E-Manager-Fehler 6).
 
 **Lösungsansatz:**
-1. **F14:** Alle betroffenen Pfade auf `../assets/` setzen, **in beiden Branches identisch** (in `main` nur die PV-Seite, in `3.5` alle 16 Seiten). Dann bleibt der Merge konfliktfrei und das Ergebnis korrekt. Nachweis: Build + Pfadprüfung → 0 kaputte Bilder.
+1. ✅ **F14 in `3.5` erledigt (17.10.2026):** alle 21 Pfade in 14 Dateien auf `../assets/`, dazu 10 tote Anker korrigiert. Build ohne Hinweise, Prüfer: 0 Probleme; Merge-Probe `3.5` → `main`: 0 Probleme. In `main` (live) ist die PV-Seite weiterhin kaputt, bis dort dieselbe Zeile geändert wird oder 3.5 gemergt ist. ~~Alle betroffenen Pfade auf `../assets/` setzen, **in beiden Branches identisch** (in `main` nur die PV-Seite, in `3.5` alle 16 Seiten). Dann bleibt der Merge konfliktfrei und das Ergebnis korrekt. Nachweis: Build + Pfadprüfung → 0 kaputte Bilder.~~
 2. PV-Seite um eine Schritt-für-Schritt-Anleitung nach dem Vorschlag des Testers ergänzen; Bild 1 durch einen Screenshot aus 3.5 ersetzen (muss der Maintainer liefern).
 3. Danach Issue schließen.
 
@@ -313,7 +313,9 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | Timeout bei der Modulerkennung wird als „Modul fehlt“ gewertet | `module_auto_detect.py:64` | siehe #101/#90 |
 | Registerreihenfolge überlebte einen Firmwarewechsel unter „Neu konfigurieren“ | `config_flow.py`, `async_step_reconfigure` | ✅ behoben in 3.5.7 |
 | V0.0.9-3K: Firmware-Tabelle (`high_first`) widerspricht den Werten aus #90 (`low_first`) | `const.py:FIRMWARE_CONFIG` | siehe #90, offen |
-| Bildpfade `../../assets/` statt `../assets/` (21 Bilder in `3.5`, 2 in `main`) | `docs/docs/Anwender/*.md`, `docs/docs/Vorlagen/*.md` | F14, siehe #120 |
+| Bildpfade `../../assets/` statt `../assets/` (21 Bilder in `3.5`, 2 in `main`) | `docs/docs/Anwender/*.md`, `docs/docs/Vorlagen/*.md` | F14, ✅ in `3.5` behoben |
+| 10 tote Anker in der Entwickler-Doku (Slugs mit Umlauten, umbenannte Überschriften); in `main` schon mit `2ade7ce` behoben | `docs/docs/Entwickler/*.md`, `Releases/release-2-3.md` | ✅ in `3.5` behoben |
+| Doku in `3.5` wurde nie gebaut, Fehler fielen nicht auf | – | ✅ neuer Workflow `docs-check.yml` + `script/check_docs.py` |
 | PV-Überschuss: kein Weiterschreiben, wenn der Quellsensor `unknown`/`unavailable` ist → E-Manager-Fehler 6 nach einigen Minuten (auch in 2.8.6 so) | `services.py:105ff` | F15, siehe #120 |
 | 2.x-Modus `pv_surplus_mode: entry` wird nicht migriert; 3.5 kennt nur `pos`/`neg`. Schreiben funktioniert (wie `pos`), im Options-Dialog ist `entry` aber kein gültiger Auswahlwert (Verhalten der Oberfläche ungeprüft) | `__init__.py`, `async_migrate_entry` | F16 |
 | Merge `3.5` → `main` hat einen Konflikt in `hacs.json` (`homeassistant`: 2024.3.3 vs. 2026.9.0); richtig ist der Wert aus `3.5` | `hacs.json` | Merge-Vorbereitung |
@@ -345,7 +347,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F11 | Plausibilitätswarnung für 32-Bit-Zähler | #90/#104 | **S–M** | 🟢 **niedrig** (Absicherung, F1/F2 sind der Fix) | Unit **S** |
 | F12 | #132: Eingaberegister standardmäßig deaktivieren bzw. als Diagnose führen | #132 | **S** | 🟢 **niedrig** (UX) | Unit **S** |
 | F13 | ✅ **erledigt** (17.10.2026, beide Branches) – #95: Doku zur Heizkurve/Raumthermometer | #95/#128 | **S** | 🟢 **niedrig** | manuell |
-| F14 | Bildpfade `../../assets/` → `../assets/`, identisch in `3.5` und `main` | #120 | **S** (16 Dateien, mechanisch) | 🟠 **mittel** (vor dem Merge zwingend, sonst 21 kaputte Bilder live) | Build + Pfadprüfung (Skript vorhanden) |
+| F14 | ✅ **FIXED in `3.5`** (17.10.2026; `main`: nur PV-Seite offen) – Bildpfade `../../assets/` → `../assets/` | #120 | **S** (16 Dateien, mechanisch) | 🟠 **mittel** (vor dem Merge zwingend, sonst 21 kaputte Bilder live) | Build + Pfadprüfung (Skript vorhanden) |
 | F15 | PV-Überschuss: 0 W senden (+ Log-Warnung), wenn die Quelle `unknown`/`unavailable` ist | #120/#105 | **S** | 🟠 **mittel** (verhindert E-Manager-Fehler 6) | Unit **S** |
 | F16 | Migration: `pv_surplus_mode: entry` → `pos` | – | **S** (1 Zeile in Schritt 9) | 🟢 **niedrig** | Unit **S** |
 | F17 | Abweichungssensor Pumpen-Sollwert − berechnete Kurve | #128 | **S–M** | 🟢 **niedrig** (Enhancement) | Unit **S** + HW **S** |
@@ -433,6 +435,8 @@ Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F
 | `fab707d` | `3.5` | Changelog: Statistik-Reparaturen der Volumenstrom-Sensoren korrigiert (#134) |
 | `0bafd8b` / `641b702` | `3.5` / `main` | Doku Raumthermometer/Heizkurve korrigiert (#128), identisch in beiden Branches |
 | `be4728b` / `5ad6cd0` | `3.5` / `main` | Änderungsdatum der beiden Doku-Seiten |
+| `f3b16ba` | `3.5` | Bug-Analyse auf Stand 17.10.2026 |
+| (dieser Commit) | `3.5` | F14 Bildpfade, 10 tote Anker, Doku-Prüfer (`script/check_docs.py`, `.github/workflows/docs-check.yml`) |
 
 
 Unit-Tests: 156/156 bestanden (Python 3.14, `pytest-homeassistant-custom-component==0.13.355`).

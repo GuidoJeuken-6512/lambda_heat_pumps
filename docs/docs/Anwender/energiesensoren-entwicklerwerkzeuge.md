@@ -34,7 +34,7 @@ und ermitteln Sie die Differenz zum aktuellen Stand des betroffenen Total-Sensor
 
 **Die COP-Sensoren nicht anpassen** – sie berechnen sich bei jedem Blick direkt aus den beiden anderen Zählern und halten keinen eigenen Wert.
 
-<img src="../../assets/home_assistant_verlauf_de.png" alt="Home Assistant Verlauf" style="width: 100%; max-width: 600px; height: auto; border-radius: 8px;">
+<img src="../assets/home_assistant_verlauf_de.png" alt="Home Assistant Verlauf" style="width: 100%; max-width: 600px; height: auto; border-radius: 8px;">
 
 ## Startwert oder Korrektur über einen Offset setzen
 
