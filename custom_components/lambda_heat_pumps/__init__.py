@@ -27,7 +27,6 @@ from .const import (
     CONF_PORT,
     CONF_SLAVE_ID,
     CONF_USE_LEGACY_MODBUS_NAMES,
-    DEFAULT_INT32_REGISTER_ORDER,
     DEFAULT_MODBUS_MESSAGE_SPACING,
     ENTRY_VERSION,
     FIRMWARE_VERSIONS,
@@ -138,9 +137,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> 
         firmware if firmware in FIRMWARE_VERSIONS else FIRMWARE_VERSIONS[-1]
     )
 
-    options.setdefault(
-        CONF_INT32_REGISTER_ORDER, await _async_read_register_order(hass)
-    )
+    # Only an order the old file actually set is carried over. Without one, the
+    # option stays unset so the firmware's own order applies, as it did in 2.x;
+    # storing the generic default here would pin high_first on firmware that
+    # writes its counters low word first (#133).
+    if CONF_INT32_REGISTER_ORDER not in options:
+        order = await _async_read_register_order(hass)
+        if order is not None:
+            options[CONF_INT32_REGISTER_ORDER] = order
 
     hass.config_entries.async_update_entry(
         entry, data=data, options=options, version=ENTRY_VERSION
@@ -148,14 +152,18 @@ async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> 
     return True
 
 
-async def _async_read_register_order(hass: HomeAssistant) -> str:
-    """The 32-bit register order the retired YAML config file was set to."""
+async def _async_read_register_order(hass: HomeAssistant) -> str | None:
+    """The 32-bit register order the retired YAML config file was set to.
+
+    None when the file is missing, unreadable, or does not set one — the
+    firmware's own order applies then.
+    """
     # In the configuration folder itself, which is where it has always been.
     path = Path(hass.config.path(CONFIG_FILENAME))
 
-    def _read() -> str:
+    def _read() -> str | None:
         if not path.is_file():
-            return DEFAULT_INT32_REGISTER_ORDER
+            return None
         config = yaml.safe_load(path.read_text()) or {}
         modbus = config.get("modbus") or {}
         # The key was renamed once, and before that used Modbus's own words for
@@ -166,14 +174,14 @@ async def _async_read_register_order(hass: HomeAssistant) -> str:
             "big": REGISTER_ORDER_HIGH_FIRST,
             "low_first": REGISTER_ORDER_LOW_FIRST,
             "little": REGISTER_ORDER_LOW_FIRST,
-        }.get(order, DEFAULT_INT32_REGISTER_ORDER)
+        }.get(order)
 
     try:
         return await hass.async_add_executor_job(_read)
     except (OSError, yaml.YAMLError) as err:
         _LOGGER.warning(
-            "Could not read the old config file, assuming the default "
+            "Could not read the old config file, using the firmware's "
             "32-bit register order: %s",
             err,
         )
-        return DEFAULT_INT32_REGISTER_ORDER
+        return None

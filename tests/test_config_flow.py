@@ -131,7 +131,7 @@ async def test_an_older_entry_is_brought_forward(
     assert entry.options[CONF_INT32_REGISTER_ORDER] == REGISTER_ORDER_LOW_FIRST
 
 
-async def test_an_unreadable_old_config_file_falls_back_to_the_default_order(
+async def test_an_unreadable_old_config_file_falls_back_to_the_firmware_order(
     hass: HomeAssistant,
     controller: Controller,
     old_config_file,
@@ -154,14 +154,15 @@ async def test_an_unreadable_old_config_file_falls_back_to_the_default_order(
         assert await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
 
-    assert entry.options[CONF_INT32_REGISTER_ORDER] == DEFAULT_INT32_REGISTER_ORDER
+    # Nothing is pinned: the firmware's own order applies.
+    assert CONF_INT32_REGISTER_ORDER not in entry.options
     assert "Could not read the old config file" in caplog.text
 
 
 async def test_an_older_entry_without_the_config_file(
     hass: HomeAssistant, controller: Controller
 ) -> None:
-    """A user who never had the file gets the default the file would have had."""
+    """A user who never had the file keeps the firmware's own order, as in 2.x."""
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=8,
@@ -176,6 +177,72 @@ async def test_an_older_entry_without_the_config_file(
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
+
+    assert CONF_INT32_REGISTER_ORDER not in entry.options
+
+
+async def test_an_old_config_file_without_a_register_order(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An empty file, or one with the key commented out, pins nothing (#133).
+
+    V1.1.0-3K writes its counters low word first. The migration used to store
+    high_first here, which turned the energy counters into absurd values.
+    """
+    path = Path(hass.config.path("lambda_wp_config.yaml"))
+    path.write_text("modbus:\n  # int32_register_order: high_first\n")
+    controller.registers[1020] = 0x86A0  # 100000 Wh, low word first
+    controller.registers[1021] = 0x0001
+    try:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            version=8,
+            data={
+                CONF_NAME: "EU08L",
+                CONF_HOST: HOST,
+                CONF_PORT: float(PORT),
+                CONF_SLAVE_ID: float(SLAVE_ID),
+            },
+            options={CONF_FIRMWARE_VERSION: "V1.1.0-3K"},
+        )
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    finally:
+        path.unlink()
+
+    assert CONF_INT32_REGISTER_ORDER not in entry.options
+    assert (
+        hass.states.get(
+            "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+        ).state
+        == "100000"
+    )
+
+
+async def test_an_old_config_file_set_to_high_first_is_kept(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An explicit choice in the old file still wins over the firmware's order."""
+    path = Path(hass.config.path("lambda_wp_config.yaml"))
+    path.write_text("modbus:\n  int32_register_order: high_first\n")
+    try:
+        entry = MockConfigEntry(
+            domain=DOMAIN,
+            version=8,
+            data={
+                CONF_NAME: "EU08L",
+                CONF_HOST: HOST,
+                CONF_PORT: PORT,
+                CONF_SLAVE_ID: SLAVE_ID,
+                CONF_FIRMWARE_VERSION: "V1.1.0-3K",
+            },
+        )
+        entry.add_to_hass(hass)
+        assert await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+    finally:
+        path.unlink()
 
     assert entry.options[CONF_INT32_REGISTER_ORDER] == DEFAULT_INT32_REGISTER_ORDER
 

@@ -70,6 +70,8 @@ from .const import (
     REGISTER_ORDER_LOW_FIRST,
 )
 
+from .firmware import default_register_order
+
 # The MAC prefix Lambda controllers are shipped with.
 DHCP_MACADDRESS = "0050F4*"
 
@@ -277,9 +279,13 @@ class LambdaOptionsFlow(OptionsFlowWithReload):
                 ): _number(10, 300),
                 vol.Required(
                     CONF_INT32_REGISTER_ORDER,
-                    default=options.get(
-                        CONF_INT32_REGISTER_ORDER, DEFAULT_INT32_REGISTER_ORDER
-                    ),
+                    # Unset means the firmware's own order is in effect, so that
+                    # is what the form offers; saving it as is changes nothing.
+                    default=options.get(CONF_INT32_REGISTER_ORDER)
+                    or default_register_order(
+                        self.config_entry.data.get(CONF_FIRMWARE_VERSION)
+                    )
+                    or DEFAULT_INT32_REGISTER_ORDER,
                 ): _select([REGISTER_ORDER_HIGH_FIRST, REGISTER_ORDER_LOW_FIRST]),
                 vol.Required(
                     CONF_ROOM_THERMOSTAT_CONTROL,

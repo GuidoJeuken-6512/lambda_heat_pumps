@@ -3,7 +3,7 @@
 - **Stand:** 12.10.2026
 - **Geprüfter Code:** `origin/3.5` @ `55439d4` (Integration v3.5.6)
 - **Grundlage:** alle 24 offenen GitHub-Issues. Geprüft wurden die 9 mit Label `bug` und die 6 ohne Label, die einen Fehler beschreiben. Die 9 `enhancement`-Issues sind nur am Ende aufgelistet.
-- **Hinweis:** Es wurde **kein Code geändert**. Zeilenangaben beziehen sich auf `custom_components/lambda_heat_pumps/` im Branch `3.5`.
+- **Hinweis:** Die Analyse selbst hat keinen Code geändert. Nachträglich behoben: F1 + F2 (#133, 17.10.2026). Zeilenangaben beziehen sich auf `custom_components/lambda_heat_pumps/` im Branch `3.5`.
 
 Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `pymodbus`, neue Entity-/Register-Modelle). Viele Issues, die gegen 2.x gemeldet wurden, betreffen Code, den es so nicht mehr gibt. Sie wurden deshalb gegen die neue Implementierung neu bewertet.
 
@@ -17,8 +17,9 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 
 | Issue | Titel (gekürzt) | Status in 3.5 | Priorität |
 |---|---|---|---|
-| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | Akkumulierte Energiezähler falsch / negativ | 🔴 **teilweise offen** (Regression bei der Registerreihenfolge) | hoch |
-| [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | Warmwasser thermisch = elektrisch, extreme Werte | 🔴 **teilweise offen** (gleiche Ursache wie #104) | hoch |
+| [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) | Migration schreibt `high_first` über den Firmware-Default | ✅ **behoben** (F1 + F2, 17.10.2026), HW-Test durch den Melder ausstehend | – |
+| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | Akkumulierte Energiezähler falsch / negativ | ✅ **Regression behoben** (F1 + F2, siehe #133), HW-Test ausstehend | – |
+| [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **Regression behoben** (gleiche Ursache wie #104), HW-Test ausstehend | – |
 | [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | Falsche Firmware-Version übernommen | 🟠 **teilweise offen** (Migration bevorzugt veralteten Wert) | mittel |
 | [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | Neue Steuerung FW 1.3.8 / 1.3.10 | 🟠 **teilweise offen** (mehrere Restpunkte + Regression #108) | mittel |
 | [#122](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/122) | Entity-ID mit falscher Domain (`sensor.*_heating_circuit`) | 🟡 Code behoben, **Registry-Altlasten offen** | mittel (Frist HA 2027.5) |
@@ -36,7 +37,7 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 
 ---
 
-## 🔴 #104: Akkumulierte Energiezähler falsch / negativ
+## ✅ #104 / #133: Akkumulierte Energiezähler falsch / negativ
 
 **Meldung:** `compressor_power_consumption_accumulated` / `..._thermal_energy_output_accumulated` liefern Werte wie -1.341.390.833 Wh. Ursache in 2.x war die 32-Bit-Registerreihenfolge, die Lambda ab V0.0.10 geändert hat. In 2.8.0 wird deshalb `reg_order` aus `FIRMWARE_CONFIG` als Default genommen.
 
@@ -44,6 +45,13 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 - Grundsätzlich richtig umgesetzt: `const.py:22ff`. `FIRMWARE_CONFIG` enthält `reg_order`. `coordinator.py` (ca. Z. 160) nimmt `entry.options[int32_register_order]` und, **wenn das fehlt**, `default_register_order(firmware)`. Die beiden 32-Bit-Zähler werden jeweils am Stück gelesen (`ranges.py`, `(20,21)`, `(22,23)`).
 - **Fehler 1: Die Migration überschreibt den Firmware-Default.** `__init__.py:141` ruft `options.setdefault(CONF_INT32_REGISTER_ORDER, await _async_read_register_order(hass))` auf. `_async_read_register_order()` (`__init__.py:151-179`) liefert `DEFAULT_INT32_REGISTER_ORDER` = `high_first`, wenn die YAML-Datei fehlt oder der Schlüssel auskommentiert ist. Das ist der Normalfall, denn in 2.8.x wurde Anwendern ausdrücklich geraten, den Eintrag wieder auszukommentieren. Damit steht nach dem Upgrade 2.8→3.5 **explizit `high_first`** in den Options. Der Firmware-Fallback im Coordinator greift nie mehr. Bei Firmware **V0.0.10-3K und V1.1.0-3K** (`low_first`) kommen dadurch wieder genau die Werte aus #104/#90.
 - **Fehler 2: Der Options-Flow schreibt den falschen Default.** `config_flow.py:281` setzt als Default `options.get(CONF_INT32_REGISTER_ORDER, DEFAULT_INT32_REGISTER_ORDER)`. Bei einem neuen Eintrag ohne gespeicherte Option zeigt das Formular also `high_first`. Speichert der Anwender die Optionen (z. B. nur um PV-Überschuss zu aktivieren), wird `high_first` dauerhaft gespeichert, auch bei `low_first`-Firmware.
+
+> **✅ FIXED (17.10.2026, Fehler 1 und 2):** Bestätigt durch [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) (echtes Upgrade 2.8.6 → 3.5.6 auf V1.1.0-3K, Zähler rund eine Minute bei 1,14 Mrd. Wh, Langzeitstatistik beschädigt).
+> - `__init__.py`: `_async_read_register_order()` gibt `None` zurück, wenn die YAML fehlt, unlesbar ist oder keinen Wert setzt. Die Migration setzt `int32_register_order` nur bei einem expliziten Wert. Sonst gilt die Reihenfolge der Firmware, wie in 2.8.x.
+> - `config_flow.py`: Der Options-Flow bietet als Default `options[...]` → `default_register_order(firmware)` → `high_first` an. Unverändertes Speichern ändert also nichts mehr.
+> - Tests: `test_config_flow.py` (ohne Datei, auskommentierter Schlüssel bei V1.1.0-3K inkl. Zählerwert, unlesbare Datei, expliziter `high_first` bleibt erhalten) und `test_options_flow.py` (Default je Firmware, gesetzter Wert bleibt). Die neuen Tests schlagen ohne den Fix fehl.
+> - Umgesetzt wurden Punkt 1, 2 und 5. Punkt 3 (Wert „auto“) und Punkt 6 (Doku zur Statistikbereinigung) sind weiter offen.
+> - Wer 3.5 vor diesem Fix schon installiert hat, hat `high_first` fest in den Options stehen. Das korrigiert sich nicht von selbst: im Options-Dialog einmal die richtige Reihenfolge wählen.
 
 **Lösungsansatz:**
 1. In `async_migrate_entry` die Registerreihenfolge **nur** setzen, wenn die alte YAML einen expliziten Wert enthält. `_async_read_register_order()` gibt dann `None` statt `DEFAULT_…` zurück, und `options.setdefault` wird nur bei einem Wert ungleich `None` ausgeführt. Ohne expliziten Wert bleibt der Firmware-Default aus dem Coordinator wirksam.
@@ -55,7 +63,7 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 
 ---
 
-## 🔴 #90: Warmwasser thermisch und elektrisch identisch / extrem hohe Werte
+## ✅ #90: Warmwasser thermisch und elektrisch identisch / extrem hohe Werte
 
 **Meldung (2.5.0, FW 0.0.9):** Warmwasser-Energie thermisch und elektrisch sind (fast) gleich und liegen bei ca. 21.400 kWh bzw. 89.000 kWh. Die akkumulierten Register zeigen negative bzw. unplausible Werte.
 
@@ -258,8 +266,8 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 | # | Fix | Issue | Komplexität | Kritikalität | Testaufwand |
 |---|---|---|---|---|---|
-| F1 | Migration: Registerreihenfolge nur übernehmen, wenn die YAML sie explizit setzt | #104/#90 | **S** (~10 Zeilen, `__init__.py:141-179`) | 🔴 **hoch** | Unit **M** + HW **M** |
-| F2 | Options-Flow: Default der Registerreihenfolge aus der Firmware | #104 | **S** (~3 Zeilen, `config_flow.py:281`); Variante „auto“: **M** | 🔴 **hoch** | Unit **S**; mit „auto“ **M** |
+| F1 | ✅ **FIXED** – Migration: Registerreihenfolge nur übernehmen, wenn die YAML sie explizit setzt | #104/#90/#133 | **S** (~10 Zeilen, `__init__.py:141-179`) | 🔴 **hoch** | Unit **M** + HW **M** |
+| F2 | ✅ **FIXED** (einfache Variante) – Options-Flow: Default der Registerreihenfolge aus der Firmware | #104/#133 | **S** (~3 Zeilen, `config_flow.py:281`); Variante „auto“: **M** | 🔴 **hoch** | Unit **S**; mit „auto“ **M** |
 | F3 | `ambient_temperature`: Firmware-Range 1-7 entfernen | #100/#108 | **S** (1 Zeile, `sensor.py:177`) | 🟠 **mittel–hoch** | Unit **M** (Test schreibt Bug fest) + HW **S** |
 | F4 | Migration: Firmware aus Options vor Data, Warnung bei unbekanntem Namen | #82 | **S** (~5 Zeilen, `__init__.py:134`) | 🟠 **mittel** | Unit **S** |
 | F5 | Climate-Entity-IDs `sensor.*` → `climate.*` in der Registry umbenennen | #122/#85 | **M** (~30–40 Zeilen + Klärung des HA-Verhaltens) | 🟠 **mittel** (ab HA 2027.5 hoch) | Unit **M** + HW **M** |
@@ -274,7 +282,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 ### Begründungen im Detail
 
-**F1 – Registerreihenfolge in der Migration (🔴 hoch, S, Test M)**
+**F1 – Registerreihenfolge in der Migration (🔴 hoch, S, Test M)** – ✅ **FIXED** 17.10.2026 (#133), HW-Test steht noch aus
 - *Wer ist betroffen:* Jeder 2.8.x-Anwender mit Firmware V0.0.10-3K oder V1.1.0-3K, der **keinen** expliziten Wert in `lambda_wp_config.yaml` hat. Genau diesen Anwendern wurde in #104 geraten, die Zeile wieder auszukommentieren. Auch alle Neuinstallationen ab 2.8.0 mit neuer Steuerung gehören dazu. Das ist vermutlich der Großteil der aktiven Nutzer.
 - *Folge:* Unmittelbar nach dem Upgrade liefern die akkumulierten Zähler wieder Unsinn. `TOTAL_INCREASING`-Sensoren springen, die **Langzeitstatistik im Energie-Dashboard wird beschädigt**. Das ist irreversibel, nur manuell zu bereinigen, und es tritt genau beim Release auf.
 - *Code:* Klein. `_async_read_register_order()` gibt `None` zurück, wenn kein expliziter Wert existiert, und `setdefault` läuft nur bei einem Wert ungleich `None`. Der Firmware-Fallback im Coordinator existiert bereits und ist getestet (`test_the_register_order_defaults_to_what_the_firmware_uses`).
@@ -283,7 +291,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
   - Neu: Die Tests mit V0.0.10-3K **und** V0.0.8-3K parametrisieren (beide `reg_order`-Werte), jeweils mit explizitem YAML-Wert, ohne Datei, mit auskommentiertem Wert und mit unlesbarer Datei.
   - HW: einen echten Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage durchführen und Zählerwerte und Statistik vor und nach dem Upgrade vergleichen.
 
-**F2 – Default im Options-Flow (🔴 hoch, S, Test S)**
+**F2 – Default im Options-Flow (🔴 hoch, S, Test S)** – ✅ **FIXED** 17.10.2026 (#133), einfache Variante; „auto“ offen
 - *Wer ist betroffen:* Jeder Anwender mit `low_first`-Firmware ohne gespeicherte Option, der den Options-Dialog speichert, egal aus welchem Grund. Das trifft Neuinstallationen und, nach F1, auch alle Upgrader. Ohne F2 macht der Options-Dialog F1 also wieder kaputt. **F1 und F2 gehören zusammen.**
 - *Code:* Die einfache Variante ist ein Default aus `default_register_order(firmware)`. Sie speichert den Wert beim Speichern aber fest. Ein späterer Firmwarewechsel über *Neu konfigurieren* zieht die Reihenfolge dann nicht mehr nach. Die Variante „auto“ (eigener Wert, Übersetzungen in `strings.json`/`translations/*.json`, Auswertung im Coordinator) ist sauberer, aber M. **Empfehlung:** vor dem Release die einfache Variante, „auto“ später als Verbesserung.
 - *Tests:* In `tests/test_options_flow.py` den Default für V1.1.0-3K (`low_first`) und V0.0.8-3K (`high_first`) prüfen, außerdem, dass ein gespeicherter Wert erhalten bleibt.
@@ -335,7 +343,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F4, F5) **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration. Die Pakete beziehen sich auf die Bewertung oben.
 
-1. **Paket A, vor dem Release zwingend:** F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
+1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
 2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F7 (`volume_flow_heat_sink`, nur nach Hardware-Verifikation). Beides sind Breaking Changes, die am besten mit dem ohnehin großen Versionssprung 3.5 kommen.
 3. **Paket C, abhängig von Testern:** F6 (`V1.0.4-3K`).
 4. **Paket D, nach dem Release:** F8–F13.

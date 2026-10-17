@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.lambda_heat_pumps.const import (
     CONF_COOLING_MODE,
+    CONF_FIRMWARE_VERSION,
     CONF_HEATING_CIRCUIT_MAX_TEMP,
     CONF_HEATING_CIRCUIT_MIN_TEMP,
     CONF_HEATING_CIRCUIT_TEMP_STEP,
@@ -22,6 +23,8 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_UPDATE_INTERVAL,
     DEFAULT_INT32_REGISTER_ORDER,
     DEFAULT_PV_SURPLUS_MODE,
+    REGISTER_ORDER_HIGH_FIRST,
+    REGISTER_ORDER_LOW_FIRST,
 )
 
 from .conftest import Controller
@@ -70,6 +73,47 @@ async def test_the_plain_options_are_saved_directly(
 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_UPDATE_INTERVAL] == 30
+
+
+def _default(result: dict, key: str):
+    """The value the form offers for a field."""
+    for marker in result["data_schema"].schema:
+        if marker == key:
+            return marker.default()
+    raise KeyError(key)
+
+
+@pytest.mark.parametrize(
+    ("firmware", "expected"),
+    [
+        ("V1.1.0-3K", REGISTER_ORDER_LOW_FIRST),
+        ("V0.0.10-3K", REGISTER_ORDER_LOW_FIRST),
+        ("V0.0.8-3K", REGISTER_ORDER_HIGH_FIRST),
+    ],
+)
+async def test_the_register_order_offered_is_the_firmwares_own(
+    hass: HomeAssistant, controller: Controller, firmware: str, expected: str
+) -> None:
+    """With nothing set, saving the form as offered must not change the order (#133)."""
+    entry = await setup_entry(hass, controller)
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_FIRMWARE_VERSION: firmware}
+    )
+    result = await _start(hass, entry)
+
+    assert _default(result, CONF_INT32_REGISTER_ORDER) == expected
+
+
+async def test_a_set_register_order_is_offered_as_set(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An order the user chose is what the form shows, whatever the firmware."""
+    entry = await setup_entry(
+        hass, controller, options={CONF_INT32_REGISTER_ORDER: REGISTER_ORDER_LOW_FIRST}
+    )
+    result = await _start(hass, entry)
+
+    assert _default(result, CONF_INT32_REGISTER_ORDER) == REGISTER_ORDER_LOW_FIRST
 
 
 async def test_a_hot_water_range_that_does_not_make_sense_is_refused(
