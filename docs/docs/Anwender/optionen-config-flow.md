@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen des config_flow
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -79,7 +79,7 @@ title: "Optionen des config_flow"
 
 ### Firmware-Version gehört NICHT zu diesen Optionen
 
-Anders als bis Version 3.4 lässt sich die Firmware-Version **nicht** über diese Options-Seite ändern. Sie wird nur beim Ersteinrichten sowie über **„Neu konfigurieren"** (Menü ⋮ bei der Integration, nicht das Zahnrad-Symbol) gesetzt. Details: [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md).
+Anders als bis Version 3.4 lässt sich die Firmware-Version **nicht** über diese Options-Seite ändern. Sie wird nur beim Ersteinrichten sowie über **„Neu konfigurieren"** (Menü ⋮ bei der Integration, nicht das Zahnrad-Symbol) gesetzt. Details: [Firmware-Version ändern](firmware-wechsel.md) und [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md).
 
 ### Register-Reihenfolge
 

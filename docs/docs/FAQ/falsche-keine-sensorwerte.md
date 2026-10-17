@@ -4,7 +4,7 @@ title: "FAQ – Falsche / keine Sensorwerte"
 
 # Falsche oder keine Sensorwerte
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Hier finden Sie die häufigsten Ursachen und Lösungen, wenn Sensoren **falsche Werte** anzeigen oder **gar keine Werte** liefern.
 
@@ -14,55 +14,54 @@ Hier finden Sie die häufigsten Ursachen und Lösungen, wenn Sensoren **falsche 
 
 ### Problematik
 
-- **Symptome:** Energie-Sensoren (Wh/kWh) oder andere 32-Bit-Sensoren zeigen **völlig falsche**, oft unrealistisch hohe oder niedrige Werte.
-- **Lambda-Software** zeigt dagegen korrekte Werte.
-- Betroffen sind vor allem **int32-Entitäten** (z. B. Akkumulations-Sensoren), die aus zwei 16-Bit-Modbus-Registern zusammengesetzt werden.
+- **Symptome:** Die akkumulierten Energiezähler (`hpX_compressor_power_consumption_accumulated`, `hpX_compressor_thermal_energy_output_accumulated`) zeigen **völlig falsche** Werte, oft im Bereich von Hunderten Millionen bis Milliarden Wh oder negativ.
+- Die **Lambda** zeigt in ihrer Statistik dagegen korrekte Werte.
+- Betroffen sind die **32-Bit-Werte**, die aus zwei 16-Bit-Modbus-Registern zusammengesetzt werden (die beiden Energiezähler jeder Wärmepumpe, der Solar-Ertragszähler).
 
-**Ursache:** Die **Reihenfolge der Register** (Register/Word Order) bei der Interpretation von 32-Bit-Werten ist je nach Gerät/Firmware unterschiedlich. Es geht nicht um Byte-Endianness innerhalb eines Registers, sondern darum, ob das höherwertige oder das niedrigere 16-Bit-Register zuerst gelesen wird. 
+**Ursache:** Die **Register-Reihenfolge** (`high_first` oder `low_first`) passt nicht zu Ihrer Lambda. Es geht nicht um die Byte-Reihenfolge innerhalb eines Registers, sondern darum, ob das höherwertige oder das niederwertige Register zuerst steht.
 
-Leider kann nicht automatisch ermittelt werden, welche Register Reihenfolge die Lambda verwendet.
+Seit Version 3.5 verwendet die Integration automatisch die Reihenfolge der **eingestellten Firmware** (`high_first` bis V0.0.9-3K, `low_first` ab V0.0.10-3K). Falsche Werte haben daher meist eine dieser Ursachen:
+
+- Die eingestellte **Firmware-Version** passt nicht zu Ihrer Lambda.
+- Die Register-Reihenfolge wurde unter **Konfigurieren** fest auf einen falschen Wert gesetzt. Das passierte bei Installationen, die vor Version 3.5.7 von 2.x aktualisiert wurden: Dort wurde ohne Eintrag in der alten `lambda_wp_config.yaml` fest `high_first` gespeichert.
+- Ihre Lambda weicht von der dokumentierten Reihenfolge ihrer Firmware ab (selten).
 
 ### Lösung
 
-Seit Version 3.5 stellen Sie die Register-Reihenfolge für 32-Bit-Werte als **Integrations-Option** ein, nicht mehr in der `lambda_wp_config.yaml`:
+1. **Firmware-Version prüfen.** Stimmt sie nicht, ändern Sie sie über **⋮ → Neu konfigurieren**, siehe [Firmware-Version ändern](../Anwender/firmware-wechsel.md). Dabei wird eine selbst gewählte Register-Reihenfolge zurückgesetzt, und es gilt die Reihenfolge der neuen Firmware.
+2. **Register-Reihenfolge prüfen:** **Einstellungen** → **Geräte & Dienste** → Lambda → **Konfigurieren**, Option **Register-Reihenfolge**. Stimmen die Werte nach Schritt 1 noch nicht, stellen Sie die jeweils andere Reihenfolge ein (`high_first` ↔ `low_first`). Die Integration lädt sich nach dem Speichern automatisch neu.
+3. **Werte vergleichen:** Bei richtiger Einstellung stimmen die Zähler mit der Statistik am Display der Lambda überein.
 
-1. **Einstellungen** → **Geräte & Dienste** → Ihre Lambda-Integration → **Konfigurieren**
-2. Option **Register-Reihenfolge** auf `high_first` oder `low_first` stellen
+### Langzeitstatistik nach falschen Werten
 
-**Vorgehen:**
-
-1. Zeigen Ihre Sensoren **falsche** Werte → probieren Sie die andere Einstellung:
-   - bisher `high_first` → auf `low_first` wechseln  
-   - bisher `low_first` → auf `high_first` wechseln  
-2. Die Änderung lädt die Integration automatisch neu.
-3. Werte prüfen; bei korrekter Einstellung sollten die Anzeigen mit der Lambda-Software übereinstimmen.
-
-Weitere Hinweise und Firmware-Anpassungen: [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md).
+Die Gesamtzähler der Integration (`*_energy_total`, COP) schützt ein Sprungfilter: Ein Sprung von mehr als 100 kWh pro Abfrage wird verworfen. Die akkumulierten Zähler selbst haben in der Langzeitstatistik aber die falschen Werte, und Auswertungen darauf (z. B. Verbrauchszähler-Helfer oder das Energie-Dashboard) zeigen dadurch einen riesigen Sprung. Korrigieren lässt sich das unter **Entwicklerwerkzeuge** → **Statistiken**: beim betroffenen Sensor den Sprung über „Summe anpassen“ (engl. „Adjust sum“) ausgleichen, oder die Statistik des Sensors löschen (siehe [Historische Daten löschen](../Anwender/historische_daten_loeschen.md)).
 
 ---
 
-## 2. Sensoren liefern keine Werte (unavailable / fehlen)
+## 2. Sensoren liefern keine Werte oder fehlen
 
-### Problematik
+### Sensor fehlt ganz
 
-- Einzelne Sensoren bleiben **unavailable** oder erscheinen gar nicht.
-- Im Log treten **Modbus-Fehler** oder Timeouts für bestimmte Register auf.
-- Typisch bei **anderen Firmware-Versionen** oder Geräten, die nicht alle Register unterstützen.
-    - Die Konfiguration der Zirkulationspumpe ist so ein Beispiel, es ist nicht automatisiert auswertbar, wie die Lambda konfiguriert wurde.
+- **Falsche Firmware-Version:** Die Integration legt nur Sensoren an, die die eingestellte Firmware kennt. Prüfen und ändern Sie die Firmware über **⋮ → Neu konfigurieren**, siehe [Firmware-Version ändern](../Anwender/firmware-wechsel.md). Wo die Firmware hinterlegt ist, steht in [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md).
+- **Modul nicht erkannt:** Welche Module (Wärmepumpen, Speicher, Puffer, Solar, Heizkreise) vorhanden sind, ermittelt die Integration bei jedem Start. Antwortet die Lambda dabei zu langsam, kann ein Modul fehlen. Laden Sie die Integration neu (**⋮ → Neu laden**).
+- **Standardmäßig deaktiviert:** Die Tages-, Monats- und Jahreszähler sind bei einer Neuinstallation deaktiviert, nur die Gesamtzähler sind aktiv. Sie finden sie beim Gerät unter „Entitäten“ und können sie dort aktivieren.
 
-### Lösung
+### Sensor zeigt „nicht verfügbar“ (unavailable)
 
-Seit Version 3.5 gibt es kein `disabled_registers` in der `lambda_wp_config.yaml` mehr – deaktivieren Sie stattdessen die betroffene **Entität** direkt in Home Assistant:
+- Antwortet ein ganzes Modul nicht, werden alle Sensoren dieses Moduls „nicht verfügbar“, bis es wieder antwortet. Im Log steht dazu **einmal** eine Warnung `Failed to fetch …`, nicht bei jeder Abfrage.
+- Antwortet die Lambda auf ein Modul nicht mehr, das sie bei der Einrichtung noch bedient hat (z. B. nach einem Umbau oder Firmware-Update), lädt sich die Integration automatisch neu und erkennt die Module neu.
+- Hilft das nicht: Verbindung prüfen und ein [Debug-Log](../Anwender/debug-logs-erzeugen.md) erstellen.
 
-**Vorgehen:**
+### Sensor zeigt „unbekannt“ (unknown)
 
-1. Den betroffenen Sensor in Home Assistant öffnen (Einstellungen → Geräte & Dienste → Entitäten, oder direkt über die Detailseite).
-2. Auf das **Zahnrad** klicken und die Entität **deaktivieren**.
-3. Optional: Bei zusätzlichen Log-Fehlern die Firmware-Version in den Integrations-Optionen prüfen – ein Register, das Ihre Firmware laut Konfiguration nicht haben sollte, wird ohnehin nicht gelesen (siehe [Anpassungen der Sensoren abhängig von der Firmware](../Anwender/anpassungen-sensoren-firmware.md)).
+Die Lambda meldet für manche Register einen Sonderwert, wenn sie keinen Wert hat, z. B. bei Eingaberegistern, die nur gefüllt sind, wenn sie per Modbus beschrieben werden (Raumtemperatur eines Heizkreises ohne aktive Raumthermostat-Steuerung). Die Integration zeigt diese Sonderwerte als „unbekannt“ statt als scheinbaren Messwert an. Das ist kein Fehler.
 
-Eine deaktivierte Entität wird nicht mehr abgefragt, dadurch verschwinden die zugehörigen Fehler im Log.
+### Sensoren, die Sie nicht brauchen
 
-Ausführliche Anleitung: [Entitäten löschen](../Anwender/entitaeten_loeschen.md).
+Seit Version 3.5 gibt es kein `disabled_registers` in der `lambda_wp_config.yaml` mehr. Blenden Sie den Sensor stattdessen in Home Assistant aus: Entität öffnen → **Zahnrad** → **deaktivieren**. Ausführliche Anleitung: [Entitäten löschen](../Anwender/entitaeten_loeschen.md).
+
+!!! note "Deaktivieren ändert nichts an der Abfrage"
+    Seit Version 3.5 liest die Integration die Lambda blockweise, unabhängig davon, welche Entitäten aktiv sind. Eine deaktivierte Entität erscheint nicht mehr in Home Assistant, die Abfrage per Modbus und eventuelle Log-Meldungen ändern sich dadurch aber nicht.
 
 ---
 

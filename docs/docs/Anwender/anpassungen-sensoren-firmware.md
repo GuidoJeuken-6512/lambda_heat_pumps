@@ -4,7 +4,7 @@ title: "Anpassungen der Sensoren abhängig von der Firmware"
 
 # Anpassungen der Sensoren abhängig von der Firmware
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration erstellt automatisch Sensoren basierend auf der erkannten Hardware und der konfigurierten Firmware-Version. Die Firmware-Version bestimmt, welche Sensoren verfügbar sind und welche Register gelesen werden können.
 
@@ -25,7 +25,7 @@ Bei der Initialkonfiguration müssen Sie die Firmware-Version auswählen:
 
 - **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren erstellt werden
 - **Falsche Firmware-Version**: Kann zu fehlenden oder falschen Sensoren führen
-- **Korrektur**: Öffnen Sie **Einstellungen** → **Geräte & Dienste** → Ihre Lambda-Integration → Menü (⋮) → **Neu konfigurieren** und wählen Sie dort die richtige Firmware. Die Firmware lässt sich **nicht** über die normalen Integrations-**Optionen** ändern, nur über „Neu konfigurieren" – das lädt die Integration danach automatisch neu.
+- **Korrektur**: Öffnen Sie **Einstellungen** → **Geräte & Dienste** → Ihre Lambda-Integration → Menü (⋮) → **Neu konfigurieren** und wählen Sie dort die richtige Firmware. Die Firmware lässt sich **nicht** über die normalen Integrations-**Optionen** ändern, nur über „Neu konfigurieren" – das lädt die Integration danach automatisch neu. Details: [Firmware-Version ändern](firmware-wechsel.md).
 
 ## Sensor-Filterung basierend auf Firmware
 
@@ -41,7 +41,7 @@ Unabhängig davon probt die Integration bei jedem Start zusätzlich, welche Regi
 
 Für Register, die Ihre Lambda zwar meldet, aber die Sie nicht brauchen oder die falsche Werte liefern (z. B. eine nicht vorhandene Zirkulationspumpe), gibt es seit Version 3.5 keinen eigenen YAML-Mechanismus mehr (`disabled_registers`/`sensors_names_override` sind entfallen). Nutzen Sie stattdessen die Bordmittel von Home Assistant:
 
-- **Sensor nicht anzeigen/lesen**: Entität in der Entity-Registry **deaktivieren** (Entität öffnen → Zahnrad → Deaktivieren). Details: [Entitäten löschen](entitaeten_loeschen.md).
+- **Sensor nicht anzeigen**: Entität in der Entity-Registry **deaktivieren** (Entität öffnen → Zahnrad → Deaktivieren). Details: [Entitäten löschen](entitaeten_loeschen.md). Die Integration liest die Lambda seit 3.5 blockweise; das Register wird also weiterhin abgefragt, nur die Entität erscheint nicht mehr.
 - **Sensor anders benennen**: Entität in Home Assistant **umbenennen** (Entität öffnen → Zahnrad → Name ändern). `unique_id` und Historie bleiben dabei erhalten.
 
 ## Register-Reihenfolge-Konfiguration
@@ -53,31 +53,15 @@ Für 32-Bit-Werte aus mehreren 16-Bit-Registern (die beiden Energiezähler jeder
 
 **Wann ist das wichtig?**
 - Jede Firmware hat einen dokumentierten Standardwert, den die Integration automatisch vorschlägt (z. B. `high_first` bis einschließlich V0.0.9-3K, `low_first` ab V0.0.10-3K) – Sie müssen die Option also nur ändern, wenn Ihr konkretes Gerät davon abweicht.
-- **Rückwärtskompatibilität**: War in einer älteren `lambda_wp_config.yaml` bereits `int32_register_order` (oder das noch ältere `int32_byte_order`/`big`/`little`) gesetzt, übernimmt die Integration diesen Wert beim ersten Start nach dem Update einmalig automatisch in die neue Option.
+- **Rückwärtskompatibilität**: War in einer älteren `lambda_wp_config.yaml` bereits `int32_register_order` (oder das noch ältere `int32_byte_order`/`big`/`little`) gesetzt, übernimmt die Integration diesen Wert beim ersten Start nach dem Update einmalig automatisch in die neue Option. Ohne Eintrag gilt die Reihenfolge der Firmware.
+- **Firmwarewechsel**: Eine hier gewählte Reihenfolge wird zurückgesetzt, wenn Sie die Firmware über „Neu konfigurieren" ändern (ab 3.5.7).
 
 **Fehlerbehebung:**
 - Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung
 
 ## Firmware-Update
 
-Wenn Sie die Firmware Ihrer Lambda-Wärmepumpe aktualisieren:
-
-1. **Überprüfen Sie die neue Firmware-Version:**
-   - Finden Sie die neue Firmware-Version auf der Lambda-Bedienoberfläche
-
-2. **Aktualisieren Sie die Konfiguration:**
-   - Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
-   - Klicken Sie auf Ihre Lambda-Integration
-   - Öffnen Sie das Menü (⋮) und wählen Sie **Neu konfigurieren** (nicht „Konfigurieren"/Optionen)
-   - Aktualisieren Sie die Firmware-Version
-
-3. **Neuladen abwarten:**
-   - „Neu konfigurieren" lädt die Integration danach automatisch neu; ein manueller Neustart von Home Assistant ist nicht nötig
-   - Haben Sie unter „Konfigurieren" eine eigene Register-Reihenfolge gesetzt, wird diese bei einem Firmwarewechsel zurückgesetzt; es gilt dann der Standardwert der neuen Firmware. Weicht Ihr Gerät davon ab, setzen Sie die Reihenfolge danach erneut unter „Konfigurieren"
-
-4. **Überprüfen Sie die Sensoren:**
-   - Überprüfen Sie, ob alle erwarteten Sensoren vorhanden sind
-   - Überprüfen Sie, ob die Sensoren korrekte Werte anzeigen
+Wenn die Firmware Ihrer Lambda aktualisiert oder die Steuerung getauscht wurde, ändern Sie die Firmware-Version über **⋮ → Neu konfigurieren**. Ausführliche Anleitung, inklusive der Folgen für Sensoren und Register-Reihenfolge: [Firmware-Version ändern](firmware-wechsel.md).
 
 ## Häufige Probleme
 
@@ -87,11 +71,11 @@ Wenn Sie die Firmware Ihrer Lambda-Wärmepumpe aktualisieren:
 
 ### "Falsche Werte in Sensoren"
 - **Ursache**: Falsche Register-Reihenfolge für 32-Bit-Werte
-- **Lösung**: Ändern Sie die Option **Register-Reihenfolge** in den Integrations-Optionen von `high_first` zu `low_first` oder umgekehrt
+- **Lösung**: Zuerst die Firmware-Version prüfen ([Firmware-Version ändern](firmware-wechsel.md)), dann ggf. die Option **Register-Reihenfolge** in den Integrations-Optionen von `high_first` zu `low_first` oder umgekehrt ändern. Siehe auch [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).
 
-### "Register-Fehler im Log"
-- **Ursache**: Register wird von der Firmware nicht unterstützt
-- **Lösung**: Deaktivieren Sie die betroffene Entität in Home Assistant (siehe oben) – das unterdrückt die Fehlermeldung, da das Register dann nicht mehr gelesen wird
+### "Failed to fetch … im Log"
+- **Ursache**: Ein Modul der Lambda hat auf die Abfrage nicht geantwortet. Die Meldung erscheint einmal, nicht bei jeder Abfrage; die Sensoren dieses Moduls sind so lange „nicht verfügbar“.
+- **Lösung**: Verbindung prüfen. Bedient die Lambda ein Modul dauerhaft nicht mehr, lädt sich die Integration automatisch neu und erkennt die Module neu. Das Deaktivieren einer Entität ändert an der Abfrage nichts.
 
 ## Nächste Schritte
 

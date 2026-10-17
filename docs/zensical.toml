@@ -63,6 +63,7 @@ nav = [
     { "COP-Sensoren (Leistungszahl)" = "Anwender/cop-sensoren.md" },
     { "Heizkurve" = "Anwender/heizkurve.md" },
     { "Anpassungen der Sensoren abhängig von der Firmware" = "Anwender/anpassungen-sensoren-firmware.md" },
+    { "Firmware-Version ändern" = "Anwender/firmware-wechsel.md" },
     { "Historische Daten übernehmen" = "Anwender/historische-daten.md" },
     { "Offsets (Historische Daten)" = "Anwender/offsets.md" },
     { "Historische Daten löschen" = "Anwender/historische_daten_loeschen.md" },
