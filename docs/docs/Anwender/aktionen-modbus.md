@@ -4,9 +4,12 @@ title: "Aktionen (read / write Modbus register)"
 
 # Aktionen (read / write Modbus register)
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
-Die Lambda Heat Pumps Integration bietet Actions zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für Automatisierungen, erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
+Die Lambda Heat Pumps Integration bietet Aktionen zum direkten Lesen und Schreiben von Modbus-Registern. Diese Funktionen sind nützlich für Automatisierungen, erweiterte Konfigurationen, Fehlerbehebung oder spezielle Anwendungsfälle.
+
+!!! info "Nur bei genau einer eingerichteten Lambda"
+    `read_modbus_register` und `write_modbus_register` haben kein Ziel. Sind mehrere Lambdas eingerichtet, lehnen sie den Aufruf ab („More than one Lambda controller is set up …“), weil nicht klar ist, welche gemeint ist.
 
 ## Verfügbare Actionen
 
@@ -21,7 +24,7 @@ Liest einen Wert aus einem Modbus-Register.
 
 **Rückgabewert:**
 
-Der Service liefert seine Antwort als **Service-Response** zurück (`value`: der gelesene Wert, Integer) – es gibt **keinen** Sensor, der den zuletzt gelesenen Wert automatisch speichert. In Automatisierungen fangen Sie die Antwort mit `response_variable` ab:
+Die Aktion liefert ihre Antwort als **Antwortdaten** zurück: `value` ist der **Rohwert** des Registers (0–65535), ohne Skalierung. Ein Temperaturregister mit Skalierung 0,1 liefert also z. B. `482` für 48,2 °C, und ein negativer Wert erscheint im Zweierkomplement (z. B. `65535` für −1) – es gibt **keinen** Sensor, der den zuletzt gelesenen Wert automatisch speichert. In Automatisierungen fangen Sie die Antwort mit `response_variable` ab:
 
 **Beispiel:**
 ```yaml
@@ -50,6 +53,12 @@ automation:
           message: "Register 1003 Wert: {{ register_result.value }}"
     mode: single
 ```
+
+### update_room_temperature
+
+Schickt sofort die Raumtemperaturen an alle Heizkreise, für die in den Optionen ein Raumtemperatur-Sensor gewählt ist. Das passiert ohnehin alle 9 Sekunden; die Aktion braucht man nur, wenn ein neuer Wert ohne Wartezeit ankommen soll. Ohne aktivierte Raumthermostat-Steuerung tut sie nichts.
+
+**Action**: `lambda_heat_pumps.update_room_temperature` (keine Parameter)
 
 ### write_modbus_register
 
@@ -88,31 +97,31 @@ automation:
     mode: single
 ```
 
-## Verwendung über Developer Tools
+## Verwendung über die Entwicklerwerkzeuge
 
 <img src="../assets/dev_tools_actions_de.png" alt="DevTools Actions" style="width: 60%; height: auto; border-radius: 8px;">
 
 ### Register lesen
 
 1. **Öffnen Sie Home Assistant:**
-   - Gehen Sie zu **Entwicklertools** → **Services**
+   - Gehen Sie zu **Entwicklerwerkzeuge** → **Aktionen**
 
-2. **Service auswählen:**
+2. **Aktion auswählen:**
    - Wählen Sie `lambda_heat_pumps.read_modbus_register` aus
 
 3. **Parameter eingeben:**
    - `register_address`: Geben Sie die Register-Adresse ein (z.B. `1003`)
 
-4. **Service aufrufen:**
-   - Klicken Sie auf **Service aufrufen**
+4. **Aktion ausführen:**
+   - Klicken Sie auf **Aktion ausführen**
    - Der gelesene Wert erscheint direkt im Ergebnis-Feld unten im Dialog (die Aktion liefert eine Antwort zurück; es gibt keinen Sensor, der den Wert protokolliert)
 
 ### Register schreiben
 
 1. **Öffnen Sie Home Assistant:**
-   - Gehen Sie zu **Entwicklertools** → **Services**
+   - Gehen Sie zu **Entwicklerwerkzeuge** → **Aktionen**
 
-2. **Service auswählen:**
+2. **Aktion auswählen:**
    - Wählen Sie `lambda_heat_pumps.write_modbus_register` aus
 
 3. **Parameter eingeben:**
@@ -120,8 +129,8 @@ automation:
    - `value`: Geben Sie den zu schreibenden Wert ein (z.B. `500`)
    In diesem Beispiel würden sie die SollTemperatur des Boiler1 auf 50°C setzten.
 
-4. **Service aufrufen:**
-   - Klicken Sie auf **Service aufrufen**
+4. **Aktion ausführen:**
+   - Klicken Sie auf **Aktion ausführen**
    - Der Wert wird an die Lambda geschrieben
 
 ## Wichtige Register-Adressen
@@ -138,7 +147,7 @@ automation:
 - **Register 5000**: HC1 Error Number (lesbar)
 - **Register 5001**: HC1 Operating State (lesbar)
 - **Register 5004**: HC1 Room Device Temperature (lesbar / schreibbar, wird bei aktivierter Raumthermostat-Steuerung alle 9s aus dem gewählten HA-Sensor beschrieben)
-- **Register 5007**: HC1 Flow Line Temperature Setpoint (lesbar / schreibbar)
+- **Register 5007**: HC1 Vorlauf-Sollwert. Bis Firmware V0.0.4-3K beschreibbare Sollwert-Anforderung, ab V0.0.5-3K der nur lesbare Sollwert, mit dem die Lambda arbeitet
 - **Register 5051**: HC1 Target Room Temperature (lesbar / schreibbar, wird auch vom `climate.set_temperature`-Service des Heizkreises geschrieben)
 
 ### Kessel (Boil1)
@@ -216,24 +225,16 @@ automation:
 
 ## Einschränkungen
 
-### 16-Bit-Register
+### Einzelne 16-Bit-Register
 
-Die Actions unterstützen derzeit nur **16-Bit-Register** (einzelne Register):
+Die Aktionen lesen und schreiben immer **ein einzelnes Register**:
 
-- **Wertebereich**: -32768 bis 32767
-- **32-Bit-Register**: Werden derzeit nicht unterstützt (siehe [Hinweis](#hinweis-32-bit-register))
+- **Lesen:** Rohwert 0–65535
+- **Schreiben:** −32768 bis 65535; negative Werte werden als Zweierkomplement geschrieben
 
-### Hinweis: 32-Bit-Register
+### 32-Bit-Werte
 
-Die Actions `read_modbus_register` und `write_modbus_register` können derzeit **nicht** mit 32-Bit-Registern umgehen. Dies führt zu Fehlern beim Lesen/Schreiben von 32-Bit-Registern.
-
-**Betroffene Register:**
-- `compressor_power_consumption_accumulated` (Register 20, INT32)
-- `compressor_thermal_energy_output_accumulated` (Register 22, INT32)
-- Weitere 32-Bit-Register
-
-**Workaround**: Verwenden Sie die entsprechenden Sensoren der Integration, die 32-Bit-Register korrekt lesen können.
-
+Die beiden Energiezähler jeder Wärmepumpe belegen je zwei Register (HP1: elektrisch 1020/1021, thermisch 1022/1023). Die Aktion liest davon jeweils nur eine Hälfte; den Gesamtwert müssten Sie selbst zusammensetzen, je nach Register-Reihenfolge Ihrer Firmware. Einfacher ist es, die Sensoren der Integration zu verwenden (`hpX_compressor_power_consumption_accumulated`, `hpX_compressor_thermal_energy_output_accumulated`), die das bereits richtig tun.
 
 ⚠️ **WICHTIG**: Das direkte Schreiben von Modbus-Registern kann die Funktion Ihrer Lambda-Wärmepumpe beeinträchtigen. 
 

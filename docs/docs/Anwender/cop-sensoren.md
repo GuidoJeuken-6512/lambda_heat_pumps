@@ -4,7 +4,7 @@ title: "COP-Sensoren (Leistungszahl)"
 
 # COP-Sensoren (Leistungszahl)
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration bietet **COP-Sensoren** (Coefficient of Performance / Leistungszahl), die das Verhältnis von erzeugter Wärme zu eingesetztem Strom anzeigen. Diese Sensoren helfen Ihnen, die Effizienz Ihrer Wärmepumpe zu überwachen und zu analysieren.
 
@@ -38,7 +38,7 @@ Für Warmwasser und Kühlen werden vier Zeiträume angeboten, für Heizen zusät
 - **Daily (Täglich)**: COP-Wert für den aktuellen Tag
 - **Monthly (Monatlich)**: COP-Wert für den aktuellen Monat
 - **Yearly (Jährlich)**: COP-Wert für das aktuelle Jahr
-- **Total (Gesamt)**: COP-Wert seit dem letzten Neustart von Home Assistant (siehe Hinweis unten)
+- **Total (Gesamt)**: COP-Wert seit Beginn der Erfassung durch die Integration (die Gesamtzähler überstehen Neustarts; Offsets aus der `lambda_wp_config.yaml` sind enthalten)
 - **Hourly (Stündlich, nur Heizen)**: COP-Wert für die aktuelle Stunde
 
 Nur die Total-Sensoren sind standardmäßig aktiviert; die übrigen Perioden lassen sich in der Entity-Registry bei Bedarf einschalten.
@@ -47,16 +47,16 @@ Daneben gibt es pro Wärmepumpe einen zusätzlichen `cop_calc`-Sensor, der nicht
 
 ### Entity-IDs
 
-Die Sensoren werden mit folgenden Entity-IDs erstellt (Beispiel Legacy-Namensschema):
+Die Sensoren werden mit folgenden Entity-IDs erstellt (`<name>` ist der Name Ihrer Lambda in Kleinbuchstaben, z. B. `eu08l`):
 
-- `sensor.{name_prefix}_hp1_heating_cop_daily`
-- `sensor.{name_prefix}_hp1_heating_cop_monthly`
-- `sensor.{name_prefix}_hp1_heating_cop_yearly`
-- `sensor.{name_prefix}_hp1_heating_cop_total`
-- `sensor.{name_prefix}_hp1_heating_cop_hourly`
-- `sensor.{name_prefix}_hp1_hot_water_cop_daily` / `_monthly` / `_yearly` / `_total`
-- `sensor.{name_prefix}_hp1_cooling_cop_daily` / `_monthly` / `_yearly` / `_total`
-- `sensor.{name_prefix}_hp1_cop_calc` (Lifetime-COP, siehe oben)
+- `sensor.<name>_hp1_heating_cop_daily`
+- `sensor.<name>_hp1_heating_cop_monthly`
+- `sensor.<name>_hp1_heating_cop_yearly`
+- `sensor.<name>_hp1_heating_cop_total`
+- `sensor.<name>_hp1_heating_cop_hourly`
+- `sensor.<name>_hp1_hot_water_cop_daily` / `_monthly` / `_yearly` / `_total`
+- `sensor.<name>_hp1_cooling_cop_daily` / `_monthly` / `_yearly` / `_total`
+- `sensor.<name>_hp1_cop_calc` (Lifetime-COP, siehe oben)
 
 **Beispiel:** `sensor.eu08l_hp1_heating_cop_daily`
 
@@ -66,8 +66,8 @@ Die Sensoren werden mit folgenden Entity-IDs erstellt (Beispiel Legacy-Namenssch
 
 Die COP-Sensoren berechnen sich automatisch aus den vorhandenen Energieverbrauchssensoren:
 
-- **Quell-Sensoren (thermisch)**: `sensor.{prefix}_{mode}_thermal_energy_{period}`
-- **Quell-Sensoren (elektrisch)**: `sensor.{prefix}_{mode}_energy_{period}`
+- **Quell-Sensoren (thermisch)**: `sensor.<name>_hp1_{mode}_thermal_energy_{period}`
+- **Quell-Sensoren (elektrisch)**: `sensor.<name>_hp1_{mode}_energy_{period}`
 
 ### Automatische Aktualisierung
 
@@ -187,7 +187,7 @@ severity:
 **Lösung**:
 - Prüfen Sie, ob sich die Quellsensoren aktualisieren
 - Prüfen Sie die Logs auf Fehlermeldungen
-- Home Assistant-Neustart kann helfen
+- Integration neu laden (**⋮ → Neu laden**)
 
 ## Zusammenhang mit Energieverbrauchssensoren
 
@@ -202,5 +202,5 @@ Für weitere Informationen zu den Energieverbrauchssensoren siehe [Energieverbra
 
 - [Energieverbrauchsberechnung](Energieverbrauchsberechnung.md) - Detaillierte Informationen zu den Quellsensoren
 - [Historische Daten übernehmen](historische-daten.md) - Offsets für historische Daten
-- [Dashboard-Erstellung](features.md) - Weitere Dashboard-Beispiele
+- [Vorlagen](../Vorlagen/index.md) - Dashboard-Beispiele
 

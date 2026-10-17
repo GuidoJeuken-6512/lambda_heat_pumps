@@ -4,9 +4,9 @@ title: "Features (Technische Übersicht)"
 
 # Features – Technische Übersicht
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
-**Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
+**Stand:** Release 3.5.7 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
 Diese Seite bietet eine technische Übersicht der wichtigsten Features der
 Lambda Heat Pumps Integration mit Code-Beispielen aus dem aktuellen Code. Für

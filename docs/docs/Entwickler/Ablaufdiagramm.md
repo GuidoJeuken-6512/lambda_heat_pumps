@@ -1,6 +1,6 @@
 # Lambda Heat Pumps Integration – Ablaufdiagramm & Entwicklerreferenz
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 **Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
@@ -470,7 +470,7 @@ wird einmalig aktualisiert:
 | `port`/`slave_id` zu `int` | Der Nummern-Selector lieferte früher `float` |
 | `use_legacy_modbus_names` auf `True` setzen, falls fehlend | Jede Entry vor 3.5 nutzte Namen mit Präfix |
 | `firmware_version` von `options` nach `data` verschieben | Uneinheitlicher Speicherort in älteren Versionen |
-| `int32_register_order` in die Optionen übernehmen | Einmaliger Fallback: liest die **alte** `lambda_wp_config.yaml` (`modbus.int32_register_order` bzw. das noch ältere `int32_byte_order`) über `_async_read_register_order`, falls die Option noch nicht gesetzt ist |
+| `int32_register_order` in die Optionen übernehmen | Nur ein **ausdrücklicher** Wert aus der alten `lambda_wp_config.yaml` (`modbus.int32_register_order` bzw. das noch ältere `int32_byte_order`) wird übernommen (`_async_read_register_order`); ohne Wert bleibt die Option leer und die Firmware entscheidet (seit 3.5.7, #133) |
 
 Alles, was früher in `lambda_wp_config.yaml` unter `disabled_registers`,
 `sensors_names_override` oder `modbus` stand, hat heute eine native

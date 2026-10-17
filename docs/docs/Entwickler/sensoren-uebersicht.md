@@ -52,10 +52,10 @@ Firmware 8 nicht mehr aktiv (`firmware_versions=("1-7",)` in `sensor.py`).
 | `eu08l_hp1_operating_state` | `operating_state` | 3 | 1 | - | enum | Operating State |
 | `eu08l_hp1_flow_line_temperature` | `flow_line_temperature` | 4 | 0.01 | measurement | temperature | Flow Line Temperature |
 | `eu08l_hp1_return_line_temperature` | `return_line_temperature` | 5 | 0.01 | measurement | temperature | Return Line Temperature |
-| `eu08l_hp1_volume_flow_heat_sink` | `volume_flow_heat_sink` | 6 | 1 | measurement | - | Volume Flow Heat Sink (l/h) |
+| `eu08l_hp1_volume_flow_heat_sink` | `volume_flow_heat_sink` | 6 | 1 | measurement | - | Volume Flow Heat Sink (L/h) |
 | `eu08l_hp1_energy_source_inlet_temperature` | `energy_source_inlet_temperature` | 7 | 0.01 | measurement | temperature | Energy Source Inlet Temperature |
 | `eu08l_hp1_energy_source_outlet_temperature` | `energy_source_outlet_temperature` | 8 | 0.01 | measurement | temperature | Energy Source Outlet Temperature |
-| `eu08l_hp1_volume_flow_energy_source` | `volume_flow_energy_source` | 9 | 0.01 | measurement | - | Volume Flow Energy Source (l/min) |
+| `eu08l_hp1_volume_flow_energy_source` | `volume_flow_energy_source` | 9 | 0.01 | measurement | - | Volume Flow Energy Source (L/min) |
 | `eu08l_hp1_compressor_unit_rating` | `compressor_unit_rating` | 10 | 0.01 | measurement | - | Compressor Unit Rating (%) |
 | `eu08l_hp1_actual_heating_capacity` | `actual_heating_capacity` | 11 | 0.1 | measurement | power | Actual Heating Capacity (kW) |
 | `eu08l_hp1_inverter_power_consumption` | `inverter_power_consumption` | 12 | 1 | measurement | power | Inverter Power Consumption |

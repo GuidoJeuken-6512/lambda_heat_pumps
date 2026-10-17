@@ -4,9 +4,11 @@ title: "Historische Daten löschen"
 
 # Historische Daten löschen
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Falls Sie die historischen Daten der Lambda Wärmepumpen Integration aus Home Assistant entfernen möchten, können Sie dies über die Home Assistant Benutzeroberfläche durchführen.
+
+Typische Anlässe: Statistik-Hinweise unter **Reparaturen** nach dem Update von 2.x auf 3.5 (z. B. „Der Mittelwert-Typ … hat sich geändert“ bei den Volumenstrom-Sensoren, das sich nur durch Löschen der Statistik beheben lässt), oder Sprünge in der Langzeitstatistik nach falsch gelesenen Energiezählern.
 
 
 ###     Entwicklerwerkzeuge öffnen
@@ -22,7 +24,7 @@ Falls Sie die historischen Daten der Lambda Wärmepumpen Integration aus Home As
         <ul>
           <li>Gehen Sie zu <strong>Entwicklerwerkzeuge</strong> → <strong>Statistik</strong></li>
           <li>Suchen oder filtern Sie nach Entitäten, die Sie löschen wollen</li>
-          <li>Selektieren Sie alle Etitäten, die gelöscht werden sollen</li>
+          <li>Selektieren Sie alle Entitäten, die gelöscht werden sollen</li>
           <li>Den Button "ausgewählte Statistiken löschen" nutzen um alle historischen Daten der selektierten Entitäten zu löschen</li>
           
         </ul>

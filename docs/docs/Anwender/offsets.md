@@ -4,7 +4,7 @@ title: "Offsets – Historische Daten übernehmen"
 
 # Offsets – Historische Daten übernehmen
 
-*Zuletzt geändert am 28.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Offsets ermöglichen es, historische Zähler- und Verbrauchswerte nahtlos fortzuführen – etwa nach dem Austausch einer Wärmepumpe, nach einem Zählerreset oder zur Korrektur eines falschen Ausgangswertes. Die Integration unterstützt zwei unabhängige Offset-Typen:
 
@@ -35,7 +35,7 @@ So ist es **sicher, Home Assistant beliebig oft neu zu starten** – der Offset 
 
 ### Wann werden Offsets angewendet?
 
-Offsets werden **einmalig beim HA-Start** angewendet, sobald der Sensor initialisiert wird. Im laufenden Betrieb werden nur tatsächliche Zählinkremente addiert – der Offset hat keinen Einfluss mehr.
+Offsets werden angewendet, wenn die Integration startet, also beim Start von Home Assistant und bei jedem **Neuladen der Integration**. Die Datei wird dabei neu eingelesen. Im laufenden Betrieb werden nur tatsächliche Zählinkremente addiert – der Offset hat keinen Einfluss mehr.
 
 ### Negative Offsets – Korrektur eines zu hohen Wertes
 
@@ -103,9 +103,11 @@ cycling_offsets:
     compressor_start_cycling_total: 12000
 ```
 
-#### Szenario B: Manueller Zähler-Reset
+#### Szenario B: Gesamtzähler der Integration neu begonnen
 
-Der Modbus-Zähler der Wärmepumpe wurde zurückgesetzt, der HA-Gesamtzähler soll nicht zurückspringen:
+Der Gesamtzähler in Home Assistant hat wieder bei 0 angefangen, z. B. weil die Entität gelöscht und neu angelegt wurde, und soll beim alten Stand weiterzählen:
+
+Wird dagegen nur ein Zähler **der Lambda** zurückgesetzt (Statistik-Reset am Display), ist kein Offset nötig: Die Integration verwirft den Rückwärtssprung, und die Gesamtzähler in Home Assistant zählen ab dem neuen Stand normal weiter.
 
 ```yaml
 cycling_offsets:
@@ -239,9 +241,9 @@ energy_consumption_offsets:
     # weitere Schlüssel ...
 ```
 
-### Schritt 3: Home Assistant neu starten
+### Schritt 3: Integration neu laden
 
-Nach dem Speichern muss Home Assistant vollständig neu gestartet werden. Die Offsets werden beim nächsten Start automatisch auf die Total-Sensoren angewendet.
+Nach dem Speichern die Integration neu laden: **Einstellungen** → **Geräte & Dienste** → Lambda → **⋮ → Neu laden**. Ein Neustart von Home Assistant ist nicht nötig. Die Offsets werden dabei auf die Total-Sensoren angewendet.
 
 ### Schritt 4: Überprüfen
 
@@ -256,7 +258,7 @@ Prüfen Sie, ob die Sensor-Werte korrekt sind:
 ### Offset wird nicht angewendet
 
 - YAML-Syntax prüfen (Einrückung mit Leerzeichen, kein Tab)
-- Sicherstellen, dass HA vollständig neu gestartet wurde
+- Sicherstellen, dass die Integration nach dem Speichern neu geladen wurde
 - HA-Logs auf Fehlermeldungen prüfen
 
 ### Energie-Offset in falscher Einheit

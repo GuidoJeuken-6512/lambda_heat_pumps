@@ -4,7 +4,7 @@ title: "Migrationssystem"
 
 # Migrationssystem
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 **Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
@@ -37,7 +37,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> 
     firmware = data.get(CONF_FIRMWARE_VERSION) or options.pop(CONF_FIRMWARE_VERSION, None)
     data[CONF_FIRMWARE_VERSION] = firmware if firmware in FIRMWARE_VERSIONS else FIRMWARE_VERSIONS[-1]
 
-    options.setdefault(CONF_INT32_REGISTER_ORDER, await _async_read_register_order(hass))
+    # Only an order the old file actually set is carried over (#133).
+    if CONF_INT32_REGISTER_ORDER not in options:
+        order = await _async_read_register_order(hass)
+        if order is not None:
+            options[CONF_INT32_REGISTER_ORDER] = order
 
     hass.config_entries.async_update_entry(entry, data=data, options=options, version=ENTRY_VERSION)
     return True
@@ -49,13 +53,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> 
 | `port`/`slave_id` zu `int` erzwingen | Der Nummern-Selector im Config-Flow lieferte früher `float` |
 | `use_legacy_modbus_names` defaulten auf `True` | Jede Entry vor 3.5 nutzte Entity-Namen mit `name_prefix` — siehe [unique_id und name_prefix](unique-id-name-prefix-kopplung.md) |
 | `firmware_version` nach `entry.data` verschieben | Lag vorher uneinheitlich mal in `data`, mal in `options` |
-| `int32_register_order` in die Optionen übernehmen | Einmaliger Fallback: liest die alte `lambda_wp_config.yaml` (`_async_read_register_order`), falls die Option noch nicht gesetzt ist — siehe [Register-Reihenfolge](register-reihenfolge-int32.md) |
+| `int32_register_order` in die Optionen übernehmen | Nur wenn die alte `lambda_wp_config.yaml` einen **ausdrücklichen** Wert enthält (`_async_read_register_order` gibt sonst `None` zurück). Ohne Wert bleibt die Option leer, und die Reihenfolge der Firmware gilt — so wie in 2.8.x. Bis 3.5.6 wurde hier fest `high_first` gespeichert (#133). Siehe [Register-Reihenfolge](register-reihenfolge-int32.md) |
 
 Es gibt keine Rollback-Logik, kein Backup-System und keinen
 Fehlerschwellenwert mehr — die Migration ist eine reine Werte-Umformung ohne
 I/O außer dem einmaligen, fehlertoleranten Lesen der alten YAML-Datei
-(`_async_read_register_order`; ein Lesefehler fällt einfach auf den
-Firmware-Standard zurück, statt die Migration abzubrechen).
+(`_async_read_register_order`; ein Lesefehler ergibt `None`, die Option bleibt
+leer und der Firmware-Standard gilt, statt die Migration abzubrechen).
 
 ## Was aus der Config-Datei-Migration wurde
 

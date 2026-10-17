@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" role="img" aria-label="Baustelle: Screenshot wird für Version 3.5 erneuert">
+  <title>Baustelle: Screenshot wird für Version 3.5 erneuert</title>
+  <rect x="2" y="2" width="636" height="296" rx="14" fill="#f4f4f4" stroke="#bdbdbd" stroke-width="2" stroke-dasharray="10 6"/>
+  <!-- Warndreieck -->
+  <g transform="translate(40 40)">
+    <path d="M110 8 L212 196 Q216 204 207 204 L13 204 Q4 204 8 196 Z" fill="#ffcc00" stroke="#c62828" stroke-width="14" stroke-linejoin="round"/>
+    <!-- Arbeiter mit Schaufel -->
+    <circle cx="104" cy="92" r="11" fill="#212121"/>
+    <path d="M96 106 L84 150 L94 152 L102 128 L112 152 L122 150 L112 108 Z" fill="#212121"/>
+    <path d="M84 116 L130 104" stroke="#212121" stroke-width="7" stroke-linecap="round"/>
+    <path d="M130 104 L150 160" stroke="#212121" stroke-width="5" stroke-linecap="round"/>
+    <path d="M140 160 L162 160 L156 176 L146 176 Z" fill="#212121"/>
+    <path d="M60 182 Q80 162 104 180 Q122 168 150 182 Z" fill="#212121"/>
+  </g>
+  <text x="290" y="120" font-family="Roboto, Arial, sans-serif" font-size="34" font-weight="700" fill="#212121">Baustelle</text>
+  <text x="290" y="162" font-family="Roboto, Arial, sans-serif" font-size="20" fill="#424242">Dieser Screenshot zeigt noch</text>
+  <text x="290" y="190" font-family="Roboto, Arial, sans-serif" font-size="20" fill="#424242">eine ältere Version und wird</text>
+  <text x="290" y="218" font-family="Roboto, Arial, sans-serif" font-size="20" fill="#424242">für Version 3.5 erneuert.</text>
+</svg>

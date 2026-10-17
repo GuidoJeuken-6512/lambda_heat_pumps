@@ -18,7 +18,7 @@ Die Heizkurve bestimmt die Vorlauftemperatur basierend auf der Außentemperatur 
   <div style="flex: 1; min-width: 300px;">
     <p>Damit die Berechnung der Vorlauftemperatur für den Heizkreis erfolgen kann, müssen die Einstellungen zur Heizkurve von der Lambda in die Home Assistant Integration per Hand übertragen werden. Leider stellt die Lambda Wärmepumpe keine Möglichkeit zur Verfügung, diese Werte automatisch auszulesen.</p>
     
-    <p>Die drei Stützpunkte, die Eco Temperatur Reduktion und das Vorlauf Offset müssen immer eingetragen werden, damit die Vorlauftemperatur berechnet werden kann.</p>
+    <p>Die drei Stützpunkte und die Eco Temperatur Reduktion müssen eingetragen werden, damit die Vorlauftemperatur berechnet werden kann. Der <strong>Vorlauf Offset</strong> ist dagegen ein Wert der Lambda (Register 5050): Er wird von der Lambda gelesen, und wenn Sie ihn hier ändern, wird er an die Lambda geschrieben und verschiebt deren Vorlauftemperatur.</p>
     
     <p>Wenn ein Raumthermometer in dem Heizkreis aktiviert ist, so müssen auch die Felder "Raum Temperatur Faktor", "Raum Temperatur Offset" konfiguriert werden. Diese Felder werden nur sichtbar in der Integration, wenn ein Raumthermometer in dem Heizkreis konfiguriert ist.</p>
   </div>

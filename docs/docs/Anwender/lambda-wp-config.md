@@ -4,7 +4,7 @@ title: "lambda_wp_config.yaml Konfiguration"
 
 # lambda_wp_config.yaml Konfiguration
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die `lambda_wp_config.yaml` Datei deckt seit Version 3.5 nur noch drei Dinge ab, für die Home Assistant selbst keinen Platz hat: manuelle Zähler-Offsets (Cycling und Energie) und externe Energiezähler. Alles andere, was diese Datei früher regelte, hat einen eigenen Home-Assistant-Weg bekommen:
 
@@ -12,7 +12,7 @@ Die `lambda_wp_config.yaml` Datei deckt seit Version 3.5 nur noch drei Dinge ab,
 |---|---|
 | Register deaktivieren | Entität in Home Assistant deaktivieren (siehe [Entitäten löschen](entitaeten_loeschen.md)) |
 | Sensor-Namen überschreiben | Entität in Home Assistant umbenennen |
-| Register-Reihenfolge für 32-Bit-Werte | Integrations-Option „Register-Reihenfolge" (siehe [Optionen des config_flow](optionen-config-flow.md)) |
+| Register-Reihenfolge für 32-Bit-Werte (`modbus: int32_register_order`) | Integrations-Option „32-Bit-Registerreihenfolge“ (siehe [Optionen des config_flow](optionen-config-flow.md)). Ein Wert aus der alten Datei wird beim Update einmalig übernommen; ohne Eintrag gilt die Reihenfolge der Firmware. |
 
 ## Datei-Location
 
@@ -77,10 +77,10 @@ Definiert, welche Sensoren die Basis-Energieverbrauchsdaten liefern. Pro Wärmep
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"   # elektrisch (Strom)
-    thermal_sensor_entity_id: "sensor.lambda_wp_waerme"       # optional, thermisch (Wärme)
+    sensor_entity_id: "sensor.shelly_lambda_energie_gesamt"    # elektrisch, Zählerstand in kWh
+    thermal_sensor_entity_id: "sensor.waermemengenzaehler_wp"  # optional, thermisch, Zählerstand in kWh
   hp2:
-    sensor_entity_id: "sensor.lambda_wp_verbrauch2"
+    sensor_entity_id: "sensor.stromzaehler_wp2_energie"
     # thermal_sensor_entity_id weglassen = interner Thermik-Sensor
 ```
 
@@ -91,7 +91,7 @@ energy_consumption_sensors:
 | Elektrisch | `sensor.eu08l_hp1_compressor_power_consumption_accumulated` | `sensor.eu08l_hp2_compressor_power_consumption_accumulated` | … |
 | Thermisch  | `sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated` | `sensor.eu08l_hp2_compressor_thermal_energy_output_accumulated` | … |
 
-**Hinweis:** Die Quellsensoren müssen kumulative Verbrauchswerte in Wh oder kWh liefern. Das System konvertiert automatisch zu kWh. Liefert ein konfigurierter externer Sensor gerade `unknown`/`unavailable`, wird für diesen Poll nichts gebucht – die Integration schaltet nicht automatisch auf das Controller-Register zurück.
+**Hinweis:** Die Quellsensoren müssen einen steigenden Zählerstand in Wh, kWh oder MWh liefern, keine momentane Leistung in W. Das System konvertiert automatisch zu kWh. Liefert ein konfigurierter externer Sensor gerade `unknown`/`unavailable`, wird für diesen Poll nichts gebucht – die Integration schaltet nicht automatisch auf das Controller-Register zurück.
 
 **Beispiel: Nur elektrischer externer Sensor (Shelly3EM), thermisch intern**
 ```yaml
@@ -143,11 +143,10 @@ cycling_offsets:
 
 # Energieverbrauchs-Sensor-Konfiguration (elektrisch + optional thermisch)
 energy_consumption_sensors:
-  hp1:
-    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
-    # thermal_sensor_entity_id: "sensor.xyz"  # optional, sonst interner Thermik-Sensor
+  # hp1 nicht eingetragen: zählt mit den Zählern der Lambda
   hp2:
-    sensor_entity_id: "sensor.shelly_lambda_gesamt_leistung"  # Externer Sensor
+    sensor_entity_id: "sensor.shelly_lambda_energie_gesamt"   # externer Stromzähler
+    # thermal_sensor_entity_id: "sensor.xyz"  # optional, sonst Wärmezähler der Lambda
 
 # Energieverbrauchs-Offsets
 energy_consumption_offsets:
@@ -180,11 +179,11 @@ energy_consumption_offsets:
    - Speichern Sie die Datei
    - Überprüfen Sie die YAML-Syntax (z.B. mit einem Online-YAML-Validator)
 
-### Schritt 2: Home Assistant neu starten (oder Integration neu laden)
+### Schritt 2: Integration neu laden
 
 Die Datei wird einmal pro Setup gelesen – ein Reload der Integration genügt, ein voller HA-Neustart ist nicht zwingend nötig.
 
-1. **Integration neu laden oder Home Assistant neu starten**
+1. **Integration neu laden** (**Einstellungen** → **Geräte & Dienste** → Lambda → **⋮ → Neu laden**)
 2. **Überprüfen Sie die Logs** auf Konfigurationsfehler
 3. **Überprüfen Sie die Sensoren:** Offsets, Quellsensoren etc. korrekt angewendet?
 
@@ -204,7 +203,7 @@ Die Datei wird einmal pro Setup gelesen – ein Reload der Integration genügt, 
 
 Die Integration validiert die Konfiguration automatisch beim Start. Ein fehlerhafter Abschnitt wird übersprungen und in den Logs gemeldet, statt die gesamte Datei zu verwerfen.
 
-**Tipp**: Überprüfen Sie die Home Assistant Logs nach jedem Neustart, um Konfigurationsfehler frühzeitig zu erkennen.
+**Tipp**: Überprüfen Sie die Home Assistant Logs nach jedem Neuladen, um Konfigurationsfehler frühzeitig zu erkennen. Ein alter Abschnitt `modbus:` aus Version 2.x stört nicht, er wird ignoriert.
 
 **Tipp**: Sollten Sie zu viele Fehler haben nach der Änderung an der Datei, Sie können die Datei ganz löschen, sie wird beim Neustart der Integration neu angelegt. Damit sind alle Ihre Konfigurationen auf den Default zurück gesetzt.
 

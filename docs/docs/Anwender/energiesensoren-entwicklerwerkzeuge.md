@@ -4,7 +4,7 @@ title: "Energiesensor-Startwerte setzen"
 
 # Energiesensor-Startwerte setzen
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration bietet **Energieverbrauchssensoren** nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen): sowohl **elektrisch** (Stromverbrauch) als auch **thermisch** (Wärmeabgabe). Bei einer Neuinstallation starten alle diese Zähler bei **0** – wer historische Werte übernehmen oder einen falschen Wert korrigieren möchte, tut das über **Offsets**, nicht mehr über die Entwicklerwerkzeuge.
 

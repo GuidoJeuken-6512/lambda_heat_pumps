@@ -4,7 +4,7 @@ title: "Warmwasser Solltemperatur Steuerung"
 
 # Warmwasser Solltemperatur Steuerung
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration ermöglicht die Steuerung der Warmwasser-Solltemperatur über Home Assistant. Sie können die gewünschte Warmwassertemperatur direkt in Home Assistant einstellen, und die Integration schreibt diese Werte an die Lambda-Wärmepumpe.
 
@@ -15,14 +15,17 @@ Die Lambda Heat Pumps Integration ermöglicht die Steuerung der Warmwasser-Sollt
 
 Für jeden Kessel (Boiler) wird automatisch eine Climate-Entity erstellt:
 
-- **Entity-ID**: `climate.*_hot_water` (für Boiler 1)
+- **Entity-ID**: `climate.*_boil1_hot_water` (für Boiler 1)
 - **Bereich**: 25°C bis 65°C (Standard, in den Integrations-Optionen anpassbar)
 - **Aktuelle Temperatur**: `actual_high_temperature` (oberer Fühler)
 - **Zieltemperatur**: `target_high_temperature`
 
 **Beispiel-Entity-ID:** `climate.eu08l_boil1_hot_water`
 
-Bei mehreren Boilern erhält jeder seine eigene Climate-Entity (`hp1_hot_water`, `hp2_hot_water`, …). Der zugehörige Register-Wert bleibt zusätzlich als reiner **Sensor** (`sensor.*_boil1_target_high_temperature`) sichtbar – schreibbar ist aber nur die Climate-Entity.
+!!! warning "Nach dem Update von 2.x: Entitäts-ID prüfen"
+    Version 2.x hat diese Climate-Entität mit einer `sensor.`-ID registriert (z. B. `sensor.eu08l_boil1_hot_water`). Home Assistant behält beim Update die gespeicherte ID. Steht bei Ihnen noch `sensor.…_hot_water`, benennen Sie die Entität um (Entität öffnen → ⚙ → Entitäts-ID: `climate.…_boil1_hot_water`) und passen Sie Automationen und Dashboards an. Ab Home Assistant 2027.5 funktionieren Entitäten mit falscher Domain nicht mehr. Dasselbe gilt für `…_hc1_heating_circuit`.
+
+Bei mehreren Boilern erhält jeder seine eigene Climate-Entity (`boil1_hot_water`, `boil2_hot_water`, …). Der zugehörige Register-Wert bleibt zusätzlich als reiner **Sensor** (`sensor.*_boil1_target_high_temperature`) sichtbar – schreibbar ist aber nur die Climate-Entity.
 
 ## Verwendung
 
@@ -86,8 +89,7 @@ Diese Grenzen können in den Integration-Optionen angepasst werden:
 1. Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
 2. Klicken Sie auf Ihre Lambda-Integration
 3. Klicken Sie auf **Konfigurieren**
-4. Scrollen Sie zu **Warmwasser-Temperaturgrenzen**
-5. Passen Sie die Werte an
+4. Passen Sie **Minimale Warmwassertemperatur** und **Maximale Warmwassertemperatur** an
 
 **Hinweis**: Die Anpassung der Grenzen in den Optionen wirkt sich auf alle Kessel aus, und erst nach einem Reload der Integration (automatisch nach dem Speichern der Optionen).
 
@@ -196,7 +198,7 @@ automation:
 - **Lösung**: 
   - Überprüfen Sie die Modbus-Verbindung
   - Überprüfen Sie die Logs auf Fehlermeldungen
-  - Starten Sie Home Assistant neu
+  - Laden Sie die Integration neu (**⋮ → Neu laden**)
 
 ### "Temperatur außerhalb des Bereichs"
 - **Ursache**: Wert liegt außerhalb der erlaubten Grenzen (Standard 25°C – 65°C, siehe Integrations-Optionen)

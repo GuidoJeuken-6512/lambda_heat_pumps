@@ -320,6 +320,8 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | 2.x-Modus `pv_surplus_mode: entry` wird nicht migriert; 3.5 kennt nur `pos`/`neg`. Schreiben funktioniert (wie `pos`), im Options-Dialog ist `entry` aber kein gültiger Auswahlwert (Verhalten der Oberfläche ungeprüft) | `__init__.py`, `async_migrate_entry` | F16 |
 | Merge `3.5` → `main` hat einen Konflikt in `hacs.json` (`homeassistant`: 2024.3.3 vs. 2026.9.0); richtig ist der Wert aus `3.5` | `hacs.json` | Merge-Vorbereitung |
 | Doku-Workflow hat keinen `workflow_dispatch`, lässt sich also nicht manuell starten | `.github/workflows/docsz.yml` | optional |
+| **Externer Energiezähler: Rückfall auf das Lambda-Register.** Liefert ein in `energy_consumption_sensors` eingetragener Zähler `unknown`/`unavailable`, nimmt `_track_energy` (`if reading is None: reading = register`) das Lambda-Register, obwohl `_meter_reading` laut Kommentar genau das vermeiden soll. Kommt der Zähler zurück, wird die Differenz zwischen beiden Zählern als Verbrauch gebucht, sofern sie unter 100 kWh liegt. | `coordinator.py:458-460` | F18, gefunden 17.10.2026 |
+| **Hilfetext zur Firmware im Einrichtungsdialog falsch:** „Wird als Firmware des Geräts angezeigt und ändert nichts am Auslesen.“ Die Firmware bestimmt Sensoren und Register-Reihenfolge. | `strings.json`, `translations/*.json` (`config.step.user.data_description.firmware_version`) | F19, gefunden 17.10.2026 |
 
 ## Bewertung der Fixes: Komplexität, Kritikalität, Testaufwand
 
@@ -351,6 +353,8 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F15 | PV-Überschuss: 0 W senden (+ Log-Warnung), wenn die Quelle `unknown`/`unavailable` ist | #120/#105 | **S** | 🟠 **mittel** (verhindert E-Manager-Fehler 6) | Unit **S** |
 | F16 | Migration: `pv_surplus_mode: entry` → `pos` | – | **S** (1 Zeile in Schritt 9) | 🟢 **niedrig** | Unit **S** |
 | F17 | Abweichungssensor Pumpen-Sollwert − berechnete Kurve | #128 | **S–M** | 🟢 **niedrig** (Enhancement) | Unit **S** + HW **S** |
+| F18 | Externer Zähler: bei `unknown`/`unavailable` nichts buchen statt auf das Register zurückzufallen | – | **S** (2 Zeilen, `coordinator.py:458`) | 🟠 **mittel** (falsche kWh bei jedem Ausfall des Zählers) | Unit **S** |
+| F19 | Hilfetext zur Firmware im Einrichtungsdialog korrigieren | – | **S** (Übersetzungen) | 🟢 **niedrig** | – |
 
 ### Begründungen im Detail
 
@@ -436,7 +440,9 @@ Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F
 | `0bafd8b` / `641b702` | `3.5` / `main` | Doku Raumthermometer/Heizkurve korrigiert (#128), identisch in beiden Branches |
 | `be4728b` / `5ad6cd0` | `3.5` / `main` | Änderungsdatum der beiden Doku-Seiten |
 | `f3b16ba` | `3.5` | Bug-Analyse auf Stand 17.10.2026 |
-| (dieser Commit) | `3.5` | F14 Bildpfade, 10 tote Anker, Doku-Prüfer (`script/check_docs.py`, `.github/workflows/docs-check.yml`) |
+| `cd549dc` | `3.5` | F14 Bildpfade, 10 tote Anker, Doku-Prüfer (`script/check_docs.py`, `.github/workflows/docs-check.yml`) |
+| `3505b69` | `3.5` | Neue Seite „Firmware-Version ändern“, FAQ „Falsche / keine Sensorwerte“ überarbeitet |
+| (dieser Commit) | `3.5` | Gesamte Doku auf 3.5 durchgesehen, Release-Seite 3.5, Platzhalter für veraltete Screenshots |
 
 
 Unit-Tests: 156/156 bestanden (Python 3.14, `pytest-homeassistant-custom-component==0.13.355`).

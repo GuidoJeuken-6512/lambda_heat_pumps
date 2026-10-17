@@ -4,7 +4,7 @@ title: "Debug Logs erzeugen"
 
 # Debug Logs erzeugen
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Um Fehler zu analysieren oder detaillierte Abläufe der Integration zu prüfen, können Sie die Debug-Protokollierung für Lambda Heat Pumps einschalten.
 
@@ -25,6 +25,12 @@ Um Fehler zu analysieren oder detaillierte Abläufe der Integration zu prüfen, 
   </a>
   <p><strong>Schritt 2:</strong> Wenn Debug-Logging aktiv ist, erscheint ein gelber Hinweisbanner <strong>„Debug logging enabled“</strong>. Über die Schaltfläche <strong>„Disable“</strong> können Sie die Debug-Ausgabe wieder abschalten. 
   <p></p>
-  Der Browser startet dann automatisch einen Download der erzeugten Logs</strong>.</p>
+  Der Browser startet dann automatisch einen Download der erzeugten Logs.</p>
 </div>
+
+## Diagnose herunterladen
+
+Zusätzlich zum Log hilft bei vielen Fragen der **Diagnose-Download**: **Einstellungen** → **Geräte & Dienste** → Lambda Heat Pumps → **⋮** beim Eintrag → **Diagnose herunterladen**.
+
+Die Datei enthält die Einstellungen des Eintrags (ohne IP-Adresse), die erkannten Module, das Ergebnis der letzten Abfrage und die **Rohwerte aller Register**, so wie sie von der Lambda kommen. Damit lässt sich z. B. prüfen, ob ein falsch angezeigter Wert schon von der Lambda so geliefert wird. Bitte hängen Sie Log und Diagnose an, wenn Sie ein [GitHub-Issue](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues) erstellen.
 

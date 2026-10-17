@@ -4,126 +4,70 @@ title: "Initiale Konfiguration"
 
 # Initiale Konfiguration
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 17.10.2026*
 
-Nach der Installation der Lambda Heat Pumps Integration über HACS müssen Sie die Integration in Home Assistant einrichten. Dieser Abschnitt führt Sie durch den Konfigurationsprozess.
+Nach der [Installation](installation.md) richten Sie die Integration in Home Assistant ein. Die Einrichtung besteht aus einem einzigen Dialog.
 
-## Konfiguration über die Benutzeroberfläche
+## Integration hinzufügen
 
-### Schritt 1: Integration hinzufügen
+- **Lambda wurde entdeckt:** Unter **Einstellungen** → **Geräte & Dienste** erscheint sie als **Entdeckt**. Auf **Hinzufügen** klicken; die IP-Adresse ist dann schon eingetragen.
+- **Sonst:** **Einstellungen** → **Geräte & Dienste** → **Integration hinzufügen** → „Lambda Heat Pumps“ suchen und auswählen.
 
-1. **Öffnen Sie Home Assistant:**
-   - Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
-   - Klicken Sie auf **Integration hinzufügen** (unten rechts)
-
-2. **Integration suchen:**
-   - Geben Sie "Lambda Heat Pumps" in das Suchfeld ein
-   - Wählen Sie die Integration aus der Liste aus
-
-### Schritt 2: Grundkonfiguration
-
-Bei der Einrichtung müssen Sie folgende **Pflichtfelder** angeben:
+## Der Einrichtungsdialog „Wie ist der Regler erreichbar?“
 
 #### Name
-- **Beschreibung**: Ein Name für Ihre Lambda-Wärmepumpe (z. B. "EU08L", "Meine Wärmepumpe")
-- **Beispiel**: `EU08L`
-- **Hinweis**: Dieser Name wird als Präfix für alle erstellten Entitäten verwendet
+- Ein Name für Ihre Lambda, z. B. `EU08L`.
+- Aus dem Namen werden die Gerätenamen (z. B. „EU08L - HP1“) und die Entitäts-IDs gebildet, z. B. `sensor.eu08l_hp1_flow_line_temperature`.
 
 #### Host
-- **Beschreibung**: IP-Adresse oder Hostname Ihres Lambda-Controllers
-- **Beispiel**: `192.168.1.100` oder `lambda-wp.local`
-- **Hinweis**: Stellen Sie sicher, dass Home Assistant Zugriff auf diese IP-Adresse hat
+- IP-Adresse oder Hostname der Lambda, z. B. `192.168.1.100`.
+- Home Assistant muss diese Adresse erreichen können.
 
 #### Port
-- **Beschreibung**: Modbus-TCP-Port
-- **Standardwert**: `502`
-- **Hinweis**: In den meisten Fällen ist Port 502 korrekt
+- Der Modbus-TCP-Port, Standard `502`.
 
-#### Slave ID
-- **Beschreibung**: Modbus-Slave-ID
-- **Standardwert**: `1`
-- **Hinweis**: Die Standard-Slave-ID ist 1, ändern Sie diesen Wert nur, wenn Ihre Lambda eine andere Slave-ID verwendet
+#### Modbus-Einheit
+- Die Modbus-Adresse (Slave-ID) der Lambda, Standard `1`. Nur ändern, wenn Ihre Lambda anders eingestellt ist.
 
 #### Firmware-Version
-- **Beschreibung**: Firmware-Version Ihres Lambda-Controllers
-- **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren verfügbar sind
-- **So finden Sie die Firmware-Version:**
-  1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
-  2. Klicken Sie auf die "i" Taste auf der linken Seite
-  3. Klicken Sie auf die Taste auf der rechten Seite, die wie ein Computerchip aussieht (letzte Taste)
-  4. Die Firmware-Version wird dort angezeigt
+- Die Firmware Ihrer Lambda im Format `V…-3K`, z. B. `V0.0.9-3K` oder `V1.1.0-3K`. Sie steht unten in der Statuszeile der Wärmepumpen-Seite der Lambda-Bedienoberfläche. Alternativ: auf der Bedienoberfläche die Wärmepumpe anklicken → „i“-Taste links → rechts die Taste mit dem Computerchip (letzte Taste).
+- **Wichtig:** Die Firmware-Version bestimmt, welche Sensoren angelegt werden und in welcher Register-Reihenfolge die Energiezähler gelesen werden. Gemeint ist **nicht** die Software-Version der Steuerung (z. B. `V1.3.10`).
+- Steht Ihre Version nicht in der Liste, wählen Sie die neueste und lesen Sie [Firmware-Version ändern](firmware-wechsel.md#meine-firmware-version-steht-nicht-in-der-liste).
 
-### Schritt 3: Automatische Konfiguration
+Nach **Absenden** prüft die Integration, ob die Lambda unter der Adresse antwortet. Erst dann wird der Eintrag angelegt.
 
-Nach der Eingabe der Grunddaten führt die Integration eine **automatische Modulerkennung** durch:
+## Was danach automatisch passiert
 
-- **Auto-Detection**: Erkennt automatisch verfügbare Module (Wärmepumpen, Kessel, Puffer, Solar, Heizkreise)
-- **Dynamische Entity-Erstellung**: Erstellt Sensoren und Entities basierend auf erkanntem Hardware
-- **Intelligente Standardeinstellungen**: Wendet optimale Einstellungen für Ihre spezifische Lambda-Konfiguration an
-- **Konfigurationsvalidierung**: Verhindert doppelte Konfigurationen und validiert bestehende Verbindungen
+- **Modulerkennung:** Die Integration fragt die Lambda, welche Module vorhanden sind (Wärmepumpen, Warmwasserspeicher, Puffer, Solar, Heizkreise). Das passiert bei **jedem** Start der Integration, Sie müssen nichts einstellen.
+- **Geräte und Entitäten:** Jedes Modul wird ein eigenes Gerät unter der Lambda (z. B. „EU08L - HP1“, „EU08L - HC1“) mit seinen Sensoren, Klima- und Zahlen-Entitäten.
+- **Standardmäßig aktiv** sind die Gesamtzähler (z. B. `*_energy_total`, `*_cycling_total`). Tages-, Monats- und Jahreszähler sind zunächst deaktiviert und lassen sich beim Gerät unter „Entitäten“ einschalten.
+- **`lambda_wp_config.yaml`:** Beim ersten Start legt die Integration diese Datei im Konfigurationsordner an, komplett auskommentiert. Sie wird nur für Offsets und externe Energiezähler gebraucht, siehe [lambda_wp_config.yaml](lambda-wp-config.md).
 
-**Hinweis**: Die automatische Erkennung kann einige Sekunden dauern. Bitte haben Sie Geduld.
+## Nach der Einrichtung
 
-### Schritt 4: Konfiguration abschließen
-
-Nach erfolgreicher Erkennung:
-
-1. **Überprüfen Sie die erkannten Module:**
-   - Die Integration zeigt Ihnen die erkannten Module an
-   - Überprüfen Sie, ob alle Module korrekt erkannt wurden
-
-2. **Konfiguration speichern:**
-   - Klicken Sie auf **Absenden** oder **Speichern**
-   - Die Integration wird nun eingerichtet
-
-3. **Home Assistant neu starten (falls erforderlich):**
-   - In einigen Fällen ist ein Neustart erforderlich
-   - Folgen Sie den Anweisungen auf dem Bildschirm
-
-## Nach der Initialkonfiguration
-
-Nach erfolgreicher Konfiguration:
-
-1. **Überprüfen Sie die erstellten Entitäten:**
-   - Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
-   - Suchen Sie nach Ihrer Lambda-Integration
-   - Klicken Sie auf die Integration, um alle erstellten Entitäten zu sehen
-
-2. **Konfigurieren Sie erweiterte Optionen:**
-   - Klicken Sie auf **Konfigurieren** bei Ihrer Lambda-Integration
-   - Hier können Sie weitere Einstellungen anpassen (siehe [Optionen des config_flow](optionen-config-flow.md))
-
-3. **Erstellen Sie Dashboards:**
-   - Verwenden Sie die erstellten Sensoren in Ihren Home Assistant Dashboards
-   - Alle Sensoren sind sofort in Automatisierungen und Szenen verfügbar
+1. **Entitäten prüfen:** **Einstellungen** → **Geräte & Dienste** → Lambda → Geräte bzw. Entitäten.
+2. **Optionen einstellen:** Beim Eintrag auf **Konfigurieren** klicken, siehe [Optionen des Config Flow](optionen-config-flow.md) (Temperaturgrenzen, Abfrageintervall, Raumthermostat, PV-Überschuss, Kühlen).
+3. **Heizkurve eintragen:** Die Stützpunkte der Heizkurve sind Handwerte, siehe [Heizkurve](heizkurve.md).
+4. **Energiezähler prüfen:** `hpX_compressor_power_consumption_accumulated` und `hpX_compressor_thermal_energy_output_accumulated` mit der Statistik am Display vergleichen. Stimmen sie nicht, siehe [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).
 
 ## Häufige Probleme
 
-### "Verbindung fehlgeschlagen"
-- **Ursache**: Home Assistant kann nicht auf die Lambda-IP-Adresse zugreifen
-- **Lösung**: 
-  - Überprüfen Sie die IP-Adresse
-  - Stellen Sie sicher, dass Home Assistant und die Lambda im gleichen Netzwerk sind
-  - Überprüfen Sie die Firewall-Einstellungen
+### „Verbindung fehlgeschlagen. Prüfen Sie die Adresse und ob der Regler erreichbar ist.“
+- IP-Adresse und Port prüfen.
+- Ist Modbus TCP an der Lambda aktiviert?
+- Erreicht Home Assistant das Netz der Lambda (VLAN, Firewall)?
 
-### "Falsche Sensoren erkannt"
-- **Ursache**: Falsche Firmware-Version ausgewählt
-- **Lösung**: 
-  - Überprüfen Sie die Firmware-Version auf der Lambda-Bedienoberfläche
-  - Entfernen Sie die Integration und fügen Sie sie erneut mit der korrekten Firmware-Version hinzu
+### „Dieser Regler ist bereits eingerichtet.“
+- Es gibt schon einen Eintrag mit derselben IP-Adresse, demselben Port und derselben Modbus-Einheit.
+- Hat die Lambda nur eine neue IP-Adresse bekommen, ändern Sie den bestehenden Eintrag über **⋮ → Neu konfigurieren**, statt einen neuen anzulegen.
 
-### "Doppelte Konfiguration"
-- **Ursache**: Eine Konfiguration mit derselben IP/Port/Slave-ID existiert bereits
-- **Lösung**: 
-  - Entfernen Sie die bestehende Konfiguration oder verwenden Sie eine andere IP-Adresse/Port/Slave-ID
+### Falsche oder fehlende Sensoren
+- Meist ist die falsche Firmware-Version gewählt. Ändern über **⋮ → Neu konfigurieren**, siehe [Firmware-Version ändern](firmware-wechsel.md). Die Integration muss dafür nicht entfernt werden.
 
 ## Nächste Schritte
 
-Nach der erfolgreichen Initialkonfiguration können Sie:
-
-- [Anpassungen der Sensoren abhängig von der Firmware](anpassungen-sensoren-firmware.md) vornehmen
-- [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
-- [Raumthermostat](raumthermometer.md) konfigurieren
-- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
+- [Optionen des Config Flow](optionen-config-flow.md)
+- [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md)
+- [Raumthermometer](raumthermometer.md)
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md)
 - [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
-
