@@ -18,6 +18,7 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_FIRMWARE_VERSION,
     CONF_INT32_REGISTER_ORDER,
     CONF_SLAVE_ID,
+    CONF_UPDATE_INTERVAL,
     CONF_USE_LEGACY_MODBUS_NAMES,
     DEFAULT_INT32_REGISTER_ORDER,
     DOMAIN,
@@ -320,6 +321,85 @@ async def test_reconfiguring_a_controller_that_moved(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_HOST] == "192.168.1.99"
+
+
+def _reconfigure_entry(options: dict) -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        version=ENTRY_VERSION,
+        data={
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V0.0.9-3K",
+            CONF_USE_LEGACY_MODBUS_NAMES: True,
+        },
+        options=options,
+    )
+
+
+async def _reconfigure(hass: HomeAssistant, entry, firmware: str) -> dict:
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: firmware,
+        },
+    )
+    await hass.async_block_till_done()
+    return result
+
+
+async def test_a_firmware_change_drops_the_register_order(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The new firmware's own order applies after a firmware change.
+
+    Set for V0.0.9-3K, high_first would misread a V1.1.0-3K controller, which
+    writes its counters low word first.
+    """
+    controller.registers[1020] = 0x86A0  # 100000 Wh, low word first
+    controller.registers[1021] = 0x0001
+    entry = _reconfigure_entry(
+        {CONF_INT32_REGISTER_ORDER: "high_first", CONF_UPDATE_INTERVAL: 45}
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await _reconfigure(hass, entry, "V1.1.0-3K")
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_FIRMWARE_VERSION] == "V1.1.0-3K"
+    assert CONF_INT32_REGISTER_ORDER not in entry.options
+    # Every other option is kept.
+    assert entry.options[CONF_UPDATE_INTERVAL] == 45
+    assert (
+        hass.states.get(
+            "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
+        ).state
+        == "100000"
+    )
+
+
+async def test_the_same_firmware_keeps_the_register_order(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Changing only the address leaves a chosen order alone."""
+    entry = _reconfigure_entry({CONF_INT32_REGISTER_ORDER: "low_first"})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    result = await _reconfigure(hass, entry, "V0.0.9-3K")
+
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.options[CONF_INT32_REGISTER_ORDER] == "low_first"
 
 
 async def test_reconfiguring_to_an_address_that_does_not_answer(

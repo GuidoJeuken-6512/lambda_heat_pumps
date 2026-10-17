@@ -48,6 +48,15 @@ def test_default_register_order_of_a_known_firmware() -> None:
     assert default_register_order("V0.0.8-3K") == "high_first"
 
 
+def test_v1_0_4_sits_between_v0_0_10_and_v1_1_0() -> None:
+    """V1.0.4-3K (new controller, #100) is ordered by release, low word first."""
+    def level(name: str) -> int:
+        return firmware_level(SimpleNamespace(data={CONF_FIRMWARE_VERSION: name}))
+
+    assert level("V0.0.10-3K") < level("V1.0.4-3K") < level("V1.1.0-3K")
+    assert default_register_order("V1.0.4-3K") == "low_first"
+
+
 def test_default_register_order_of_an_unknown_firmware_is_unset() -> None:
     assert default_register_order("not-a-real-firmware") is None
 

@@ -88,6 +88,7 @@ Anders als bis Version 3.4 lässt sich die Firmware-Version **nicht** über dies
 - **Optionen**: `high_first` (höherwertiges Register zuerst) / `low_first` (niedrigwertiges Register zuerst)
 - **Standard**: richtet sich nach der gewählten Firmware-Version und wird automatisch vorbelegt
 - **Wann ändern?**: Wenn 32-Bit-Sensoren (z. B. Energieverbrauch) unrealistische Werte zeigen, probieren Sie die jeweils andere Einstellung.
+- **Firmwarewechsel**: Wird die Firmware über „Neu konfigurieren" geändert, setzt die Integration eine hier gewählte Reihenfolge zurück; danach gilt der Standardwert der neuen Firmware.
 
 ### Abfrage-Intervall
 

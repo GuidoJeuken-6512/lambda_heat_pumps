@@ -19,7 +19,10 @@ ENTRY_VERSION: Final = 9
 # against, and `reg_order` is how that firmware lays out its 32-bit counters,
 # which is what the register-order option defaults to.
 FIRMWARE_CONFIG: Final[dict[str, dict[str, Any]]] = {
-    "V1.1.0-3K": {"version": 9, "reg_order": "low_first"},
+    "V1.1.0-3K": {"version": 10, "reg_order": "low_first"},
+    # Shipped with the new controller (SW V1.3.x); low word first, confirmed
+    # by a raw register dump in #100.
+    "V1.0.4-3K": {"version": 9, "reg_order": "low_first"},
     "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},
     "V0.0.8-3K": {"version": 6, "reg_order": "high_first"},

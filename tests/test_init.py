@@ -190,7 +190,7 @@ async def test_a_register_its_firmware_withdrew_is_not_modelled(
     await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
 
-    # V1.1.0-3K is version 9, past it.
+    # V1.1.0-3K is version 10, past it.
     data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V1.1.0-3K"}
     newer = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
     newer.add_to_hass(hass)

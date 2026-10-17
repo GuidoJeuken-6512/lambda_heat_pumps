@@ -87,6 +87,7 @@ def _default(result: dict, key: str):
     ("firmware", "expected"),
     [
         ("V1.1.0-3K", REGISTER_ORDER_LOW_FIRST),
+        ("V1.0.4-3K", REGISTER_ORDER_LOW_FIRST),
         ("V0.0.10-3K", REGISTER_ORDER_LOW_FIRST),
         ("V0.0.8-3K", REGISTER_ORDER_HIGH_FIRST),
     ],

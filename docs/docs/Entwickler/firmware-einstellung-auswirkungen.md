@@ -26,6 +26,10 @@ Integration **rekonfigurieren** (Einstellungen → Integrationen → Lambda Heat
 Pumps → Neu konfigurieren), nicht die Optionen öffnen. Das beseitigt die
 frühere Unklarheit, ob der Wert gerade in `options` oder in `data` steht.
 
+Ändert der Reconfigure-Flow die Firmware, entfernt er außerdem eine gesetzte
+`int32_register_order` aus den Options, damit die Register-Reihenfolge der
+neuen Firmware greift (siehe [Register-Reihenfolge](register-reihenfolge-int32.md)).
+
 ## Auswertung: `firmware.py`
 
 ```python
@@ -46,7 +50,8 @@ Versions-Ordinalzahl als auch die Standard-Register-Reihenfolge zu (siehe
 
 ```python
 FIRMWARE_CONFIG: Final[dict[str, dict[str, Any]]] = {
-    "V1.1.0-3K": {"version": 9, "reg_order": "low_first"},
+    "V1.1.0-3K": {"version": 10, "reg_order": "low_first"},
+    "V1.0.4-3K": {"version": 9, "reg_order": "low_first"},
     "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},
     # ...
     "V0.0.3-3K": {"version": 1, "reg_order": "high_first"},

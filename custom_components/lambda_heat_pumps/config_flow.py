@@ -31,6 +31,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
 )
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
+from homeassistant.helpers.typing import UNDEFINED, UndefinedType
 from modbus_connection import ModbusError, ModbusTcpParams
 from modbus_connection.tmodbus import ModbusConnection
 
@@ -188,7 +189,23 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
                 CONF_SLAVE_ID: int(user_input[CONF_SLAVE_ID]),
             }
             if await async_can_connect(data):
-                return self.async_update_reload_and_abort(entry, data_updates=data)
+                options: dict[str, Any] | UndefinedType = UNDEFINED
+                # A different firmware may lay out its 32-bit counters the other
+                # way round, so an order chosen for the old one is dropped and
+                # the new firmware's own applies. It can be set again under
+                # "Configure".
+                if (
+                    data[CONF_FIRMWARE_VERSION] != entry.data.get(CONF_FIRMWARE_VERSION)
+                    and CONF_INT32_REGISTER_ORDER in entry.options
+                ):
+                    options = {
+                        key: value
+                        for key, value in entry.options.items()
+                        if key != CONF_INT32_REGISTER_ORDER
+                    }
+                return self.async_update_reload_and_abort(
+                    entry, data_updates=data, options=options
+                )
             errors["base"] = "cannot_connect"
 
         schema = self.add_suggested_values_to_schema(

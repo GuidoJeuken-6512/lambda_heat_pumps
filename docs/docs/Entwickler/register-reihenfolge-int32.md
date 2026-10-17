@@ -30,7 +30,8 @@ beobachtete Reihenfolge:
 
 ```python
 FIRMWARE_CONFIG: Final[dict[str, dict[str, Any]]] = {
-    "V1.1.0-3K": {"version": 9, "reg_order": "low_first"},
+    "V1.1.0-3K": {"version": 10, "reg_order": "low_first"},
+    "V1.0.4-3K": {"version": 9, "reg_order": "low_first"},
     "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},
     # ... ältere Firmware-Versionen: "high_first"
@@ -47,6 +48,14 @@ order = entry.options.get(CONF_INT32_REGISTER_ORDER) or default_register_order(
     self.firmware_version
 )
 ```
+
+Der Options-Flow („Konfigurieren“) schlägt denselben Wert vor: die gespeicherte
+Option, sonst `default_register_order(firmware)`. Wird unter „Neu
+konfigurieren“ (`async_step_reconfigure`) eine **andere** Firmware gewählt,
+entfernt der Flow `int32_register_order` aus den Options; danach gilt die
+Reihenfolge der neuen Firmware. Eine abweichende Reihenfolge lässt sich
+anschließend wieder unter „Konfigurieren“ setzen. Ändert sich nur Host, Port
+oder Slave-ID, bleibt die Option unangetastet.
 
 ## Wo die Reihenfolge tatsächlich wirkt
 

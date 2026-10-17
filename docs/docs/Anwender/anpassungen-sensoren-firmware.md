@@ -73,6 +73,7 @@ Wenn Sie die Firmware Ihrer Lambda-Wärmepumpe aktualisieren:
 
 3. **Neuladen abwarten:**
    - „Neu konfigurieren" lädt die Integration danach automatisch neu; ein manueller Neustart von Home Assistant ist nicht nötig
+   - Haben Sie unter „Konfigurieren" eine eigene Register-Reihenfolge gesetzt, wird diese bei einem Firmwarewechsel zurückgesetzt; es gilt dann der Standardwert der neuen Firmware. Weicht Ihr Gerät davon ab, setzen Sie die Reihenfolge danach erneut unter „Konfigurieren"
 
 4. **Überprüfen Sie die Sensoren:**
    - Überprüfen Sie, ob alle erwarteten Sensoren vorhanden sind

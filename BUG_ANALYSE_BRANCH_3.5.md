@@ -50,13 +50,14 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 > - `__init__.py`: `_async_read_register_order()` gibt `None` zurück, wenn die YAML fehlt, unlesbar ist oder keinen Wert setzt. Die Migration setzt `int32_register_order` nur bei einem expliziten Wert. Sonst gilt die Reihenfolge der Firmware, wie in 2.8.x.
 > - `config_flow.py`: Der Options-Flow bietet als Default `options[...]` → `default_register_order(firmware)` → `high_first` an. Unverändertes Speichern ändert also nichts mehr.
 > - Tests: `test_config_flow.py` (ohne Datei, auskommentierter Schlüssel bei V1.1.0-3K inkl. Zählerwert, unlesbare Datei, expliziter `high_first` bleibt erhalten) und `test_options_flow.py` (Default je Firmware, gesetzter Wert bleibt). Die neuen Tests schlagen ohne den Fix fehl.
-> - Umgesetzt wurden Punkt 1, 2 und 5. Punkt 3 (Wert „auto“) und Punkt 6 (Doku zur Statistikbereinigung) sind weiter offen.
+> - Umgesetzt wurden Punkt 1, 2 und 5. Punkt 3 (Wert „auto“) ist durch eine einfachere Lösung ersetzt (siehe unten). Punkt 6 (Doku zur Statistikbereinigung) ist weiter offen.
+> - **Nachtrag (17.10.2026):** *Neu konfigurieren* entfernt `int32_register_order` bei einem Firmwarewechsel aus den Options; danach gilt die Reihenfolge der neuen Firmware. Damit bleibt ein Firmwarewechsel auch ohne „auto“ konsistent. Eine abweichende Reihenfolge lässt sich danach wieder unter *Konfigurieren* setzen.
 > - Wer 3.5 vor diesem Fix schon installiert hat, hat `high_first` fest in den Options stehen. Das korrigiert sich nicht von selbst: im Options-Dialog einmal die richtige Reihenfolge wählen.
 
 **Lösungsansatz:**
 1. In `async_migrate_entry` die Registerreihenfolge **nur** setzen, wenn die alte YAML einen expliziten Wert enthält. `_async_read_register_order()` gibt dann `None` statt `DEFAULT_…` zurück, und `options.setdefault` wird nur bei einem Wert ungleich `None` ausgeführt. Ohne expliziten Wert bleibt der Firmware-Default aus dem Coordinator wirksam.
 2. Im Options-Flow den Default aus der Firmware ableiten: `options.get(CONF_INT32_REGISTER_ORDER) or default_register_order(entry.data[CONF_FIRMWARE_VERSION]) or DEFAULT_INT32_REGISTER_ORDER`.
-3. Besser noch: einen Wert `"auto"` (= Firmware-Default) einführen und als Default anbieten. Dann bleibt ein Firmwarewechsel über `reconfigure` konsistent.
+3. ~~Besser noch: einen Wert `"auto"` (= Firmware-Default) einführen und als Default anbieten. Dann bleibt ein Firmwarewechsel über `reconfigure` konsistent.~~ Ersetzt: `reconfigure` setzt die Option bei einem Firmwarewechsel zurück (umgesetzt 17.10.2026).
 4. ~~Reparatur bestehender 3.5-Installationen über eine neue Migration (ENTRY_VERSION 10)~~ – **entfällt**, weil 3.5 unveröffentlicht ist. Der Fix in Punkt 1 kommt direkt in den bestehenden Migrationsschritt 9. Eigene Testinstallationen: die Option im Options-Dialog einmal korrekt setzen.
 5. Tests: Migration ohne YAML bei `V0.0.10-3K` → keine `int32_register_order` in den Options. Options-Flow bei `V1.1.0-3K` → Default `low_first`.
 6. Doku/FAQ: Nach einer Korrektur der Reihenfolge springen die `TOTAL_INCREASING`-Sensoren. Beschreiben, wie man die Statistik bereinigt (`recorder.purge_entities`, Statistik-Korrektur).
@@ -106,7 +107,7 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | 3: Register 1024–1060 auf der neuen Steuerung nicht belegt | 🟠 teilweise: Gauges zeigen `unknown`, die **`integer`-Felder `config_parameter_24/33/50/60` zeigen weiterhin 32768** (`heat_pump.py`, `sensor.py:223/232/238/248`); sie haben weder Sentinel noch Firmware-Range |
 | 4a: `ambient_temperature` | 🔴 **Regression**, siehe unten |
 | 4b: `volume_flow_heat_sink` Einheit/Skalierung | 🟠 offen: weiterhin `integer(6, unit="l/h")`, Skala 1 (`heat_pump.py:26`, `sensor.py:195`); der Vorschlag `l/min`, Skala 0.01, wurde nie umgesetzt (auch nicht in `main`) |
-| Firmware „V1.0.4-3K“ in die Auswahl aufnehmen (zugesagt am 04.08.) | 🔴 offen: fehlt in `FIRMWARE_CONFIG` (`const.py:21ff`), weder in `3.5` noch in `main` |
+| Firmware „V1.0.4-3K“ in die Auswahl aufnehmen (zugesagt am 04.08.) | ✅ **FIXED** 17.10.2026: in `FIRMWARE_CONFIG` mit Ordinal 9 und `low_first` (Rohdump von @madmaxx425); `V1.1.0-3K` rückt auf 10 |
 
 **Regression von #108 (geschlossen):** In `main`/2.8.x wurde `ambient_temperature` auf Wunsch von #108 auf `firmware_versions: ["1-9"]` erweitert, weil Register 2 auch auf V1.1.0-3K gültige Werte liefert und ungültige Werte über `sentinel_values` abgefangen werden. In 3.5 steht wieder `firmware_versions=("1-7",)` (`sensor.py:177`). Auf **V0.0.10-3K und V1.1.0-3K wird die Entity also gar nicht mehr angelegt**, obwohl `general.py` den 0xFFFF-Sentinel für dieses Feld bereits abfängt.
 
@@ -267,11 +268,11 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | # | Fix | Issue | Komplexität | Kritikalität | Testaufwand |
 |---|---|---|---|---|---|
 | F1 | ✅ **FIXED** – Migration: Registerreihenfolge nur übernehmen, wenn die YAML sie explizit setzt | #104/#90/#133 | **S** (~10 Zeilen, `__init__.py:141-179`) | 🔴 **hoch** | Unit **M** + HW **M** |
-| F2 | ✅ **FIXED** (einfache Variante) – Options-Flow: Default der Registerreihenfolge aus der Firmware | #104/#133 | **S** (~3 Zeilen, `config_flow.py:281`); Variante „auto“: **M** | 🔴 **hoch** | Unit **S**; mit „auto“ **M** |
+| F2 | ✅ **FIXED** (einfache Variante + Zurücksetzen bei Firmwarewechsel) – Options-Flow: Default der Registerreihenfolge aus der Firmware | #104/#133 | **S** (~3 Zeilen, `config_flow.py:281`); Variante „auto“: **M** | 🔴 **hoch** | Unit **S**; mit „auto“ **M** |
 | F3 | `ambient_temperature`: Firmware-Range 1-7 entfernen | #100/#108 | **S** (1 Zeile, `sensor.py:177`) | 🟠 **mittel–hoch** | Unit **M** (Test schreibt Bug fest) + HW **S** |
 | F4 | Migration: Firmware aus Options vor Data, Warnung bei unbekanntem Namen | #82 | **S** (~5 Zeilen, `__init__.py:134`) | 🟠 **mittel** | Unit **S** |
 | F5 | Climate-Entity-IDs `sensor.*` → `climate.*` in der Registry umbenennen | #122/#85 | **M** (~30–40 Zeilen + Klärung des HA-Verhaltens) | 🟠 **mittel** (ab HA 2027.5 hoch) | Unit **M** + HW **M** |
-| F6 | `V1.0.4-3K` in `FIRMWARE_CONFIG` aufnehmen | #100 | **S** im Code, **L** in der Klärung (Ordinal, `reg_order`) | 🟠 **mittel** | Unit **S** + HW durch Tester |
+| F6 | ✅ **FIXED** – `V1.0.4-3K` in `FIRMWARE_CONFIG` aufnehmen | #100 | **S** im Code, **L** in der Klärung (Ordinal, `reg_order`) | 🟠 **mittel** | Unit **S** + HW durch Tester |
 | F7 | `volume_flow_heat_sink`: Einheit/Skala prüfen und korrigieren | #100 | **S** im Code, **M** in der Verifikation | 🟢–🟠 **niedrig–mittel** | Unit **S** + HW **M** (Rohwert-Dump) |
 | F8 | `config_parameter_*`: 32768 ausblenden bzw. Default aus | #100 | **S** (4 Felder) | 🟢 **niedrig** | Unit **S** |
 | F9 | Modulerkennung: Retry bei Timeout | #101/#90 | **S–M** (~15 Zeilen) | 🟢 **niedrig** (selten, Reload hilft) | Unit **M** |
@@ -291,7 +292,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
   - Neu: Die Tests mit V0.0.10-3K **und** V0.0.8-3K parametrisieren (beide `reg_order`-Werte), jeweils mit explizitem YAML-Wert, ohne Datei, mit auskommentiertem Wert und mit unlesbarer Datei.
   - HW: einen echten Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage durchführen und Zählerwerte und Statistik vor und nach dem Upgrade vergleichen.
 
-**F2 – Default im Options-Flow (🔴 hoch, S, Test S)** – ✅ **FIXED** 17.10.2026 (#133), einfache Variante; „auto“ offen
+**F2 – Default im Options-Flow (🔴 hoch, S, Test S)** – ✅ **FIXED** 17.10.2026 (#133), einfache Variante; statt „auto“ setzt *Neu konfigurieren* die Option bei einem Firmwarewechsel zurück
 - *Wer ist betroffen:* Jeder Anwender mit `low_first`-Firmware ohne gespeicherte Option, der den Options-Dialog speichert, egal aus welchem Grund. Das trifft Neuinstallationen und, nach F1, auch alle Upgrader. Ohne F2 macht der Options-Dialog F1 also wieder kaputt. **F1 und F2 gehören zusammen.**
 - *Code:* Die einfache Variante ist ein Default aus `default_register_order(firmware)`. Sie speichert den Wert beim Speichern aber fest. Ein späterer Firmwarewechsel über *Neu konfigurieren* zieht die Reihenfolge dann nicht mehr nach. Die Variante „auto“ (eigener Wert, Übersetzungen in `strings.json`/`translations/*.json`, Auswertung im Coordinator) ist sauberer, aber M. **Empfehlung:** vor dem Release die einfache Variante, „auto“ später als Verbesserung.
 - *Tests:* In `tests/test_options_flow.py` den Default für V1.1.0-3K (`low_first`) und V0.0.8-3K (`high_first`) prüfen, außerdem, dass ein gespeicherter Wert erhalten bleibt.
@@ -315,7 +316,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
   3. **Breaking Change für Anwender:** Automationen, Skripte und Dashboards mit `sensor.*_hot_water` bzw. `sensor.*_heating_circuit` müssen angepasst werden. Das gehört in die Release Notes. Da 3.5 ohnehin ein großer Versionssprung ist, passt der Zeitpunkt gut.
 - *Tests:* Unit mit vorbereitetem Registry-Eintrag (Plattform `climate`, ID `sensor.…`) für drei Fälle: umbenannt, Kollision, bereits korrekt (Idempotenz). HW: echter Upgrade einer 2.8.6-Installation, danach prüfen, ob die Warnung weg ist und die Historie an der neuen ID hängt.
 
-**F6 – Firmware `V1.0.4-3K` (🟠 mittel, Code S, Klärung L)**
+**F6 – Firmware `V1.0.4-3K` (🟠 mittel, Code S, Klärung L)** – ✅ **FIXED** 17.10.2026: Ordinal 9 zwischen V0.0.10 (8) und V1.1.0 (jetzt 10), `low_first` laut Rohdump in #100. Kein Sensor prüft auf 8–10, Einträge speichern den Namen.
 - Der Code ist ein Eintrag in `FIRMWARE_CONFIG`. Die eigentliche Arbeit ist die Klärung: Ist V1.0.4-3K funktional neuer als V1.1.0-3K oder ein paralleler Zweig (Steuerungs-SW vs. WP-Firmware, siehe #100)? Davon hängt das Ordinal ab. Ein Einschub zwischen bestehende Ordinals würde **alle** `firmware_version`/`firmware_versions`-Angaben verschieben und **bestehende Einträge** (die den Namen speichern, nicht das Ordinal) still umgaten. Ordinal ≥ 10 ist risikoarm.
 - *Tests:* `tests/test_firmware.py` (Ordinal, `reg_order`) erweitern. Die Verifikation an echter Hardware muss durch die Tester aus #100 erfolgen. Das ist die Abhängigkeit mit der größten Unsicherheit beim Zeitplan.
 
@@ -345,7 +346,7 @@ Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F
 
 1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
 2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F7 (`volume_flow_heat_sink`, nur nach Hardware-Verifikation). Beides sind Breaking Changes, die am besten mit dem ohnehin großen Versionssprung 3.5 kommen.
-3. **Paket C, abhängig von Testern:** F6 (`V1.0.4-3K`).
+3. **Paket C, abhängig von Testern:** ~~F6 (`V1.0.4-3K`)~~ ✅ erledigt.
 4. **Paket D, nach dem Release:** F8–F13.
 5. **Issues pflegen:** #121 und #112 schließen, #94/#95/#132 nach Rückmeldung schließen, #105 nach Retest schließen, #120 an der Live-Seite prüfen.
 

@@ -11,15 +11,21 @@
 
 Fixed the 2.x→3.5 config-entry migration overriding the firmware's 32-bit register order, found via a live 2.8.6→3.5.6 upgrade on real hardware (EU10L, firmware `V1.1.0-3K`) ([Issue #133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133)).
 
+#### Added
+- **Firmware `V1.0.4-3K`** (new controller, SW V1.3.x) added to `FIRMWARE_CONFIG` with `reg_order: low_first`, as confirmed by a raw register dump (registers 1020/1021 = 2892/0 for 2892 Wh) in [Issue #100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100). Ordered by release between `V0.0.10-3K` (8) and `V1.1.0-3K`, which moves from ordinal 9 to 10. No sensor gates on 8, 9 or 10 (only `1-2`, `1-7` and `3`), and entries store the firmware name, not the ordinal, so existing entries are unaffected.
+
 #### Fixed
 - **Migration pinned `int32_register_order: high_first`**: `async_migrate_entry()` (`__init__.py`) called `options.setdefault(CONF_INT32_REGISTER_ORDER, await _async_read_register_order(hass))`, and `_async_read_register_order()` returned `DEFAULT_INT32_REGISTER_ORDER` (`high_first`) whenever `lambda_wp_config.yaml` was missing, empty, unreadable or had the key commented out. That value was stored on the entry, so the coordinator's fallback to `default_register_order(firmware)` never applied again. On `low_first` firmware (`V0.0.10-3K`, `V1.1.0-3K`) the accumulated counters read as e.g. 1,140,719,617 Wh instead of 82,942 Wh, and the 5-minute long-term statistics for that window kept the wrong values. `_async_read_register_order()` now returns `None` unless the old file sets the order explicitly, and the migration only stores an explicit value — otherwise the firmware's order applies, matching 2.8.x behaviour.
 - **Options flow pre-selected `high_first`**: the register-order field defaulted to `options.get(CONF_INT32_REGISTER_ORDER, DEFAULT_INT32_REGISTER_ORDER)`, so saving the options dialog for any reason (e.g. only to enable PV surplus) pinned `high_first` on `low_first` firmware. The default is now the stored value, else `default_register_order(firmware)`, else `high_first` (`config_flow.py`).
 - **Existing 3.5 installs are not corrected automatically**: an entry migrated before this fix already holds `high_first`, which cannot be told apart from a deliberate choice. Set the order once in the options dialog.
+- **A register order chosen for one firmware outlived a firmware change**: `int32_register_order` is a per-entry option, and the options dialog stores it on every save, so after any save the firmware default no longer applied. Changing the firmware under *Reconfigure* (`async_step_reconfigure`) then kept the old order, e.g. `high_first` from `V0.0.9-3K` on a controller now running `V1.1.0-3K`. *Reconfigure* now drops `int32_register_order` from the options when the firmware changes (via `async_update_reload_and_abort(..., options=...)`); all other options are kept, and a change of host/port/unit id alone leaves it untouched.
 
 #### Tests
 - `tests/test_config_flow.py`: `test_an_older_entry_without_the_config_file` and `test_an_unreadable_old_config_file_falls_back_to_the_firmware_order` (renamed) now expect no stored option instead of `high_first`. Added `test_an_old_config_file_without_a_register_order` (commented-out key, `V1.1.0-3K`, asserts the counter reads 100000 Wh) and `test_an_old_config_file_set_to_high_first_is_kept`.
 - `tests/test_options_flow.py`: added `test_the_register_order_offered_is_the_firmwares_own` (parametrized over `V1.1.0-3K`, `V0.0.10-3K`, `V0.0.8-3K`) and `test_a_set_register_order_is_offered_as_set`.
-- The new tests fail without the fix. Full suite: 152/152 passing.
+- `tests/test_config_flow.py`: added `test_a_firmware_change_drops_the_register_order` (V0.0.9-3K with `high_first` → V1.1.0-3K: option removed, other options kept, counter reads 100000 Wh) and `test_the_same_firmware_keeps_the_register_order`.
+- `tests/test_firmware.py`: added `test_v1_0_4_sits_between_v0_0_10_and_v1_1_0`; `test_options_flow.py` parametrization extended by `V1.0.4-3K`.
+- The new tests fail without the fix. Full suite: 156/156 passing.
 
 ### [3.5.6] - 2026-09-15
 
@@ -449,15 +455,21 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 Die Config-Entry-Migration 2.x→3.5 hat die 32-Bit-Registerreihenfolge der Firmware überschrieben, gefunden bei einem echten Upgrade 2.8.6→3.5.6 auf realer Hardware (EU10L, Firmware `V1.1.0-3K`) ([Issue #133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133)).
 
+#### Hinzugefügt
+- **Firmware `V1.0.4-3K`** (neue Steuerung, SW V1.3.x) in `FIRMWARE_CONFIG` aufgenommen, mit `reg_order: low_first`, bestätigt durch einen Rohregister-Dump (Register 1020/1021 = 2892/0 für 2892 Wh) in [Issue #100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100). Nach Erscheinungsdatum zwischen `V0.0.10-3K` (8) und `V1.1.0-3K` eingeordnet, das von Ordnungszahl 9 auf 10 rückt. Kein Sensor prüft auf 8, 9 oder 10 (nur `1-2`, `1-7` und `3`), und Einträge speichern den Firmware-Namen, nicht die Zahl – bestehende Einträge sind nicht betroffen.
+
 #### Behoben
 - **Migration schrieb `int32_register_order: high_first` fest**: `async_migrate_entry()` (`__init__.py`) rief `options.setdefault(CONF_INT32_REGISTER_ORDER, await _async_read_register_order(hass))` auf, und `_async_read_register_order()` lieferte `DEFAULT_INT32_REGISTER_ORDER` (`high_first`), sobald `lambda_wp_config.yaml` fehlte, leer oder unlesbar war oder der Schlüssel auskommentiert war. Dieser Wert landete im Entry, und der Fallback des Coordinators auf `default_register_order(firmware)` griff nie mehr. Bei `low_first`-Firmware (`V0.0.10-3K`, `V1.1.0-3K`) lasen sich die akkumulierten Zähler z. B. als 1.140.719.617 Wh statt 82.942 Wh, und die 5-Minuten-Langzeitstatistik dieses Zeitfensters behielt die falschen Werte. `_async_read_register_order()` gibt jetzt `None` zurück, solange die alte Datei die Reihenfolge nicht ausdrücklich setzt, und die Migration speichert nur einen ausdrücklichen Wert — sonst gilt die Reihenfolge der Firmware, wie in 2.8.x.
 - **Options-Flow schlug `high_first` vor**: Das Feld für die Registerreihenfolge hatte den Default `options.get(CONF_INT32_REGISTER_ORDER, DEFAULT_INT32_REGISTER_ORDER)`. Wer den Options-Dialog aus irgendeinem Grund speicherte (z. B. nur um PV-Überschuss zu aktivieren), schrieb auf `low_first`-Firmware `high_first` fest. Der Default ist jetzt der gespeicherte Wert, sonst `default_register_order(firmware)`, sonst `high_first` (`config_flow.py`).
 - **Bestehende 3.5-Installationen werden nicht automatisch korrigiert**: Ein vor diesem Fix migrierter Eintrag hat bereits `high_first` gespeichert, was sich nicht von einer bewussten Wahl unterscheiden lässt. Die Reihenfolge einmal im Options-Dialog setzen.
+- **Eine für eine Firmware gewählte Registerreihenfolge überlebte den Firmwarewechsel**: `int32_register_order` ist eine Option pro Eintrag, und der Options-Dialog speichert sie bei jedem Speichern; danach griff der Firmware-Standard nicht mehr. Ein Firmwarewechsel unter *Neu konfigurieren* (`async_step_reconfigure`) behielt dann die alte Reihenfolge, z. B. `high_first` von `V0.0.9-3K` auf einer Steuerung, die jetzt `V1.1.0-3K` läuft. *Neu konfigurieren* entfernt `int32_register_order` jetzt bei einem Firmwarewechsel aus den Options (über `async_update_reload_and_abort(..., options=...)`); alle anderen Options bleiben erhalten, und eine reine Änderung von Host/Port/Slave-ID lässt sie unangetastet.
 
 #### Tests
 - `tests/test_config_flow.py`: `test_an_older_entry_without_the_config_file` und `test_an_unreadable_old_config_file_falls_back_to_the_firmware_order` (umbenannt) erwarten jetzt keine gespeicherte Option statt `high_first`. Neu: `test_an_old_config_file_without_a_register_order` (auskommentierter Schlüssel, `V1.1.0-3K`, prüft den Zählerwert 100000 Wh) und `test_an_old_config_file_set_to_high_first_is_kept`.
 - `tests/test_options_flow.py`: neu `test_the_register_order_offered_is_the_firmwares_own` (parametrisiert über `V1.1.0-3K`, `V0.0.10-3K`, `V0.0.8-3K`) und `test_a_set_register_order_is_offered_as_set`.
-- Die neuen Tests schlagen ohne den Fix fehl. Gesamte Suite: 152/152 bestanden.
+- `tests/test_config_flow.py`: neu `test_a_firmware_change_drops_the_register_order` (V0.0.9-3K mit `high_first` → V1.1.0-3K: Option entfernt, übrige Options erhalten, Zähler liest 100000 Wh) und `test_the_same_firmware_keeps_the_register_order`.
+- `tests/test_firmware.py`: neu `test_v1_0_4_sits_between_v0_0_10_and_v1_1_0`; Parametrisierung in `test_options_flow.py` um `V1.0.4-3K` erweitert.
+- Die neuen Tests schlagen ohne den Fix fehl. Gesamte Suite: 156/156 bestanden.
 
 ### [3.5.6] - 2026-09-15
 
