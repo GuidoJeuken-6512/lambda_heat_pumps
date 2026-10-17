@@ -24,6 +24,11 @@ Die Heizkurve bestimmt die Vorlauftemperatur basierend auf der Außentemperatur 
   </div>
 </div>
 
+!!! info "Die Heizkurve der Lambda bleibt maßgeblich"
+    Die drei Stützpunkte, die Eco-Absenkung und die Raumthermostat-Werte sind **Handwerte in Home Assistant**. Die Integration liest sie nicht von der Lambda und schreibt sie nicht an die Lambda. Sie dienen nur dem Sensor „Heizkurve Vorlauf berechnet“. Die Lambda regelt immer mit ihrer eigenen Heizkurve.
+
+    Ab Werk zeigen die Stützpunkte die Standardwerte der Integration (48,3 / 39,0 / 32,0 °C), nicht die Werte Ihrer Lambda. Ändern Sie die Heizkurve am Display der Lambda, müssen Sie die Werte in Home Assistant von Hand nachziehen. Den tatsächlichen Vorlauf-Sollwert der Lambda zeigt der Sensor `hc1_target_temp_flow_line` (Firmware ab V0.0.5-3K) bzw. `hc1_flow_line_temperature_setpoint` (ältere Firmware). Weicht er dauerhaft vom berechneten Wert ab, passen die Stützpunkte in Home Assistant nicht mehr zur Lambda.
+
 Weitere Informationen: [Raumthermometer](raumthermometer.md)
 
 Anleitungen zur Lambda Wärmepumpe <a href="https://lambda-wp.at/tutorials/" target="_blank" rel="noopener noreferrer">Lambda Anleitungen</a>

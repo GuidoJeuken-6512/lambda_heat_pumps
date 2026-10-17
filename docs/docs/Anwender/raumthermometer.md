@@ -6,18 +6,21 @@ title: "Raumthermometer"
 
 *Zuletzt geändert am 21.03.2026*
 
-Die Lambda Heat Pumps Integration unterstützt die Integration externer Raumthermometer-Sensoren für eine präzise Temperatursteuerung. Diese Funktion ermöglicht es, die Heizkurven-Vorlauftemperatur basierend auf der tatsächlichen Raumtemperatur anzupassen.
+Die Lambda Heat Pumps Integration kann der Lambda die Raumtemperatur eines beliebigen Home-Assistant-Sensors liefern. Die Lambda nutzt diesen Wert wie ein eigenes Raumthermometer.
 
 ## Übersicht
 
-Die Raumthermostat-Funktion verwendet externe Sensoren (z.B. von Home Assistant) als Eingabe für die Lambda-Wärmepumpe. Die Integration berechnet automatisch eine Anpassung der Vorlauftemperatur basierend auf der Differenz zwischen Soll- und Ist-Temperatur.
+Die Raumthermostat-Funktion verwendet externe Sensoren (z.B. von Home Assistant) als Eingabe für die Lambda-Wärmepumpe.
 
 ### Funktionsweise
 
 1. **Externe Sensoren**: Verwenden Sie beliebige Temperatursensoren aus Home Assistant
-2. **Automatische Berechnung**: Die Integration berechnet die Anpassung der Vorlauftemperatur
-3. **Modbus-Schreiben**: Die berechnete Temperatur wird an die Lambda geschrieben
-4. **Regelmäßige Updates**: Die Temperatur wird regelmäßig aktualisiert (standardmäßig alle 9 Sekunden)
+2. **Modbus-Schreiben**: Die Integration schreibt die gemessene **Raumtemperatur** in das Register „Raumgerät-Temperatur“ des Heizkreises (5004, 5104, …)
+3. **Regelmäßige Updates**: Die Temperatur wird regelmäßig aktualisiert (standardmäßig alle 9 Sekunden)
+4. **Regelung durch die Lambda**: Die Vorlauftemperatur bestimmt weiterhin die Lambda selbst, mit ihrer eigenen Heizkurve. Ob und wie stark die Raumtemperatur dabei einfließt, legt die Heizkreis-Einstellung an der Lambda fest.
+
+!!! info "Was die Integration nicht schreibt"
+    Die Integration schreibt **keine Vorlauftemperatur** an die Lambda. Die unten beschriebene Berechnung (Heizkurve, Offset, Raumthermostat-Anpassung) dient nur dem Sensor „Heizkurve Vorlauf berechnet“ (`heating_curve_flow_line_temperature_calc`) in Home Assistant. Die Heizkurve der Lambda wird dadurch weder ersetzt noch verändert.
 
 ## Aktivierung
 
@@ -68,7 +71,7 @@ Nach der Aktivierung werden für jeden Heizkreis folgende Number-Entities erstel
 
 ## Berechnung der Vorlauftemperatur
 
-Die Integration berechnet die Vorlauftemperatur in mehreren Schritten:
+Die Integration berechnet für den Sensor „Heizkurve Vorlauf berechnet“ eine Vorlauftemperatur in mehreren Schritten. Dieser Wert wird nur angezeigt und nicht an die Lambda geschrieben:
 
 ### 1. Grundwert aus Heizkurve
 
