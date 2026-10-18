@@ -16,7 +16,7 @@
           "host": "Hostname oder IP-Adresse des Reglers.",
           "port": "Der TCP-Port des Reglers (Standard 502).",
           "slave_id": "Die Modbus-Adresse des Reglers (Standard 1).",
-          "firmware_version": "Wird als Firmware des Geräts angezeigt und ändert nichts am Auslesen."
+          "firmware_version": "Die Firmware Ihrer Lambda im Format V…-3K (Statuszeile der Wärmepumpen-Seite, nicht die Software-Version der Steuerung). Sie bestimmt, welche Sensoren angelegt werden und wie die Energiezähler gelesen werden."
         }
       },
       "reconfigure": {
@@ -28,6 +28,9 @@
           "port": "Port",
           "slave_id": "Modbus-Einheit",
           "firmware_version": "Firmware-Version"
+        },
+        "data_description": {
+          "firmware_version": "Die Firmware Ihrer Lambda im Format V…-3K (Statuszeile der Wärmepumpen-Seite, nicht die Software-Version der Steuerung). Sie bestimmt, welche Sensoren angelegt werden und wie die Energiezähler gelesen werden."
         }
       }
     },

@@ -321,7 +321,7 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | Merge `3.5` → `main` hat einen Konflikt in `hacs.json` (`homeassistant`: 2024.3.3 vs. 2026.9.0); richtig ist der Wert aus `3.5` | `hacs.json` | Merge-Vorbereitung |
 | Doku-Workflow hat keinen `workflow_dispatch`, lässt sich also nicht manuell starten | `.github/workflows/docsz.yml` | optional |
 | **Externer Energiezähler: Rückfall auf das Lambda-Register.** Liefert ein in `energy_consumption_sensors` eingetragener Zähler `unknown`/`unavailable`, nimmt `_track_energy` (`if reading is None: reading = register`) das Lambda-Register, obwohl `_meter_reading` laut Kommentar genau das vermeiden soll. Kommt der Zähler zurück, wird die Differenz zwischen beiden Zählern als Verbrauch gebucht, sofern sie unter 100 kWh liegt. | `coordinator.py:458-460` | F18, gefunden 17.10.2026 |
-| **Hilfetext zur Firmware im Einrichtungsdialog falsch:** „Wird als Firmware des Geräts angezeigt und ändert nichts am Auslesen.“ Die Firmware bestimmt Sensoren und Register-Reihenfolge. | `strings.json`, `translations/*.json` (`config.step.user.data_description.firmware_version`) | F19, gefunden 17.10.2026 |
+| **Hilfetext zur Firmware im Einrichtungsdialog falsch:** „Wird als Firmware des Geräts angezeigt und ändert nichts am Auslesen.“ Die Firmware bestimmt Sensoren und Register-Reihenfolge. | `strings.json`, `translations/*.json` (`config.step.user.data_description.firmware_version`) | F19, ✅ behoben 18.10.2026 |
 
 ## Bewertung der Fixes: Komplexität, Kritikalität, Testaufwand
 
@@ -354,7 +354,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F16 | Migration: `pv_surplus_mode: entry` → `pos` | – | **S** (1 Zeile in Schritt 9) | 🟢 **niedrig** | Unit **S** |
 | F17 | Abweichungssensor Pumpen-Sollwert − berechnete Kurve | #128 | **S–M** | 🟢 **niedrig** (Enhancement) | Unit **S** + HW **S** |
 | F18 | Externer Zähler: bei `unknown`/`unavailable` nichts buchen statt auf das Register zurückzufallen | – | **S** (2 Zeilen, `coordinator.py:458`) | 🟠 **mittel** (falsche kWh bei jedem Ausfall des Zählers) | Unit **S** |
-| F19 | Hilfetext zur Firmware im Einrichtungsdialog korrigieren | – | **S** (Übersetzungen) | 🟢 **niedrig** | – |
+| F19 | ✅ **FIXED** 18.10.2026 – Hilfetext zur Firmware im Einrichtungsdialog korrigieren (auch unter Neu konfigurieren) | – | **S** (Übersetzungen) | 🟢 **niedrig** | – |
 
 ### Begründungen im Detail
 

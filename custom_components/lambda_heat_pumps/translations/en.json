@@ -16,7 +16,7 @@
           "host": "The hostname or IP address of the controller.",
           "port": "The TCP port the controller listens on (default 502).",
           "slave_id": "The controller's Modbus station address (default 1).",
-          "firmware_version": "Shown as the device's firmware. It does not change what is read."
+          "firmware_version": "Your Lambda's firmware, as V…-3K (status bar of the heat pump page, not the controller's software version). It decides which sensors are created and how the energy counters are read."
         }
       },
       "reconfigure": {
@@ -28,6 +28,9 @@
           "port": "Port",
           "slave_id": "Modbus unit",
           "firmware_version": "Firmware version"
+        },
+        "data_description": {
+          "firmware_version": "Your Lambda's firmware, as V…-3K (status bar of the heat pump page, not the controller's software version). It decides which sensors are created and how the energy counters are read."
         }
       }
     },
