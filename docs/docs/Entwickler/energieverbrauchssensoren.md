@@ -4,7 +4,7 @@ title: "Energieverbrauchssensoren - Technische Dokumentation"
 
 # Energieverbrauchssensoren - Technische Dokumentation
 
-*Zuletzt geändert am 06.09.2026*
+*Zuletzt geändert am 18.10.2026*
 
 **Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
@@ -60,7 +60,9 @@ Wärmepumpe erzeugt im Standby keine Wärme, also gibt es keinen
 @callback
 def _track_energy(self, index: int) -> None:
     heat_pump = self.component("hp", index)
-    if (operating_state := heat_pump.operating_state) is None:
+    operating_state = heat_pump.operating_state
+    if f"hp{index}" in self.failed or operating_state is None:
+        self._forget_energy_sources(index)  # Ausfall: danach neu beginnen
         return
     mode = OPERATING_STATE_MODE.get(int(operating_state), MODE_STBY)
 
@@ -69,7 +71,11 @@ def _track_energy(self, index: int) -> None:
         ("electrical", False, heat_pump.compressor_power_consumption_accumulated, ELECTRICAL_ENERGY_MODES, totals.electrical),
         ("thermal", True, heat_pump.compressor_thermal_energy_output_accumulated, THERMAL_ENERGY_MODES, totals.thermal),
     ):
-        reading = self._meter_reading(index, thermal) or register
+        reading, source = self._energy_reading(index, thermal, register)
+        if self._energy_source.get((index, kind)) != source:
+            # Quellenwechsel: wie beim Start neu beginnen
+            self._last_energy.pop((index, kind), None)
+            self._energy_source[(index, kind)] = source
         delta = self._energy_delta(index, kind, reading)
         if delta and mode in modes:
             bucket[mode] = bucket.get(mode, 0.0) + delta
@@ -89,7 +95,7 @@ def _meter_reading(self, index: int, thermal: bool) -> float | None:
         return None
     state = self.hass.states.get(entity_id)
     if state is None or state.state in ("unknown", "unavailable"):
-        return None  # nichts buchen, NICHT auf das Register zurückfallen
+        return None  # der Aufrufer fällt auf das Register zurück
     value = float(state.state)
     unit = state.attributes.get("unit_of_measurement")
     factor = {"Wh": 1.0, "kWh": 1000.0, "MWh": 1_000_000.0}.get(unit)
@@ -100,10 +106,26 @@ def _meter_reading(self, index: int, thermal: bool) -> float | None:
 
 Ist in `lambda_wp_config.yaml` (`energy_consumption_sensors`) ein externer
 Zähler konfiguriert und dessen State gültig, wird **er** verwendet — nicht
-zusätzlich zum Register, sondern anstelle davon. Ist der State gerade
-`unknown`/`unavailable`, wird für diesen Poll **nichts** gebucht; es wird
-nicht auf das Controller-Register umgeschaltet, das etwas anderes misst und
-beim Wiedererscheinen des externen Zählers sonst einen Sprung erzeugen würde.
+zusätzlich zum Register, sondern anstelle davon. Liefert er keinen brauchbaren
+Wert (`unknown`/`unavailable`, keine Zahl, falsche Einheit), nimmt
+`_energy_reading` das Controller-Register.
+
+### Quellenwechsel und Ausfall: wie ein Neustart (seit 3.5.7)
+
+`_energy_source` merkt sich pro Wärmepumpe und Art (elektrisch/thermisch), aus
+welcher Quelle der letzte Ausgangswert stammt (`"register"` oder die Entity-ID
+des externen Zählers). Wechselt die Quelle — externer Zähler fällt aus, kommt
+zurück, wird ausgetauscht —, wird der Ausgangswert verworfen, genau wie beim
+Start: Die erste Ablesung der neuen Quelle setzt nur den Ausgangswert, erst
+die **zweite Differenz** wird gebucht. Zwei verschiedene Zähler werden so nie
+miteinander verrechnet.
+
+Dasselbe gilt für einen **Ausfall**: Schlägt die ganze Abfrage fehl
+(`_forget_what_answered`) oder antwortet die Wärmepumpe nicht
+(`hp<n>` in `failed` bzw. kein Betriebszustand), setzt
+`_forget_energy_sources` die Quelle zurück. Der Verbrauch während der Lücke
+wird nicht gebucht — lieber etwas zu wenig in den Summen als ein Sprung, der
+komplett der Betriebsart beim Wiedererscheinen zugeschlagen würde.
 
 ### Delta-Validierung (`_energy_delta`)
 

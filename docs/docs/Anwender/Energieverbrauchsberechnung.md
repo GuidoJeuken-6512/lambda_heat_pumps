@@ -4,7 +4,7 @@ title: "Energie- und Wärmeverbrauchsberechnung"
 
 # Energie- und Wärmeverbrauchsberechnung
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 18.10.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Sensoren für **Stromverbrauch** (elektrische Energie) und **Wärmeabgabe** (thermische Energie) – jeweils nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) und Zeitraum (Total, Täglich, Monatlich, Jährlich). Damit ist eine vollständige Analyse des Energie- und Wärmeflusses Ihrer Wärmepumpe möglich.
 
@@ -103,6 +103,7 @@ Bei jeder Abfrage (Standard alle 30 Sekunden) liest die Integration die beiden Z
 ### Schutzmechanismen
 
 - **Neustart:** Der erste Wert nach dem Start dient nur als Ausgangspunkt und wird nicht gezählt.
+- **Wechsel oder Ausfall des Zählers:** Fällt ein externer Zähler aus, zählt die Integration vorübergehend mit dem Zähler der Lambda weiter und wechselt zurück, sobald er wieder Werte liefert. Bei jedem Wechsel und nach jedem Ausfall (auch wenn die Lambda selbst nicht antwortet) gilt dieselbe Regel wie beim Start: Der erste Wert ist nur Ausgangspunkt, erst die zweite Differenz wird gezählt. Lieber fehlt etwas Verbrauch, als dass ein Sprung zwischen zwei Zählern in den Summen landet.
 - **Nullwert:** Ein Zählerstand von 0 (meldet die Lambda während des Hochfahrens) wird ignoriert.
 - **Rückwärtssprung oder unplausibler Sprung:** Fällt ein Zähler, oder steigt er um mehr als **100 kWh pro Abfrage** (z. B. nach einem Tausch der Wärmepumpe oder bei falscher Register-Reihenfolge), wird dieser Zuwachs verworfen statt gezählt.
 - **Zählerstände über Neustarts:** Die Zähler stellen ihren letzten Stand beim Start von Home Assistant wieder her. Ist der letzte gespeicherte Zustand nicht brauchbar (z. B. direkt nach einem Update), greifen die Gesamtzähler auf die Langzeitstatistik von Home Assistant zurück.

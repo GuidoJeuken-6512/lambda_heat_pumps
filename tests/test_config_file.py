@@ -212,10 +212,10 @@ async def test_energy_is_counted_from_a_meter_when_one_is_given(
 async def test_a_meter_that_is_not_reporting_books_nothing(
     hass: HomeAssistant, controller: Controller
 ) -> None:
-    """An unavailable meter is not quietly replaced by the register.
+    """A meter that is out from the start falls back to the register.
 
-    The register counts something else, so falling back to it would book a jump
-    the moment the meter came back.
+    The register's first reading only sets the reference, as any first reading
+    does, so nothing is booked on this poll.
     """
     write_config(
         hass,
@@ -277,3 +277,92 @@ async def test_a_meter_with_an_uncountable_unit_books_nothing(
 
     assert not coordinator.totals[1].electrical
     assert "is not an energy this can count" in caplog.text
+
+
+def set_electrical_register(controller: Controller, wh: int) -> None:
+    """Put a value on hp1's electrical counter, high word first."""
+    controller.registers[1020] = wh >> 16
+    controller.registers[1021] = wh & 0xFFFF
+
+
+async def test_a_meter_dropping_out_and_back_never_compares_two_counters(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Switching between meter and register starts over, both ways.
+
+    The register (100 kWh) is ahead of the meter (40 kWh). Compared with each
+    other they would book 58 kWh that were never used; instead the first delta
+    after each switch is dropped, and only real climbs on one counter count.
+    """
+    meter = "sensor.house_heat_pump_meter"
+    write_config(
+        hass,
+        "energy_consumption_sensors:\n"
+        "  hp1:\n"
+        f"    sensor_entity_id: {meter}\n",
+    )
+    hass.states.async_set(meter, "40", {"unit_of_measurement": "kWh"})
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    heating = lambda: coordinator.totals[1].electrical.get("heating", 0.0)  # noqa: E731
+
+    async def poll() -> None:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    hass.states.async_set(meter, "42", {"unit_of_measurement": "kWh"})
+    await poll()
+    assert heating() == pytest.approx(2.0)
+
+    # The meter drops out: the register takes over, its first reading only
+    # sets the reference.
+    hass.states.async_set(meter, "unavailable", {"unit_of_measurement": "kWh"})
+    await poll()
+    assert heating() == pytest.approx(2.0)
+
+    # The register climbs while the meter is out, and that is counted.
+    set_electrical_register(controller, 100_500)
+    await poll()
+    assert heating() == pytest.approx(2.5)
+
+    # The meter is back: its first reading only sets the reference again.
+    hass.states.async_set(meter, "43", {"unit_of_measurement": "kWh"})
+    await poll()
+    assert heating() == pytest.approx(2.5)
+
+    hass.states.async_set(meter, "44", {"unit_of_measurement": "kWh"})
+    await poll()
+    assert heating() == pytest.approx(3.5)
+
+
+async def test_a_heat_pump_that_stops_answering_starts_its_counting_over(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The first delta after the heat pump answers again is not booked.
+
+    It would carry everything used during the gap, all of it against whatever
+    mode the heat pump happens to be in when it comes back.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    heating = lambda: coordinator.totals[1].electrical.get("heating", 0.0)  # noqa: E731
+
+    async def poll() -> None:
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    set_electrical_register(controller, 101_000)
+    await poll()
+    assert heating() == pytest.approx(1.0)
+
+    controller.stop_answering_for(1003)  # hp1's operating state
+    await poll()
+    set_electrical_register(controller, 110_000)
+    controller.answer_again_for(1003)
+    await poll()
+    # The 9 kWh used during the gap are not booked.
+    assert heating() == pytest.approx(1.0)
+
+    set_electrical_register(controller, 110_500)
+    await poll()
+    assert heating() == pytest.approx(1.5)

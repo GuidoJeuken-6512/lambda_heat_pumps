@@ -188,8 +188,10 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         # What the last poll saw, so an edge can be told from a steady state.
         self._last_operating_state: dict[int, int] = {}
         self._last_compressor_running: dict[int, bool] = {}
-        # The controller's own Wh counters, as of the last poll.
+        # The Wh counters as of the last poll, and which source each came from:
+        # the controller's register, or the entity id of an external meter.
         self._last_energy: dict[tuple[int, str], float] = {}
+        self._energy_source: dict[tuple[int, str], str | None] = {}
 
         self._fast_interval = timedelta(
             seconds=entry.options.get(
@@ -372,6 +374,15 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         self.updated = set()
         self.failed = {}
         self._warned = frozenset()
+        # The energy counters were not read either; after the gap they start
+        # over, so the first delta does not carry everything used meanwhile.
+        for index in self.totals:
+            self._forget_energy_sources(index)
+
+    def _forget_energy_sources(self, index: int) -> None:
+        """Make a heat pump's next energy readings start over, as at startup."""
+        for kind in ("electrical", "thermal"):
+            self._energy_source[(index, kind)] = None
 
     async def _async_fast_poll(self, _now: datetime) -> None:
         """Catch the mode changes and compressor starts a slow poll would miss.
@@ -434,7 +445,11 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         pump is in now; the controller offers nothing finer to split it by.
         """
         heat_pump = self.component("hp", index)
-        if (operating_state := heat_pump.operating_state) is None:
+        operating_state = heat_pump.operating_state
+        if f"hp{index}" in self.failed or operating_state is None:
+            # The heat pump did not answer: its counters are out as well, so
+            # whatever comes next starts over rather than spanning the gap.
+            self._forget_energy_sources(index)
             return
         mode = OPERATING_STATE_MODE.get(int(operating_state), MODE_STBY)
 
@@ -455,12 +470,43 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 totals.thermal,
             ),
         ):
-            reading = self._meter_reading(index, thermal)
-            if reading is None:
-                reading = register
+            reading, source = self._energy_reading(index, thermal, register)
+            if self._energy_source.get((index, kind)) != source:
+                # A different counter, or none: the last reading is no reference
+                # for this one, so it starts over exactly as it does at startup —
+                # this reading only sets the reference, the next delta counts.
+                # Booking less than was used beats booking a jump between two
+                # unrelated counters.
+                if (index, kind) in self._last_energy:
+                    _LOGGER.debug(
+                        "HP%d %s energy source changed from %s to %s; "
+                        "not counting the first delta",
+                        index,
+                        kind,
+                        self._energy_source.get((index, kind)),
+                        source,
+                    )
+                self._last_energy.pop((index, kind), None)
+                self._energy_source[(index, kind)] = source
             delta = self._energy_delta(index, kind, reading)
             if delta and mode in modes:
                 bucket[mode] = bucket.get(mode, 0.0) + delta
+
+    def _energy_reading(
+        self, index: int, thermal: bool, register: float | None
+    ) -> tuple[float | None, str | None]:
+        """The counter to book from this poll, and where it came from.
+
+        An external meter if one is configured and reporting; otherwise the
+        controller's own register. The source is returned so a switch between
+        the two — a meter dropping out or coming back — can be told apart from a
+        counter that simply climbed. A reading of None means neither had one.
+        """
+        if (reading := self._meter_reading(index, thermal)) is not None:
+            return reading, self.file_config.meter(index, thermal)
+        if register is None:
+            return None, None
+        return register, "register"
 
     def _meter_reading(self, index: int, thermal: bool) -> float | None:
         """What a heat pump's own meter reads, in Wh, if one is configured.
@@ -475,8 +521,8 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             return None
         state = self.hass.states.get(entity_id)
         if state is None or state.state in ("unknown", "unavailable"):
-            # Nothing to book this poll. Not falling back to the register, which
-            # counts something else and would jump the moment the meter returns.
+            # The caller falls back to the register, and treats the switch like
+            # a fresh start so the two counters are never compared.
             return None
         try:
             value = float(state.state)

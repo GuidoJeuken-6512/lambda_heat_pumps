@@ -4,7 +4,7 @@ title: "lambda_wp_config.yaml Konfiguration"
 
 # lambda_wp_config.yaml Konfiguration
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 18.10.2026*
 
 Die `lambda_wp_config.yaml` Datei deckt seit Version 3.5 nur noch drei Dinge ab, für die Home Assistant selbst keinen Platz hat: manuelle Zähler-Offsets (Cycling und Energie) und externe Energiezähler. Alles andere, was diese Datei früher regelte, hat einen eigenen Home-Assistant-Weg bekommen:
 
@@ -91,7 +91,7 @@ energy_consumption_sensors:
 | Elektrisch | `sensor.eu08l_hp1_compressor_power_consumption_accumulated` | `sensor.eu08l_hp2_compressor_power_consumption_accumulated` | … |
 | Thermisch  | `sensor.eu08l_hp1_compressor_thermal_energy_output_accumulated` | `sensor.eu08l_hp2_compressor_thermal_energy_output_accumulated` | … |
 
-**Hinweis:** Die Quellsensoren müssen einen steigenden Zählerstand in Wh, kWh oder MWh liefern, keine momentane Leistung in W. Das System konvertiert automatisch zu kWh. Liefert ein konfigurierter externer Sensor gerade `unknown`/`unavailable`, wird für diesen Poll nichts gebucht – die Integration schaltet nicht automatisch auf das Controller-Register zurück.
+**Hinweis:** Die Quellsensoren müssen einen steigenden Zählerstand in Wh, kWh oder MWh liefern, keine momentane Leistung in W. Das System konvertiert automatisch zu kWh. Liefert ein konfigurierter externer Sensor gerade keinen Wert (`unknown`/`unavailable`), zählt die Integration vorübergehend mit dem Zähler der Lambda weiter und wechselt zurück, sobald der externe Sensor wieder Werte liefert. Bei jedem solchen Wechsel wird die erste Differenz verworfen, damit die beiden Zähler nie miteinander verrechnet werden. Dadurch fehlt pro Wechsel höchstens der Verbrauch einer Abfrage (etwa 30 Sekunden).
 
 **Beispiel: Nur elektrischer externer Sensor (Shelly3EM), thermisch intern**
 ```yaml
