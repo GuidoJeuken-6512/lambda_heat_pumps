@@ -1,6 +1,6 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 17.10.2026 (Erstanalyse 12.10.2026)
+- **Stand:** 19.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026)
 - **Geprüfter Code:** `origin/3.5` @ `be4728b` (Integration v3.5.7, noch ohne Tag); Erstanalyse gegen `55439d4` (v3.5.6)
 - **Grundlage:** alle 24 offenen GitHub-Issues. Geprüft wurden die 9 mit Label `bug` und die 6 ohne Label, die einen Fehler beschreiben. Die 9 `enhancement`-Issues sind nur am Ende aufgelistet.
 - **Hinweis:** Die Analyse selbst hat keinen Code geändert. Nachträglich umgesetzt (17.10.2026): F1, F2, F6 und das Zurücksetzen der Registerreihenfolge bei einem Firmwarewechsel (3.5.7), Doku-Korrekturen zu #128/#134. Details im Abschnitt [Änderungen am 17.10.2026](#änderungen-am-17102026). Zeilenangaben beziehen sich auf `custom_components/lambda_heat_pumps/` im Branch `3.5`.
@@ -323,6 +323,35 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | **Externer Energiezähler: Rückfall auf das Lambda-Register.** Liefert ein in `energy_consumption_sensors` eingetragener Zähler `unknown`/`unavailable`, nimmt `_track_energy` (`if reading is None: reading = register`) das Lambda-Register, obwohl `_meter_reading` laut Kommentar genau das vermeiden soll. Kommt der Zähler zurück, wird die Differenz zwischen beiden Zählern als Verbrauch gebucht, sofern sie unter 100 kWh liegt. | `coordinator.py:458-460` | F18, ✅ behoben 18.10.2026 (`_energy_source`, `_forget_energy_sources`) |
 | **Hilfetext zur Firmware im Einrichtungsdialog falsch:** „Wird als Firmware des Geräts angezeigt und ändert nichts am Auslesen.“ Die Firmware bestimmt Sensoren und Register-Reihenfolge. | `strings.json`, `translations/*.json` (`config.step.user.data_description.firmware_version`) | F19, ✅ behoben 18.10.2026 |
 
+## Kompatibilität mit Home Assistant 2026.10 / 2026.11 (geprüft 19.10.2026)
+
+Geprüft gegen `homeassistant==2026.10.2` mit `modbus-connection[tmodbus]==4.12.4` (die Version, die HA 2026.10 selbst mitbringt), Python 3.14, Branch `3.5`.
+
+**Ergebnis:** Die Integration läuft unter 2026.10 ohne Funktionsverlust und ohne eine einzige Deprecation-Meldung aus `custom_components/lambda_heat_pumps`. 157 von 158 Tests bestehen; der eine Fehlschlag liegt im Testcode (F20).
+
+| Thema (HA-Changelog / Dev-Blog) | Betroffen? |
+|---|---|
+| `device_registry.async_get_device` deprecated, wirft in Testcode einen Fehler | Integration nein (nutzt `async_get_device_by_identifier`, `coordinator.py:249`); **Test ja** → F20 |
+| `DeviceEntry.config_entries` wird durchgesetzt, `via_device` → `via_device_id` | nein, bereits umgestellt |
+| `modbus.get_hub` deprecated | nein, nicht genutzt |
+| Probatio ersetzt `voluptuous` (seit 2026.9) | nein; Config-Flow-, Service- und `lambda_wp_config.yaml`-Schemas laufen unter 2026.10.2 fehlerfrei. **War aber bisher ungetestet**, weil die Testumgebung auf HA 2026.8.1 steht → F20 |
+| Config-Entry-Exceptions in `async_migrate_entry`, zentrale Abort-Gründe | optional, keine Änderung nötig |
+| `RestoreStateData.last_states` entfällt (2026.11) | nein, nur `async_get_last_sensor_data`/`async_get_last_number_data`/`async_get_last_state` |
+| Climate: `current_temperature`, `target_temperature`, `temperature_unit` → `native_…` (2026.11, alte Namen bis 2027.11 mit Warnung) | **ja** (`climate.py:109`, `:158`, `:163`) → F21 |
+| hassfest prüft die `requirements` von Custom-Integrationen | `ha.yml` läuft nur auf `main` (Push/Schedule) und bei PRs; 3.5 wurde noch nicht geprüft → F22 |
+
+**F20 – Testumgebung auf HA 2026.10 anheben.** `requirements_test.txt` pinnt `pytest-homeassistant-custom-component==0.13.355` (= HA 2026.8.1), die Integration verlangt aber mindestens 2026.9.0 (`hacs.json`). Auf eine Version mit HA 2026.10 anheben (z. B. `0.13.373`, getestet). Gleichzeitig `tests/test_init.py:308` und `:312` von `devices.async_get_device(identifiers=…)` auf `devices.async_get_device_by_identifier(…, entry.entry_id)` umstellen, sonst schlägt `test_modules_are_their_own_devices` fehl.
+
+**F21 – Climate-Properties auf `native_…` umstellen (erst mit 2026.11).** Bewusst **abwarten**: HA 2026.9 und 2026.10 kennen die neuen Namen noch nicht (in 2026.10.2 geprüft). Eine Umstellung jetzt würde dort Ist-/Solltemperatur und Einheit der Klima-Entitäten verlieren. Ab 2026.11 schreiben die alten Namen nur Warnungen ins Log, entfernt werden sie in 2027.11. Umsetzung, sobald 2026.11 erschienen ist:
+- `climate.py:109` `_attr_temperature_unit` → `_attr_native_temperature_unit`
+- `climate.py:158` `current_temperature` → `native_current_temperature`
+- `climate.py:163` `target_temperature` → `native_target_temperature`
+- `async_set_temperature` und eigene Lesezugriffe auf die alten Namen prüfen
+- im selben Commit `hacs.json` `homeassistant` auf `2026.11.0` anheben, Testumgebung (F20) auf HA 2026.11 nachziehen
+- `min_temp`, `max_temp`, `target_temperature_step` bleiben unverändert
+
+**F22 – hassfest auf `3.5` laufen lassen.** Seit 2026.10 prüft hassfest auch die `requirements` von Custom-Integrationen (`modbus-connection[tmodbus]>=4.8.1`). Der Lauf passiert automatisch mit dem Merge-PR `3.5` → `main`; alternativ vorher `ha.yml` per `workflow_dispatch` auf `3.5` starten.
+
 ## Bewertung der Fixes: Komplexität, Kritikalität, Testaufwand
 
 **Skalen:**
@@ -355,6 +384,9 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F17 | Abweichungssensor Pumpen-Sollwert − berechnete Kurve | #128 | **S–M** | 🟢 **niedrig** (Enhancement) | Unit **S** + HW **S** |
 | F18 | ✅ **FIXED** 18.10.2026 – Externer Zähler: Rückfall aufs Register erlaubt, aber jeder Quellenwechsel und jeder Ausfall beginnt wie beim Start (erste Differenz verworfen) | – | **S** (2 Zeilen, `coordinator.py:458`) | 🟠 **mittel** (falsche kWh bei jedem Ausfall des Zählers) | Unit **S** |
 | F19 | ✅ **FIXED** 18.10.2026 – Hilfetext zur Firmware im Einrichtungsdialog korrigieren (auch unter Neu konfigurieren) | – | **S** (Übersetzungen) | 🟢 **niedrig** | – |
+| F20 | Testumgebung auf HA 2026.10 anheben + deprecated `async_get_device` im Test ersetzen | HA 2026.10 | **S** (1 Pin + 2 Testzeilen) | 🟠 **mittel** (Tests laufen sonst gegen eine HA-Version unter dem Minimum) | Testlauf |
+| F21 | Climate-Properties → `native_…`, Mindestversion 2026.11.0 – **erst nach Erscheinen von 2026.11** | HA 2026.11 | **S** (~5 Zeilen + `hacs.json`) | 🟢 **niedrig** (nur Log-Warnungen bis 2027.11) | Unit **S** |
+| F22 | hassfest (`ha.yml`) auf `3.5` laufen lassen | HA 2026.10 | – | 🟢 **niedrig** | CI |
 
 ### Begründungen im Detail
 
@@ -408,10 +440,10 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 | Paket | Fixes | Implementierung | Unit-Tests | HW-Verifikation |
 |---|---|---|---|---|
-| **A: vor dem Release zwingend** | ~~F1, F2~~ ✅, F3, F4, F14, F16 | ~0,5 Tag | ~1 Tag (inkl. Umschreiben von 3 bestehenden Tests) | 1 echter Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage (~0,5 Tag) |
+| **A: vor dem Release zwingend** | ~~F1, F2~~ ✅, F3, F4, F14, F16, F20, F22 | ~0,5 Tag | ~1 Tag (inkl. Umschreiben von 3 bestehenden Tests) | 1 echter Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage (~0,5 Tag) |
 | **B: vor dem Release empfohlen** | F5, F7 | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
 | **C: abhängig von Externen** | F6 | ~1 h | ~1 h | Tester aus #100 (Termin unklar) |
-| **D: nach dem Release möglich** | F8–F12, F15, F17 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
+| **D: nach dem Release möglich** | F8–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist) | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
 
 **Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
 
@@ -419,10 +451,10 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F4, F5) **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration. Die Pakete beziehen sich auf die Bewertung oben.
 
-1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität), F14 (Bildpfade, vor dem Merge nach `main`), F16 (`entry` → `pos` in Schritt 9). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
+1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität), F14 (Bildpfade, vor dem Merge nach `main`), F16 (`entry` → `pos` in Schritt 9), F20 (Testumgebung HA 2026.10), F22 (hassfest auf `3.5`). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
 2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F7 (`volume_flow_heat_sink`, nur nach Hardware-Verifikation). Beides sind Breaking Changes, die am besten mit dem ohnehin großen Versionssprung 3.5 kommen.
 3. **Paket C, abhängig von Testern:** ~~F6 (`V1.0.4-3K`)~~ ✅ erledigt.
-4. **Paket D, nach dem Release:** F8–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
+4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F8–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
 5. **Issues pflegen:** #121 und #112 schließen, #132 schließen (in #134 bestätigt), #94/#95 nach Rückmeldung schließen, #105 nach Retest schließen, #133 nach HW-Test des Melders schließen, #134 nach Antwort schließen, #120 nach F14 schließen, in #90 nach Firmware-Version/Rohwert fragen.
 6. **Merge `3.5` → `main` vorbereiten:** F14 vorher erledigen; Konflikt in `hacs.json` zugunsten von `3.5` lösen.
 
