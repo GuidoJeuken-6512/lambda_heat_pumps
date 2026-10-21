@@ -1481,7 +1481,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                             self.hass,
                             mode=mode,
                             hp_index=hp_idx,
-                            name_prefix=self.entry.data.get("name", "eu08l"),
+                            name_prefix=normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l",
                             use_legacy_modbus_names=self._use_legacy_names,
                         )
                         old_count = cycles.get(hp_idx, 0)
@@ -1542,7 +1542,7 @@ class LambdaDataUpdateCoordinator(DataUpdateCoordinator):
                         self.hass,
                         mode=mode,
                         hp_index=hp_idx,
-                        name_prefix=self.entry.data.get("name", "eu08l"),
+                        name_prefix=normalize_name_prefix(self.entry.data.get("name", "")) or "eu08l",
                         use_legacy_modbus_names=self._use_legacy_names,
                     )
                     old_count = cycles.get(hp_idx, 0)

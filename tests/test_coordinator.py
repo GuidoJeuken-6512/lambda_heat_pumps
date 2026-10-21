@@ -952,3 +952,36 @@ class TestInternalEnergySensorResolution:
         increment_fn.assert_called_once()
         assert increment_fn.call_args[0][1] == "heating"
         assert increment_fn.call_args[0][2] == pytest.approx(1.5)
+
+
+class TestCyclingEdgeDetectionNamePrefix:
+    """Regression: Geraetename mit Leerzeichen ("Lambda WP").
+
+    sensor.py legt die Cycling-Sensoren mit normalize_name_prefix() an
+    (unique_id lambdawp_hp1_hot_water_cycling_total). Die Flankenerkennung muss
+    increment_cycling_counter() denselben normalisierten Prefix uebergeben - mit dem
+    rohen Namen sucht utils.py nach "lambda wp_hp1_..." und findet die Entity nie
+    ("Cycling entity ... not found, using fallback state update"), die Zaehler bleiben 0.
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("device_name, expected", [("Lambda WP", "lambdawp"), ("EU08L", "eu08l")])
+    async def test_operating_state_edge_passes_normalized_prefix(self, mock_hass, mock_entry, device_name, expected):
+        mock_entry.data["name"] = device_name
+        coordinator = LambdaDataUpdateCoordinator(mock_hass, mock_entry)
+        coordinator._initialization_complete = True
+        coordinator._last_operating_state = {"1": 1}  # vorher Heizen
+        coordinator._last_compressor_rating = {"1": 0}
+
+        with patch.object(coordinator, "_cycling_entities_ready", return_value=True), patch(
+            "custom_components.lambda_heat_pumps.coordinator.increment_cycling_counter",
+            new_callable=AsyncMock,
+        ) as increment:
+            # Heizen -> Warmwasser und Kompressorstart: zwei Flanken
+            await coordinator._run_cycling_edge_detection(
+                {"hp1_operating_state": 2, "hp1_compressor_unit_rating": 25}
+            )
+
+        assert increment.await_count == 2
+        for call in increment.await_args_list:
+            assert call.kwargs["name_prefix"] == expected
