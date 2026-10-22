@@ -1,6 +1,8 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 21.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 20.10.2026 eingearbeitet)
+- **Stand:** 22.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026 eingearbeitet)
+- **`main` (2.x) wird nicht mehr geändert** (Entscheidung 22.10.2026). Alle Fixes nur noch in `3.5`; `main` bekommt sie mit dem Merge.
+- **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 - **Geprüfter Code:** `origin/3.5` @ `be4728b` (Integration v3.5.7, noch ohne Tag); Erstanalyse gegen `55439d4` (v3.5.6)
 - **Grundlage:** alle 24 offenen GitHub-Issues. Geprüft wurden die 9 mit Label `bug` und die 6 ohne Label, die einen Fehler beschreiben. Die 9 `enhancement`-Issues sind nur am Ende aufgelistet.
 - **Tester-Hinweis (20.10.2026):** Die Testberichte von @Sturmi77 (#105, #120, #122/#85, #128, #133, #134, #136) stammen von einer Pumpe mit **Firmware V1.0.4-3K** (Display: Wärmepumpenmodul SW V1.0.4-3K, Build 29.06.2026). In der Integration war **V1.1.0-3K** eingestellt. Für 3.5.7 ist das gleichwertig: Beide haben Stufe ≥ 3 und `low_first`, die Integration legt dieselben Entitäten an (Firmware-Grenzen gibt es nur bei Stufe 1–2, 1–7 und ≥ 3, `sensor.py:177/307/308`). Unterschied ist nur die Modellanzeige am Gerät.
@@ -22,7 +24,7 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 | [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | Akkumulierte Energiezähler falsch / negativ | ✅ **Regression behoben** (F1 + F2, siehe #133), HW-Test ausstehend | – |
 | [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **Regression behoben** (gleiche Ursache wie #104), HW-Test ausstehend | – |
 | [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | Falsche Firmware-Version übernommen | 🟠 **teilweise offen** (Migration bevorzugt veralteten Wert); Index-Fehler im Code nicht nachweisbar | mittel |
-| [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | Neue Steuerung FW 1.3.8 / 1.3.10 | 🟠 **teilweise offen** (Restpunkte + Regression #108); V1.0.4-3K ✅ in 3.5.7 | mittel |
+| [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | Neue Steuerung FW 1.3.8 / 1.3.10 | 🟠 **teilweise offen**; V1.0.4-3K ✅ in 3.5.7; neu 21.10.: zweiter Rohdump (EU15L, **V1.0.2-3K**, Kompressor läuft) → F26–F28, F7 geklärt | mittel |
 | [#122](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/122) | Entity-ID mit falscher Domain (`sensor.*_heating_circuit`) | 🟡 Code behoben, **Registry-Altlasten offen**; bei einem Tester (Upgrade 2.8.6 → 3.5.6) nicht aufgetreten | mittel (Frist HA 2027.5) |
 | [#85](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/85) | Entity-ID mit falscher Domain (`sensor.*_boil1_hot_water`) | 🟡 wie #122 (Duplikat) | mittel (Frist HA 2027.5) |
 | [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | 🟢 auf 3.5.6 **nicht reproduzierbar** (Retest 18.10., Modus „Manuell“); Modus „Automatik“ ungetestet | niedrig |
@@ -105,7 +107,7 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 
 ---
 
-## 🟠 #100: Neue Steuerung (SW 1.3.8 / 1.3.10, FW V1.0.4-3K)
+## 🟠 #100: Neue Steuerung (SW 1.3.8 / 1.3.10, FW V1.0.2-3K / V1.0.4-3K)
 
 Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, Stand in 3.5:
 
@@ -113,18 +115,26 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 |---|---|
 | 1: Energie-Delta wird gekappt statt verworfen | ✅ behoben (`_energy_delta` verwirft) |
 | 2: Sentinel-Werte 0x8000 / -3000 / 0xFFFF | ✅ für `gauge`/`enum` behoben (`lambda_modbus/model.py`: `SENTINELS`, opt-in `NO_REQUEST`) |
-| 3: Register 1024–1060 auf der neuen Steuerung nicht belegt | 🟠 teilweise: Gauges zeigen `unknown`, die **`integer`-Felder `config_parameter_24/33/50/60` zeigen weiterhin 32768** (`heat_pump.py`, `sensor.py:223/232/238/248`); sie haben weder Sentinel noch Firmware-Range |
+| 3: Register 1024–1060 auf der neuen Steuerung nicht belegt | 🟠 teilweise: Gauges zeigen `unknown`, die **`integer`-Felder `config_parameter_24/33/50/60` zeigen weiterhin 32768** (`heat_pump.py`, `sensor.py:223/232/238/248`); sie haben weder Sentinel noch Firmware-Range. **21.10.: an zweiter Anlage bestätigt**, 1024–1033 und 1051–1060 gesichert ohne Wert ab V1.0.x → F27 (Ausschluss per Firmware), F28 (Sentinel für `integer`) |
 | 4a: `ambient_temperature` | 🔴 **Regression**, siehe unten |
-| 4b: `volume_flow_heat_sink` Einheit/Skalierung | 🟠 offen: weiterhin `integer(6, unit="l/h")`, Skala 1 (`heat_pump.py:26`, `sensor.py:195`); der Vorschlag `l/min`, Skala 0.01, wurde nie umgesetzt (auch nicht in `main`) |
+| 4b: `volume_flow_heat_sink` Einheit/Skalierung | ✅ **geklärt 21.10.: `l/h`, Skala 1 ist richtig.** Rohwert 1047 bei 6,1 kW und 5,1 K Spreizung ergibt per Wärmebilanz ~1.030 l/h; der Vorschlag `l/min`/0.01 (= 628 l/h) passt nicht. Keine Änderung (F7 entfällt) |
 | Firmware „V1.0.4-3K“ in die Auswahl aufnehmen (zugesagt am 04.08.) | ✅ **FIXED** 17.10.2026: in `FIRMWARE_CONFIG` mit Ordinal 9 und `low_first` (Rohdump von @madmaxx425); `V1.1.0-3K` rückt auf 10 |
+| Firmware „V1.0.2-3K“ (neu 21.10., @BMeyendriesch) | 🟠 offen → **F26**: fehlt in `FIRMWARE_CONFIG`; `low_first` durch Zähler belegt (1020–1023 = `17563 0 32623 1` → 17,6 / 98,2 kWh) |
+
+**Neuer Datenpunkt (21.10.2026, @BMeyendriesch):** EU15L, in Betrieb seit 20.10.2026, SW V1.3.10 (29.06.2026), **WP-Firmware V1.0.2-3K**, Integration 2.8.6 mit Option V1.1.0-3K. Vollständiger FC03-Dump im Heizbetrieb mit laufendem Kompressor:
+- 1024–1043 und 1051–1063: alle 32768. Das Display zeigt Heißgas, Kondensation, Sauggas, Verdampfung, Unterkühlung, Expansionsventil und EqM **mit Werten**; die Steuerung gibt sie nur nicht über Modbus aus. Anfrage beim Lambda-Support läuft.
+- 1008 (EQ-Austritt) und 1015–1018: 32768; 0002: −3000; 5003–5005: −3000; 3005–3009 und 5006: −1; 1050: 0.
+- Gültig: 1000–1007, 1009–1014 (COP 5,90), 1019–1023, 0003/0004, 5007 = 39,6 °C.
+- In 2.8.6 ist 5007 doppelt angelegt (#112): `hc1_flow_line_temperature_setpoint` bekommt den Wert, `hc1_target_temp_flow_line` bleibt `unknown`. In 3.5.5 behoben; beim Upgrade gilt der Hinweis aus #134.
+- Vollständige Auswertung aller Dumps: [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md).
 
 **Regression von #108 (geschlossen):** In `main`/2.8.x wurde `ambient_temperature` auf Wunsch von #108 auf `firmware_versions: ["1-9"]` erweitert, weil Register 2 auch auf V1.1.0-3K gültige Werte liefert und ungültige Werte über `sentinel_values` abgefangen werden. In 3.5 steht wieder `firmware_versions=("1-7",)` (`sensor.py:177`). Auf **V0.0.10-3K und V1.1.0-3K wird die Entity also gar nicht mehr angelegt**, obwohl `general.py` den 0xFFFF-Sentinel für dieses Feld bereits abfängt.
 
 **Lösungsansatz:**
-1. `sensor.py:177`: Die Firmware-Range entfernen (oder `("1-9",)` setzen). Die Sentinel-Filterung in `Ambient.temperature` reicht aus. Dazu einen Regressionstest für #108 schreiben.
+1. ~~`sensor.py:177`: Die Firmware-Range entfernen (oder `("1-9",)` setzen). Die Sentinel-Filterung in `Ambient.temperature` reicht aus. Dazu einen Regressionstest für #108 schreiben.~~ **Zurückgestellt (22.10.2026):** Register 0002 ist laut Lambda-Protokoll ein Schreibregister für einen extern eingespeisten Außenwert. Auf V1.0.4-3K liefert es ohne Einspeisung −3000 (#100) **oder den Rohwert −300** (#107, = −30,0 °C, kein Sonderwert). Der einzige gültige Wert in #108 kam von einer externen Einspeisung, die Firmware-Angabe dort wurde zurückgezogen. Ohne Firmware-Range würde 3.5 auf solchen Anlagen −30,0 °C anzeigen. Siehe F3.
 2. ✅ **Erledigt (3.5.7).** ~~`"V1.0.4-3K"` in `FIRMWARE_CONFIG` aufnehmen.~~ Ordinal und `reg_order` vorher mit den Testern aus #100 klären (@b-bremer, @7xy, @madmaxx425). Laut Thread sind die Register identisch mit Protokoll 1.0, die Reihenfolge ist vermutlich `low_first`. Achtung: Ordinals sind Vergleichswerte für `firmware_version`. Eine neue Version zwischen den bestehenden erfordert entweder eine Neunummerierung (und eine Prüfung aller `firmware_version`/`firmware_versions`-Angaben) oder ein Ordinal ≥ 10.
-3. `config_parameter_*` (die `integer`-Felder im Bereich 1024–1060): entweder `nan=SENTINELS` am Feld setzen oder sie per `firmware_versions` auf die alten Steuerungen begrenzen. Die Alternative: Default-mäßig deaktivieren (`entity_registry_enabled_default=False`), weil sie undokumentiert sind.
-4. `volume_flow_heat_sink`: Mit Lambda-Protokoll 1.0 und einem Rohwert-Dump verifizieren. Ist die Korrektur bestätigt, `gauge(6, 0.01, unit="l/min")` verwenden und die Sensoreinheit anpassen. **Achtung:** Schon der Wechsel 2.x → 3.5 erzeugt für diesen Sensor die Reparaturen „Einheit geändert“ (`l/h` → `L/h`) und „Mittelwert-Typ geändert“ (`total` → `measurement`, nur durch Löschen der Statistik behebbar, siehe #134). Ein weiterer Einheitenwechsel sollte deshalb **im selben Release** kommen, damit Anwender die Statistik nur einmal löschen müssen.
+3. `config_parameter_*` (die `integer`-Felder im Bereich 1024–1060): entweder `nan=SENTINELS` am Feld setzen oder sie per `firmware_versions` auf die alten Steuerungen begrenzen. Die Alternative: Default-mäßig deaktivieren (`entity_registry_enabled_default=False`), weil sie undokumentiert sind. → Jetzt **F27** (Ausschluss ab V1.0.x für 1024–1033 und 1051–1060) und **F28** (Sentinel für `integer`-Felder).
+4. ✅ **Geklärt 21.10.2026, keine Änderung:** `l/h`, Skala 1 stimmt (Wärmebilanz, siehe oben). ~~`volume_flow_heat_sink`: Mit Lambda-Protokoll 1.0 und einem Rohwert-Dump verifizieren.~~ Ist die Korrektur bestätigt, `gauge(6, 0.01, unit="l/min")` verwenden und die Sensoreinheit anpassen. **Achtung:** Schon der Wechsel 2.x → 3.5 erzeugt für diesen Sensor die Reparaturen „Einheit geändert“ (`l/h` → `L/h`) und „Mittelwert-Typ geändert“ (`total` → `measurement`, nur durch Löschen der Statistik behebbar, siehe #134). Ein weiterer Einheitenwechsel sollte deshalb **im selben Release** kommen, damit Anwender die Statistik nur einmal löschen müssen.
 5. In der Doku (initiale Konfiguration) klarstellen, welche Versionsanzeige gemeint ist (Statuszeile der WP-Seite, nicht SW-Version). Laut Thread ist die Doku mit GIF bereits online, also nur prüfen.
 
 ---
@@ -382,6 +392,8 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | Doku in `3.5` wurde nie gebaut, Fehler fielen nicht auf | – | ✅ neuer Workflow `docs-check.yml` + `script/check_docs.py` |
 | PV-Überschuss: kein Weiterschreiben, wenn der Quellsensor `unknown`/`unavailable` ist → E-Manager-Fehler 6 nach einigen Minuten (auch in 2.8.6 so) | `services.py:105ff` | F15, siehe #120 |
 | 2.x-Modus `pv_surplus_mode: entry` wird nicht migriert; 3.5 kennt nur `pos`/`neg`. Schreiben funktioniert (wie `pos`), im Options-Dialog ist `entry` aber kein gültiger Auswahlwert (Verhalten der Oberfläche ungeprüft) | `__init__.py`, `async_migrate_entry` | F16 |
+| `integer()` filtert keine Sonderwerte (nur `gauge()`/`enum()` setzen `nan`). `config_parameter_*` und `request_type` zeigen 32768, `emgr_actual_power` −32768 W (#91, V0.0.8-3K, E-Manager nicht auf Modbus) | `lambda_modbus/model.py`, `heat_pump.py`, `general.py` | F28 |
+| Doku/Changelog 3.5.2: „0xFFFF erscheint als −300 °C“ ist falsch (0xFFFF = −0,1 °C; −300 °C ist −3000 und war schon gefiltert). Gleicher Fehler im Kommentar `general.py:15`; `Entwickler/sensoren-uebersicht.md:41` nennt für 0002 `0x8000`, gemessen wurden −3000 und −300 | `CHANGELOG*.md`, `FAQ/falsche-keine-sensorwerte.md`, `general.py`, `Entwickler/sensoren-uebersicht.md` | F29 |
 | Merge `3.5` → `main` hat einen Konflikt in `hacs.json` (`homeassistant`: 2024.3.3 vs. 2026.9.0); richtig ist der Wert aus `3.5` | `hacs.json` | Merge-Vorbereitung |
 | Doku-Workflow hat keinen `workflow_dispatch`, lässt sich also nicht manuell starten | `.github/workflows/docsz.yml` | optional |
 | **Externer Energiezähler: Rückfall auf das Lambda-Register.** Liefert ein in `energy_consumption_sensors` eingetragener Zähler `unknown`/`unavailable`, nimmt `_track_energy` (`if reading is None: reading = register`) das Lambda-Register, obwohl `_meter_reading` laut Kommentar genau das vermeiden soll. Kommt der Zähler zurück, wird die Differenz zwischen beiden Zählern als Verbrauch gebucht, sofern sie unter 100 kWh liegt. | `coordinator.py:458-460` | F18, ✅ behoben 18.10.2026 (`_energy_source`, `_forget_energy_sources`) |
@@ -432,18 +444,18 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 |---|---|---|---|---|---|
 | F1 | ✅ **FIXED** – Migration: Registerreihenfolge nur übernehmen, wenn die YAML sie explizit setzt | #104/#90/#133 | **S** (~10 Zeilen, `__init__.py:141-179`) | 🔴 **hoch** | Unit **M** + HW **M** |
 | F2 | ✅ **FIXED** (einfache Variante + Zurücksetzen bei Firmwarewechsel) – Options-Flow: Default der Registerreihenfolge aus der Firmware | #104/#133 | **S** (~3 Zeilen, `config_flow.py:281`); Variante „auto“: **M** | 🔴 **hoch** | Unit **S**; mit „auto“ **M** |
-| F3 | `ambient_temperature`: Firmware-Range 1-7 entfernen | #100/#108 | **S** (1 Zeile, `sensor.py:177`) | 🟠 **mittel–hoch** | Unit **M** (Test schreibt Bug fest) + HW **S** |
+| F3 | ⏸ **zurückgestellt** (22.10.2026) – `ambient_temperature`: Firmware-Range 1-7 entfernen. Register 0002 liefert auf V1.0.4 ohne Einspeisung auch −300 (= −30,0 °C, #107); nur mit zusätzlichem Sonderwert −300 vertretbar | #100/#108 | **S** (1 Zeile, `sensor.py:177`) | 🟢 **niedrig** (Wert nur bei externer Einspeisung sinnvoll) | Unit **M** + HW **S** |
 | F4 | Migration: Firmware aus Options vor Data, Warnung bei unbekanntem Namen | #82 | **S** (~5 Zeilen, `__init__.py:134`) | 🟠 **mittel** | Unit **S** |
 | F5 | Climate-Entity-IDs `sensor.*` → `climate.*` in der Registry umbenennen | #122/#85 | **M** (~30–40 Zeilen + Klärung des HA-Verhaltens) | 🟠 **mittel** (ab HA 2027.5 hoch) | Unit **M** + HW **M** |
 | F6 | ✅ **FIXED** – `V1.0.4-3K` in `FIRMWARE_CONFIG` aufnehmen | #100 | **S** im Code, **L** in der Klärung (Ordinal, `reg_order`) | 🟠 **mittel** | Unit **S** + HW durch Tester |
-| F7 | `volume_flow_heat_sink`: Einheit/Skala prüfen und korrigieren | #100 | **S** im Code, **M** in der Verifikation | 🟢–🟠 **niedrig–mittel** | Unit **S** + HW **M** (Rohwert-Dump) |
-| F8 | `config_parameter_*`: 32768 ausblenden bzw. Default aus | #100 | **S** (4 Felder) | 🟢 **niedrig** | Unit **S** |
+| F7 | ✅ **entfällt** (21.10.2026) – `volume_flow_heat_sink`: `l/h`, Skala 1 per Wärmebilanz bestätigt (#100, V1.0.2-3K) | #100 | – | – | – |
+| F8 | → aufgegangen in **F27/F28** – `config_parameter_*`: 32768 ausblenden bzw. Default aus | #100 | **S** (4 Felder) | 🟢 **niedrig** | Unit **S** |
 | F9 | Modulerkennung: Retry bei Timeout | #101/#90 | **S–M** (~15 Zeilen) | 🟢 **niedrig** (selten, Reload hilft) | Unit **M** |
 | F10 | PV-Überschuss: Debug-Log und optionales Rücklesen | #105 | **S** | 🟠 **mittel** (falls der Bug noch existiert; unbestätigt) | HW **M** (Beobachtung über Stunden) |
 | F11 | Plausibilitätswarnung für 32-Bit-Zähler | #90/#104 | **S–M** | 🟢 **niedrig** (Absicherung, F1/F2 sind der Fix) | Unit **S** |
 | F12 | #132: Eingaberegister standardmäßig deaktivieren bzw. als Diagnose führen | #132 | **S** | 🟢 **niedrig** (UX) | Unit **S** |
 | F13 | ✅ **erledigt** (17.10.2026, beide Branches) – #95: Doku zur Heizkurve/Raumthermometer | #95/#128 | **S** | 🟢 **niedrig** | manuell |
-| F14 | ✅ **FIXED in `3.5`** (17.10.2026; `main`: nur PV-Seite offen) – Bildpfade `../../assets/` → `../assets/` | #120 | **S** (16 Dateien, mechanisch) | 🟠 **mittel** (vor dem Merge zwingend, sonst 21 kaputte Bilder live) | Build + Pfadprüfung (Skript vorhanden) |
+| F14 | ✅ **FIXED in `3.5`** (17.10.2026; `main` wird nicht mehr geändert, PV-Seite kommt mit dem Merge) – Bildpfade `../../assets/` → `../assets/` | #120 | **S** (16 Dateien, mechanisch) | 🟠 **mittel** (vor dem Merge zwingend, sonst 21 kaputte Bilder live) | Build + Pfadprüfung (Skript vorhanden) |
 | F15 | PV-Überschuss: 0 W senden (+ Log-Warnung), wenn die Quelle `unknown`/`unavailable` ist | #120/#105 | **S** | 🟠 **mittel** (verhindert E-Manager-Fehler 6) | Unit **S** |
 | F16 | Migration: `pv_surplus_mode: entry` → `pos` | – | **S** (1 Zeile in Schritt 9) | 🟢 **niedrig** | Unit **S** |
 | F17 | Abweichungssensor Pumpen-Sollwert − berechnete Kurve | #128 | **S–M** | 🟢 **niedrig** (Enhancement) | Unit **S** + HW **S** |
@@ -455,6 +467,10 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F23 | `select`-Entität Heizkreis-Betriebsart (5X06) mit Neuschreiben alle 3 min, „keine Anfrage“ = 0xFFFF | #136/#125 | **M** (neue Plattform, Timer, Restore, Übersetzungen) | 🟠 **mittel** (Enhancement, mehrfach nachgefragt) | Unit **M** + HW **S** (Tester bietet an) |
 | F24 | Doku PV-Überschuss: Psoll nur in „Automatik“, mögliche Temperaturanhebung; Messpunkt passend zum Zählerwert | #120/#137 | **S** | 🟢 **niedrig** | manuell (Automatik-Test des Testers abwarten) |
 | F25 | Antwort #134: V1.0.4-3K und V1.1.0-3K legen dieselben Entitäten an; optional Satz in Changelog/`firmware-wechsel.md` | #134 | **S** | 🟢 **niedrig** | – |
+| F26 | `V1.0.2-3K` in `FIRMWARE_CONFIG` (Stufe 9, `low_first`; V1.0.4 → 10, V1.1.0 → 11) | #100 | **S** (`const.py` + `test_firmware.py`) | 🟢 **niedrig** (heute: nächsthöhere Version wählen) | Unit **S** |
+| F27 | Sensoren auf 1024–1033 und 1051–1060 (21 Stück) ab V1.0.x nicht mehr anlegen (`firmware_versions=("1-8",)`); **offen:** V1.1.0-3K mit ausschließen? Danach prüfen, ob die Register auch nicht mehr gelesen werden (11 Einzelabfragen der Leistungsgrenzen) | #100/#119/#88 | **S** (+ **S–M** für das Lesen) | 🟠 **mittel** (21 dauerhaft „unbekannte“ bzw. 32768-Entitäten, Log-Last) | Unit **S**; Changelog-Hinweis (Entitäten „nicht mehr bereitgestellt“) |
+| F28 | Sonderwert 0x8000 auch für `integer`-Felder filtern (`config_parameter_*`, `request_type`, `emgr_actual_power`) | #91/#100 | **S** | 🟠 **mittel** (−32768 W bzw. 32768 als Messwert, z. B. im Energie-Dashboard) | Unit **S** |
+| F29 | Doku/Changelog/Kommentar korrigieren: 0xFFFF = −0,1 °C, nicht −300 °C; 0002-Aussage in der Entwickler-Doku | – | **S** | 🟢 **niedrig** | – |
 
 ### Begründungen im Detail
 
@@ -473,6 +489,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 - *Tests:* In `tests/test_options_flow.py` den Default für V1.1.0-3K (`low_first`) und V0.0.8-3K (`high_first`) prüfen, außerdem, dass ein gespeicherter Wert erhalten bleibt.
 
 **F3 – `ambient_temperature` (🟠 mittel–hoch, S, Test M)**
+- ⏸ **Zurückgestellt 22.10.2026:** Neue Belege (#100, #107, #108) zeigen, dass Register 0002 auf V1.0.x nur bei externer Einspeisung einen Wert hat und sonst −3000 oder −300 (= −30,0 °C) liefert. Die Bewertung unten ist damit überholt; Details in `REGISTER_OHNE_WERTE.md`.
 - *Wer ist betroffen:* Alle Anwender mit V0.0.10-3K oder V1.1.0-3K. In 2.8.x existiert die Entity (Fix #108), nach dem Upgrade auf 3.5 verschwindet sie: „nicht mehr bereitgestellt“. Automationen und Dashboards mit der Außentemperatur brechen. Das ist eine sichtbare Regression bei einem zentralen Sensor.
 - *Code:* 1 Zeile. Die Sentinel-Filterung (`general.py`, `nan=SENTINELS + (NO_REQUEST,)`) fängt ungültige Werte bereits ab.
 - *Tests:* `test_a_register_its_firmware_withdrew_is_not_modelled` (`tests/test_init.py:176`) nutzt **genau `ambient_temperature`** als Beispiel für den Firmware-Range-Mechanismus und prüft, dass die Entity bei V1.1.0 **fehlt**. Der Test muss auf ein anderes Register umgestellt werden (oder auf ein Test-Template), damit der Mechanismus weiter abgedeckt bleibt. Neu kommt ein Regressionstest für #108 hinzu: V1.1.0 mit gültigem Wert → Entity vorhanden, Wert korrekt; 0xFFFF → `unknown`. HW: kurzer Blick auf eine V1.1.0-Anlage.
@@ -496,6 +513,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 - *Tests:* `tests/test_firmware.py` (Ordinal, `reg_order`) erweitern. Die Verifikation an echter Hardware muss durch die Tester aus #100 erfolgen. Das ist die Abhängigkeit mit der größten Unsicherheit beim Zeitplan.
 
 **F7 – `volume_flow_heat_sink` (🟢–🟠, Code S, Verifikation M)**
+- ✅ **Entfällt (21.10.2026):** Rohwert-Dump von V1.0.2-3K bestätigt `l/h`, Skala 1 (Wärmebilanz).
 - Der Code ist trivial, aber ein Einheitenwechsel (l/h → l/min) löst bei bestehenden Statistiken einen HA-Statistik-Konflikt aus. Der Anwender muss die Statistik bereinigen. Vor dem 3.5-Release ist dafür der richtige Zeitpunkt, danach wäre es ein eigener Breaking Change.
 - *Voraussetzung:* ein Rohwert-Dump plus Displaywert von mindestens zwei Anlagen (alte und neue Steuerung). Ändert die neue Steuerung die Bedeutung, braucht es zusätzlich ein Firmware-Gating (zwei Felder an Adresse 6, analog zu #112).
 
@@ -509,9 +527,9 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | Paket | Fixes | Implementierung | Unit-Tests | HW-Verifikation |
 |---|---|---|---|---|
 | **A: vor dem Release zwingend** | ~~F1, F2~~ ✅, F3, F4, F14, F16, F20, F22 | ~0,5 Tag | ~1 Tag (inkl. Umschreiben von 3 bestehenden Tests) | 1 echter Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage (~0,5 Tag) |
-| **B: vor dem Release empfohlen** | F5, F7 | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
+| **B: vor dem Release empfohlen** | F5, F27, F28 (F7 entfällt) | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
 | **C: abhängig von Externen** | F6 | ~1 h | ~1 h | Tester aus #100 (Termin unklar) |
-| **D: nach dem Release möglich** | F8–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist), F23, F24, F25 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
+| **D: nach dem Release möglich** | F9–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist), F23, F24, F25, F26, F29 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
 
 **Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
 
@@ -519,12 +537,12 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F4, F5) **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration. Die Pakete beziehen sich auf die Bewertung oben.
 
-1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), F3 (#100/#108, `ambient_temperature`), F4 (#82, Firmware-Priorität), F14 (Bildpfade, vor dem Merge nach `main`), F16 (`entry` → `pos` in Schritt 9), F20 (Testumgebung HA 2026.10), F22 (hassfest auf `3.5`). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
-2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F7 (`volume_flow_heat_sink`, nur nach Hardware-Verifikation). Beides sind Breaking Changes, die am besten mit dem ohnehin großen Versionssprung 3.5 kommen.
+1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), ~~F3~~ ⏸ zurückgestellt, F4 (#82, Firmware-Priorität), F14 (Bildpfade, vor dem Merge nach `main`), F16 (`entry` → `pos` in Schritt 9), F20 (Testumgebung HA 2026.10), F22 (hassfest auf `3.5`). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
+2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F27 + F28 (Register ohne Werte, siehe `REGISTER_OHNE_WERTE.md`). Beides ändert Entitäten und kommt am besten mit dem ohnehin großen Versionssprung 3.5. ~~F7~~ entfällt.
 3. **Paket C, abhängig von Testern:** ~~F6 (`V1.0.4-3K`)~~ ✅ erledigt.
-4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F23 (#136 Betriebsart), F24 (Doku Betriebsart E-Manager), F25 (#134 Antwort), F8–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
+4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F23 (#136 Betriebsart), F24 (Doku Betriebsart E-Manager), F25 (#134 Antwort), F26 (V1.0.2-3K), F29 (Doku 0xFFFF), F9–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
 5. **Issues pflegen:** #121 und #112 schließen, #132 schließen (in #134 bestätigt), #94/#95 nach Rückmeldung schließen, #105 nach Retest schließen, #133 nach HW-Test des Melders schließen, #134 nach Antwort schließen, #120 nach F14 schließen, in #90 nach Firmware-Version/Rohwert fragen.
-6. **Merge `3.5` → `main` vorbereiten:** F14 vorher erledigen; Konflikt in `hacs.json` zugunsten von `3.5` lösen.
+6. **Merge `3.5` → `main` vorbereiten:** `main` wird bis dahin nicht mehr geändert; F14 ist in `3.5` erledigt; Konflikt in `hacs.json` zugunsten von `3.5` lösen.
 
 ---
 
