@@ -35,7 +35,7 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 | [#120](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/120) | Screenshots PV-Überschuss fehlen (toter Link) | 🟡 Bildpfade in `3.5` behoben (F14), `main` offen; neu: Doku zu „Manuell“/„Automatik“ (F24) | mittel (vor Merge 3.5 → main) |
 | [#134](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/134) | Upgrade-Hinweise 2.8.6 → 3.5.6 (Setpoint-Entity, Statistik-Reparaturen) | ✅ **Changelog ergänzt/korrigiert** (17.10.2026), Issue geschlossen; Rückfrage zu V1.0.4-3K vs. V1.1.0-3K offen (F25) | – |
 | [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Pumpen-Sollwert (Enhancement) | 🟡 Doku korrigiert (beide Branches), Abweichungssensor offen (F17); Tester bestätigt Nutzen mit Live-Daten | niedrig |
-| [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | 🟠 **Ursache geklärt:** 5X06 ist eine Anfrage mit ~5 min Timeout; Vorschlag `select`-Entität (F23) | mittel (Enhancement) |
+| [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | ⛔ **wird nicht umgesetzt** (22.10.2026): 5X06 ist eine Anfrage mit ~5 min Timeout; kein Eingriff in die Regelung (F23) | – |
 | [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss (2.8.6) | 🟡 **neu**, vermutlich Verhalten der Lambda; Rückfragen nötig | niedrig–mittel |
 | [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | `device_registry.async_get_device` deprecated | ✅ **behoben** in 3.5.4 | – |
 | [#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112) | Register 5007 doppelt adressiert | ✅ **behoben** in 3.5.5 | – |
@@ -321,7 +321,14 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 
 ---
 
-## 🟠 #136 (und #125): Setzen der Heizkreis-Betriebsart wird zurückgesetzt
+## ⛔ #136 (und #125): Setzen der Heizkreis-Betriebsart wird zurückgesetzt
+
+> **Entscheidung 22.10.2026: wird nicht umgesetzt (F23).** Gründe:
+> 1. Kein Eingriff in die Regelung der Lambda, erst recht nicht gegen ihren Wärmefahrplan. Dauerhaftes Neuschreiben alle paar Minuten würde die eigene Einstellung der Lambda laufend übersteuern, ohne dass es am Display sichtbar ist.
+> 2. Das Register gibt nicht zurück, was gesetzt wurde (nach dem Timeout „keine Anforderung“, Rücklesen firmwareabhängig, #31). Eine Entität würde etwas anderes zeigen als die Lambda tut; erwartbar sind viele neue Issues.
+> 3. Nicht resilient: Die Integration kann nicht prüfen, ob die Anforderung angekommen ist und noch gilt. Bei Neustart, Verbindungsabbruch oder Update fällt die Lambda still zurück. Ob ein Wechsel bei laufendem Verdichter zulässig ist, ist nicht dokumentiert.
+>
+> Wer es trotzdem will: `lambda_heat_pumps.write_modbus_register` in einer eigenen Automation, auf eigene Verantwortung. Issue mit „not planned“ schließen.
 
 **Meldung (@AndiBo62, 19.10.2026):** Das Setzen der Betriebsart funktioniert, wird aber zurückgesetzt; das Dropdown an der Steuerung zieht nicht mit. Er gleicht das per Automation aus.
 
@@ -335,7 +342,7 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 
 **Prüfung in 3.5:** `lambda_modbus/heating_circuit.py:27` modelliert `operating_mode` (5X06) bereits als `enum(..., writable=True, force_fc16=True, nan=SENTINELS + (NO_REQUEST,))`. Eine Entität zum Setzen gibt es nicht (Plattformen: climate, number, sensor); nur der Lesesensor.
 
-**Lösungsansatz (F23):**
+**Ehemaliger Lösungsansatz (F23, verworfen):**
 1. `select`-Entität pro Heizkreis mit den Modi plus „keine Anfrage“. Bei gewähltem Modus alle 3 min (sicher unter 5 min) neu schreiben; bei „keine Anfrage“ `0xFFFF` schreiben und das Wiederholen beenden.
 2. Angezeigter Zustand aus dem zuletzt geschriebenen Wert, nicht aus dem Register (Rücklesen firmwareabhängig). Auswahl über Neustarts mit `RestoreEntity` halten.
 3. Doku: Das ist eine **zeitlich begrenzte Anforderung**, keine Einstellung; das Display-Dropdown ändert sich nicht.
@@ -464,7 +471,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F20 | Testumgebung auf HA 2026.10 anheben + deprecated `async_get_device` im Test ersetzen | HA 2026.10 | **S** (1 Pin + 2 Testzeilen) | 🟠 **mittel** (Tests laufen sonst gegen eine HA-Version unter dem Minimum) | Testlauf |
 | F21 | Climate-Properties → `native_…`, Mindestversion 2026.11.0 – **erst nach Erscheinen von 2026.11** | HA 2026.11 | **S** (~5 Zeilen + `hacs.json`) | 🟢 **niedrig** (nur Log-Warnungen bis 2027.11) | Unit **S** |
 | F22 | hassfest (`ha.yml`) auf `3.5` laufen lassen | HA 2026.10 | – | 🟢 **niedrig** | CI |
-| F23 | `select`-Entität Heizkreis-Betriebsart (5X06) mit Neuschreiben alle 3 min, „keine Anfrage“ = 0xFFFF | #136/#125 | **M** (neue Plattform, Timer, Restore, Übersetzungen) | 🟠 **mittel** (Enhancement, mehrfach nachgefragt) | Unit **M** + HW **S** (Tester bietet an) |
+| F23 | ⛔ **wird nicht umgesetzt** (22.10.2026) – `select`-Entität Heizkreis-Betriebsart (5X06) mit Neuschreiben alle 3 min. Gründe: kein Eingriff in die Regelung/Wärmefahrplan, Register gibt den gesetzten Wert nicht zurück, Ankunft nicht prüfbar | #136/#125 | – | – | – |
 | F24 | Doku PV-Überschuss: Psoll nur in „Automatik“, mögliche Temperaturanhebung; Messpunkt passend zum Zählerwert | #120/#137 | **S** | 🟢 **niedrig** | manuell (Automatik-Test des Testers abwarten) |
 | F25 | Antwort #134: V1.0.4-3K und V1.1.0-3K legen dieselben Entitäten an; optional Satz in Changelog/`firmware-wechsel.md` | #134 | **S** | 🟢 **niedrig** | – |
 | F26 | `V1.0.2-3K` in `FIRMWARE_CONFIG` (Stufe 9, `low_first`; V1.0.4 → 10, V1.1.0 → 11) | #100 | **S** (`const.py` + `test_firmware.py`) | 🟢 **niedrig** (heute: nächsthöhere Version wählen) | Unit **S** |
@@ -529,7 +536,7 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | **A: vor dem Release zwingend** | ~~F1, F2~~ ✅, F3, F4, F14, F16, F20, F22 | ~0,5 Tag | ~1 Tag (inkl. Umschreiben von 3 bestehenden Tests) | 1 echter Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage (~0,5 Tag) |
 | **B: vor dem Release empfohlen** | F5, F27, F28 (F7 entfällt) | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
 | **C: abhängig von Externen** | F6 | ~1 h | ~1 h | Tester aus #100 (Termin unklar) |
-| **D: nach dem Release möglich** | F9–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist), F23, F24, F25, F26, F29 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
+| **D: nach dem Release möglich** | F9–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist), F24, F25, F26, F29 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
 
 **Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
 
@@ -540,7 +547,7 @@ Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F
 1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), ~~F3~~ ⏸ zurückgestellt, F4 (#82, Firmware-Priorität), F14 (Bildpfade, vor dem Merge nach `main`), F16 (`entry` → `pos` in Schritt 9), F20 (Testumgebung HA 2026.10), F22 (hassfest auf `3.5`). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
 2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F27 + F28 (Register ohne Werte, siehe `REGISTER_OHNE_WERTE.md`). Beides ändert Entitäten und kommt am besten mit dem ohnehin großen Versionssprung 3.5. ~~F7~~ entfällt.
 3. **Paket C, abhängig von Testern:** ~~F6 (`V1.0.4-3K`)~~ ✅ erledigt.
-4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F23 (#136 Betriebsart), F24 (Doku Betriebsart E-Manager), F25 (#134 Antwort), F26 (V1.0.2-3K), F29 (Doku 0xFFFF), F9–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
+4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F24 (Doku Betriebsart E-Manager), F25 (#134 Antwort), F26 (V1.0.2-3K), F29 (Doku 0xFFFF), F9–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
 5. **Issues pflegen:** #121 und #112 schließen, #132 schließen (in #134 bestätigt), #94/#95 nach Rückmeldung schließen, #105 nach Retest schließen, #133 nach HW-Test des Melders schließen, #134 nach Antwort schließen, #120 nach F14 schließen, in #90 nach Firmware-Version/Rohwert fragen.
 6. **Merge `3.5` → `main` vorbereiten:** `main` wird bis dahin nicht mehr geändert; F14 ist in `3.5` erledigt; Konflikt in `hacs.json` zugunsten von `3.5` lösen.
 
