@@ -56,5 +56,5 @@ Was in `lambda_wp_config.yaml` bleibt: Offsets und externe Energiezähler, siehe
 | 3.5.5 | Doppelte Belegung von Heizkreis-Register 7 bei Firmware ab V0.0.5-3K (#112) |
 | 3.5.4 | Veraltete Home-Assistant-Funktion ersetzt (#121) |
 | 3.5.3 | Schreibzugriffe schlugen fehl (falscher Modbus-Funktionscode) |
-| 3.5.2 | Sonderwerte wie −300 °C werden als „unbekannt“ angezeigt; Modbus-Zugriffe sauber serialisiert |
+| 3.5.2 | Sonderwert 0xFFFF (−0,1 °C) wird bei Außentemperatur und Anforderungen als „unbekannt“ angezeigt; Modbus-Zugriffe sauber serialisiert |
 | 3.5.0 | Neu geschriebene Integration |

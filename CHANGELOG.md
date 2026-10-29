@@ -17,6 +17,18 @@
 > - **Firmware 3+ (from V0.0.5-3K, incl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` is gone.** On this firmware, heating-circuit register 7 is the read-only target flow temperature the controller works with, not a writable setpoint request ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Its replacement is `hcX_target_temp_flow_line`. The old entity stays behind as "no longer provided", and dashboards, helpers and automations using it break silently. → To keep the history: delete the orphaned `…_flow_line_temperature_setpoint` entity, then rename `…_target_temp_flow_line` to the old entity_id (Settings → Entities → entity → ⚙ → Entity ID).
 > - Back up before upgrading.
 
+### [3.6.0] - 2026-10-29
+
+**Misread energy counters are caught.** Some controllers lay out their 32-bit counters the other way round than their firmware is documented to (e.g. a `V0.0.10-3K` that needs `high_first`, [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104)). When the accumulated energy counters read as values a heat pump cannot have (below zero or above 1 GWh) but make sense with the other order, a repair **"Check the 32-bit register order"** names the setting to choose. Until then the two counters keep their last plausible value, the calculated COP is unknown and no energy is booked from them, so the long-term statistics stay clean. The FAQ now explains step by step how to clean up statistics recorded with a wrong order.
+
+**New controller:** firmware `V1.0.2-3K`, `V1.0.7-3K` and `V1.0.8-3K` can be selected ([#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100), [#144](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/144)). On V1.0.x the 20 undocumented sensors on registers 1024–1033 and 1051–1060 (hot gas, suction gas, expansion valve, capacity limits, config parameters 24/33/60, …) are no longer created: the new controller answers them with 32768 only, even while the display shows values. Existing ones show as "no longer provided" and can be deleted. `V1.1.0-3K` keeps them.
+
+**Fewer meaningless values:** `-32768 W` in the E-Manager and inverter powers (and in the heat sink flow and request type) now reads as unknown ([#91](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/91)). Request and write registers that only hold a value while something requests one (heat pump 1015–1018, buffer 3005–3009, heating circuit room/flow request and operating mode) are disabled by default on new installations ([#132](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/132), [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143)); existing entities keep their state.
+
+**Upgrade from 2.x:** a firmware changed later in the 2.x options dialog is now taken over instead of the one originally set up ([#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82)); an unknown firmware name raises a repair instead of silently falling back to the oldest. The 2.x PV-surplus mode `entry` is offered as `pos` in the options dialog.
+
+**Testers on 3.5.x:** if your entry was migrated with 3.5.6 or older, check *Configure → 32-bit register order* once (the new repair also points it out).
+
 ### [3.5.7] - 2026-10-17
 
 Fixed the 2.x→3.5 migration pinning the 32-bit register order to `high_first`: without an explicit value in the old `lambda_wp_config.yaml` (missing, empty or commented-out key — the usual case), the migration stored `high_first` instead of leaving the setting unset, so the firmware default no longer applied. On firmware `V0.0.10-3K` and `V1.1.0-3K` (low word first) the accumulated energy counters jumped to absurd values (e.g. 1.14 billion Wh) and polluted the long-term statistics. The setting is now only carried over when the old file sets it explicitly; otherwise the firmware's own order applies, as in 2.8.x. The options dialog now also pre-selects the firmware's order instead of `high_first`, so saving it unchanged no longer pins the wrong value. **Already upgraded to 3.5 before this fix?** Check *Settings → Integrations → Lambda → Configure → 32-bit register order* and set `low_first` for V0.0.10-3K/V1.1.0-3K. See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details. [Issue #133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133)
@@ -41,7 +53,7 @@ Fixed a functional regression from the 3.5.0 rewrite found via live testing: eve
 
 ### [3.5.2] - 2026-09-06
 
-Follow-up to the 3.5.0 rewrite adoption: fixed three gaps found by auditing every 2.7.x/2.8.x bugfix from the pre-rewrite `main` branch against the rewritten codebase — a `via_device` deprecation warning on sub-devices, a `0xFFFF` sentinel ("no request"/"no external sensor") read as a real value (e.g. exactly -300.0 °C for the outside temperature), and Modbus reads/writes not actually being serialized against each other (the class of issue behind #105). See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details and the new regression tests.
+Follow-up to the 3.5.0 rewrite adoption: fixed three gaps found by auditing every 2.7.x/2.8.x bugfix from the pre-rewrite `main` branch against the rewritten codebase — a `via_device` deprecation warning on sub-devices, a `0xFFFF` sentinel ("no request"/"no external sensor") read as a real value (-0.1 °C once scaled, e.g. for the outside temperature), and Modbus reads/writes not actually being serialized against each other (the class of issue behind #105). See [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md) for details and the new regression tests.
 
 ### [3.5.0] - 2026-09-06
 
@@ -61,6 +73,18 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 > - Reparaturen zu *unbekannten Entitätsreferenzen* in Dashboards/Templates bedeuten, dass eine 2.x-Entität in 3.5 umbenannt oder entfernt wurde — Karte/Template anpassen.
 > - **Firmware 3+ (ab V0.0.5-3K, inkl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` entfällt.** Auf dieser Firmware ist Heizkreis-Register 7 die schreibgeschützte Vorlauf-Solltemperatur, mit der die Steuerung arbeitet, keine beschreibbare Sollwert-Anforderung ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Ersatz ist `hcX_target_temp_flow_line`. Die alte Entität bleibt als „nicht mehr bereitgestellt“ zurück; Dashboards, Helfer und Automationen, die sie nutzen, brechen stillschweigend. → Um den Verlauf zu behalten: die verwaiste `…_flow_line_temperature_setpoint`-Entität löschen, dann `…_target_temp_flow_line` auf die alte entity_id umbenennen (Einstellungen → Entitäten → Entität → ⚙ → Entitäts-ID).
 > - Vor dem Update ein Backup erstellen.
+
+### [3.6.0] - 2026-10-29
+
+**Falsch gelesene Energiezähler werden erkannt.** Manche Steuerungen legen ihre 32-Bit-Zähler andersherum ab, als es für ihre Firmware dokumentiert ist (z. B. eine `V0.0.10-3K`, die `high_first` braucht, [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104)). Liefern die akkumulierten Energiezähler Werte, die eine Wärmepumpe nicht haben kann (unter null oder über 1 GWh), und sind sie mit der anderen Reihenfolge plausibel, erscheint die Reparatur **„32-Bit-Registerreihenfolge prüfen“** mit der passenden Einstellung. Bis dahin behalten die beiden Zähler ihren letzten plausiblen Wert, der berechnete COP ist unbekannt, und es wird keine Energie aus ihnen gezählt. Die Langzeitstatistik bleibt dadurch sauber. Die FAQ beschreibt jetzt Schritt für Schritt, wie man eine mit falscher Reihenfolge aufgezeichnete Statistik bereinigt.
+
+**Neue Steuerung:** Die Firmware `V1.0.2-3K`, `V1.0.7-3K` und `V1.0.8-3K` ist auswählbar ([#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100), [#144](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/144)). Auf V1.0.x werden die 20 undokumentierten Sensoren auf den Registern 1024–1033 und 1051–1060 (Heißgas, Sauggas, Expansionsventil, Leistungsgrenzen, Config-Parameter 24/33/60 …) nicht mehr angelegt: Die neue Steuerung liefert dort nur 32768, auch wenn das Display Werte zeigt. Vorhandene erscheinen als „nicht mehr bereitgestellt“ und können gelöscht werden. `V1.1.0-3K` behält sie.
+
+**Weniger sinnlose Werte:** `-32768 W` bei den Leistungen von E-Manager und Inverter (sowie beim Volumenstrom und beim Anforderungstyp) wird jetzt als „unbekannt“ angezeigt ([#91](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/91)). Anforderungs- und Schreibregister, die nur bei einer aktiven Anforderung einen Wert haben (Wärmepumpe 1015–1018, Puffer 3005–3009, Raum-/Vorlauf-Anforderung und Betriebsart des Heizkreises), sind bei neuen Installationen standardmäßig deaktiviert ([#132](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/132), [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143)); vorhandene Entitäten behalten ihren Zustand.
+
+**Update von 2.x:** Eine später im 2.x-Optionsdialog geänderte Firmware wird jetzt übernommen statt der ursprünglich eingerichteten ([#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82)); ein unbekannter Firmware-Name erzeugt eine Reparatur, statt still auf die älteste zurückzufallen. Der 2.x-PV-Modus `entry` wird im Optionsdialog als `pos` angeboten.
+
+**Tester mit 3.5.x:** Wurde Ihr Eintrag mit 3.5.6 oder älter migriert, prüfen Sie einmal *Konfigurieren → 32-Bit-Registerreihenfolge* (die neue Reparatur weist ebenfalls darauf hin).
 
 ### [3.5.7] - 2026-10-17
 
@@ -86,7 +110,7 @@ Eine Funktionsregression aus dem 3.5.0-Rewrite behoben, gefunden beim Live-Test:
 
 ### [3.5.2] - 2026-09-06
 
-Nachzieharbeiten zur 3.5.0-Rewrite-Übernahme: drei Lücken behoben, gefunden bei der Prüfung aller 2.7.x/2.8.x-Bugfixes des Vor-Rewrite-Branches `main` gegen den neu geschriebenen Code — eine `via_device`-Deprecation-Warnung bei Sub-Geräten, ein als echter Wert gelesener `0xFFFF`-Sonderwert ("keine Anforderung"/"kein externer Sensor", z. B. exakt -300,0 °C bei der Außentemperatur) sowie nicht tatsächlich serialisierte Modbus-Lese-/Schreibvorgänge (dieselbe Fehlerklasse wie Issue #105). Details und die neuen Regressionstests siehe [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md).
+Nachzieharbeiten zur 3.5.0-Rewrite-Übernahme: drei Lücken behoben, gefunden bei der Prüfung aller 2.7.x/2.8.x-Bugfixes des Vor-Rewrite-Branches `main` gegen den neu geschriebenen Code — eine `via_device`-Deprecation-Warnung bei Sub-Geräten, ein als echter Wert gelesener `0xFFFF`-Sonderwert ("keine Anforderung"/"kein externer Sensor", skaliert -0,1 °C, z. B. bei der Außentemperatur) sowie nicht tatsächlich serialisierte Modbus-Lese-/Schreibvorgänge (dieselbe Fehlerklasse wie Issue #105). Details und die neuen Regressionstests siehe [CHANGELOG_ALL_CHANGES.md](CHANGELOG_ALL_CHANGES.md).
 
 ### [3.5.0] - 2026-09-06
 

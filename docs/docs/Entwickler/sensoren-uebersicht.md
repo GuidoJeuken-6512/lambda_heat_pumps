@@ -38,9 +38,12 @@ Home-Assistant-Metadaten (State Class, Device Class) aus `sensor.py`.
 | `eu08l_emgr_actual_power_consumption` | `emgr_actual_power_consumption` | 103 | 1 | measurement | power | E-Manager Power Consumption |
 | `eu08l_emgr_power_consumption_setpoint` | `emgr_power_consumption_setpoint` | 104 | 1 | measurement | power | E-Manager Power Consumption Setpoint |
 
-`ambient_temperature` liest auf Firmware ab V0.0.10-3K zwar noch etwas zurück,
-aber keinen Messwert mehr (`0x8000`) — das Sensor-Template ist deshalb ab
-Firmware 8 nicht mehr aktiv (`firmware_versions=("1-7",)` in `sensor.py`).
+`ambient_temperature` (Register 0002) ist laut Lambda-Protokoll ein Schreibregister
+für einen extern eingespeisten Außenwert. Ohne Einspeisung liefert die neue
+Steuerung dort −3000 (`0xF448`) oder den Rohwert −300 (= −30,0 °C, kein
+Sonderwert, #100/#107). Das Sensor-Template ist deshalb ab Firmware 8 nicht mehr
+aktiv (`firmware_versions=("1-7",)` in `sensor.py`); als Außentemperatur dient
+`ambient_temperature_calculated` (Register 0004).
 
 ## Heat Pump (Wärmepumpe, voller Poll alle 30s)
 

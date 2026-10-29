@@ -4,7 +4,7 @@ title: "PV Überschuss Steuerung"
 
 # PV Überschuss Steuerung
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 29.10.2026*
 
 Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu meldet die Integration der Lambda regelmäßig, wie viel Solarstrom gerade übrig ist. Die Lambda regelt danach selbst.
 
@@ -39,13 +39,21 @@ Der Sensor soll den **Überschuss** zeigen, also die Leistung, die sonst ins Net
 
 ## Einstellungen an der Lambda
 
-An der Lambda muss der E-Manager auf Werte per Modbus eingestellt sein. Eine erfolgreich getestete Einstellung (EU10L, Firmware V1.1.0-3K):
+An der Lambda muss der E-Manager auf Werte per Modbus eingestellt sein. Eine erfolgreich getestete Einstellung (EU10L, Firmware V1.0.4-3K):
 
 | Einstellung | Wert |
 |---|---|
 | E-Meter-Typ | **Modbus Client** (nicht „Modbus EM300“) |
 | Messpunkt | **E-Überschuss** (passend zur Kodierung `pos`) |
-| Betriebsart | je nach gewünschtem Verhalten der Lambda, z. B. **Manuell** oder **Automatik** |
+| Betriebsart | **Automatik**, wenn die Lambda den Überschuss nutzen soll (siehe unten) |
+
+!!! note "Betriebsart Manuell oder Automatik"
+    Der Überschuss kommt in beiden Betriebsarten an der Lambda an (Sensor `emgr_actual_power`). **Genutzt wird er aber nur in „Automatik“:** Nur dann berechnet die Lambda eine Sollleistung (`emgr_power_consumption_setpoint`, Psoll) und passt ihre Leistungsaufnahme an. In „Manuell“ bleiben Psoll und `emgr_actual_power_consumption` bei 0, und die Wärmepumpe läuft wie ohne Überschuss (gemessen an einer EU10L mit V1.0.4-3K).
+
+    In „Automatik“ kann die Lambda zusätzlich die Temperaturen anheben (Handbuch: „PV Betrieb – Temperaturerhöhung“ für Heizkreis, Puffer und Warmwasser). Prüfen Sie diese Einstellungen an der Lambda, bevor Sie „Automatik“ wählen.
+
+!!! warning "Messpunkt passend zum gemeldeten Wert"
+    Die Integration meldet den Wert, den der Quellsensor liefert. Wählen Sie den Messpunkt so, dass er dazu passt: **E-Überschuss**, wenn der Wert nur den Überschuss enthält (ohne den Verbrauch der Wärmepumpe). Enthält der Wert den Verbrauch der Wärmepumpe (z. B. ein Netzzähler hinter der Wärmepumpe), rechnet die Lambda ihren eigenen Verbrauch heraus und sieht unter Umständen einen Überschuss, wo keiner ist ([#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137)).
 
 Danach ist der Überschuss auf der Seite Energie-Management der Lambda sichtbar:
 

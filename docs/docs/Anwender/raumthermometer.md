@@ -4,7 +4,7 @@ title: "Raumthermometer"
 
 # Raumthermometer
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 29.10.2026*
 
 Die Lambda Heat Pumps Integration kann der Lambda die Raumtemperatur eines beliebigen Home-Assistant-Sensors liefern. Die Lambda nutzt diesen Wert wie ein eigenes Raumthermometer.
 
@@ -23,6 +23,9 @@ Die Raumthermostat-Funktion verwendet externe Sensoren (z.B. von Home Assistant)
     Die Integration schreibt **keine Vorlauftemperatur** an die Lambda. Die unten beschriebene Berechnung (Heizkurve, Offset, Raumthermostat-Anpassung) dient nur dem Sensor „Heizkurve Vorlauf berechnet“ (`heating_curve_flow_line_temperature_calc`) in Home Assistant. Die Heizkurve der Lambda wird dadurch weder ersetzt noch verändert.
 
 ## Aktivierung
+
+!!! warning "Beide Schritte sind nötig"
+    Die Raumtemperatur wird nur geschrieben, wenn die Option **Raumthermostat-Steuerung** aktiv ist **und** für den Heizkreis ein Sensor eingetragen ist, der einen Zahlenwert liefert. Ein eingetragener Sensor allein reicht nicht. Ob geschrieben wird, sehen Sie mit der Aktion `lambda_heat_pumps.read_modbus_register` auf Register 5004 (Heizkreis 1), 5104 (Heizkreis 2) usw.: Ohne Vorgabe steht dort `62536` (= −3000, „keine Vorgabe“), mit Vorgabe die Raumtemperatur × 10 (z. B. `211` für 21,1 °C). Der Wert wird etwa alle 9 Sekunden neu geschrieben.
 
 ### Schritt 1: Raumthermostat in den Optionen aktivieren
 
@@ -155,9 +158,9 @@ automation:
 
 ## Häufige Probleme
 
-### "Raumthermostat funktioniert nicht"
-- **Ursache**: Raumthermostat nicht in den Optionen aktiviert
-- **Lösung**: Aktivieren Sie die Raumthermostat-Steuerung in den Integration-Optionen
+### "Raumthermostat funktioniert nicht" / Register 5004 zeigt 62536
+- **Ursache**: Raumthermostat nicht in den Optionen aktiviert, oder für den Heizkreis kein Sensor eingetragen ([#142](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/142))
+- **Lösung**: Unter **Konfigurieren** die Option **Raumthermostat-Steuerung** aktivieren und im nächsten Schritt für jeden Heizkreis den Sensor wählen. Hilft das nicht, ein Debug-Log erzeugen (siehe [Debug-Logs erzeugen](debug-logs-erzeugen.md)) und prüfen, ob „Could not send the room temperature“ erscheint
 
 ### "Sensor nicht gefunden"
 - **Ursache**: Der ausgewählte Sensor existiert nicht oder ist nicht verfügbar

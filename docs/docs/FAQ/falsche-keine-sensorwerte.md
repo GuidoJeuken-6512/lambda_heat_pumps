@@ -76,25 +76,36 @@ Seit Version 3.5 gibt es kein `disabled_registers` in der `lambda_wp_config.yaml
 
 ---
 
-## 3. Außentemperatur oder Puffer-Anforderung zeigt -300 °C / eine unrealistische Anforderung
+## 3. Außentemperatur oder Anforderung zeigt -0,1 °C, -30 °C, -300 °C oder einen unrealistischen Wert
 
 ### Problematik
 
-- Die Außentemperatur (`ambient_temperature`) zeigt exakt **-300 °C**, oder eine
-  Puffer-Anforderung (z. B. Vorlauf-/Rücklauf-Sollwert) zeigt einen
-  unrealistischen, konstanten Wert.
+- Die Außentemperatur (`ambient_temperature`) oder eine Puffer-/Heizkreis-Anforderung
+  (z. B. Vorlauf-/Rücklauf-Sollwert) zeigt einen unrealistischen, konstanten Wert.
 - Betroffen sind Installationen ohne extern eingespeisten Außenfühler bzw.
-  ohne aktive Anforderung an einen Puffer.
+  ohne aktive Anforderung.
 
-**Ursache:** Die Lambda-Steuerung meldet auf diesen Registern `0xFFFF` (−1),
-wenn kein externer Sensor eingespeist ist bzw. keine Anforderung besteht.
-Skaliert sieht das wie ein echter Messwert aus (−300,0 °C), ist aber keiner.
-Bis einschließlich Version 3.5.1 wurde dieser Sonderwert bei diesen Registern
-nicht herausgefiltert.
+**Ursache:** Die Lambda-Steuerung meldet auf solchen Registern statt eines
+Messwerts einen Sonderwert. Skaliert (Faktor 0,1) sehen die wie echte Werte aus:
+
+| Rohwert | skaliert | Bedeutung |
+|---|---|---|
+| `0xFFFF` (−1) | −0,1 °C | keine Anforderung / nichts eingespeist |
+| `0xF448` (−3000) | −300,0 °C | kein Fühler angeschlossen |
+| `0x8000` (−32768) | −3276,8 °C | Register ohne Wert auf dieser Firmware |
+
+Auf der neuen Steuerung (V1.0.x) liefert die Außentemperatur (Register 0002) ohne
+Einspeisung außerdem gelegentlich den Rohwert −300, also −30,0 °C. Das ist kein
+Sonderwert, sondern ein unbelegtes Schreibregister: Register 0002 ist laut
+Lambda-Protokoll für einen von außen eingespeisten Außenwert gedacht.
 
 ### Lösung
 
-Ab Version 3.5.2 wird `0xFFFF` bei den betroffenen Registern (Außentemperatur
-sowie den Puffer-/Heizkreis-Anforderungsregistern) als „nicht verfügbar“
-(`unknown`) statt als Messwert angezeigt. Ein Update der Integration behebt
-dies ohne weitere Konfiguration.
+- `0xF448` und `0x8000` werden bei Messwerten immer als „unbekannt“ angezeigt.
+  `0xFFFF` wird seit Version 3.5.2 bei den betroffenen Registern
+  (Außentemperatur, Puffer- und Heizkreis-Anforderungen) ebenfalls herausgefiltert.
+- Die Außentemperatur `ambient_temperature` wird ab Firmware V0.0.10-3K nicht mehr
+  angelegt. Nutzen Sie stattdessen **`ambient_temperature_calculated`** (Register
+  0004): Das ist die Außentemperatur, mit der die Lambda rechnet.
+- Anforderungsregister sind ab Version 3.6 bei neuen Installationen standardmäßig
+  deaktiviert, weil sie nur bei einer aktiven Anforderung einen Wert haben.

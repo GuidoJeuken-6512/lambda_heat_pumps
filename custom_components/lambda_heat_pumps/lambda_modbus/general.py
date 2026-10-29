@@ -13,7 +13,7 @@ class Ambient(LambdaComponent):
 
     error_number = integer(0)
     operating_state = enum(1, AmbientOperatingState)
-    # 0xFFFF (-1) means "no external ambient sensor fed in", not a real -300 °C
+    # 0xFFFF (-1, so -0.1 °C) means "no external ambient sensor fed in", not a
     # reading; unlike the other sentinels this is opt-in, since -1 is a
     # genuine value on some other registers (e.g. temperature offsets).
     temperature = gauge(2, 0.1, unit="°C", nan=SENTINELS + (NO_REQUEST,))
