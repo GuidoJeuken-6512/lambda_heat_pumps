@@ -27,6 +27,8 @@ MAX_MODULE_COUNTS = {"hp": 3, "boil": 5, "buff": 5, "sol": 2, "hc": 12}
 # A module's first register is its error number. A module that is not installed
 # does not answer for it — and neither does any module beyond it.
 _PROBE_REGISTER = 0
+# A timeout is asked once more before the module counts as absent.
+_PROBE_ATTEMPTS = 2
 
 
 async def async_detect_modules(unit: ModbusUnit) -> dict[str, int]:
@@ -44,7 +46,9 @@ async def async_detect_modules(unit: ModbusUnit) -> dict[str, int]:
         # admit to one is telling us something we cannot act on.
         raise ModbusError("The controller reports no heat pump")
 
-    _LOGGER.debug("Detected modules: %s", counts)
+    # Info, not debug: a module that is not found is the first thing to check
+    # when entities are missing, and nobody has debug logging on for that.
+    _LOGGER.info("Detected modules: %s", counts)
     return counts
 
 
@@ -60,10 +64,30 @@ async def _count(unit: ModbusUnit, module: str, maximum: int) -> int:
     for index in range(1, maximum + 1):
         register = base_address(module, index) + _PROBE_REGISTER
         try:
-            await unit.read_holding_registers(register, 1)
+            await _probe(unit, register)
         except (IllegalDataAddressError, ModbusTimeoutError):
             # Nothing at that address, or nothing said at all — silence is how
             # some controllers answer for a module they do not have. Any other
             # refusal is the controller declining to answer, and propagates.
             return index - 1
     return maximum
+
+
+async def _probe(unit: ModbusUnit, register: int) -> None:
+    """Read one module's first register, giving a silent controller a second go.
+
+    Silence is ambiguous: an absent module, or a controller that was slow just
+    then — and a module missed here is missing until the entry is reloaded
+    (#101; #90 saw five modules, then six after a reload). One more try costs a
+    controller that stays silent for absent modules one timeout per module type,
+    once, at setup. "No such register" is unambiguous and is not retried.
+    """
+    for attempt in range(1, _PROBE_ATTEMPTS + 1):
+        try:
+            await unit.read_holding_registers(register, 1)
+        except ModbusTimeoutError:
+            if attempt == _PROBE_ATTEMPTS:
+                raise
+            _LOGGER.debug("No answer at %d, asking once more", register)
+        else:
+            return

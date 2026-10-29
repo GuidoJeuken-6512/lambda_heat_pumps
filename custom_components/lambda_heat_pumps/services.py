@@ -110,12 +110,27 @@ async def async_write_pv_surplus(coordinator: LambdaCoordinator) -> None:
         return
 
     entity_id = options.get(CONF_PV_POWER_SENSOR_ENTITY)
+    if not entity_id:
+        return
     power = _number(hass, entity_id)
     if power is None:
-        return
-    state = hass.states.get(entity_id)
-    if state is not None and state.attributes.get("unit_of_measurement") == "kW":
-        power *= 1000
+        # The controller drops its E-Manager into error 6 a few minutes after
+        # the last write (#120). With no reading there is no surplus to speak
+        # of, so it is told 0 W rather than left to time out.
+        if not coordinator.pv_source_missing:
+            _LOGGER.warning(
+                "%s has no number to send as PV surplus; sending 0 W until it has",
+                entity_id,
+            )
+            coordinator.pv_source_missing = True
+        power = 0.0
+    else:
+        if coordinator.pv_source_missing:
+            _LOGGER.info("%s reports again; sending its PV surplus", entity_id)
+            coordinator.pv_source_missing = False
+        state = hass.states.get(entity_id)
+        if state is not None and state.attributes.get("unit_of_measurement") == "kW":
+            power *= 1000
 
     if options.get(CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE) == "neg":
         # The controller reads this register as signed, so a shortfall can be
@@ -123,7 +138,12 @@ async def async_write_pv_surplus(coordinator: LambdaCoordinator) -> None:
         raw = max(-32768, min(32767, int(power))) & 0xFFFF
     else:
         raw = max(0, min(65535, int(power)))
+        if power < 0:
+            # A grid meter reports export as negative; "pos" has no way to say
+            # so, which is a configuration question worth seeing in a debug log.
+            _LOGGER.debug("PV surplus %s W is negative; mode pos sends 0", power)
 
+    _LOGGER.debug("PV surplus %s W -> register %d = %d", power, PV_SURPLUS_REGISTER, raw)
     try:
         # write_registers (FC16), not write_register (FC06): Lambda's own
         # Modbus documentation mandates FC16 for every write and does not

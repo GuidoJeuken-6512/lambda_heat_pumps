@@ -214,6 +214,9 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         self._register_order_suspect: bool | None = None
         # The heat pumps whose counters read as if the order were wrong.
         self.misread_counters: set[int] = set()
+        # Whether the PV surplus source had no number at the last write, so
+        # its outage is logged once rather than on every write.
+        self.pv_source_missing = False
 
         self._fast_interval = timedelta(
             seconds=entry.options.get(

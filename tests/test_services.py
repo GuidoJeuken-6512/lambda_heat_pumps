@@ -195,6 +195,35 @@ async def test_pv_surplus_positive_mode_clamps_a_shortfall_to_zero(
     assert controller.registers[PV_SURPLUS_REGISTER] == 0
 
 
+async def test_a_pv_source_without_a_number_sends_zero_and_says_so_once(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Not writing at all lets the E-Manager time out into error 6 (#120)."""
+    hass.states.async_set("sensor.pv_surplus", "1200")
+    entry = await setup_entry(
+        hass,
+        controller,
+        options={
+            CONF_PV_SURPLUS: True,
+            CONF_PV_POWER_SENSOR_ENTITY: "sensor.pv_surplus",
+        },
+    )
+    from custom_components.lambda_heat_pumps.services import async_write_pv_surplus
+
+    await async_write_pv_surplus(entry.runtime_data)
+    assert controller.registers[PV_SURPLUS_REGISTER] == 1200
+
+    hass.states.async_set("sensor.pv_surplus", "unavailable")
+    for _ in range(3):
+        await async_write_pv_surplus(entry.runtime_data)
+    assert controller.registers[PV_SURPLUS_REGISTER] == 0
+    assert caplog.text.count("has no number to send as PV surplus") == 1
+
+    hass.states.async_set("sensor.pv_surplus", "800")
+    await async_write_pv_surplus(entry.runtime_data)
+    assert controller.registers[PV_SURPLUS_REGISTER] == 800
+
+
 async def test_the_writers_run_on_their_own_timer(
     hass: HomeAssistant, controller: Controller
 ) -> None:
