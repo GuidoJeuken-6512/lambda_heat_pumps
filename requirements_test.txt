@@ -5,7 +5,7 @@
 # current when the environment was made. The suite was passing against an HA
 # two releases older than any user had, which is a poor place to find out that
 # something was removed.
-pytest-homeassistant-custom-component==0.13.355
+pytest-homeassistant-custom-component==0.13.373
 
 pytest-timeout
 flake8

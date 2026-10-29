@@ -3,6 +3,8 @@ on:
   push:
     branches:
       - "main"
+      # Development branches of the 3.x rewrite (3.5, 3.6, ...).
+      - "3.*"
   pull_request:
   schedule:
     - cron: 0 0 * * *

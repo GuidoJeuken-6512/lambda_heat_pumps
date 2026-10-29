@@ -305,12 +305,16 @@ async def test_modules_are_their_own_devices(
     entry = await setup_entry(hass, controller)
     devices = dr.async_get(hass)
 
-    main = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    # async_get_device is deprecated since HA 2026.10 and raises in tests;
+    # identifiers are only unique per config entry now.
+    main = devices.async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     assert main is not None
     assert main.name == "EU08L"
 
-    heat_pump = devices.async_get_device(
-        identifiers={(DOMAIN, entry.entry_id, "hp", 1)}
+    heat_pump = devices.async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id, "hp", 1), entry.entry_id
     )
     assert heat_pump is not None
     assert heat_pump.name == "EU08L - HP1"

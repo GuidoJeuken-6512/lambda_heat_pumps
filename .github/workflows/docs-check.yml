@@ -7,7 +7,7 @@ on:
   push:
     branches:
       - "main"
-      - "3.5"
+      - "3.*"
     paths:
       - "docs/**"
       - "script/check_docs.py"
