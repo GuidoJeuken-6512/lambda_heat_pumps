@@ -1,10 +1,11 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 22.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026 eingearbeitet)
+- **Stand:** 29.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026; Issue-Aktivität 22.–29.10.2026 eingearbeitet, siehe [Nachtrag 29.10.2026](#nachtrag-29102026-issue-aktivität-seit-dem-22102026))
 - **`main` (2.x) wird nicht mehr geändert** (Entscheidung 22.10.2026). Alle Fixes nur noch in `3.5`; `main` bekommt sie mit dem Merge.
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 - **Geprüfter Code:** `origin/3.5` @ `be4728b` (Integration v3.5.7, noch ohne Tag); Erstanalyse gegen `55439d4` (v3.5.6)
-- **Grundlage:** alle 24 offenen GitHub-Issues. Geprüft wurden die 9 mit Label `bug` und die 6 ohne Label, die einen Fehler beschreiben. Die 9 `enhancement`-Issues sind nur am Ende aufgelistet.
+- **Grundlage:** alle 24 offenen GitHub-Issues. Geprüft wurden die 9 mit Label `bug` und die 6 ohne Label, die einen Fehler beschreiben. Die 9 `enhancement`-Issues sind nur am Ende aufgelistet. **Stand 29.10.2026:** 28 offene Issues (11 `bug`, 7 ohne Label, 10 `enhancement`). Neu: #142, #143, #144. Geschlossen seit 22.10.: #100, #133, #136, #140 (Enhancement, „nicht geplant“), #141 (Duplikat von #121).
+- **Code-Stand unverändert:** Seit `0938372` (22.10.2026) gibt es in `3.5` keine Code-Commits. Alle Aussagen zum Code gelten weiter für 3.5.7.
 - **Tester-Hinweis (20.10.2026):** Die Testberichte von @Sturmi77 (#105, #120, #122/#85, #128, #133, #134, #136) stammen von einer Pumpe mit **Firmware V1.0.4-3K** (Display: Wärmepumpenmodul SW V1.0.4-3K, Build 29.06.2026). In der Integration war **V1.1.0-3K** eingestellt. Für 3.5.7 ist das gleichwertig: Beide haben Stufe ≥ 3 und `low_first`, die Integration legt dieselben Entitäten an (Firmware-Grenzen gibt es nur bei Stufe 1–2, 1–7 und ≥ 3, `sensor.py:177/307/308`). Unterschied ist nur die Modellanzeige am Gerät.
 - **Hinweis:** Die Analyse selbst hat keinen Code geändert. Nachträglich umgesetzt (17.10.2026): F1, F2, F6 und das Zurücksetzen der Registerreihenfolge bei einem Firmwarewechsel (3.5.7), Doku-Korrekturen zu #128/#134. Details im Abschnitt [Änderungen am 17.10.2026](#änderungen-am-17102026). Zeilenangaben beziehen sich auf `custom_components/lambda_heat_pumps/` im Branch `3.5`.
 
@@ -20,11 +21,14 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 
 | Issue | Titel (gekürzt) | Status in 3.5 | Priorität |
 |---|---|---|---|
-| [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) | Migration schreibt `high_first` über den Firmware-Default | ✅ **behoben** (F1 + F2, 17.10.2026); Melder kann nicht mehr testen (Eintrag schon migriert), HW-Test durch andere 2.8.x-Anwender offen | – |
-| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | Akkumulierte Energiezähler falsch / negativ | ✅ **Regression behoben** (F1 + F2, siehe #133), HW-Test ausstehend | – |
+| [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) | Migration schreibt `high_first` über den Firmware-Default | ✅ **behoben** (F1 + F2, 17.10.2026), **geschlossen 27.10.**; HW-Test durch andere 2.8.x-Anwender offen | – |
+| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | Akkumulierte Energiezähler falsch / negativ | ✅ Regression behoben (F1 + F2); **neu 23.10.: Anlage mit V0.0.10-3K braucht `high_first`** (bestätigt), Firmware-Tabelle passt nicht für alle Anlagen → F30 | 🟠 mittel |
 | [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **Regression behoben** (gleiche Ursache wie #104), HW-Test ausstehend | – |
 | [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | Falsche Firmware-Version übernommen | 🟠 **teilweise offen** (Migration bevorzugt veralteten Wert); Index-Fehler im Code nicht nachweisbar | mittel |
-| [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | Neue Steuerung FW 1.3.8 / 1.3.10 | 🟠 **teilweise offen**; V1.0.4-3K ✅ in 3.5.7; neu 21.10.: zweiter Rohdump (EU15L, **V1.0.2-3K**, Kompressor läuft) → F26–F28, F7 geklärt | mittel |
+| [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | Neue Steuerung FW 1.3.8 / 1.3.10 | **geschlossen 27.10.**, Befunde offen; V1.0.4-3K ✅ in 3.5.7; V1.0.2-3K (F26), neu gemeldet **V1.0.7-3K** (24.10., Frage unbeantwortet) → F26 erweitert; F27/F28 offen | mittel |
+| [#144](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/144) | Neue Steuerung SW V1.4.1 (WP-FW **V1.0.8-3K**), 2.8.6 | 🟡 **neu 28.10.**: E-Manager-Fehler von Lambda behoben; `ambient_temperature` `unknown` = Register 0002 ohne Einspeisung (F3, kein Code-Bug); Firmware fehlt in der Auswahl (F26) | niedrig |
+| [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | Viele Entitäten (v. a. Puffer) ohne Messwert, 3.5.6 | 🟡 **neu 28.10.**: EU13, V1.0.4-3K (Option V1.1.0-3K); passt zu `REGISTER_OHNE_WERTE.md` (3005–3009 = „keine Anforderung“); Screenshot auswerten, Rückfragen | niedrig–mittel |
+| [#142](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/142) | Raumtemperatur wird nicht nach 5004/5104 geschrieben, 2.8.6 | 🟡 **neu 28.10.**: Register lesen 62536 = −3000 (nichts geschrieben); Code schreibt nur mit Option „Raumthermostat-Steuerung“; Log fehlt | niedrig–mittel |
 | [#122](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/122) | Entity-ID mit falscher Domain (`sensor.*_heating_circuit`) | 🟡 Code behoben, **Registry-Altlasten offen**; bei einem Tester (Upgrade 2.8.6 → 3.5.6) nicht aufgetreten | mittel (Frist HA 2027.5) |
 | [#85](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/85) | Entity-ID mit falscher Domain (`sensor.*_boil1_hot_water`) | 🟡 wie #122 (Duplikat) | mittel (Frist HA 2027.5) |
 | [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | 🟢 auf 3.5.6 **nicht reproduzierbar** (Retest 18.10., Modus „Manuell“); Modus „Automatik“ ungetestet | niedrig |
@@ -35,9 +39,9 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 | [#120](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/120) | Screenshots PV-Überschuss fehlen (toter Link) | 🟡 Bildpfade in `3.5` behoben (F14), `main` offen; neu: Doku zu „Manuell“/„Automatik“ (F24) | mittel (vor Merge 3.5 → main) |
 | [#134](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/134) | Upgrade-Hinweise 2.8.6 → 3.5.6 (Setpoint-Entity, Statistik-Reparaturen) | ✅ **Changelog ergänzt/korrigiert** (17.10.2026), Issue geschlossen; Rückfrage zu V1.0.4-3K vs. V1.1.0-3K offen (F25) | – |
 | [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Pumpen-Sollwert (Enhancement) | 🟡 Doku korrigiert (beide Branches), Abweichungssensor offen (F17); Tester bestätigt Nutzen mit Live-Daten | niedrig |
-| [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | ⛔ **wird nicht umgesetzt** (22.10.2026): 5X06 ist eine Anfrage mit ~5 min Timeout; kein Eingriff in die Regelung (F23) | – |
+| [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | ⛔ **wird nicht umgesetzt** (22.10.2026), **geschlossen 22.10.** als „nicht geplant“ (F23) | – |
 | [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss (2.8.6) | 🟡 **neu**, vermutlich Verhalten der Lambda; Rückfragen nötig | niedrig–mittel |
-| [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | `device_registry.async_get_device` deprecated | ✅ **behoben** in 3.5.4 | – |
+| [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | `device_registry.async_get_device` deprecated | ✅ **behoben** in 3.5.4; Duplikat #141 (24.10., 2.x `utils.py:246`) geschlossen; in 2.8.6 bleibt die Warnung bis zum Release von 3.5 | – |
 | [#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112) | Register 5007 doppelt adressiert | ✅ **behoben** in 3.5.5 | – |
 
 Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 unklar bzw. Restarbeit · 🟢 kein Code-Fehler in 3.5 · ✅ behoben (Issue kann geschlossen werden)
@@ -61,6 +65,15 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 > - **Nachtrag (17.10.2026):** *Neu konfigurieren* entfernt `int32_register_order` bei einem Firmwarewechsel aus den Options; danach gilt die Reihenfolge der neuen Firmware. Damit bleibt ein Firmwarewechsel auch ohne „auto“ konsistent. Eine abweichende Reihenfolge lässt sich danach wieder unter *Konfigurieren* setzen.
 > - **Rückmeldung des Melders (20.10.2026):** Er kann 3.5.7 **nicht verifizieren**: Sein Eintrag wurde am 03.10. migriert und hat `low_first` von Hand gesetzt, eine zweite Installation gibt es nicht. Er bestätigt die Zahlen aus 3.5.6 (Zähler rund eine Minute bei 1.140.719.617 / 1.989.148.679 Wh; nach `low_first` exakt wieder 82.942 / 489.104 Wh, die eigenen Gesamtzähler der Integration waren nicht betroffen). Verifikation braucht einen 2.8.x-Eintrag (Version 8) ohne gespeicherte Reihenfolge, `low_first`-Firmware, leere/fehlende YAML → Update auf 3.5.7 → Options ohne `int32_register_order`, Zähler unverändert, `recorder/validate_statistics` ohne neue Befunde. Er bittet, beim Schließen den Hinweis zum Nachstellen von Hand zu behalten, und bietet Tests auf seinem migrierten Eintrag an (Options-Default, Firmwarewechsel über *Neu konfigurieren*).
 > - Wer 3.5 vor diesem Fix schon installiert hat, hat `high_first` fest in den Options stehen. Das korrigiert sich nicht von selbst: im Options-Dialog einmal die richtige Reihenfolge wählen.
+> - **#133 geschlossen (27.10.2026).** Der HW-Test mit einem frischen 2.8.x-Eintrag steht weiter aus.
+
+> **Neuer Befund (22.–23.10.2026, @Eisbaer2, 2.8.6): V0.0.10-3K mit `high_first`.**
+> - Display zeigt **V0.0.10-3K** (seit Langem, kein Update). In der Integration war **V1.1.0-3K** eingestellt; der Melder sagt, er habe das nicht selbst geändert. Fehler seit ca. 13.10.2026: `compressor_thermal_energy_output_accumulated` = −2147023552 (`0x80070540`), Strom z. B. 1146028282 (`0x444F00FA`).
+> - Mit getauschten 16-Bit-Wörtern ergeben sich plausible Zähler: Wärme 88.113.159 Wh, Strom 16.401.487 → 16.401.491 → 16.401.496 Wh (+4/+5 Wh je Abfrage), JAZ ≈ 5,4. Die von Gemini vorgeschlagene float32-Deutung ist falsch (falsche Hex-Umrechnung, +16 kWh in 30 s; die Lambda kennt nur INT16/INT32). Antwort im Issue am 23.10.
+> - Umstellen auf V0.0.10-3K half nicht, weil V0.0.10-3K und V1.1.0-3K beide `low_first` haben. **Mit `int32_register_order: "high_first"` in `lambda_wp_config.yaml` stimmen die Werte (bestätigt 23.10.).**
+> - **Folge:** Zusammen mit #90 (V0.0.9-3K liefert `low_first`-Daten) ist das der zweite Fall, in dem die Firmware-Nummer nicht zur Wortreihenfolge passt. In 3.5 trifft das jeden, dessen Anlage von `FIRMWARE_CONFIG` abweicht: Nach dem Upgrade gilt der Firmware-Default, falls die YAML keinen expliziten Wert hat. → **F30** (Plausibilitätsprüfung bzw. Erkennung der Wortreihenfolge), F11 wird damit wichtiger.
+> - **Offen:** Warum stand V1.1.0-3K in den Options? Möglich ist ein früherer Options-Dialog mit Vorauswahl der neuesten Firmware in 2.x. Nicht geklärt; für 3.5 irrelevant, weil 3.5 den Namen direkt speichert (siehe #82).
+> - **Offen (Doku):** Der Melder fragt, wie er 10 Tage falsche Statistik reparieren kann. Das ist Punkt 6 unten (FAQ zur Statistikbereinigung), weiter offen.
 
 **Lösungsansatz:**
 1. In `async_migrate_entry` die Registerreihenfolge **nur** setzen, wenn die alte YAML einen expliziten Wert enthält. `_async_read_register_order()` gibt dann `None` statt `DEFAULT_…` zurück, und `options.setdefault` wird nur bei einem Wert ungleich `None` ausgeführt. Ohne expliziten Wert bleibt der Firmware-Default aus dem Coordinator wirksam.
@@ -87,6 +100,8 @@ Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 
 3. Den Reporter nach Umstellung auf 3.5.x um Rückmeldung bitten, danach das Issue schließen. Die bestehenden falschen Langzeitstatistiken muss der Anwender selbst bereinigen (Offset in den Optionen oder Statistik löschen, wie im Issue-Kommentar beschrieben).
 
 > **Nachtrag 17.10.2026 – Widerspruch zur Firmware-Tabelle:** Der Melder nennt Firmware „0.0.9-3K“. Seine gemeldeten Werte lassen sich aber exakt als `low_first`-Daten erklären, die als `high_first` gelesen wurden (256.729 Wh → −354.877.437; 1.399.530 Wh → 1.525.284.885). In `FIRMWARE_CONFIG` steht V0.0.9-3K auf `high_first`, und die eigene Testinstallation `.115` (V0.0.9-3K, Live-Test 3.5.6) spricht dafür. Mögliche Erklärungen: falsch abgelesene Version (die Steuerung zeigt mehrere), Version aus HA statt vom Display, oder die Reihenfolge hängt an der Steuerungsgeneration statt an der Firmware-Nummer. **Nicht geändert.** Klärung: im Issue nach der Version in der Statuszeile der WP-Seite und einem Rohwert von Register 1020/1021 fragen.
+>
+> **Nachtrag 29.10.2026:** Der umgekehrte Fall ist jetzt belegt: eine Anlage mit V0.0.10-3K (Tabelle `low_first`) liefert `high_first` (#104, @Eisbaer2, bestätigt). Die Reihenfolge hängt also nicht verlässlich an der Firmware-Nummer. Siehe F30.
 
 ---
 
@@ -120,6 +135,12 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | 4b: `volume_flow_heat_sink` Einheit/Skalierung | ✅ **geklärt 21.10.: `l/h`, Skala 1 ist richtig.** Rohwert 1047 bei 6,1 kW und 5,1 K Spreizung ergibt per Wärmebilanz ~1.030 l/h; der Vorschlag `l/min`/0.01 (= 628 l/h) passt nicht. Keine Änderung (F7 entfällt) |
 | Firmware „V1.0.4-3K“ in die Auswahl aufnehmen (zugesagt am 04.08.) | ✅ **FIXED** 17.10.2026: in `FIRMWARE_CONFIG` mit Ordinal 9 und `low_first` (Rohdump von @madmaxx425); `V1.1.0-3K` rückt auf 10 |
 | Firmware „V1.0.2-3K“ (neu 21.10., @BMeyendriesch) | 🟠 offen → **F26**: fehlt in `FIRMWARE_CONFIG`; `low_first` durch Zähler belegt (1020–1023 = `17563 0 32623 1` → 17,6 / 98,2 kWh) |
+
+**Stand 29.10.2026:** Issue am 27.10. geschlossen (Antwort: bei plausiblen Energiewerten nichts ändern, sonst FAQ; nach Steuerungstausch Einstellungen prüfen). Danach noch:
+- @web2date (24.10.): neue Steuerung seit 12.10., WP-Software **V1.0.7-3K**, Frage „welche Version wählen?“ ist **unbeantwortet**. Antwort aus dem Code: in 3.5.7 V1.0.4-3K oder V1.1.0-3K wählen (gleiche Entitäten, beide `low_first`); in 2.8.6 V1.1.0-3K.
+- @AndiBo62 (23.10.) hat die neue Steuerung bekommen, Befunde in #144 (WP-FW **V1.0.8-3K**).
+- @doerr-sebastian (27.10.) fragt nach dem Grund für den Steuerungstausch; keine Auswirkung auf die Integration.
+- Bekannte Firmware-Namen der neuen Steuerung damit: V1.0.2, V1.0.4, V1.0.7, V1.0.8 (jeweils -3K). In `FIRMWARE_CONFIG` steht nur V1.0.4-3K. → F26 erweitert.
 
 **Neuer Datenpunkt (21.10.2026, @BMeyendriesch):** EU15L, in Betrieb seit 20.10.2026, SW V1.3.10 (29.06.2026), **WP-Firmware V1.0.2-3K**, Integration 2.8.6 mit Option V1.1.0-3K. Vollständiger FC03-Dump im Heizbetrieb mit laufendem Kompressor:
 - 1024–1043 und 1051–1063: alle 32768. Das Display zeigt Heißgas, Kondensation, Sauggas, Verdampfung, Unterkühlung, Expansionsventil und EqM **mit Werten**; die Steuerung gibt sie nur nicht über Modbus aus. Anfrage beim Lambda-Support läuft.
@@ -367,6 +388,60 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 
 ---
 
+## 🟡 #144: Neue Steuerung SW V1.4.1 (WP-Firmware V1.0.8-3K)
+
+**Meldung (@AndiBo62, 28.10.2026, Integration 2.8.6, HA 2026.10.4):** EU08L nach Steuerungstausch. Der Puffer wurde erst nach einer Weile erkannt. (1) `sensor.eu08l_ambient_temperature` ist `unknown`, `ambient_temperature_1h` und `ambient_temperature_calculated` haben Werte. (2) `emgr_operating_state` zeigt nur Error (E-Manager: Modbus Client, E-Eintrag, wie vorher).
+
+**Verlauf:** (2) hat Lambda am 28.10. behoben, kein Fehler mehr. Am 29.10. nach einem weiteren Update zeigt das Display **V1.0.8-3K**. Der Melder fragt, ob `hp1_energy_source_inlet_temperature` die Außentemperatur ersetzen kann.
+
+**Prüfung:**
+- (1) Register 0002 ist ein Schreibregister für einen extern eingespeisten Außenwert und liefert auf der neuen Steuerung ohne Einspeisung keinen Wert (−3000, siehe `REGISTER_OHNE_WERTE.md`, F3). `unknown` ist also richtig. `ambient_temperature_1h`/`_calculated` kommen aus den Registern 0003/0004 und haben auf der neuen Steuerung Werte. In 3.5 wird `ambient_temperature` ab V0.0.10 gar nicht angelegt (`firmware_versions=("1-7",)`).
+- Ersatz: `ambient_temperature_calculated` (0004) ist die Außentemperatur, mit der die Lambda rechnet, und passt besser als `energy_source_inlet_temperature`. Der Quelleneintritt (1007) ist bei einer Luft-WP die Lufttemperatur am Verdampfer; sie liegt nahe an der Außentemperatur, wird aber im Betrieb und beim Abtauen von der Pumpe beeinflusst.
+- Firmware **V1.0.8-3K** fehlt in der Auswahl (2.8.6 und 3.5.7). → F26.
+- Die späte Puffererkennung passt zur Schwachstelle in der Modulerkennung (F9, Timeout = „Modul fehlt“); in 2.8.6 aber anderer Code.
+
+**Lösungsansatz:**
+1. Antworten: 0002 hat ohne Einspeisung keinen Wert, `ambient_temperature_calculated` nutzen; Firmware: in 2.8.6 V1.1.0-3K wählen.
+2. V1.0.8-3K mit F26 aufnehmen.
+3. Danach schließen.
+
+---
+
+## 🟡 #143: Viele Entitäten (vor allem Puffer) ohne Messwert
+
+**Meldung (@andy5macht, 28.10.2026, Integration 3.5.6, HA 2026.10.4):** EU13 mit **V1.0.4-3K**, in der Integration V1.1.0-3K. Viele Sensoren ohne Wert, vor allem beim Puffer (Screenshot). Registerreihenfolge auf `low_first` gestellt, „sonst fehlen noch mehr Werte“.
+
+**Prüfung:**
+- Die Firmware-Wahl ist für 3.5.7 gleichwertig (siehe Tester-Hinweis oben).
+- Laut `REGISTER_OHNE_WERTE.md` liefern auf V1.0.4 die Puffer-Register 3000–3003 und 3050 Werte. **3005–3009** sind Anforderungsregister und lesen ohne aktive Modbus-Anforderung −1. Die Integration zeigt sie richtig als `unknown`. Dazu kommen die 21 Register 1024–1033/1051–1060 ohne Wert (F27).
+- Die Bemerkung zu `low_first` passt zu #133: 3.5.6 hat bei der Migration `high_first` gesetzt. Die Reihenfolge betrifft aber nur die 32-Bit-Zähler (1020–1023). Dass ohne `low_first` „noch mehr“ fehlt, ist so nicht erklärbar. Vielleicht wurden falsche Zählerwerte verworfen bzw. die Statistik-Sensoren blieben stehen. Rückfrage nötig.
+- Der Screenshot ist noch nicht ausgewertet (Bild, nicht maschinenlesbar).
+
+**Lösungsansatz:**
+1. Screenshot gegen `REGISTER_OHNE_WERTE.md` abgleichen: Was ist Anforderungs-/Schreibregister (erwartet `unknown`), was sollte einen Wert haben?
+2. Rückfragen: Update auf 3.5.7, Diagnose-Download, für fehlende Puffer-Entitäten ein Lesetest über `read_modbus_register` (3000–3009).
+3. Mit F27 (Entitäten ohne Wert nicht anlegen) und F12 (Anforderungsregister standardmäßig deaktivieren bzw. als Diagnose) würde die Liste deutlich kürzer. 3005–3009 als Kandidaten für F12 vormerken.
+
+---
+
+## 🟡 #142: Raumtemperatur wird nicht übernommen
+
+**Meldung (@medicus07, 28.10.2026, Integration „2.6.8“ – vermutlich 2.8.6, EU15L, V0.0.10-3K):** PV-Überschuss über Modbus läuft. Für beide Heizkreise je ein HA-Raumtemperatursensor eingetragen (21,1 °C), HA neu gestartet. `read_modbus_register` liefert für 5004 und 5104 dauerhaft **62536**.
+
+**Prüfung:**
+- 62536 = `0xF448` = −3000, der Sonderwert für „nichts vorgegeben“. Es wird also tatsächlich nichts geschrieben (oder die Lambda verwirft es).
+- 2.8.6 (`main`, `services.py:405–465`) und 3.5 (`services.py:84`, `async_write_room_temperatures`) schreiben nur, wenn **`room_thermostat_control`** in den Options aktiv ist **und** für den Heizkreis eine Entity eingetragen ist und einen Zahlenwert hat. Wahrscheinlichste Ursache: Entities eingetragen, Option „Raumthermostat-Steuerung“ aber nicht aktiv. Aus den Screenshots ist das ohne Bildauswertung nicht ablesbar.
+- 2.8.6 loggt jeden Schreibvorgang auf `INFO` („[Scheduled] Writing room temperature to register 5004 …“) und Fehler auf `ERROR`. Ein Log würde sofort zeigen, ob geschrieben wird.
+- Möglich ist auch, dass die Lambda den Wert nur annimmt, wenn am Heizkreis die Raumtemperatur auf Modbus/extern eingestellt ist. Das ist nicht dokumentiert.
+- Nebenbefund 2.8.6: `num_hc` kommt aus `entry.data` mit Default 1. Fehlt der Schlüssel, wird nur HC1 geschrieben. Hier sind aber beide Kreise betroffen, also nicht die Ursache.
+
+**Lösungsansatz:**
+1. Rückfragen: Ist „Raumthermostat-Steuerung“ in den Optionen aktiv? Log mit `INFO` für `custom_components.lambda_heat_pumps`; Einstellung des Raumfühlers am Heizkreis der Lambda.
+2. Falls die Option fehlt: In der Doku (`raumthermometer.md`) deutlicher machen, dass beide Schritte nötig sind. Optional im Options-Flow warnen, wenn Entities ohne aktive Option eingetragen sind (S).
+3. Gleiche Logik in 3.5, also kein eigener 3.5-Fix, solange die Ursache nicht im Code liegt.
+
+---
+
 ## ✅ #121: `device_registry.async_get_device` deprecated
 
 **Prüfung:** Im Branch `3.5` gibt es keinen Aufruf von `async_get_device(` mehr. `coordinator.py:247` nutzt `async_get_device_by_identifier(controller, entry.entry_id)` (Changelog 3.5.4).
@@ -383,6 +458,24 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 
 ---
 
+## Nachtrag 29.10.2026: Issue-Aktivität seit dem 22.10.2026
+
+| Issue | Was ist passiert | Folge für die Analyse |
+|---|---|---|
+| #104 | @Eisbaer2 (2.8.6, Display V0.0.10-3K, Option war V1.1.0-3K): Zähler falsch seit ca. 13.10.; Gemini-Deutung „float32“ widerlegt; **`high_first` per YAML löst es** (23.10.). Frage nach Reparatur von 10 Tagen Statistik offen | F30 neu, F31 neu, Hinweis bei #90 |
+| #100 | Am 27.10. geschlossen. Neu: WP-Software V1.0.7-3K (@web2date, Frage offen), Steuerungstausch bei @AndiBo62 | F26 erweitert |
+| #133 | Am 27.10. geschlossen | Übersicht |
+| #136 | Am 22.10. als „nicht geplant“ geschlossen (Begründung DE/EN im Issue) | Übersicht |
+| #140 | Enhancement (Modi normal/eco/Frostschutz lesen), 27.10. „nicht geplant“: nicht über Modbus lesbar, Verweis auf PV-Überschuss-Steuerung | Liste der Enhancements |
+| #141 | Duplikat von #121 (2.x `utils.py:246`), 27.10. geschlossen | Übersicht #121 |
+| #142 | Neu: Raumtemperatur wird nicht nach 5004/5104 geschrieben (2.8.6) | eigener Abschnitt, F32 |
+| #143 | Neu: viele Entitäten ohne Wert, v. a. Puffer (3.5.6, V1.0.4-3K) | eigener Abschnitt |
+| #144 | Neu: neue Steuerung, V1.0.8-3K; E-Manager durch Lambda behoben, `ambient_temperature` `unknown` | eigener Abschnitt, F26 |
+
+Keine neuen Kommentare seit dem 22.10. in #82, #85, #90, #94, #95, #101, #105, #112, #120, #121, #122, #128, #132, #137.
+
+---
+
 ## Zusätzliche Befunde (ohne eigenes offenes Issue)
 
 | Befund | Ort | Bezug |
@@ -394,6 +487,7 @@ Ein Sammel-Thread mit mehreren Befunden von @madmaxx425. Einiges ist umgesetzt, 
 | Timeout bei der Modulerkennung wird als „Modul fehlt“ gewertet | `module_auto_detect.py:64` | siehe #101/#90 |
 | Registerreihenfolge überlebte einen Firmwarewechsel unter „Neu konfigurieren“ | `config_flow.py`, `async_step_reconfigure` | ✅ behoben in 3.5.7 |
 | V0.0.9-3K: Firmware-Tabelle (`high_first`) widerspricht den Werten aus #90 (`low_first`) | `const.py:FIRMWARE_CONFIG` | siehe #90, offen |
+| V0.0.10-3K: Firmware-Tabelle (`low_first`) widerspricht einer Anlage mit `high_first` (bestätigt) | `const.py:FIRMWARE_CONFIG` | #104, F30 |
 | Bildpfade `../../assets/` statt `../assets/` (21 Bilder in `3.5`, 2 in `main`) | `docs/docs/Anwender/*.md`, `docs/docs/Vorlagen/*.md` | F14, ✅ in `3.5` behoben |
 | 10 tote Anker in der Entwickler-Doku (Slugs mit Umlauten, umbenannte Überschriften); in `main` schon mit `2ade7ce` behoben | `docs/docs/Entwickler/*.md`, `Releases/release-2-3.md` | ✅ in `3.5` behoben |
 | Doku in `3.5` wurde nie gebaut, Fehler fielen nicht auf | – | ✅ neuer Workflow `docs-check.yml` + `script/check_docs.py` |
@@ -474,10 +568,13 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | F23 | ⛔ **wird nicht umgesetzt** (22.10.2026) – `select`-Entität Heizkreis-Betriebsart (5X06) mit Neuschreiben alle 3 min. Gründe: kein Eingriff in die Regelung/Wärmefahrplan, Register gibt den gesetzten Wert nicht zurück, Ankunft nicht prüfbar | #136/#125 | – | – | – |
 | F24 | Doku PV-Überschuss: Psoll nur in „Automatik“, mögliche Temperaturanhebung; Messpunkt passend zum Zählerwert | #120/#137 | **S** | 🟢 **niedrig** | manuell (Automatik-Test des Testers abwarten) |
 | F25 | Antwort #134: V1.0.4-3K und V1.1.0-3K legen dieselben Entitäten an; optional Satz in Changelog/`firmware-wechsel.md` | #134 | **S** | 🟢 **niedrig** | – |
-| F26 | `V1.0.2-3K` in `FIRMWARE_CONFIG` (Stufe 9, `low_first`; V1.0.4 → 10, V1.1.0 → 11) | #100 | **S** (`const.py` + `test_firmware.py`) | 🟢 **niedrig** (heute: nächsthöhere Version wählen) | Unit **S** |
+| F26 | Firmware der neuen Steuerung in `FIRMWARE_CONFIG`: `V1.0.2-3K` (#100), **neu `V1.0.7-3K` (#100, 24.10.) und `V1.0.8-3K` (#144, 29.10.)**, alle `low_first` angenommen (belegt nur für V1.0.2/V1.0.4). Ordinals neu ordnen (z. B. V1.0.2 → 9, V1.0.4 → 10, V1.0.7 → 11, V1.0.8 → 12, V1.1.0 → 13); kein Sensor prüft auf ≥ 9, Einträge speichern den Namen. Alternativ ein Sammeleintrag „V1.0.x-3K (neue Steuerung)“, damit nicht jedes Lambda-Update eine neue Version braucht | #100/#144 | **S** (`const.py` + `test_firmware.py`) | 🟢 **niedrig** (heute: V1.0.4-3K oder V1.1.0-3K wählen, gleiche Entitäten) | Unit **S** |
 | F27 | Sensoren auf 1024–1033 und 1051–1060 (21 Stück) ab V1.0.x nicht mehr anlegen (`firmware_versions=("1-8",)`); **offen:** V1.1.0-3K mit ausschließen? Danach prüfen, ob die Register auch nicht mehr gelesen werden (11 Einzelabfragen der Leistungsgrenzen) | #100/#119/#88 | **S** (+ **S–M** für das Lesen) | 🟠 **mittel** (21 dauerhaft „unbekannte“ bzw. 32768-Entitäten, Log-Last) | Unit **S**; Changelog-Hinweis (Entitäten „nicht mehr bereitgestellt“) |
 | F28 | Sonderwert 0x8000 auch für `integer`-Felder filtern (`config_parameter_*`, `request_type`, `emgr_actual_power`) | #91/#100 | **S** | 🟠 **mittel** (−32768 W bzw. 32768 als Messwert, z. B. im Energie-Dashboard) | Unit **S** |
 | F29 | Doku/Changelog/Kommentar korrigieren: 0xFFFF = −0,1 °C, nicht −300 °C; 0002-Aussage in der Entwickler-Doku | – | **S** | 🟢 **niedrig** | – |
+| F30 | **Wortreihenfolge der 32-Bit-Zähler nicht allein aus der Firmware ableiten** (neu 29.10.). Belegt: V0.0.10-3K mit `high_first` (#104), V0.0.9-3K mit `low_first`-Daten (#90). Variante a: F11 umsetzen, also bei unplausiblen Zählern (≤ 0, > 10⁹ Wh oder Wechsel fast nur im oberen Wort) ein Repair-Issue „Registerreihenfolge prüfen“ mit der anderen Reihenfolge als Vorschlag. Variante b: beim Setup beide Deutungen von 1020–1023 vergleichen und die plausiblere übernehmen (Zähler steigen nur im unteren Wort). Bis dahin: FAQ-Hinweis, dass die Tabelle nur ein Default ist | #104/#90 | a: **S–M**, b: **M** | 🟠 **mittel** (beschädigt das Energie-Dashboard, betrifft unbekannt viele Anlagen) | Unit **S–M**; Simulator (umschaltbare Wortreihenfolge) |
+| F31 | FAQ: Statistik nach falscher Registerreihenfolge bereinigen (Ausreißer per SQL bzw. „Statistik anpassen“, Lücke verteilen). Bisher Punkt 6 bei #104, jetzt konkret angefragt (#104, 23.10.) | #104/#133 | **S** | 🟢 **niedrig** | – |
+| F32 | Raumthermostat: Doku klarstellen (Option „Raumthermostat-Steuerung“ **und** Entity nötig); optional Hinweis im Options-Flow, wenn Entities ohne aktive Option eingetragen sind | #142 | **S** | 🟢 **niedrig** (erst nach Rückmeldung des Melders) | Unit **S** |
 
 ### Begründungen im Detail
 
@@ -534,9 +631,9 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 | Paket | Fixes | Implementierung | Unit-Tests | HW-Verifikation |
 |---|---|---|---|---|
 | **A: vor dem Release zwingend** | ~~F1, F2~~ ✅, F3, F4, F14, F16, F20, F22 | ~0,5 Tag | ~1 Tag (inkl. Umschreiben von 3 bestehenden Tests) | 1 echter Upgrade 2.8.6 → 3.5 auf einer `low_first`-Anlage (~0,5 Tag) |
-| **B: vor dem Release empfohlen** | F5, F27, F28 (F7 entfällt) | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
+| **B: vor dem Release empfohlen** | F5, F27, F28, F30 (F7 entfällt) | ~0,5–1 Tag (+ Klärung HA-Verhalten) | ~0,5 Tag | Upgrade-Test (mit Paket A kombinierbar) + Rohwert-Dumps von Testern |
 | **C: abhängig von Externen** | F6 | ~1 h | ~1 h | Tester aus #100 (Termin unklar) |
-| **D: nach dem Release möglich** | F9–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist), F24, F25, F26, F29 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
+| **D: nach dem Release möglich** | F9–F12, F15, F17, F21 (sobald HA 2026.11 erschienen ist), F24, F25, F26, F29, F31, F32 | ~0,5 Tag gesamt | ~0,5 Tag | F10: Langzeitbeobachtung |
 
 **Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
 
@@ -545,10 +642,10 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F4, F5) **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration. Die Pakete beziehen sich auf die Bewertung oben.
 
 1. **Paket A, vor dem Release zwingend:** ~~F1 + F2 (#104/#90, Registerreihenfolge in Migration und Options-Flow)~~ ✅ erledigt (#133), ~~F3~~ ⏸ zurückgestellt, F4 (#82, Firmware-Priorität), F14 (Bildpfade, vor dem Merge nach `main`), F16 (`entry` → `pos` in Schritt 9), F20 (Testumgebung HA 2026.10), F22 (hassfest auf `3.5`). Abschließend ein echter Upgrade-Test 2.8.6 → 3.5 auf einer `low_first`-Anlage.
-2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F27 + F28 (Register ohne Werte, siehe `REGISTER_OHNE_WERTE.md`). Beides ändert Entitäten und kommt am besten mit dem ohnehin großen Versionssprung 3.5. ~~F7~~ entfällt.
+2. **Paket B, vor dem Release empfohlen:** F5 (#122/#85, Climate-IDs; vorher das HA-Verhalten klären), F27 + F28 (Register ohne Werte, siehe `REGISTER_OHNE_WERTE.md`), F30 (Wortreihenfolge prüfen statt nur aus der Firmware ableiten; nach #104 vom 23.10. kann F1 allein Anlagen wie die von @Eisbaer2 nicht schützen). Beides ändert Entitäten und kommt am besten mit dem ohnehin großen Versionssprung 3.5. ~~F7~~ entfällt.
 3. **Paket C, abhängig von Testern:** ~~F6 (`V1.0.4-3K`)~~ ✅ erledigt.
-4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F24 (Doku Betriebsart E-Manager), F25 (#134 Antwort), F26 (V1.0.2-3K), F29 (Doku 0xFFFF), F9–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
-5. **Issues pflegen:** #121 und #112 schließen, #132 schließen (in #134 bestätigt), #94/#95 nach Rückmeldung schließen, #105 nach Retest schließen, #133 nach HW-Test des Melders schließen, #134 nach Antwort schließen, #120 nach F14 schließen, in #90 nach Firmware-Version/Rohwert fragen.
+4. **Paket D, nach dem Release:** F21 (Climate `native_…`, sobald HA 2026.11 erschienen ist), F24 (Doku Betriebsart E-Manager), F25 (#134 Antwort), F26 (V1.0.2/V1.0.7/V1.0.8-3K), F29 (Doku 0xFFFF), F31 (FAQ Statistik), F32 (Doku Raumthermostat), F9–F12, F15 (PV 0 W bei ausgefallener Quelle; kann auch vorgezogen werden), F17 (#128 Abweichungssensor).
+5. **Issues pflegen:** #121 und #112 schließen, #132 schließen (in #134 bestätigt), #94/#95 nach Rückmeldung schließen, #105 nach Retest schließen, ~~#133 schließen~~ ✅ 27.10., ~~#134~~ ✅, ~~#136~~ ✅ 22.10., ~~#100~~ ✅ 27.10., #120 nach F14 schließen, in #90 nach Firmware-Version/Rohwert fragen. **Neu (29.10.):** in #100 @web2date antworten (V1.0.7-3K → V1.0.4-3K/V1.1.0-3K wählen); #104 Rückfrage zur Statistik beantworten (F31), danach schließen; #144 antworten (0002/`ambient_temperature_calculated`, Firmware) und schließen; #143 und #142 Rückfragen stellen (siehe Abschnitte).
 6. **Merge `3.5` → `main` vorbereiten:** `main` wird bis dahin nicht mehr geändert; F14 ist in `3.5` erledigt; Konflikt in `hacs.json` zugunsten von `3.5` lösen.
 
 ---
@@ -576,4 +673,4 @@ Unit-Tests: 156/156 bestanden (Python 3.14, `pytest-homeassistant-custom-compone
 
 ## Nicht betrachtet (Label `enhancement`)
 
-#128 Heizkurve: Abweichung zum realen Vorlaufsoll (inzwischen analysiert, siehe oben) · #138 Heatpump Flow Card von @Sturmi77 (Bitte um README-Link und Vorwarnung bei Umbenennungen von Entitäten/Zuständen, betrifft z. B. F5) · #119 Weniger Logging bei Sentinel-Werten · #113 Schreibbarer Kühl-Vorlaufsollwert · #83 Energiestatistik Wärmeverteilung · #79 Status-Entity PV-Überschuss-Modus · #77 Spreizung HP1 · #60 Abtauzähler 6h/12h · #59 Soll-Vorlauf bei PV-Überschuss erhöhen · #45 Wechselnde Strompreise · #37 State-Werte in Influx/Grafana
+#128 Heizkurve: Abweichung zum realen Vorlaufsoll (inzwischen analysiert, siehe oben) · #138 Heatpump Flow Card von @Sturmi77 (Bitte um README-Link und Vorwarnung bei Umbenennungen von Entitäten/Zuständen, betrifft z. B. F5) · #119 Weniger Logging bei Sentinel-Werten · #140 Modi normal/eco/Frostschutz lesen (geschlossen 27.10., „nicht geplant“) · #113 Schreibbarer Kühl-Vorlaufsollwert · #83 Energiestatistik Wärmeverteilung · #79 Status-Entity PV-Überschuss-Modus · #77 Spreizung HP1 · #60 Abtauzähler 6h/12h · #59 Soll-Vorlauf bei PV-Überschuss erhöhen · #45 Wechselnde Strompreise · #37 State-Werte in Influx/Grafana
