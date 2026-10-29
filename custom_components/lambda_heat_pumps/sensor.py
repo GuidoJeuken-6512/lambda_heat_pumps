@@ -71,6 +71,7 @@ from .coordinator import (
     LambdaCapacityLimitCoordinator,
     LambdaConfigEntry,
     LambdaCoordinator,
+    plausible_counter,
 )
 from .entity import LambdaEntity
 from .firmware import firmware_level, serves
@@ -96,6 +97,9 @@ class LambdaSensorDescription(SensorEntityDescription):
     # `firmware.py`; unset means every firmware serves it.
     firmware_version: int | None = None
     firmware_versions: tuple[int | str, ...] | None = None
+    # A Wh counter the controller keeps itself. A reading it cannot have is
+    # not published, so a wrong register order does not reach the statistics.
+    lifetime_counter: bool = False
 
     @cached_property
     def is_total(self) -> bool:
@@ -165,6 +169,7 @@ def _energy_register(key: str) -> LambdaSensorDescription:
         native_unit_of_measurement=UnitOfEnergy.WATT_HOUR,
         state_class=SensorStateClass.TOTAL_INCREASING,
         suggested_display_precision=0,
+        lifetime_counter=True,
     )
 
 
@@ -645,6 +650,14 @@ class LambdaTotalSensor(LambdaRegisterEntity, RestoreSensor):
         """
         if (value := self._read()) is None:
             return
+        if self.entity_description.lifetime_counter and (
+            not plausible_counter(value)
+            or not self.coordinator.counters_trusted(self._index)
+        ):
+            # Read with its words the wrong way round, most likely; the
+            # coordinator raises a repair issue for that. Publishing it would
+            # put a jump of a billion Wh into the energy dashboard.
+            return
         last = self._attr_native_value
         if (
             self.entity_description.state_class is SensorStateClass.TOTAL_INCREASING
@@ -969,6 +982,13 @@ class LambdaLifetimeCopSensor(LambdaEntity, SensorEntity):
         electrical = heat_pump.compressor_power_consumption_accumulated
         thermal = heat_pump.compressor_thermal_energy_output_accumulated
         if not electrical or thermal is None:
+            return None
+        if not (
+            plausible_counter(electrical)
+            and plausible_counter(thermal)
+            and self.coordinator.counters_trusted(self._index)
+        ):
+            # A wrong register order; a ratio of two misread counters is noise.
             return None
         return round(thermal / electrical, 2)
 

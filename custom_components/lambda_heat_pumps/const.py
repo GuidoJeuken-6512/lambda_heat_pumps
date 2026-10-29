@@ -61,6 +61,13 @@ DEFAULT_INT32_REGISTER_ORDER: Final = REGISTER_ORDER_HIGH_FIRST
 
 # Repair issues. Each is raised per config entry, as `<key>_<entry_id>`.
 ISSUE_UNKNOWN_FIRMWARE: Final = "unknown_firmware"
+ISSUE_REGISTER_ORDER: Final = "register_order"
+
+# The most a heat pump's own Wh counter can plausibly have reached: 1 GWh, ten
+# times what a large one generates in a lifetime. A counter read with its two
+# words the wrong way round lands above it (or below zero) unless it is still
+# under about 15 kWh, which is how the wrong order is told apart (#104, #133).
+MAX_PLAUSIBLE_COUNTER_WH: Final = 1_000_000_000
 
 # Entity naming. Unique ids are `{name}_{module}{index}_{key}` in legacy mode and
 # `{module}{index}_{key}` otherwise. The flag is fixed when the entry is created

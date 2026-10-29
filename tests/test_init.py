@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import HomeAssistant, valid_entity_id
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.lambda_heat_pumps.const import (
@@ -16,7 +17,13 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_USE_LEGACY_MODBUS_NAMES,
     DOMAIN,
     ENTRY_VERSION,
+    ISSUE_REGISTER_ORDER,
+    REGISTER_ORDER_HIGH_FIRST,
     REGISTER_ORDER_LOW_FIRST,
+)
+from custom_components.lambda_heat_pumps.coordinator import (
+    plausible_counter,
+    swap_words,
 )
 
 from .conftest import HOST, PORT, SLAVE_ID, Controller
@@ -576,6 +583,96 @@ async def test_the_register_order_defaults_to_what_the_firmware_uses(
 
     assert (
         state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+
+
+@pytest.mark.parametrize(
+    ("as_read", "on_the_display"),
+    [
+        # Reported in #104, #133 and #90, and what the display said.
+        (-1341390833, 1028108),
+        (1146028282, 16401487),
+        (-2147023552, 88113159),
+        (1140719617, 82942),
+        (1989148679, 489104),
+        (-354877437, 256729),
+        (1525284885, 1399530),
+    ],
+)
+def test_the_misread_counters_from_the_issues_are_told_apart(
+    as_read: int, on_the_display: int
+) -> None:
+    assert not plausible_counter(as_read)
+    assert swap_words(as_read) == on_the_display
+    assert plausible_counter(on_the_display)
+    # And read the right way round, nothing is flagged.
+    assert not plausible_counter(swap_words(on_the_display))
+
+
+async def test_a_controller_that_disagrees_with_its_firmware_asks_for_the_other_order(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """#104: a V0.0.10-3K controller that writes its counters high word first.
+
+    The firmware default (low_first) misreads them as far over a GWh. That is
+    not published, and a repair issue names the order that reads them plausibly;
+    once it is set, the issue goes.
+    """
+    # The fixture's counters are high word first: 100000 and 400000 Wh.
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V0.0.10-3K"}
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=ENTRY_VERSION, title="EU08L", data=data
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issues = ir.async_get(hass)
+    issue_id = f"{ISSUE_REGISTER_ORDER}_{entry.entry_id}"
+    issue = issues.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_placeholders["suggested"] == REGISTER_ORDER_HIGH_FIRST
+    # Nothing misread reaches the counters or the ratio built from them.
+    for unique_id in (
+        "eu08l_hp1_compressor_power_consumption_accumulated",
+        "eu08l_hp1_compressor_thermal_energy_output_accumulated",
+        "eu08l_hp1_cop_calc",
+    ):
+        assert state_of(hass, unique_id) == "unknown", unique_id
+
+    hass.config_entries.async_update_entry(
+        entry, options={CONF_INT32_REGISTER_ORDER: REGISTER_ORDER_HIGH_FIRST}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert issues.async_get_issue(DOMAIN, issue_id) is None
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+
+
+async def test_a_misread_counter_keeps_its_last_value_and_books_nothing(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A counter that turns implausible mid-run holds, and no energy is booked."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    before = dict(coordinator.totals[1].electrical)
+
+    # The same counter a few Wh later, words swapped: 0x86A5_0001.
+    controller.registers[1020] = 0x86A5
+    controller.registers[1021] = 0x0001
+    for _ in range(2):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+    assert coordinator.totals[1].electrical == before
+    assert ir.async_get(hass).async_get_issue(
+        DOMAIN, f"{ISSUE_REGISTER_ORDER}_{entry.entry_id}"
     )
 
 

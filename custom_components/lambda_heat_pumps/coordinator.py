@@ -27,6 +27,7 @@ from types import MappingProxyType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -58,6 +59,8 @@ from .const import (
     DEFAULT_UPDATE_INTERVAL,
     DOMAIN,
     ELECTRICAL_ENERGY_MODES,
+    ISSUE_REGISTER_ORDER,
+    MAX_PLAUSIBLE_COUNTER_WH,
     MAX_ENERGY_DELTA_KWH,
     MODE_COMPRESSOR_START,
     MODE_STBY,
@@ -69,6 +72,7 @@ from .const import (
     PERIOD_HOURLY,
     PERIOD_MONTHLY,
     PERIOD_YEARLY,
+    REGISTER_ORDER_HIGH_FIRST,
     REGISTER_ORDER_LOW_FIRST,
     SIGNAL_PERIOD_ROLLOVER,
     THERMAL_ENERGY_MODES,
@@ -78,6 +82,18 @@ from .lambda_modbus import HeatPumpCapacityLimits, LambdaHeatPump
 from .lambda_modbus.ranges import base_address
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def plausible_counter(value: float) -> bool:
+    """Whether a heat pump's Wh counter could really read this."""
+    return 0 <= value <= MAX_PLAUSIBLE_COUNTER_WH
+
+
+def swap_words(value: int) -> int:
+    """A signed 32-bit value as it reads with its two 16-bit words swapped."""
+    raw = value & 0xFFFFFFFF
+    swapped = ((raw & 0xFFFF) << 16) | (raw >> 16)
+    return swapped - (1 << 32) if swapped & 0x80000000 else swapped
 
 type LambdaConfigEntry = ConfigEntry[LambdaCoordinator]
 
@@ -165,6 +181,7 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             if (order or DEFAULT_INT32_REGISTER_ORDER) == REGISTER_ORDER_LOW_FIRST
             else "big"
         )
+        self.word_order = word_order
         self.device = LambdaHeatPump(
             unit,
             num_hps=counts["hp"],
@@ -192,6 +209,11 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
         # the controller's register, or the entity id of an external meter.
         self._last_energy: dict[tuple[int, str], float] = {}
         self._energy_source: dict[tuple[int, str], str | None] = {}
+        # Whether the counters last read as if the register order were wrong;
+        # None until the first poll has said either way.
+        self._register_order_suspect: bool | None = None
+        # The heat pumps whose counters read as if the order were wrong.
+        self.misread_counters: set[int] = set()
 
         self._fast_interval = timedelta(
             seconds=entry.options.get(
@@ -358,6 +380,8 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             _LOGGER.warning("Failed to fetch %s: %s", name, report.failed[name])
         self._warned = frozenset(report.failed)
 
+        # Before the energy is booked: a misread counter books nothing.
+        self._check_register_order()
         for index in self.totals:
             heat_pump = self.component("hp", index)
             if heat_pump.operating_state is not None:
@@ -368,6 +392,85 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 )
             self._track_energy(index)
         return self.device
+
+    def counters_trusted(self, index: int) -> bool:
+        """Whether one heat pump's two Wh counters can be taken as read.
+
+        Both go together: a wrong register order turns a small counter into one
+        that still looks possible (400 kWh reads as 445 MWh), so the one that
+        gives it away speaks for its pair.
+        """
+        return index not in self.misread_counters
+
+    @callback
+    def _check_register_order(self) -> None:
+        """Ask the user to switch the register order if the counters say so.
+
+        The order defaults to what the firmware is documented to use, and some
+        controllers do not (#90, #104). A counter that is implausible as read
+        but plausible with its two words swapped is the one sign of that, and
+        the counters are the one place it matters. The issue goes again once
+        every counter reads plausibly, which after a fix is the next setup.
+        """
+        misread: set[int] = set()
+        for index in self.totals:
+            if f"hp{index}" in self.failed:
+                # Not read this time; whatever was concluded last time stands.
+                if index in self.misread_counters:
+                    misread.add(index)
+                continue
+            heat_pump = self.component("hp", index)
+            for value in (
+                heat_pump.compressor_power_consumption_accumulated,
+                heat_pump.compressor_thermal_energy_output_accumulated,
+            ):
+                if (
+                    value is not None
+                    and not plausible_counter(value)
+                    and plausible_counter(swap_words(int(value)))
+                ):
+                    misread.add(index)
+        self.misread_counters = misread
+        suspect = bool(misread)
+        if suspect == self._register_order_suspect:
+            return
+        self._register_order_suspect = suspect
+
+        entry = self.config_entry
+        issue_id = f"{ISSUE_REGISTER_ORDER}_{entry.entry_id}"
+        if not suspect:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+        current = (
+            REGISTER_ORDER_LOW_FIRST
+            if self.word_order == "little"
+            else REGISTER_ORDER_HIGH_FIRST
+        )
+        suggested = (
+            REGISTER_ORDER_HIGH_FIRST
+            if current == REGISTER_ORDER_LOW_FIRST
+            else REGISTER_ORDER_LOW_FIRST
+        )
+        _LOGGER.warning(
+            "The energy counters of %s only make sense read the other way round; "
+            "set the 32-bit register order to %s under Configure",
+            entry.title,
+            suggested,
+        )
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_REGISTER_ORDER,
+            translation_placeholders={
+                "name": entry.title,
+                "firmware": self.firmware_version,
+                "current": current,
+                "suggested": suggested,
+            },
+        )
 
     def _forget_what_answered(self) -> None:
         """Drop the last poll's outcome when this one never got that far."""
@@ -470,6 +573,13 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
                 totals.thermal,
             ),
         ):
+            # A counter read with its words the wrong way round climbs by 65,536
+            # Wh for every Wh — under the jump guard, so it would be booked. It
+            # is treated as no reading instead, as if the register were silent.
+            if register is not None and (
+                not plausible_counter(register) or not self.counters_trusted(index)
+            ):
+                register = None
             reading, source = self._energy_reading(index, thermal, register)
             if self._energy_source.get((index, kind)) != source:
                 # A different counter, or none: the last reading is no reference

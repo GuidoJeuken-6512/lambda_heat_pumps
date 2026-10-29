@@ -4,7 +4,7 @@ title: "FAQ – Falsche / keine Sensorwerte"
 
 # Falsche oder keine Sensorwerte
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 29.10.2026*
 
 Hier finden Sie die häufigsten Ursachen und Lösungen, wenn Sensoren **falsche Werte** anzeigen oder **gar keine Werte** liefern.
 
@@ -24,7 +24,9 @@ Seit Version 3.5 verwendet die Integration automatisch die Reihenfolge der **ein
 
 - Die eingestellte **Firmware-Version** passt nicht zu Ihrer Lambda.
 - Die Register-Reihenfolge wurde unter **Konfigurieren** fest auf einen falschen Wert gesetzt. Das passierte bei Installationen, die vor Version 3.5.7 von 2.x aktualisiert wurden: Dort wurde ohne Eintrag in der alten `lambda_wp_config.yaml` fest `high_first` gespeichert.
-- Ihre Lambda weicht von der dokumentierten Reihenfolge ihrer Firmware ab (selten).
+- Ihre Lambda weicht von der dokumentierten Reihenfolge ihrer Firmware ab. Das kommt vor: Es gibt z. B. Anlagen mit V0.0.10-3K, die `high_first` brauchen.
+
+**Ab Version 3.6 erkennt die Integration das selbst.** Liefern die Zähler Werte, die eine Wärmepumpe nicht haben kann (unter null oder über 1 GWh), und sind sie mit der anderen Reihenfolge plausibel, erscheint unter **Einstellungen → Reparaturen** der Hinweis **„32-Bit-Registerreihenfolge prüfen“** mit der passenden Einstellung. Bis Sie die Reihenfolge umgestellt haben, behalten die beiden Zähler ihren letzten plausiblen Wert, und es wird keine Energie aus ihnen gezählt. Die Langzeitstatistik bleibt dadurch sauber. Nur bei sehr neuen Anlagen (Zähler unter etwa 15 kWh) ist die falsche Reihenfolge noch nicht erkennbar.
 
 ### Lösung
 
@@ -34,7 +36,16 @@ Seit Version 3.5 verwendet die Integration automatisch die Reihenfolge der **ein
 
 ### Langzeitstatistik nach falschen Werten
 
-Die Gesamtzähler der Integration (`*_energy_total`, COP) schützt ein Sprungfilter: Ein Sprung von mehr als 100 kWh pro Abfrage wird verworfen. Die akkumulierten Zähler selbst haben in der Langzeitstatistik aber die falschen Werte, und Auswertungen darauf (z. B. Verbrauchszähler-Helfer oder das Energie-Dashboard) zeigen dadurch einen riesigen Sprung. Korrigieren lässt sich das unter **Entwicklerwerkzeuge** → **Statistiken**: beim betroffenen Sensor den Sprung über „Summe anpassen“ (engl. „Adjust sum“) ausgleichen, oder die Statistik des Sensors löschen (siehe [Historische Daten löschen](../Anwender/historische_daten_loeschen.md)).
+Ab Version 3.6 gelangen falsch gelesene Zähler nicht mehr in die Statistik (siehe oben). Wurden sie mit einer älteren Version schon aufgezeichnet, zeigt das Energie-Dashboard einen riesigen Sprung, auch in Auswertungen auf den Zählern (z. B. Verbrauchszähler-Helfer). Die Gesamtzähler der Integration (`*_energy_total`, COP) schützt ein Sprungfilter, der Sprünge über 100 kWh pro Abfrage verwirft. Die akkumulierten Zähler selbst sind aber betroffen.
+
+**So bereinigen Sie die Statistik, ohne die Historie zu verlieren:**
+
+1. Erst die Register-Reihenfolge korrigieren (siehe oben) und prüfen, dass die Zähler wieder mit dem Display übereinstimmen.
+2. **Entwicklerwerkzeuge** → **Statistiken** öffnen und den betroffenen Zähler suchen.
+3. Rechts beim Sensor auf das Symbol **„Summe anpassen“** (engl. „Adjust sum“) klicken, den Zeitpunkt des Sprungs wählen und den falschen Wert so korrigieren, dass die Stunde nur noch den echten Verbrauch zeigt. Das gilt für den Sprung beim Wechsel auf die falsche Reihenfolge **und** für den Sprung zurück nach der Korrektur.
+4. Die Stunden dazwischen haben keine brauchbaren Werte. Bei vielen Einträgen ist es einfacher, die Differenz zwischen Zählerstand vorher und nachher als einen Wert auf die Korrektur-Stunde zu legen. Die Summe stimmt dann, nur die Verteilung über die Zeit fehlt.
+
+Alternativ die Statistik des Sensors ganz löschen (siehe [Historische Daten löschen](../Anwender/historische_daten_loeschen.md)), dann ist die Historie dieses Zählers aber weg. Wer die Datenbank direkt bearbeitet (z. B. mit dem Add-on „SQLite Web“), sollte vorher ein Backup anlegen. Die Tabellen `statistics` und `statistics_short_term` enthalten je Stunde bzw. 5 Minuten die Spalten `state` und `sum`; es reicht nicht, nur `state` zu ändern.
 
 ---
 

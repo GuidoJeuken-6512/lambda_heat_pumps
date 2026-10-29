@@ -615,6 +615,10 @@
     "unknown_firmware": {
       "title": "Unbekannte Firmware-Version bei {name}",
       "description": "Die aus einer älteren Version der Integration übernommene Firmware-Version {firmware} ist nicht bekannt. {name} verwendet jetzt {fallback}. Davon hängt ab, welche Sensoren angelegt werden und wie die 32-Bit-Zähler gelesen werden.\n\nÖffne die Integration, wähle **Neu konfigurieren** und stelle die Firmware ein, die das Display der Wärmepumpe anzeigt (Statuszeile der WP-Seite)."
+    },
+    "register_order": {
+      "title": "32-Bit-Registerreihenfolge von {name} prüfen",
+      "description": "Die Energiezähler von {name} liefern Werte, die eine Wärmepumpe nicht haben kann (unter null oder über 1 GWh). Mit der anderen Registerreihenfolge gelesen sind sie plausibel. Die Steuerung legt ihre 32-Bit-Zähler also vermutlich andersherum ab, als es für die Firmware {firmware} üblich ist.\n\nBis das korrigiert ist, behalten die beiden Zähler ihren letzten plausiblen Wert, und es wird keine Energie aus ihnen gezählt.\n\nÖffne die Integration, wähle **Konfigurieren** und stelle die **32-Bit-Registerreihenfolge** von {current} auf **{suggested}**. Vergleiche die Zähler danach mit dem Display der Wärmepumpe. Dieser Hinweis verschwindet, sobald die Zähler plausibel sind."
     }
   }
 }

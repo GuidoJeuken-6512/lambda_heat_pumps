@@ -615,6 +615,10 @@
     "unknown_firmware": {
       "title": "Unknown firmware version on {name}",
       "description": "The firmware version {firmware} brought over from an older version of the integration is not known. {name} now uses {fallback}, which decides which sensors are created and how the 32-bit counters are read.\n\nOpen the integration, choose **Reconfigure** and select the firmware shown on the heat pump display (status line of the heat pump page)."
+    },
+    "register_order": {
+      "title": "Check the 32-bit register order of {name}",
+      "description": "The energy counters of {name} read as values a heat pump cannot have (below zero or above 1 GWh). Read with the other register order they are plausible, so the controller most likely writes its 32-bit counters the other way round than is usual for firmware {firmware}.\n\nUntil this is fixed the two counters keep their last plausible value and no energy is booked from them.\n\nOpen the integration, choose **Configure** and set the **32-bit register order** from {current} to **{suggested}**. Compare the counters with the heat pump display afterwards. This message disappears once the counters read plausibly."
     }
   }
 }
