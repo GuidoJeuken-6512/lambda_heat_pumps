@@ -106,7 +106,7 @@ async def test_only_the_failed_modules_entities_go_unavailable(
     # Everything else is read and reported as usual.
     assert state_of(hass, "eu08l_boil1_actual_high_temperature") == "48.0"
     assert state_of(hass, "eu08l_ambient_temperature_calculated") == "3.8"
-    assert state_of(hass, "eu08l_hc1_room_device_temperature") == "21.5"
+    assert state_of(hass, "eu08l_hc1_set_flow_line_offset_temperature") == "0.0"
 
 
 async def test_the_controllers_own_sub_systems_are_named_the_same_way(

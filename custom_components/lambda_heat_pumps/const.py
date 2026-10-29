@@ -19,10 +19,16 @@ ENTRY_VERSION: Final = 9
 # against, and `reg_order` is how that firmware lays out its 32-bit counters,
 # which is what the register-order option defaults to.
 FIRMWARE_CONFIG: Final[dict[str, dict[str, Any]]] = {
-    "V1.1.0-3K": {"version": 10, "reg_order": "low_first"},
-    # Shipped with the new controller (SW V1.3.x); low word first, confirmed
-    # by a raw register dump in #100.
-    "V1.0.4-3K": {"version": 9, "reg_order": "low_first"},
+    "V1.1.0-3K": {"version": 13, "reg_order": "low_first"},
+    # The heat pump firmware that comes with the new controller (SW V1.3.x and
+    # later). Low word first, confirmed by raw dumps for V1.0.2 and V1.0.4
+    # (#100); V1.0.7 (#100) and V1.0.8 (#144) are assumed to match. Entries
+    # store the name, and no sensor gates on an ordinal above 8, so these can
+    # be renumbered as new ones turn up.
+    "V1.0.8-3K": {"version": 12, "reg_order": "low_first"},
+    "V1.0.7-3K": {"version": 11, "reg_order": "low_first"},
+    "V1.0.4-3K": {"version": 10, "reg_order": "low_first"},
+    "V1.0.2-3K": {"version": 9, "reg_order": "low_first"},
     "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
     "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},
     "V0.0.8-3K": {"version": 6, "reg_order": "high_first"},

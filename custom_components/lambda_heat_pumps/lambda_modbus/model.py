@@ -8,9 +8,10 @@ a real temperature and are recorded into long-term statistics as if they were
 one. So a measurement declares them, and reads as unknown instead.
 
 They are declared on :func:`gauge` — every scaled measurement the controller
-reports — and not on plain integers, where the same raw value can be a real
-reading: 32768 W is a believable power, and a config parameter is whatever
-number the controller wants to put there.
+reports — and not on plain integers by default, where the same raw value can be
+a real reading: a config parameter is whatever number the controller wants to
+put there. A signed integer field opts in to ``nan=NO_REGISTER`` where -32768
+cannot be meant (a power, a flow, a request code).
 """
 
 from __future__ import annotations

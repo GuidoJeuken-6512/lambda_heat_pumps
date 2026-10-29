@@ -21,7 +21,7 @@ asking for, from the curve the user configured and the weather outside.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property
 
 from homeassistant.components.recorder.statistics import get_last_statistics
@@ -173,6 +173,28 @@ def _energy_register(key: str) -> LambdaSensorDescription:
     )
 
 
+# The new controller (V1.0.x, firmware 9-12) answers these undocumented
+# registers but holds nothing in them (32768), even with the compressor running
+# and the display showing the values (#100, REGISTER_OHNE_WERTE.md). V1.1.0-3K
+# (13) has no dump that says either way, so it keeps them.
+_NOT_ON_THE_NEW_CONTROLLER = ("1-8", "13")
+
+
+def _not_on_the_new_controller(
+    description: LambdaSensorDescription,
+) -> LambdaSensorDescription:
+    return replace(description, firmware_versions=_NOT_ON_THE_NEW_CONTROLLER)
+
+
+def _off_by_default(description: LambdaSensorDescription) -> LambdaSensorDescription:
+    """A register that only holds a value while something writes a request to it.
+
+    Without one it reads as unknown (#132, #143), so on a new installation it is
+    left for the user to turn on. Existing entities keep their state.
+    """
+    return replace(description, entity_registry_enabled_default=False)
+
+
 # The controller itself: outside air, and the energy manager.
 CONTROLLER_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _count("ambient_error_number"),
@@ -218,39 +240,39 @@ HP_SENSORS: tuple[LambdaSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
     ),
-    _count("request_type"),
-    _temperature("requested_flow_line_temperature"),
-    _temperature("requested_return_line_temperature"),
-    _temperature("requested_flow_to_return_line_temperature_difference"),
+    _off_by_default(_count("request_type")),
+    _off_by_default(_temperature("requested_flow_line_temperature")),
+    _off_by_default(_temperature("requested_return_line_temperature")),
+    _off_by_default(_temperature("requested_flow_to_return_line_temperature_difference")),
     _state("relais_state_2nd_heating_stage"),
     _energy_register("compressor_power_consumption_accumulated"),
     _energy_register("compressor_thermal_energy_output_accumulated"),
-    _count("config_parameter_24"),
-    _percent("vda_rating", precision=2),
-    _temperature("hot_gas_temperature"),
-    _temperature("subcooling_temperature"),
-    _temperature("suction_gas_temperature"),
-    _temperature("condensation_temperature"),
-    _temperature("evaporation_temperature"),
-    _percent("eqm_rating", precision=2),
-    _percent("expansion_valve_opening_angle", precision=2),
-    _count("config_parameter_33"),
+    _not_on_the_new_controller(_count("config_parameter_24")),
+    _not_on_the_new_controller(_percent("vda_rating", precision=2)),
+    _not_on_the_new_controller(_temperature("hot_gas_temperature")),
+    _not_on_the_new_controller(_temperature("subcooling_temperature")),
+    _not_on_the_new_controller(_temperature("suction_gas_temperature")),
+    _not_on_the_new_controller(_temperature("condensation_temperature")),
+    _not_on_the_new_controller(_temperature("evaporation_temperature")),
+    _not_on_the_new_controller(_percent("eqm_rating", precision=2)),
+    _not_on_the_new_controller(_percent("expansion_valve_opening_angle", precision=2)),
+    _not_on_the_new_controller(_count("config_parameter_33")),
 )
 
 # The capacity limits, read on their own slow poll rather than with the rest of
 # the heat pump. Same keys, so the entities they back are the ones that existed.
 HP_CAPACITY_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _count("config_parameter_50"),
-    _power("dhw_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("heating_min_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("heating_max_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("heating_min_output_power_0c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("heating_max_output_power_0c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("heating_min_output_power_minus15c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("heating_max_output_power_minus15c", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("cooling_min_output_power", unit=UnitOfPower.KILO_WATT, precision=1),
-    _power("cooling_max_output_power", unit=UnitOfPower.KILO_WATT, precision=1),
-    _count("config_parameter_60"),
+    _not_on_the_new_controller(_power("dhw_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("heating_min_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("heating_max_output_power_15c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("heating_min_output_power_0c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("heating_max_output_power_0c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("heating_min_output_power_minus15c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("heating_max_output_power_minus15c", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("cooling_min_output_power", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_power("cooling_max_output_power", unit=UnitOfPower.KILO_WATT, precision=1)),
+    _not_on_the_new_controller(_count("config_parameter_60")),
 )
 
 BOIL_SENSORS: tuple[LambdaSensorDescription, ...] = (
@@ -269,16 +291,17 @@ BUFF_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _temperature("actual_high_temperature"),
     _temperature("actual_low_temperature"),
     _temperature("buffer_temperature_high_setpoint"),
-    _state("request_type"),
-    _temperature("request_flow_line_temp_setpoint"),
-    _temperature("request_return_line_temp_setpoint"),
+    _off_by_default(_state("request_type")),
+    _off_by_default(_temperature("request_flow_line_temp_setpoint")),
+    _off_by_default(_temperature("request_return_line_temp_setpoint")),
     LambdaSensorDescription(
         key="request_heat_sink_temp_diff_setpoint",
         native_unit_of_measurement=UnitOfTemperature.KELVIN,
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
+        entity_registry_enabled_default=False,
     ),
-    _power("modbus_request_heating_capacity", unit=UnitOfPower.KILO_WATT, precision=1),
+    _off_by_default(_power("modbus_request_heating_capacity", unit=UnitOfPower.KILO_WATT, precision=1)),
     _temperature("maximum_buffer_temp"),
 )
 
@@ -304,9 +327,9 @@ HC_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _state("operating_state"),
     _temperature("flow_line_temperature"),
     _temperature("return_line_temperature"),
-    _temperature("room_device_temperature"),
-    _temperature("set_flow_line_temperature"),
-    _state("operating_mode"),
+    _off_by_default(_temperature("room_device_temperature")),
+    _off_by_default(_temperature("set_flow_line_temperature")),
+    _off_by_default(_state("operating_mode")),
     # Firmware 3+ repurposes this same register (see heating_circuit.py); on
     # those versions only target_temp_flow_line below is served.
     _temperature("flow_line_temperature_setpoint", firmware_versions=("1-2",)),

@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from custom_components.lambda_heat_pumps.const import CONF_FIRMWARE_VERSION
+from custom_components.lambda_heat_pumps.const import (
+    CONF_FIRMWARE_VERSION,
+    FIRMWARE_CONFIG,
+)
 from custom_components.lambda_heat_pumps.firmware import (
     default_register_order,
     firmware_level,
@@ -48,13 +51,24 @@ def test_default_register_order_of_a_known_firmware() -> None:
     assert default_register_order("V0.0.8-3K") == "high_first"
 
 
-def test_v1_0_4_sits_between_v0_0_10_and_v1_1_0() -> None:
-    """V1.0.4-3K (new controller, #100) is ordered by release, low word first."""
+def test_the_new_controllers_firmware_sits_between_v0_0_10_and_v1_1_0() -> None:
+    """The V1.0.x firmware of the new controller (#100, #144) is ordered by release."""
     def level(name: str) -> int:
         return firmware_level(SimpleNamespace(data={CONF_FIRMWARE_VERSION: name}))
 
-    assert level("V0.0.10-3K") < level("V1.0.4-3K") < level("V1.1.0-3K")
-    assert default_register_order("V1.0.4-3K") == "low_first"
+    new_controller = ("V1.0.2-3K", "V1.0.4-3K", "V1.0.7-3K", "V1.0.8-3K")
+    levels = [level(name) for name in ("V0.0.10-3K", *new_controller, "V1.1.0-3K")]
+    assert levels == sorted(levels)
+    assert len(set(levels)) == len(levels)
+    for name in new_controller:
+        assert default_register_order(name) == "low_first", name
+
+
+def test_every_firmware_has_its_own_ordinal() -> None:
+    ordinals = [firmware["version"] for firmware in FIRMWARE_CONFIG.values()]
+    assert len(set(ordinals)) == len(ordinals)
+    # Newest first, which is how the setup form lists them.
+    assert ordinals == sorted(ordinals, reverse=True)
 
 
 def test_default_register_order_of_an_unknown_firmware_is_unset() -> None:

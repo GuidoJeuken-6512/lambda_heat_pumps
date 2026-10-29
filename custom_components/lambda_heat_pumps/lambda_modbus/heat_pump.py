@@ -10,7 +10,7 @@ from .enums import (
     HeatPumpState,
     RelaisState,
 )
-from .model import LambdaComponent, enum, gauge
+from .model import NO_REGISTER, LambdaComponent, enum, gauge
 
 
 class HeatPump(LambdaComponent):
@@ -23,18 +23,20 @@ class HeatPump(LambdaComponent):
 
     flow_line_temperature = gauge(4, 0.01, unit="°C")
     return_line_temperature = gauge(5, 0.01, unit="°C")
-    volume_flow_heat_sink = integer(6, unit="l/h")
+    volume_flow_heat_sink = integer(6, unit="l/h", nan=NO_REGISTER)
     energy_source_inlet_temperature = gauge(7, 0.01, unit="°C")
     energy_source_outlet_temperature = gauge(8, 0.01, unit="°C")
     volume_flow_energy_source = gauge(9, 0.01, unit="l/min")
 
     compressor_unit_rating = gauge(10, 0.01, signed=False, unit="%")
     actual_heating_capacity = gauge(11, 0.1, unit="kW")
-    inverter_power_consumption = integer(12, unit="W")
+    inverter_power_consumption = integer(12, unit="W", nan=NO_REGISTER)
     cop = gauge(13, 0.01)
 
     # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
-    request_type = integer(15, writable=True, force_fc16=True)
+    # 0x8000 on the new controller (#100): a request code, not a reading, so
+    # there is nothing it could mean but "none".
+    request_type = integer(15, writable=True, force_fc16=True, nan=NO_REGISTER)
     requested_flow_line_temperature = gauge(16, 0.1, writable=True, force_fc16=True, unit="°C")
     requested_return_line_temperature = gauge(17, 0.1, writable=True, force_fc16=True, unit="°C")
     requested_flow_to_return_line_temperature_difference = gauge(

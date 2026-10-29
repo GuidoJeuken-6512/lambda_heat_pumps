@@ -207,6 +207,85 @@ async def test_climate_entities_get_a_climate_id_without_a_warning(
     assert "wrong domain" not in caplog.text
 
 
+@pytest.mark.parametrize(
+    ("firmware", "served"),
+    [
+        ("V0.0.10-3K", True),
+        ("V1.0.2-3K", False),
+        ("V1.0.4-3K", False),
+        ("V1.0.8-3K", False),
+        # No dump says either way, so it keeps them.
+        ("V1.1.0-3K", True),
+    ],
+)
+async def test_the_new_controller_does_not_get_its_empty_registers(
+    hass: HomeAssistant, controller: Controller, firmware: str, served: bool
+) -> None:
+    """1024-1033 and 1051-1060 hold nothing on the V1.0.x controller (#100)."""
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: firmware}
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+
+    for unique_id in (
+        "eu08l_hp1_hot_gas_temperature",
+        "eu08l_hp1_config_parameter_24",
+        "eu08l_hp1_dhw_output_power_15c",
+        "eu08l_hp1_config_parameter_60",
+    ):
+        found = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert bool(found) is served, unique_id
+    # What the new controller does fill stays.
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_config_parameter_50"
+    )
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_flow_line_temperature"
+    )
+
+
+async def test_a_power_of_minus_32768_w_reads_unknown(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """0x8000 in a signed power is the controller's "no value", not -32768 W (#91)."""
+    controller.registers[102] = 0x8000  # E-Manager not on Modbus
+    controller.registers[1012] = 0x8000
+    await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_emgr_actual_power") == "unknown"
+    assert state_of(hass, "eu08l_hp1_inverter_power_consumption") == "unknown"
+
+
+async def test_request_registers_are_off_on_a_new_installation(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """They only hold a value while something requests one (#132, #143)."""
+    controller.install(3000)  # buffer 1
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    for unique_id in (
+        "eu08l_hp1_request_type",
+        "eu08l_buff1_request_type",
+        "eu08l_buff1_request_heat_sink_temp_diff_setpoint",
+        "eu08l_hc1_room_device_temperature",
+        "eu08l_hc1_set_flow_line_temperature",
+        "eu08l_hc1_operating_mode",
+    ):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert entity_id, unique_id
+        assert registry.async_get(entity_id).disabled_by is (
+            er.RegistryEntryDisabler.INTEGRATION
+        ), unique_id
+    # A measurement next to them is on.
+    flow = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hc1_flow_line_temperature"
+    )
+    assert registry.async_get(flow).disabled_by is None
+
+
 async def test_a_register_its_firmware_withdrew_is_not_modelled(
     hass: HomeAssistant, controller: Controller
 ) -> None:
@@ -224,7 +303,7 @@ async def test_a_register_its_firmware_withdrew_is_not_modelled(
     await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
 
-    # V1.1.0-3K is version 10, past it.
+    # V1.1.0-3K is version 13, past it.
     data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V1.1.0-3K"}
     newer = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
     newer.add_to_hass(hass)
@@ -291,7 +370,9 @@ async def test_a_register_with_nothing_behind_it_reads_unknown(
     controller.registers[1008] = 0x8000  # energy source outlet: no such register
     controller.registers[5003] = 0xF448  # hc return line: no sensor connected
     controller.registers[5006] = 0xF448  # and its operating mode with it
-    await setup_entry(hass, controller, legacy=True)
+    entry = await setup_entry(hass, controller, legacy=True)
+    # A request register; off by default.
+    await enable_sensors(hass, entry, "eu08l_hc1_operating_mode")
 
     for unique_id in (
         "eu08l_hp1_energy_source_outlet_temperature",
@@ -319,7 +400,14 @@ async def test_a_no_request_or_no_sensor_register_reads_unknown(
     controller.registers[2] = 0xFFFF  # ambient temperature: no external sensor
     controller.registers[3005] = 0xFFFF  # buffer request type: no request
     controller.registers[3006] = 0xFFFF  # buffer request flow line setpoint
-    await setup_entry(hass, controller, legacy=True)
+    entry = await setup_entry(hass, controller, legacy=True)
+    # Request registers; off by default.
+    await enable_sensors(
+        hass,
+        entry,
+        "eu08l_buff1_request_type",
+        "eu08l_buff1_request_flow_line_temp_setpoint",
+    )
 
     for unique_id in (
         "eu08l_ambient_temperature",
