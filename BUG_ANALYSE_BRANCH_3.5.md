@@ -1,6 +1,6 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 29.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026; Issue-Aktivität 22.–29.10.2026 eingearbeitet, siehe [Nachtrag 29.10.2026](#nachtrag-29102026-issue-aktivität-seit-dem-22102026))
+- **Stand:** 29.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026; Issue-Aktivität 22.–29.10.2026 eingearbeitet, siehe [Nachtrag 29.10.2026](#nachtrag-29102026-issue-aktivität-seit-dem-22102026); Bewertung „betrifft 3.5.x“ und [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026))
 - **`main` (2.x) wird nicht mehr geändert** (Entscheidung 22.10.2026). Alle Fixes nur noch in `3.5`; `main` bekommt sie mit dem Merge.
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 - **Geprüfter Code:** `origin/3.5` @ `be4728b` (Integration v3.5.7, noch ohne Tag); Erstanalyse gegen `55439d4` (v3.5.6)
@@ -19,32 +19,34 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 
 ## Übersicht
 
-| Issue | Titel (gekürzt) | Status in 3.5 | Priorität |
-|---|---|---|---|
-| [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) | Migration schreibt `high_first` über den Firmware-Default | ✅ **behoben** (F1 + F2, 17.10.2026), **geschlossen 27.10.**; HW-Test durch andere 2.8.x-Anwender offen | – |
-| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | Akkumulierte Energiezähler falsch / negativ | ✅ Regression behoben (F1 + F2); **neu 23.10.: Anlage mit V0.0.10-3K braucht `high_first`** (bestätigt), Firmware-Tabelle passt nicht für alle Anlagen → F30 | 🟠 mittel |
-| [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **Regression behoben** (gleiche Ursache wie #104), HW-Test ausstehend | – |
-| [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | Falsche Firmware-Version übernommen | 🟠 **teilweise offen** (Migration bevorzugt veralteten Wert); Index-Fehler im Code nicht nachweisbar | mittel |
-| [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | Neue Steuerung FW 1.3.8 / 1.3.10 | **geschlossen 27.10.**, Befunde offen; V1.0.4-3K ✅ in 3.5.7; V1.0.2-3K (F26), neu gemeldet **V1.0.7-3K** (24.10., Frage unbeantwortet) → F26 erweitert; F27/F28 offen | mittel |
-| [#144](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/144) | Neue Steuerung SW V1.4.1 (WP-FW **V1.0.8-3K**), 2.8.6 | 🟡 **neu 28.10.**: E-Manager-Fehler von Lambda behoben; `ambient_temperature` `unknown` = Register 0002 ohne Einspeisung (F3, kein Code-Bug); Firmware fehlt in der Auswahl (F26) | niedrig |
-| [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | Viele Entitäten (v. a. Puffer) ohne Messwert, 3.5.6 | 🟡 **neu 28.10.**: EU13, V1.0.4-3K (Option V1.1.0-3K); passt zu `REGISTER_OHNE_WERTE.md` (3005–3009 = „keine Anforderung“); Screenshot auswerten, Rückfragen | niedrig–mittel |
-| [#142](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/142) | Raumtemperatur wird nicht nach 5004/5104 geschrieben, 2.8.6 | 🟡 **neu 28.10.**: Register lesen 62536 = −3000 (nichts geschrieben); Code schreibt nur mit Option „Raumthermostat-Steuerung“; Log fehlt | niedrig–mittel |
-| [#122](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/122) | Entity-ID mit falscher Domain (`sensor.*_heating_circuit`) | 🟡 Code behoben, **Registry-Altlasten offen**; bei einem Tester (Upgrade 2.8.6 → 3.5.6) nicht aufgetreten | mittel (Frist HA 2027.5) |
-| [#85](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/85) | Entity-ID mit falscher Domain (`sensor.*_boil1_hot_water`) | 🟡 wie #122 (Duplikat) | mittel (Frist HA 2027.5) |
-| [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | 🟢 auf 3.5.6 **nicht reproduzierbar** (Retest 18.10., Modus „Manuell“); Modus „Automatik“ ungetestet | niedrig |
-| [#101](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/101) | Solarthermiemodul wird nicht erkannt | 🟡 unklar, Logs fehlen; Schwachstelle in der Modulerkennung | niedrig |
-| [#94](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/94) | Verlauf nach Update auf 2.6.0 weg | 🟢 in 3.5 nicht reproduzierbar | niedrig |
-| [#95](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/95) | Heizkurven-Stützpunkte zeigen statische Werte | 🟢 kein Code-Bug (so gewollt) + Sentinel-Werte behoben | niedrig |
-| [#132](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/132) | Room Temperature / Set Flow Temperature `unknown` | 🟢 kein Code-Bug, nur UX; `target_temp_flow_line` in #134 auf V1.1.0-3K als korrekt bestätigt | niedrig |
-| [#120](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/120) | Screenshots PV-Überschuss fehlen (toter Link) | 🟡 Bildpfade in `3.5` behoben (F14), `main` offen; neu: Doku zu „Manuell“/„Automatik“ (F24) | mittel (vor Merge 3.5 → main) |
-| [#134](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/134) | Upgrade-Hinweise 2.8.6 → 3.5.6 (Setpoint-Entity, Statistik-Reparaturen) | ✅ **Changelog ergänzt/korrigiert** (17.10.2026), Issue geschlossen; Rückfrage zu V1.0.4-3K vs. V1.1.0-3K offen (F25) | – |
-| [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Pumpen-Sollwert (Enhancement) | 🟡 Doku korrigiert (beide Branches), Abweichungssensor offen (F17); Tester bestätigt Nutzen mit Live-Daten | niedrig |
-| [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | ⛔ **wird nicht umgesetzt** (22.10.2026), **geschlossen 22.10.** als „nicht geplant“ (F23) | – |
-| [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss (2.8.6) | 🟡 **neu**, vermutlich Verhalten der Lambda; Rückfragen nötig | niedrig–mittel |
-| [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | `device_registry.async_get_device` deprecated | ✅ **behoben** in 3.5.4; Duplikat #141 (24.10., 2.x `utils.py:246`) geschlossen; in 2.8.6 bleibt die Warnung bis zum Release von 3.5 | – |
-| [#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112) | Register 5007 doppelt adressiert | ✅ **behoben** in 3.5.5 | – |
+| Issue | 3.5.x | Titel (gekürzt) | Status in 3.5 | Priorität |
+|---|---|---|---|---|
+| [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) | ☑️ behoben in 3.5.7 (HW-Test offen) | Migration schreibt `high_first` über den Firmware-Default | ✅ **behoben** (F1 + F2, 17.10.2026), **geschlossen 27.10.**; HW-Test durch andere 2.8.x-Anwender offen | – |
+| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | 🔷 **ja** (F30, F31) | Akkumulierte Energiezähler falsch / negativ | ✅ Regression behoben (F1 + F2); **neu 23.10.: Anlage mit V0.0.10-3K braucht `high_first`** (bestätigt), Firmware-Tabelle passt nicht für alle Anlagen → F30 | 🟠 mittel |
+| [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | 🔷 **ja** (F30/F11) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **Regression behoben** (gleiche Ursache wie #104), HW-Test ausstehend | – |
+| [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | 🔷 **ja** (F4, Migration) | Falsche Firmware-Version übernommen | 🟠 **teilweise offen** (Migration bevorzugt veralteten Wert); Index-Fehler im Code nicht nachweisbar | mittel |
+| [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | 🔷 **ja** (F26–F28) | Neue Steuerung FW 1.3.8 / 1.3.10 | **geschlossen 27.10.**, Befunde offen; V1.0.4-3K ✅ in 3.5.7; V1.0.2-3K (F26), neu gemeldet **V1.0.7-3K** (24.10., Frage unbeantwortet) → F26 erweitert; F27/F28 offen | mittel |
+| [#144](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/144) | 🔷 **ja** (F26) | Neue Steuerung SW V1.4.1 (WP-FW **V1.0.8-3K**), 2.8.6 | 🟡 **neu 28.10.**: E-Manager-Fehler von Lambda behoben; `ambient_temperature` `unknown` = Register 0002 ohne Einspeisung (F3, kein Code-Bug); Firmware fehlt in der Auswahl (F26) | niedrig |
+| [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | 🔷 **ja** (gemeldet auf 3.5.6; F27, F12) | Viele Entitäten (v. a. Puffer) ohne Messwert, 3.5.6 | 🟡 **neu 28.10.**: EU13, V1.0.4-3K (Option V1.1.0-3K); passt zu `REGISTER_OHNE_WERTE.md` (3005–3009 = „keine Anforderung“); Screenshot auswerten, Rückfragen | niedrig–mittel |
+| [#142](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/142) | ❔ prüfen (gleiche Logik in 3.5; F32) | Raumtemperatur wird nicht nach 5004/5104 geschrieben, 2.8.6 | 🟡 **neu 28.10.**: Register lesen 62536 = −3000 (nichts geschrieben); Code schreibt nur mit Option „Raumthermostat-Steuerung“; Log fehlt | niedrig–mittel |
+| [#122](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/122) | 🔷 **ja** (F5, Migration) | Entity-ID mit falscher Domain (`sensor.*_heating_circuit`) | 🟡 Code behoben, **Registry-Altlasten offen**; bei einem Tester (Upgrade 2.8.6 → 3.5.6) nicht aufgetreten | mittel (Frist HA 2027.5) |
+| [#85](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/85) | 🔷 **ja** (F5) | Entity-ID mit falscher Domain (`sensor.*_boil1_hot_water`) | 🟡 wie #122 (Duplikat) | mittel (Frist HA 2027.5) |
+| [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | 🔷 **ja** (Retest „Automatik“; F15, F10) | E-Manager-Register springt auf 0 | 🟢 auf 3.5.6 **nicht reproduzierbar** (Retest 18.10., Modus „Manuell“); Modus „Automatik“ ungetestet | niedrig |
+| [#101](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/101) | 🔷 **ja** (F9) | Solarthermiemodul wird nicht erkannt | 🟡 unklar, Logs fehlen; Schwachstelle in der Modulerkennung | niedrig |
+| [#94](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/94) | – nein | Verlauf nach Update auf 2.6.0 weg | 🟢 in 3.5 nicht reproduzierbar | niedrig |
+| [#95](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/95) | – nein | Heizkurven-Stützpunkte zeigen statische Werte | 🟢 kein Code-Bug (so gewollt) + Sentinel-Werte behoben | niedrig |
+| [#132](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/132) | ◽ nur UX (F12) | Room Temperature / Set Flow Temperature `unknown` | 🟢 kein Code-Bug, nur UX; `target_temp_flow_line` in #134 auf V1.1.0-3K als korrekt bestätigt | niedrig |
+| [#120](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/120) | 🔷 **ja** (Doku F24) | Screenshots PV-Überschuss fehlen (toter Link) | 🟡 Bildpfade in `3.5` behoben (F14), `main` offen; neu: Doku zu „Manuell“/„Automatik“ (F24) | mittel (vor Merge 3.5 → main) |
+| [#134](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/134) | 🔷 **ja** (Doku F25) | Upgrade-Hinweise 2.8.6 → 3.5.6 (Setpoint-Entity, Statistik-Reparaturen) | ✅ **Changelog ergänzt/korrigiert** (17.10.2026), Issue geschlossen; Rückfrage zu V1.0.4-3K vs. V1.1.0-3K offen (F25) | – |
+| [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | 🔷 Enhancement (F17) | Heizkurve: Abweichung zum Pumpen-Sollwert (Enhancement) | 🟡 Doku korrigiert (beide Branches), Abweichungssensor offen (F17); Tester bestätigt Nutzen mit Live-Daten | niedrig |
+| [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | – nein (nicht geplant) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | ⛔ **wird nicht umgesetzt** (22.10.2026), **geschlossen 22.10.** als „nicht geplant“ (F23) | – |
+| [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | – nein (Verhalten der Lambda; Doku F24) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss (2.8.6) | 🟡 **neu**, vermutlich Verhalten der Lambda; Rückfragen nötig | niedrig–mittel |
+| [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | – nein (behoben in 3.5.4) | `device_registry.async_get_device` deprecated | ✅ **behoben** in 3.5.4; Duplikat #141 (24.10., 2.x `utils.py:246`) geschlossen; in 2.8.6 bleibt die Warnung bis zum Release von 3.5 | – |
+| [#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112) | – nein (behoben in 3.5.5) | Register 5007 doppelt adressiert | ✅ **behoben** in 3.5.5 | – |
 
-Legende: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 unklar bzw. Restarbeit · 🟢 kein Code-Fehler in 3.5 · ✅ behoben (Issue kann geschlossen werden)
+Spalte 3.5.x: 🔷 betrifft 3.5.x, Arbeit offen · ☑️ betraf 3.5.x, behoben · ❔ noch unklar · ◽ nur optionale UX · – betrifft 3.5.x nicht (nur 2.x oder kein Code-Fehler). Reihenfolge der Umsetzung: [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026).
+
+Legende Status: 🔴 Fehler im 3.5-Code nachgewiesen · 🟠 Teilaspekte offen · 🟡 unklar bzw. Restarbeit · 🟢 kein Code-Fehler in 3.5 · ✅ behoben (Issue kann geschlossen werden)
 
 ---
 
@@ -637,7 +639,34 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 
 **Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
 
+## Umsetzungsplan 3.5.x (Stand 29.10.2026)
+
+**Betrifft 3.5.x (Arbeit offen):** #104, #90, #82, #100, #144, #143, #122/#85, #105, #101, #120, #134 und das Enhancement #128. Unklar: #142. **Betrifft 3.5.x nicht:** #94, #95, #112, #121, #136, #137 (#132 nur optionale UX). Dazu kommen Befunde ohne eigenes Issue: F15, F16, F20, F21, F22, F29.
+
+**Prinzip:** Erst die Testgrundlage, dann alles, was beim ersten Start nach dem Upgrade einmalig wirkt (Migration, Zähler). Danach alles, was die Menge der Entitäten ändert, gesammelt in einem Release. Dann der Hardware-Test als Freigabe. Was jederzeit nachgeschoben werden kann, kommt nach dem Release.
+
+| Schritt | Inhalt | Fixes | Issues | Warum an dieser Stelle | Aufwand |
+|---|---|---|---|---|---|
+| **1. Testgrundlage** | Testumgebung auf HA 2026.10 (Pin + 2 Testzeilen), hassfest auf `3.5` | F20, F22 | – | Alle folgenden Tests sollen gegen eine HA-Version laufen, die 3.5 auch verlangt (heute 2026.8.1 < Minimum 2026.9.0). | S |
+| **2. Migrationsschritt 9 abschließen** | Firmware aus Options vor Data + Warnung bei unbekanntem Namen; `entry` → `pos`; Climate-IDs `sensor.*` → `climate.*` (vorher HA-Verhalten klären) | F4, F16, F5 | #82, #122, #85 | Wirkt einmalig beim ersten Start jedes 2.8.x-Upgraders. Nach dem Release bräuchte jede Korrektur eine neue `ENTRY_VERSION`. Gleiche Datei und Tests (`test_config_flow.py`), also zusammen. | M |
+| **3. Zähler absichern** | Unplausible 32-Bit-Zähler erkennen und ein Repair-Issue „Registerreihenfolge prüfen“ mit der anderen Reihenfolge als Vorschlag anlegen (Variante a, enthält F11); FAQ zur Statistikbereinigung | F30, F31 | #104, #90 | #104 (23.10.) zeigt, dass F1 allein nicht schützt, wenn eine Anlage von der Firmware-Tabelle abweicht. Der Schaden (Energie-Dashboard) entsteht direkt nach dem Upgrade. | S–M |
+| **4. Firmware-Tabelle und Entitäten** | Neue Firmware-Namen (V1.0.2/V1.0.7/V1.0.8-3K) und Ordinals → Register ohne Werte ab V1.0.x nicht mehr anlegen → Sonderwert 0x8000 für `integer` → Anforderungsregister standardmäßig deaktivieren | F26 → F27 → F28 → F12 | #100, #144, #143, (#132) | F27 nutzt Firmware-Bereiche und hängt deshalb an den Ordinals aus F26. Alle vier ändern, welche Entitäten erscheinen. Ein gemeinsamer Changelog-Hinweis im ohnehin großen Versionssprung ist besser als mehrere kleine Brüche. | M |
+| **5. Doku vor dem Release** | Betriebsart E-Manager (Psoll nur in „Automatik“), V1.0.4 vs. V1.1.0, 0xFFFF = −0,1 °C, Raumthermostat braucht Option **und** Entity, Changelog für Schritt 2–4 | F24, F25, F29, F32 | #120, #134, #142, #137 | Nur Doku, kein Risiko. Schritt 2–4 brauchen ohnehin Changelog-Text. | S |
+| **6. Freigabe: Upgrade-Test an echter Anlage** | 2.8.6 → 3.5 auf einer `low_first`-Anlage ohne YAML-Wert, möglichst zusätzlich eine Anlage mit abweichender Reihenfolge (z. B. der Melder aus #104). Prüfen: Options ohne `int32_register_order`, Zähler unverändert, Climate-IDs umbenannt, `recorder/validate_statistics` ohne neue Befunde, F30-Repair erscheint nur bei abweichender Anlage | – | #133, #104 | Ein Test deckt F1, F4, F5, F16 und F30 gemeinsam ab. Der Simulator aus `modbus_tools` (umschaltbare Wortreihenfolge) eignet sich als Vorstufe. | 0,5 Tag |
+| **7. Release 3.5 + Merge nach `main`** | Erstes öffentliches 3.5-Release; Merge `3.5` → `main` (Konflikt `hacs.json` zugunsten `3.5`); 2.x-FAQ-Seite zu `async_get_device` danach löschen | – | #121, #112, #134 schließen | `main` bekommt erst hier die Fixes. | S |
+| **8. Nach dem Release** | PV-Überschuss 0 W bei ausgefallener Quelle (kann vorgezogen werden); Retry bei der Modulerkennung; Debug-Log PV; Climate `native_…` + Mindestversion 2026.11 (sobald HA 2026.11 erschienen ist, Anfang November); Abweichungssensor Heizkurve | F15, F9, F10, F21, F17 | #105, #101, #144 (späte Puffererkennung), #128 | Keine einmalige Wirkung beim Upgrade, kein Datenrisiko; lässt sich in Patch-Releases nachschieben. F21 ist an den HA-Termin gebunden, nicht an 3.5. | je S–M |
+
+**Zurückgestellt bzw. nicht geplant:** F3 (`ambient_temperature` ab V0.0.10; Register 0002 hat ohne Einspeisung keinen Wert, siehe #144), F23 (#136).
+
+**Issue-Antworten parallel, unabhängig von den Schritten:** #100 (@web2date: V1.0.7-3K → V1.0.4-3K/V1.1.0-3K wählen), #104 (Statistik-Frage, F31), #144 (0002 / `ambient_temperature_calculated`), #142 und #143 (Rückfragen), #105 (Automatik-Test), #90 (Firmware/Rohwert), #94/#95/#132 schließen.
+
+**Kritischer Pfad:** Schritt 1 → 2 → 3 → 4 → 6 → 7. Schritt 5 läuft neben 2–4 her. Grob 3–4 Arbeitstage plus Hardware-Test; die größte Unbekannte ist F5 (HA-Verhalten bei Registry-Einträgen mit falscher Domain).
+
+---
+
 ## Empfohlene Reihenfolge
+
+> Stand 22.10.2026, **ersetzt durch den [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026)** oben. Bleibt zur Nachvollziehbarkeit stehen.
 
 Da 3.5 noch nicht veröffentlicht ist, sollten alle Migrationskorrekturen (F1, F4, F5) **vor dem Release** in den bestehenden Migrationsschritt 9 einfließen. Danach bräuchte jede Korrektur eine eigene neue Migration. Die Pakete beziehen sich auf die Bewertung oben.
 
