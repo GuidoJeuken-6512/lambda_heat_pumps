@@ -18,6 +18,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import callback
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.selector import (
     BooleanSelector,
     EntitySelector,
@@ -66,6 +67,7 @@ from .const import (
     DOMAIN,
     ENTRY_VERSION,
     FIRMWARE_VERSIONS,
+    ISSUE_UNKNOWN_FIRMWARE,
     PV_SURPLUS_MODE_OPTIONS,
     REGISTER_ORDER_HIGH_FIRST,
     REGISTER_ORDER_LOW_FIRST,
@@ -203,6 +205,11 @@ class LambdaConfigFlow(ConfigFlow, domain=DOMAIN):
                         for key, value in entry.options.items()
                         if key != CONF_INT32_REGISTER_ORDER
                     }
+                # Choosing a firmware here answers the migration's question
+                # about one it did not know.
+                ir.async_delete_issue(
+                    self.hass, DOMAIN, f"{ISSUE_UNKNOWN_FIRMWARE}_{entry.entry_id}"
+                )
                 return self.async_update_reload_and_abort(
                     entry, data_updates=data, options=options
                 )
@@ -317,8 +324,15 @@ class LambdaOptionsFlow(OptionsFlowWithReload):
                 ): BooleanSelector(),
                 vol.Required(
                     CONF_PV_SURPLUS_MODE,
-                    default=options.get(
-                        CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE
+                    # 2.x also had "entry", which is written the same way as
+                    # "pos" (services.py only tells "neg" apart); a value the
+                    # list does not have would leave the form without a valid
+                    # default, so it is offered as "pos".
+                    default=(
+                        mode
+                        if (mode := options.get(CONF_PV_SURPLUS_MODE))
+                        in PV_SURPLUS_MODE_OPTIONS
+                        else DEFAULT_PV_SURPLUS_MODE
                     ),
                 ): _select(PV_SURPLUS_MODE_OPTIONS),
             }

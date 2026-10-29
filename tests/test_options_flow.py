@@ -117,6 +117,25 @@ async def test_a_set_register_order_is_offered_as_set(
     assert _default(result, CONF_INT32_REGISTER_ORDER) == REGISTER_ORDER_LOW_FIRST
 
 
+async def test_the_2x_pv_mode_entry_is_offered_as_pos(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """2.x also had "entry"; 3.5 writes it like "pos", so the form offers that."""
+    entry = await setup_entry(hass, controller, options={CONF_PV_SURPLUS_MODE: "entry"})
+    result = await _start(hass, entry)
+
+    assert _default(result, CONF_PV_SURPLUS_MODE) == "pos"
+
+
+async def test_a_set_pv_mode_is_offered_as_set(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    entry = await setup_entry(hass, controller, options={CONF_PV_SURPLUS_MODE: "neg"})
+    result = await _start(hass, entry)
+
+    assert _default(result, CONF_PV_SURPLUS_MODE) == "neg"
+
+
 async def test_a_hot_water_range_that_does_not_make_sense_is_refused(
     hass: HomeAssistant, controller: Controller
 ) -> None:

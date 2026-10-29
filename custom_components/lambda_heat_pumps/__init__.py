@@ -16,7 +16,7 @@ import yaml
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers import device_registry
+from homeassistant.helpers import device_registry, issue_registry
 from modbus_connection import ModbusError, ModbusTcpParams
 from modbus_connection.tmodbus import ModbusConnection
 
@@ -28,8 +28,10 @@ from .const import (
     CONF_SLAVE_ID,
     CONF_USE_LEGACY_MODBUS_NAMES,
     DEFAULT_MODBUS_MESSAGE_SPACING,
+    DOMAIN,
     ENTRY_VERSION,
     FIRMWARE_VERSIONS,
+    ISSUE_UNKNOWN_FIRMWARE,
     REGISTER_ORDER_HIGH_FIRST,
     REGISTER_ORDER_LOW_FIRST,
 )
@@ -129,13 +131,35 @@ async def async_migrate_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> 
     # Entries that predate this were all named with the prefix.
     data.setdefault(CONF_USE_LEGACY_MODBUS_NAMES, True)
     # The firmware version was written to the options by some flows and the data
-    # by others; the entry is the one place it belongs.
-    firmware = data.get(CONF_FIRMWARE_VERSION) or options.pop(
-        CONF_FIRMWARE_VERSION, None
+    # by others; the entry is the one place it belongs. 2.x read the options
+    # first (utils.get_firmware_version), so a firmware changed later in its
+    # options dialog sits there while data still holds the original (#82).
+    firmware = options.pop(CONF_FIRMWARE_VERSION, None) or data.get(
+        CONF_FIRMWARE_VERSION
     )
-    data[CONF_FIRMWARE_VERSION] = (
-        firmware if firmware in FIRMWARE_VERSIONS else FIRMWARE_VERSIONS[-1]
-    )
+    if firmware not in FIRMWARE_VERSIONS:
+        _LOGGER.warning(
+            "Unknown firmware version %r on %s, using %s; set the right one "
+            "under Reconfigure",
+            firmware,
+            entry.title,
+            FIRMWARE_VERSIONS[-1],
+        )
+        issue_registry.async_create_issue(
+            hass,
+            DOMAIN,
+            f"{ISSUE_UNKNOWN_FIRMWARE}_{entry.entry_id}",
+            is_fixable=False,
+            severity=issue_registry.IssueSeverity.WARNING,
+            translation_key=ISSUE_UNKNOWN_FIRMWARE,
+            translation_placeholders={
+                "name": entry.title,
+                "firmware": str(firmware),
+                "fallback": FIRMWARE_VERSIONS[-1],
+            },
+        )
+        firmware = FIRMWARE_VERSIONS[-1]
+    data[CONF_FIRMWARE_VERSION] = firmware
 
     # Only an order the old file actually set is carried over. Without one, the
     # option stays unset so the firmware's own order applies, as it did in 2.x;

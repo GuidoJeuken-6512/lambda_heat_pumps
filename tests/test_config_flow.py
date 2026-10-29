@@ -11,6 +11,7 @@ from homeassistant.config_entries import SOURCE_DHCP, SOURCE_USER, ConfigEntrySt
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -23,6 +24,8 @@ from custom_components.lambda_heat_pumps.const import (
     DEFAULT_INT32_REGISTER_ORDER,
     DOMAIN,
     ENTRY_VERSION,
+    FIRMWARE_VERSIONS,
+    ISSUE_UNKNOWN_FIRMWARE,
     REGISTER_ORDER_LOW_FIRST,
 )
 
@@ -180,6 +183,66 @@ async def test_an_older_entry_without_the_config_file(
     await hass.async_block_till_done()
 
     assert CONF_INT32_REGISTER_ORDER not in entry.options
+
+
+async def test_a_firmware_changed_in_the_old_options_wins(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """2.x read the options first, so the firmware chosen there is the current one (#82).
+
+    The data still holds the one picked when the entry was created.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=8,
+        data={
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V0.0.9-3K",
+        },
+        options={CONF_FIRMWARE_VERSION: "V0.0.10-3K"},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.data[CONF_FIRMWARE_VERSION] == "V0.0.10-3K"
+    # And nothing is left behind in the options.
+    assert CONF_FIRMWARE_VERSION not in entry.options
+
+
+async def test_an_unknown_firmware_is_reported_until_one_is_chosen(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A name this version does not know is not swapped silently for the oldest."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=8,
+        title="EU08L",
+        data={
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: PORT,
+            CONF_SLAVE_ID: SLAVE_ID,
+            CONF_FIRMWARE_VERSION: "V9.9.9-test",
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issue_id = f"{ISSUE_UNKNOWN_FIRMWARE}_{entry.entry_id}"
+    issues = ir.async_get(hass)
+    assert entry.data[CONF_FIRMWARE_VERSION] == FIRMWARE_VERSIONS[-1]
+    assert issues.async_get_issue(DOMAIN, issue_id) is not None
+    assert "Unknown firmware version 'V9.9.9-test'" in caplog.text
+
+    # Picking the firmware under Reconfigure clears it.
+    result = await _reconfigure(hass, entry, "V1.1.0-3K")
+    assert result["reason"] == "reconfigure_successful"
+    assert issues.async_get_issue(DOMAIN, issue_id) is None
 
 
 async def test_an_old_config_file_without_a_register_order(

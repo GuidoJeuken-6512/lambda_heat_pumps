@@ -610,5 +610,11 @@
     "main": {
       "name": "Lambda Wärmepumpe"
     }
+  },
+  "issues": {
+    "unknown_firmware": {
+      "title": "Unbekannte Firmware-Version bei {name}",
+      "description": "Die aus einer älteren Version der Integration übernommene Firmware-Version {firmware} ist nicht bekannt. {name} verwendet jetzt {fallback}. Davon hängt ab, welche Sensoren angelegt werden und wie die 32-Bit-Zähler gelesen werden.\n\nÖffne die Integration, wähle **Neu konfigurieren** und stelle die Firmware ein, die das Display der Wärmepumpe anzeigt (Statuszeile der WP-Seite)."
+    }
   }
 }

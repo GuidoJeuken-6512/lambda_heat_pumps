@@ -59,6 +59,9 @@ REGISTER_ORDER_HIGH_FIRST: Final = "high_first"
 REGISTER_ORDER_LOW_FIRST: Final = "low_first"
 DEFAULT_INT32_REGISTER_ORDER: Final = REGISTER_ORDER_HIGH_FIRST
 
+# Repair issues. Each is raised per config entry, as `<key>_<entry_id>`.
+ISSUE_UNKNOWN_FIRMWARE: Final = "unknown_firmware"
+
 # Entity naming. Unique ids are `{name}_{module}{index}_{key}` in legacy mode and
 # `{module}{index}_{key}` otherwise. The flag is fixed when the entry is created
 # and exists only to keep existing installations' entities stable.

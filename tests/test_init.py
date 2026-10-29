@@ -173,6 +173,33 @@ async def test_entity_ids_are_named_from_the_register_not_the_translation(
         assert entity_id == f"{domain}.{unique_id}", unique_id
 
 
+async def test_climate_entities_get_a_climate_id_without_a_warning(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#122/#85: 2.x proposed `sensor.*` ids for its climate entities.
+
+    Home Assistant always registered them under `climate.*` (it only takes the
+    object id from a proposal) and warned about the wrong domain. 3.5 proposes
+    the right domain, so the warning is gone and the existing ids stay as they are.
+    """
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    climate = [
+        entity
+        for entity in registry.entities.values()
+        if entity.platform == DOMAIN and entity.entity_id.startswith("climate.")
+    ]
+    assert climate
+    assert not any(
+        entity.platform == DOMAIN
+        and entity.unique_id.endswith(("_hot_water", "_heating_circuit"))
+        and not entity.entity_id.startswith("climate.")
+        for entity in registry.entities.values()
+    )
+    assert "wrong domain" not in caplog.text
+
+
 async def test_a_register_its_firmware_withdrew_is_not_modelled(
     hass: HomeAssistant, controller: Controller
 ) -> None:

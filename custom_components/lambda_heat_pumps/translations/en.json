@@ -610,5 +610,11 @@
     "main": {
       "name": "Lambda Heat Pump"
     }
+  },
+  "issues": {
+    "unknown_firmware": {
+      "title": "Unknown firmware version on {name}",
+      "description": "The firmware version {firmware} brought over from an older version of the integration is not known. {name} now uses {fallback}, which decides which sensors are created and how the 32-bit counters are read.\n\nOpen the integration, choose **Reconfigure** and select the firmware shown on the heat pump display (status line of the heat pump page)."
+    }
   }
 }
