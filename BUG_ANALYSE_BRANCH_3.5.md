@@ -1,5 +1,6 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
+- **Umsetzung:** Branch `3.6` (Version 3.6.0), siehe [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026).
 - **Stand:** 29.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026; Issue-Aktivität 22.–29.10.2026 eingearbeitet, siehe [Nachtrag 29.10.2026](#nachtrag-29102026-issue-aktivität-seit-dem-22102026); Bewertung „betrifft 3.5.x“ und [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026))
 - **`main` (2.x) wird nicht mehr geändert** (Entscheidung 22.10.2026). Alle Fixes nur noch in `3.5`; `main` bekommt sie mit dem Merge.
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
@@ -641,6 +642,19 @@ Der Testaufwand ist realistisch abschätzbar, weil die Infrastruktur steht. Für
 **Kernaussage:** Die kritischsten Fixes (F1–F4) sind im Code klein. Ihr Risiko liegt im Release-Zeitpunkt: Sie wirken alle beim ersten Start nach dem Upgrade und sind danach nur mit einer zusätzlichen Migration bzw. manueller Statistikbereinigung zu korrigieren. Den größten Testaufwand machen nicht die Fixes selbst, sondern das Umschreiben der drei Tests, die das aktuelle (Fehl-)Verhalten festschreiben, und der eine echte Upgrade-Test, der F1, F3, F4 und F5 gemeinsam abdeckt.
 
 ## Umsetzungsplan 3.5.x (Stand 29.10.2026)
+
+> **Umsetzung in Branch `3.6` (29.10.2026, Version 3.6.0):** Schritte 1–5 und der Code-Teil von Schritt 8 sind umgesetzt, 184 Tests bestehen (Python 3.14, HA 2026.10.2), der Doku-Build ist ohne Hinweise. Offen bleiben Schritt 6 (Hardware-Test), Schritt 7 (Release und Merge) sowie F21 (wartet auf HA 2026.11) und F17 (Enhancement #128).
+>
+> | Commit | Schritt | Fixes | Ergebnis |
+> |---|---|---|---|
+> | `5d8655b` | 1 | F20, F22 | Testumgebung HA 2026.10 (`0.13.373`), deprecated `async_get_device` im Test ersetzt; hassfest/HACS und Doku-Check auch auf `3.*` |
+> | `cb523ed` | 2 | F4, F16; **F5 entfällt** | Migration: Firmware aus Options vor Data, unbekannter Name → Warnung + Repair (entfernt durch *Neu konfigurieren*). Options-Dialog: PV-Modus `entry` → `pos`. **F5:** HA registriert Entitäten immer unter der Plattform-Domain und nimmt aus einer vorgeschlagenen ID nur den Objektteil; die 2.x-Einträge heißen also schon `climate.*`, nur die Warnung kam vom falschen Vorschlag. Ein Umbenennen über die Domain lehnt HA ab („New entity ID should be same domain“). Test sichert das ab |
+> | `21b13ab` | 3 | F30 (inkl. F11), F31 | Zähler < 0 oder > 1 GWh, getauscht plausibel → Repair „32-Bit-Registerreihenfolge prüfen“ mit Vorschlag; beide Zähler der WP halten ihren letzten Wert, COP (berechnet) unbekannt, keine Energie gebucht (vorher 65,5 kWh pro Wh unter dem Sprungfilter). Alle Werte aus #104/#133/#90 per Test geprüft. FAQ Statistikbereinigung |
+> | `82cf97e` | 4 | F26, F27, F28, F12 | V1.0.2/V1.0.7/V1.0.8-3K (Ordinals 9–12, V1.1.0 → 13); 20 Sensoren 1024–1033/1051–1060 nicht auf V1.0.x (**V1.1.0-3K behält sie**, kein Dump); 0x8000 als „kein Wert“ bei E-Manager-Leistungen, Inverter, Volumenstrom, `request_type`; Anforderungs-/Schreibregister standardmäßig aus |
+> | `20d6256` | 5 | F24, F25, F29, F32 | Changelog 3.6.0, Version 3.6.0; PV-Doku (Psoll nur „Automatik“, Messpunkt), Firmware-Seite, 0xFFFF = −0,1 °C, Raumthermometer (Option **und** Sensor) |
+> | `b869411` | 8 | F15, F9, F10 | PV 0 W bei ausgefallener Quelle (einmal gewarnt); Retry bei Timeout in der Modulerkennung, Module auf Info geloggt; Debug-Log des PV-Rohwerts |
+>
+> **Abweichungen vom Plan:** F5 entfällt (siehe oben). F27 schließt V1.1.0-3K bewusst nicht aus. F27a (die Leistungsgrenzen auf V1.0.x auch nicht mehr lesen) ist nicht umgesetzt: Die Integration liest die elf Register weiter einmal pro Stunde, legt aber keine Entitäten mehr an. F28 lässt die Config-Parameter unverändert (32768 kann dort ein echter Wert sein; auf V1.0.x fallen sie durch F27 weg).
 
 **Betrifft 3.5.x (Arbeit offen):** #104, #90, #82, #100, #144, #143, #122/#85, #105, #101, #120, #134 und das Enhancement #128. Unklar: #142. **Betrifft 3.5.x nicht:** #94, #95, #112, #121, #136, #137 (#132 nur optionale UX). Dazu kommen Befunde ohne eigenes Issue: F15, F16, F20, F21, F22, F29.
 
