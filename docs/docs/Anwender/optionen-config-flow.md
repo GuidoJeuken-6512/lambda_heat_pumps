@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen des config_flow
 
-*Zuletzt geändert am 16.04.2026*
+*Zuletzt geändert am 30.10.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -76,6 +76,9 @@ title: "Optionen des config_flow"
   - **Einheit**: °C
 
 **Hinweis**: Diese Grenzen gelten für alle Heizkreise und beeinflussen die verfügbaren Werte für Heizkreis-Temperatur-Number-Entities.
+
+!!! warning "Das ist die Raum-Solltemperatur, nicht die Vorlauftemperatur"
+    Trotz des Namens betrifft diese Option **nicht** die Vorlauftemperatur, die die Lambda selbst über ihre Heizkurve regelt. Sie begrenzt nur, welche **Raum-Solltemperatur** Sie bei aktiver [Raumthermostat-Steuerung](raumthermometer.md) einstellen können – ohne sie hat die Option keine Wirkung. Für höhere Vorlauftemperaturen (z. B. bei Heizkörpern statt Fußbodenheizung) ist diese Einstellung **nicht** der richtige Ort; die Vorlauftemperatur stellen Sie an der Lambda selbst ein. Siehe [Issue #146](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/146).
 
 ### Firmware-Version
 
