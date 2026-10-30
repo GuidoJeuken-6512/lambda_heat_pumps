@@ -56,6 +56,7 @@
           "room_thermostat_control": "Follow a room thermostat",
           "cooling_mode_enabled": "Cooling",
           "pv_surplus": "Use solar surplus",
+          "period_sensors_enabled": "Enable per-period energy sensors",
           "pv_surplus_mode": "Solar surplus encoding"
         },
         "data_description": {
@@ -63,6 +64,7 @@
           "int32_register_order": "How this controller orders the two registers of a 32-bit value. If the energy counters read as nonsense, change this.",
           "room_thermostat_control": "Send each heating circuit the temperature of the room it heats, from another sensor.",
           "pv_surplus": "Send the controller the solar power going spare, so it can use it.",
+          "period_sensors_enabled": "Also enables the hourly, 2h, 4h, daily, monthly, yearly and yesterday sensors for every counter (lifetime totals always stay on). Applies retroactively to existing entities too - except ones you disabled individually yourself.",
           "pv_surplus_mode": "Whether the controller reads the surplus register as unsigned (surplus only) or signed (surplus and shortfall)."
         }
       },

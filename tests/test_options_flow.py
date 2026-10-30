@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import entity_registry as er
 import pytest
 
 from custom_components.lambda_heat_pumps.const import (
@@ -15,6 +16,7 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_HOT_WATER_MAX_TEMP,
     CONF_HOT_WATER_MIN_TEMP,
     CONF_INT32_REGISTER_ORDER,
+    CONF_PERIOD_SENSORS_ENABLED,
     CONF_PV_POWER_SENSOR_ENTITY,
     CONF_PV_SURPLUS,
     CONF_PV_SURPLUS_MODE,
@@ -46,6 +48,7 @@ def _init_input(**overrides) -> dict:
         CONF_ROOM_THERMOSTAT_CONTROL: False,
         CONF_COOLING_MODE: False,
         CONF_PV_SURPLUS: False,
+        CONF_PERIOD_SENSORS_ENABLED: False,
         CONF_PV_SURPLUS_MODE: DEFAULT_PV_SURPLUS_MODE,
     }
     values.update(overrides)

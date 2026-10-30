@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen der Integration („Konfigurieren“)
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 30.10.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -56,6 +56,13 @@ Ist ein Minimum nicht kleiner als das Maximum, lehnt der Dialog das Speichern ab
 - **Vorauswahl:** die Reihenfolge der eingestellten Firmware (`high_first` bis V0.0.9-3K, `low_first` ab V0.0.10-3K).
 - **Ändern** nur, wenn die akkumulierten Energiezähler trotz richtiger Firmware-Version unsinnige Werte zeigen, siehe [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).
 - Bei einem Firmwarewechsel über „Neu konfigurieren“ wird eine hier gewählte Reihenfolge zurückgesetzt; danach gilt die der neuen Firmware.
+
+### Perioden-Energiesensoren aktivieren
+
+- **Standard:** aus.
+- Schaltet für jeden Zyklus-, Energie-, Wärme- und COP-Zähler zusätzlich alle Perioden-Sensoren frei: stündlich, 2 h, 4 h, täglich, monatlich, jährlich und „gestern“. Die Lebenszeit-Summe (`total`) ist davon nicht betroffen — sie ist immer an.
+- Wirkt **rückwirkend**, auch auf bereits laufende Installationen: Beim Speichern werden alle betroffenen, bereits existierenden Entitäten automatisch aktiviert bzw. (beim Ausschalten) wieder deaktiviert. Eine Entität, die Sie selbst einzeln über **Entitäten** deaktiviert haben, lässt der Schalter in Ruhe.
+- Praktisch, wenn Sie das [Lambda-Energy-Dashboard](../Vorlagen/Lambda_energy_dashboard.md) nutzen möchten, ohne die 56 Perioden-Sensoren einzeln freizuschalten.
 
 ### Raumthermostat verwenden
 

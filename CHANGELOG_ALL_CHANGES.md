@@ -7,6 +7,15 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.6.1] - 2026-10-30
+
+**New option: enable all per-period energy sensors at once.** The hourly, 2h, 4h, daily, monthly, yearly and "yesterday" breakdown sensors (cycling, energy, thermal energy and COP, 56 entities per heat pump across all of them) ship disabled by default — only the lifetime totals are on, since the energy dashboard and `utility_meter` can derive the rest from a total. The new **"Enable per-period energy sensors"** toggle under *Configure* turns all of them on (or off again) at once. It applies retroactively to existing installations too, not just new ones, by walking the entity registry directly — `entity_registry_enabled_default` only ever takes effect the first time an entity is created, so flipping it alone would have done nothing for an existing install. An entity you disabled yourself individually (not through this toggle) is left alone, in either direction. The lifetime totals are unaffected and always stay on.
+
+Details:
+- Toggling the option off again re-disables exactly the entities it enabled, not ones a user enabled by hand some other way — Home Assistant's registry has no separate "enabled by this toggle" marker, so a manually re-enabled entity is swept along with the group once the toggle has been saved at least once.
+- Before this option is ever saved (the common case for an existing install right after upgrading), nothing in the registry is touched — so a user who manually enabled individual period sensors keeps them exactly as they are until they explicitly use the new toggle.
+- Useful for the [Lambda Energy Dashboard template](https://guidojeuken-6512.github.io/lambda_heat_pumps/Vorlagen/Lambda_energy_dashboard/), which needs these sensors enabled; the template's docs now mention the toggle as the easier path instead of enabling each of the 56 sensors by hand.
+
 ### [3.6.0] - 2026-10-29
 
 **Misread energy counters are caught.** Some controllers lay out their 32-bit counters the other way round than their firmware is documented to (e.g. a `V0.0.10-3K` that needs `high_first`, [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104)). When the accumulated energy counters read as values a heat pump cannot have (below zero or above 1 GWh) but make sense with the other order, a repair **"Check the 32-bit register order"** names the setting to choose. Until then the two counters keep their last plausible value, the calculated COP is unknown and no energy is booked from them, so the long-term statistics stay clean. The FAQ now explains step by step how to clean up statistics recorded with a wrong order.
@@ -474,6 +483,15 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.6.1] - 2026-10-30
+
+**Neue Option: alle Perioden-Energiesensoren auf einmal aktivieren.** Die stündlichen, 2h-, 4h-, Tages-, Monats-, Jahres- und „Gestern“-Sensoren (Taktung, Energie, Wärmeenergie und COP, zusammen 56 Entitäten pro Wärmepumpe) sind standardmäßig deaktiviert — nur die Lebenszeit-Summen sind an, weil das Energie-Dashboard und `utility_meter` den Rest aus einer Summe ableiten können. Der neue Schalter **„Perioden-Energiesensoren aktivieren“** unter *Konfigurieren* schaltet sie alle zusammen an (oder wieder aus). Er wirkt rückwirkend auch auf bereits laufende Installationen, nicht nur bei Neuanlage, indem er die Entity-Registry direkt abgleicht — `entity_registry_enabled_default` wirkt nämlich nur beim erstmaligen Anlegen einer Entität; ein geänderter Default allein hätte für eine bestehende Installation nichts bewirkt. Eine selbst (nicht über diesen Schalter) einzeln deaktivierte Entität bleibt davon unberührt, in beide Richtungen. Die Lebenszeit-Summen sind nicht betroffen und bleiben immer an.
+
+Details:
+- Schaltet man die Option wieder aus, werden genau die Entitäten erneut deaktiviert, die sie aktiviert hatte — nicht solche, die ein Nutzer auf anderem Weg von Hand aktiviert hat. Home Assistants Registry kennt keine eigene Markierung „durch diesen Schalter aktiviert“, daher wird eine von Hand reaktivierte Entität mit der Gruppe mitgezogen, sobald der Schalter einmal gespeichert wurde.
+- Solange die Option noch nie gespeichert wurde (der übliche Fall direkt nach einem Update einer bestehenden Installation), wird in der Registry nichts angefasst — wer einzelne Perioden-Sensoren schon manuell aktiviert hat, behält sie genau so, bis er den neuen Schalter tatsächlich benutzt.
+- Nützlich für die [Lambda-Energy-Dashboard-Vorlage](https://guidojeuken-6512.github.io/lambda_heat_pumps/Vorlagen/Lambda_energy_dashboard/), die diese Sensoren aktiviert benötigt; die Doku der Vorlage nennt den Schalter jetzt als einfacheren Weg, statt alle 56 Sensoren einzeln freizuschalten.
 
 ### [3.6.0] - 2026-10-29
 

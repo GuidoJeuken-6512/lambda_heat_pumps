@@ -45,6 +45,7 @@ from .const import (
     CONF_HOT_WATER_MAX_TEMP,
     CONF_HOT_WATER_MIN_TEMP,
     CONF_INT32_REGISTER_ORDER,
+    CONF_PERIOD_SENSORS_ENABLED,
     CONF_PV_POWER_SENSOR_ENTITY,
     CONF_PV_SURPLUS,
     CONF_PV_SURPLUS_MODE,
@@ -321,6 +322,10 @@ class LambdaOptionsFlow(OptionsFlowWithReload):
                 ): BooleanSelector(),
                 vol.Required(
                     CONF_PV_SURPLUS, default=options.get(CONF_PV_SURPLUS, False)
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_PERIOD_SENSORS_ENABLED,
+                    default=options.get(CONF_PERIOD_SENSORS_ENABLED, False),
                 ): BooleanSelector(),
                 vol.Required(
                     CONF_PV_SURPLUS_MODE,

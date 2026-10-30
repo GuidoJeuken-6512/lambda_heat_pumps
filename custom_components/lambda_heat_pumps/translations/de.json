@@ -56,6 +56,7 @@
           "room_thermostat_control": "Raumthermostat verwenden",
           "cooling_mode_enabled": "Kühlen",
           "pv_surplus": "PV-Überschuss nutzen",
+          "period_sensors_enabled": "Perioden-Energiesensoren aktivieren",
           "pv_surplus_mode": "Kodierung des PV-Überschusses"
         },
         "data_description": {
@@ -63,6 +64,7 @@
           "int32_register_order": "In welcher Reihenfolge dieser Regler die beiden Register eines 32-Bit-Werts ablegt. Wenn die Energiezähler unsinnige Werte zeigen, ändern Sie dies.",
           "room_thermostat_control": "Jedem Heizkreis die Temperatur seines Raums von einem anderen Sensor senden.",
           "pv_surplus": "Dem Regler den überschüssigen Solarstrom melden, damit er ihn nutzen kann.",
+          "period_sensors_enabled": "Aktiviert für jeden Fühler auch die stündlichen, 2h-, 4h-, Tages-, Monats-, Jahres- und Gestern-Sensoren (Lebenszeit-Summen bleiben immer an). Wirkt auch rückwirkend auf bestehende Entitäten - außer solchen, die Sie selbst einzeln deaktiviert haben.",
           "pv_surplus_mode": "Ob der Regler das Überschussregister vorzeichenlos (nur Überschuss) oder vorzeichenbehaftet (Überschuss und Defizit) liest."
         }
       },

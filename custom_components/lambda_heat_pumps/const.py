@@ -85,6 +85,12 @@ CONF_USE_LEGACY_MODBUS_NAMES: Final = "use_legacy_modbus_names"
 CONF_ROOM_THERMOSTAT_CONTROL: Final = "room_thermostat_control"
 CONF_PV_SURPLUS: Final = "pv_surplus"
 CONF_COOLING_MODE: Final = "cooling_mode_enabled"
+# Group switch for every per-period breakdown sensor (hourly/2h/4h/daily/
+# monthly/yearly/yesterday) across cycling, energy and COP counters. The
+# lifetime `total` sensors are unaffected - they are always on. See sensor.py
+# (`_reconcile_period_sensor_enablement`) for why this has to touch the entity
+# registry directly rather than just changing a default.
+CONF_PERIOD_SENSORS_ENABLED: Final = "period_sensors_enabled"
 CONF_ROOM_TEMPERATURE_ENTITY: Final = "room_temperature_entity_{0}"
 CONF_PV_POWER_SENSOR_ENTITY: Final = "pv_power_sensor_entity"
 CONF_PV_SURPLUS_MODE: Final = "pv_surplus_mode"

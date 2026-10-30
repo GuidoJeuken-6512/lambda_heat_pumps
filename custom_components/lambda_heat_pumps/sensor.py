@@ -40,18 +40,21 @@ from homeassistant.const import (
     UnitOfVolumeFlowRate,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.recorder import get_instance
 
 from .const import (
     ATTR_APPLIED_OFFSET,
+    CONF_PERIOD_SENSORS_ENABLED,
     CONF_ROOM_THERMOSTAT_CONTROL,
     CURVE_POINTS,
     CYCLE_MODES,
     DEFAULT_ECO_TEMP_REDUCTION,
     DEFAULT_ROOM_THERMOSTAT_FACTOR,
     DEFAULT_ROOM_THERMOSTAT_OFFSET,
+    DOMAIN,
     ELECTRICAL_ENERGY_MODES,
     MODE_COMPRESSOR_START,
     MODE_COOLING,
@@ -455,8 +458,17 @@ def _energy_description(mode: str, period: str, *, thermal: bool) -> CounterDesc
     )
 
 
-def _counter_descriptions() -> Iterable[CounterDescription]:
-    """Every counter a heat pump has."""
+def _counter_descriptions(
+    *, period_sensors_enabled: bool = False
+) -> Iterable[CounterDescription]:
+    """Every counter a heat pump has.
+
+    `period_sensors_enabled` is the group toggle (`CONF_PERIOD_SENSORS_ENABLED`)
+    that ships every non-total counter enabled instead of the usual off-by-
+    default — only takes effect for a counter that does not exist yet; an
+    existing one is reconciled separately, see
+    `_reconcile_period_sensor_enablement()`.
+    """
     for mode in CYCLE_MODES:
         periods = (
             COMPRESSOR_START_PERIODS
@@ -464,17 +476,34 @@ def _counter_descriptions() -> Iterable[CounterDescription]:
             else CYCLE_PERIODS
         )
         for period in periods:
-            yield _cycle_description(mode, period)
+            yield _with_period_sensors_enabled(
+                _cycle_description(mode, period), period_sensors_enabled
+            )
 
     for mode in ELECTRICAL_ENERGY_MODES:
         periods = HEATING_ENERGY_PERIODS if mode == MODE_HEATING else ENERGY_PERIODS
         for period in periods:
-            yield _energy_description(mode, period, thermal=False)
+            yield _with_period_sensors_enabled(
+                _energy_description(mode, period, thermal=False),
+                period_sensors_enabled,
+            )
 
     for mode in THERMAL_ENERGY_MODES:
         periods = HEATING_ENERGY_PERIODS if mode == MODE_HEATING else ENERGY_PERIODS
         for period in periods:
-            yield _energy_description(mode, period, thermal=True)
+            yield _with_period_sensors_enabled(
+                _energy_description(mode, period, thermal=True),
+                period_sensors_enabled,
+            )
+
+
+def _with_period_sensors_enabled(
+    description: CounterDescription, period_sensors_enabled: bool
+) -> CounterDescription:
+    """Ship a non-total counter enabled too, if the group toggle asks for it."""
+    if period_sensors_enabled and description.period != PERIOD_TOTAL:
+        return replace(description, entity_registry_enabled_default=True)
+    return description
 
 
 async def async_setup_entry(
@@ -490,6 +519,20 @@ async def async_setup_entry(
     # at all — probing finds what the controller answers for, not what it
     # answers meaningfully.
     level = firmware_level(entry)
+
+    # The group toggle for every per-period breakdown sensor (hourly/2h/4h/
+    # daily/monthly/yearly/yesterday). Unique ids collected below are
+    # reconciled against it once the loop is done, since the default below
+    # only ever applies to an entity that does not exist yet.
+    #
+    # Unset (the key is absent, not just falsy) means the user has never
+    # saved the options form with this toggle on it - nothing is reconciled
+    # in that case, so an entity enabled by some other means (individually,
+    # by hand) is left exactly as it is rather than swept back off the first
+    # time the entry reloads for an unrelated reason.
+    period_sensors_option = entry.options.get(CONF_PERIOD_SENSORS_ENABLED)
+    period_sensors_enabled = bool(period_sensors_option)
+    period_sensor_unique_ids: set[str] = set()
 
     for description in CONTROLLER_SENSORS:
         if not serves(description, level):
@@ -523,12 +566,21 @@ async def async_setup_entry(
         # A yesterday counter mirrors the daily one it is paired with: the daily
         # counter hands its value over at midnight, on the way past zero.
         yesterdays = {
-            mode: YesterdayCycleSensor(coordinator, mode, index) for mode in CYCLE_MODES
+            mode: YesterdayCycleSensor(
+                coordinator,
+                mode,
+                index,
+                period_sensors_enabled=period_sensors_enabled,
+            )
+            for mode in CYCLE_MODES
         }
         entities += yesterdays.values()
+        period_sensor_unique_ids.update(e.unique_id for e in yesterdays.values())
 
         counters: dict[str, LambdaCounterSensor] = {}
-        for description in _counter_descriptions():
+        for description in _counter_descriptions(
+            period_sensors_enabled=period_sensors_enabled
+        ):
             yesterday = (
                 yesterdays[description.mode]
                 if description.key.endswith("_cycling_daily")
@@ -536,23 +588,32 @@ async def async_setup_entry(
             )
             counter = LambdaCounterSensor(coordinator, description, index, yesterday)
             counters[description.key] = counter
+            if description.period != PERIOD_TOTAL:
+                period_sensor_unique_ids.add(counter.unique_id)
         entities += counters.values()
 
         # A COP is one counter divided by another over the same period, so it is
         # handed the pair rather than looking them up by name at read time.
         for mode in COP_MODES:
             periods = COP_HEATING_PERIODS if mode == MODE_HEATING else COP_PERIODS
-            entities += [
-                LambdaCopSensor(
+            for period in periods:
+                cop = LambdaCopSensor(
                     coordinator,
                     mode,
                     period,
                     index,
                     thermal=counters[f"{mode}_thermal_energy_{period}"],
                     electrical=counters[f"{mode}_energy_{period}"],
+                    period_sensors_enabled=period_sensors_enabled,
                 )
-                for period in periods
-            ]
+                entities.append(cop)
+                if period != PERIOD_TOTAL:
+                    period_sensor_unique_ids.add(cop.unique_id)
+
+    if period_sensors_option is not None:
+        _reconcile_period_sensor_enablement(
+            hass, entry, period_sensor_unique_ids, period_sensors_enabled
+        )
 
     entities += [
         LambdaLifetimeCopSensor(coordinator, index)
@@ -565,6 +626,34 @@ async def async_setup_entry(
     ]
 
     async_add_entities(entities)
+
+
+def _reconcile_period_sensor_enablement(
+    hass: HomeAssistant,
+    entry: LambdaConfigEntry,
+    unique_ids: set[str],
+    enabled: bool,
+) -> None:
+    """Make the per-period sensors match the configured group toggle.
+
+    `entity_registry_enabled_default` only takes effect the first time an
+    entity is created - flipping the option later has no effect on entities
+    that already exist, so this walks the registry directly. An entity the
+    user disabled themselves (not through this option) is left alone.
+    """
+    if not unique_ids:
+        return
+    registry = er.async_get(hass)
+    target = None if enabled else er.RegistryEntryDisabler.INTEGRATION
+    for unique_id in unique_ids:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        if not entity_id:
+            continue
+        current = registry.async_get(entity_id)
+        if current is None or current.disabled_by == er.RegistryEntryDisabler.USER:
+            continue
+        if current.disabled_by != target:
+            registry.async_update_entity(entity_id, disabled_by=target)
 
 
 class LambdaRegisterEntity(LambdaEntity):
@@ -905,14 +994,22 @@ class YesterdayCycleSensor(LambdaEntity, RestoreSensor):
     _attr_native_unit_of_measurement = _CYCLE_UNIT
     _attr_state_class = SensorStateClass.TOTAL
     _attr_suggested_display_precision = 0
-    # A per-day figure, so off by default like the other per-period counters.
-    _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: LambdaCoordinator, mode: str, index: int) -> None:
+    def __init__(
+        self,
+        coordinator: LambdaCoordinator,
+        mode: str,
+        index: int,
+        *,
+        period_sensors_enabled: bool = False,
+    ) -> None:
         """Name the mode this mirrors."""
         key = f"{mode}_cycling_yesterday"
         super().__init__(coordinator, key, "hp", index)
         self._attr_translation_key = key
+        # A per-day figure, so off by default like the other per-period
+        # counters - unless the group toggle asks for it, same as them.
+        self._attr_entity_registry_enabled_default = period_sensors_enabled
         self._value = 0.0
 
     @property
@@ -954,14 +1051,18 @@ class LambdaCopSensor(LambdaEntity, SensorEntity):
         *,
         thermal: LambdaCounterSensor,
         electrical: LambdaCounterSensor,
+        period_sensors_enabled: bool = False,
     ) -> None:
         """Pair the two counters this divides."""
         key = f"{mode}_cop_{period}"
         super().__init__(coordinator, key, "hp", index)
         self._attr_translation_key = key
         # The lifetime coefficient is on by default; the per-period ones follow
-        # the counters they divide, which are off by default.
-        self._attr_entity_registry_enabled_default = period == PERIOD_TOTAL
+        # the counters they divide, which are off by default - unless the
+        # group toggle asks for it, same as them.
+        self._attr_entity_registry_enabled_default = (
+            period == PERIOD_TOTAL or period_sensors_enabled
+        )
         self._thermal = thermal
         self._electrical = electrical
 

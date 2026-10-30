@@ -13,6 +13,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.lambda_heat_pumps.const import (
     CONF_FIRMWARE_VERSION,
     CONF_INT32_REGISTER_ORDER,
+    CONF_PERIOD_SENSORS_ENABLED,
     CONF_SLAVE_ID,
     CONF_USE_LEGACY_MODBUS_NAMES,
     DOMAIN,
@@ -796,6 +797,73 @@ async def test_only_the_totals_are_enabled_by_default(
         "eu08l_hp1_heating_cop_daily",
     ):
         assert not enabled(unique_id), unique_id
+
+
+async def test_the_period_toggle_enables_existing_period_sensors(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Turning the group toggle on retroactively enables existing period sensors."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    def disabled_by(unique_id: str):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert entity_id, unique_id
+        return registry.async_get(entity_id).disabled_by
+
+    assert disabled_by("eu08l_hp1_heating_cycling_daily") is er.RegistryEntryDisabler.INTEGRATION
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: True}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert disabled_by("eu08l_hp1_heating_cycling_daily") is None
+    # The total it never touches stays exactly as it was.
+    assert disabled_by("eu08l_hp1_heating_cycling_total") is None
+
+
+async def test_the_period_toggle_off_again_redisables_them(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Turning the toggle back off re-disables the period sensors it turned on."""
+    entry = await setup_entry(
+        hass, controller, legacy=True, options={CONF_PERIOD_SENSORS_ENABLED: True}
+    )
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_heating_cycling_daily"
+    )
+    assert registry.async_get(entity_id).disabled_by is None
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: False}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+
+async def test_a_user_disabled_period_sensor_is_left_alone_by_the_toggle(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An entity a user disabled by hand is untouched, in either direction."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_heating_cycling_daily"
+    )
+    registry.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: True}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.USER
 
 
 async def test_a_float_unit_id_is_coerced_to_int(

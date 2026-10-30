@@ -17,6 +17,10 @@
 > - **Firmware 3+ (from V0.0.5-3K, incl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` is gone.** On this firmware, heating-circuit register 7 is the read-only target flow temperature the controller works with, not a writable setpoint request ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Its replacement is `hcX_target_temp_flow_line`. The old entity stays behind as "no longer provided", and dashboards, helpers and automations using it break silently. → To keep the history: delete the orphaned `…_flow_line_temperature_setpoint` entity, then rename `…_target_temp_flow_line` to the old entity_id (Settings → Entities → entity → ⚙ → Entity ID).
 > - Back up before upgrading.
 
+### [3.6.1] - 2026-10-30
+
+**New option: enable all per-period energy sensors at once.** The hourly, 2h, 4h, daily, monthly, yearly and "yesterday" breakdown sensors (cycling, energy, thermal energy and COP) ship disabled by default — only the lifetime totals are on. The new **"Enable per-period energy sensors"** toggle under *Configure* turns all of them on (or off again) at once, retroactively for existing installations too, not just new ones; an entity you disabled yourself individually is left alone either way. The lifetime totals are unaffected and always stay on. Useful for the [Lambda Energy Dashboard template](https://guidojeuken-6512.github.io/lambda_heat_pumps/Vorlagen/Lambda_energy_dashboard/), which needs these sensors enabled.
+
 ### [3.6.0] - 2026-10-29
 
 **Misread energy counters are caught.** Some controllers lay out their 32-bit counters the other way round than their firmware is documented to (e.g. a `V0.0.10-3K` that needs `high_first`, [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104)). When the accumulated energy counters read as values a heat pump cannot have (below zero or above 1 GWh) but make sense with the other order, a repair **"Check the 32-bit register order"** names the setting to choose. Until then the two counters keep their last plausible value, the calculated COP is unknown and no energy is booked from them, so the long-term statistics stay clean. The FAQ now explains step by step how to clean up statistics recorded with a wrong order.
@@ -75,6 +79,10 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 > - Reparaturen zu *unbekannten Entitätsreferenzen* in Dashboards/Templates bedeuten, dass eine 2.x-Entität in 3.5 umbenannt oder entfernt wurde — Karte/Template anpassen.
 > - **Firmware 3+ (ab V0.0.5-3K, inkl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` entfällt.** Auf dieser Firmware ist Heizkreis-Register 7 die schreibgeschützte Vorlauf-Solltemperatur, mit der die Steuerung arbeitet, keine beschreibbare Sollwert-Anforderung ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Ersatz ist `hcX_target_temp_flow_line`. Die alte Entität bleibt als „nicht mehr bereitgestellt“ zurück; Dashboards, Helfer und Automationen, die sie nutzen, brechen stillschweigend. → Um den Verlauf zu behalten: die verwaiste `…_flow_line_temperature_setpoint`-Entität löschen, dann `…_target_temp_flow_line` auf die alte entity_id umbenennen (Einstellungen → Entitäten → Entität → ⚙ → Entitäts-ID).
 > - Vor dem Update ein Backup erstellen.
+
+### [3.6.1] - 2026-10-30
+
+**Neue Option: alle Perioden-Energiesensoren auf einmal aktivieren.** Die stündlichen, 2h-, 4h-, Tages-, Monats-, Jahres- und „Gestern“-Sensoren (Taktung, Energie, Wärmeenergie und COP) sind standardmäßig deaktiviert — nur die Lebenszeit-Summen sind an. Der neue Schalter **„Perioden-Energiesensoren aktivieren“** unter *Konfigurieren* schaltet sie alle zusammen an (oder wieder aus) — rückwirkend auch für bereits laufende Installationen, nicht nur bei Neuanlage; eine selbst einzeln deaktivierte Entität lässt der Schalter in beide Richtungen in Ruhe. Die Lebenszeit-Summen sind davon nicht betroffen und bleiben immer an. Nützlich für die [Lambda-Energy-Dashboard-Vorlage](https://guidojeuken-6512.github.io/lambda_heat_pumps/Vorlagen/Lambda_energy_dashboard/), die diese Sensoren aktiviert benötigt.
 
 ### [3.6.0] - 2026-10-29
 
