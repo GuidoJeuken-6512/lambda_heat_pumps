@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen der Integration („Konfigurieren“)
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 30.10.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -37,6 +37,9 @@ title: "Optionen des config_flow"
 
 - **Standard:** 15 °C / 35 °C, einstellbar von 10 bis 40 °C.
 - Legt fest, welchen Bereich die Klima-Entitäten **Heizkreis** und **Kühlkreis** für die Raum-Solltemperatur anbieten.
+
+!!! warning "Das ist die Raum-Solltemperatur, nicht die Vorlauftemperatur"
+    Trotz des Namens betrifft diese Option **nicht** die Vorlauftemperatur, die die Lambda selbst über ihre Heizkurve regelt. Sie begrenzt nur, welche **Raum-Solltemperatur** Sie über die Klima-Entitäten **Heizkreis**/**Kühlkreis** einstellen können, wenn die [Raumthermostat-Steuerung](raumthermometer.md) aktiv ist — ohne sie hat die Option keine Wirkung. Für höhere Vorlauftemperaturen (z. B. bei Heizkörpern statt Fußbodenheizung) ist diese Einstellung **nicht** der richtige Ort; die Vorlauftemperatur stellen Sie an der Lambda selbst bzw. über die [Heizkurve](heizkurve.md) ein. Siehe [Issue #146](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/146).
 
 ### Schrittweite Heizkreistemperatur
 
