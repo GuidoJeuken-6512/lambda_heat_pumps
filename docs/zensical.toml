@@ -78,6 +78,7 @@ nav = [
   ] },
   { "Vorlagen Templates" = [
     { "Vorlagen Templates" = "Vorlagen/index.md" },
+    { "Heatpump Flow Card" = "Vorlagen/heatpump-flow-card.md" },
     { "Lambda Energy Dashboard" = "Vorlagen/Lambda_energy_dashboard.md" },
     { "Lambda Heizkurven Card" = "Vorlagen/Lambda_heizkurve_card.md" },
     { "Lambda Register-Dashboard" = "Vorlagen/Lambda_register_dashboard.md" },
