@@ -54,6 +54,7 @@ nav = [
     { "Features" = "Anwender/features.md" },
     { "Installation" = "Anwender/installation.md" },
     { "Initiale Konfiguration" = "Anwender/initiale-konfiguration.md" },
+    { "Heizkreis Steuerung" = "Anwender/heizkreis-steuerung.md" },
     { "Optionen des Config Flow" = "Anwender/optionen-config-flow.md" },
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
