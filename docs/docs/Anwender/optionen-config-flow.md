@@ -2,172 +2,99 @@
 title: "Optionen des config_flow"
 ---
 
-# Optionen des config_flow
+# Optionen der Integration („Konfigurieren“)
 
 *Zuletzt geändert am 30.10.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
-    <img src="../assets/config_flow_options_de.png" alt="Config Flow Optionen" style="width: 100%; height: auto; border-radius: 8px;">
+    <img src="../assets/baustelle_3_5.svg" alt="Baustelle: Screenshot des Options-Dialogs „Optionen“ in Version 3.5 folgt" style="width: 100%; height: auto; border-radius: 8px;">
   </div>
   <div style="flex: 1; min-width: 300px;">
-    <p>Nach der Initialkonfiguration können Sie erweiterte Einstellungen in den Integration-Optionen anpassen. Diese Optionen ermöglichen es, das Verhalten der Integration zu optimieren und erweiterte Funktionen zu aktivieren.</p>
+    <p>Nach der Einrichtung passen Sie das Verhalten der Integration in den Optionen an.</p>
 
-    <h2>Zugriff auf die Optionen</h2>
+    <h2>Optionen öffnen</h2>
 
     <ol>
-      <li><strong>Öffnen Sie Home Assistant:</strong>
-        <ul>
-          <li>Gehen Sie zu <strong>Einstellungen</strong> → <strong>Geräte & Dienste</strong></li>
-          <li>Suchen Sie nach Ihrer Lambda-Integration</li>
-          <li>Klicken Sie auf die Integration</li>
-        </ul>
-      </li>
-      <li><strong>Optionen öffnen:</strong>
-        <ul>
-          <li>Klicken Sie auf <strong>Konfigurieren</strong> (oder das Zahnrad-Symbol)</li>
-          <li>Die Options-Seite wird geöffnet</li>
-        </ul>
-      </li>
+      <li><strong>Einstellungen</strong> → <strong>Geräte & Dienste</strong> → <strong>Lambda Heat Pumps</strong></li>
+      <li>Beim Eintrag Ihrer Lambda auf <strong>Konfigurieren</strong> (Zahnrad) klicken</li>
     </ol>
+    <p>Nach dem Speichern lädt sich die Integration automatisch neu.</p>
   </div>
 </div>
 
-## Verfügbare Optionen
+!!! info "Firmware-Version, Adresse und Name stehen nicht hier"
+    Firmware-Version, Host, Port, Modbus-Einheit und Name ändern Sie über **⋮ → Neu konfigurieren**, nicht über „Konfigurieren“. Details: [Firmware-Version ändern](firmware-wechsel.md).
 
-### Warmwasser-Temperaturgrenzen
+## Der Dialog „Optionen“
 
-**Beschreibung**: Legen Sie die minimalen und maximalen Temperaturgrenzen für Warmwasser fest.
+### Minimale / Maximale Warmwassertemperatur
 
-- **Minimum-Temperatur**: 
-  - **Standard**: 25°C
-  - **Bereich**: 25°C bis 65°C
-  - **Schrittweite**: 1°C
-  - **Einheit**: °C
+- **Standard:** 25 °C / 65 °C, einstellbar von 25 bis 65 °C.
+- Legt fest, welchen Bereich die Klima-Entität **Warmwasser** für die Solltemperatur anbietet. Siehe [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md).
 
-- **Maximum-Temperatur**: 
-  - **Standard**: 65°C
-  - **Bereich**: 25°C bis 65°C
-  - **Schrittweite**: 1°C
-  - **Einheit**: °C
+### Minimale / Maximale Heizkreistemperatur
 
-**Hinweis**: Diese Grenzen gelten für alle Kessel (Boiler) und beeinflussen die verfügbaren Werte für die Warmwasser-Solltemperatur-Number-Entities.
+- **Standard:** 15 °C / 35 °C, einstellbar von 10 bis 40 °C.
+- Legt fest, welchen Bereich die Klima-Entitäten **Heizkreis** und **Kühlkreis** für die Raum-Solltemperatur anbieten.
 
-### Heizkreis-Temperaturgrenzen
+### Schrittweite Heizkreistemperatur
 
-**Beschreibung**: Legen Sie die minimalen und maximalen Temperaturgrenzen für Heizkreise fest.
+- **Standard:** 0,5 °C, einstellbar von 0,1 bis 2,0 °C.
+- Schrittweite, in der die Solltemperatur an den Klima-Entitäten verstellt wird.
 
-- **Minimum-Temperatur**: 
-  - **Standard**: 15°C
-  - **Bereich**: 10°C bis 40°C
-  - **Schrittweite**: 1°C
-  - **Einheit**: °C
+Ist ein Minimum nicht kleiner als das Maximum, lehnt der Dialog das Speichern ab: „Die minimale Temperatur muss unter der maximalen liegen.“
 
-- **Maximum-Temperatur**: 
-  - **Standard**: 35°C
-  - **Bereich**: 10°C bis 40°C
-  - **Schrittweite**: 1°C
-  - **Einheit**: °C
+### Abfrageintervall
 
-- **Temperatur-Schrittweite**: 
-  - **Standard**: 0.5°C
-  - **Bereich**: 0.1°C bis 2.0°C
-  - **Schrittweite**: 0.1°C
-  - **Einheit**: °C
+- **Standard:** 30 Sekunden, einstellbar von 10 bis 300 Sekunden.
+- So oft liest die Integration die ganze Lambda aus. Unabhängig davon fragt sie alle 2 Sekunden den Betriebszustand der Wärmepumpen ab, damit kurze Kompressorstarts für die Taktungszähler nicht verloren gehen.
 
-**Hinweis**: Diese Grenzen gelten für alle Heizkreise und beeinflussen die verfügbaren Werte für Heizkreis-Temperatur-Number-Entities.
+### 32-Bit-Registerreihenfolge
 
-!!! info "Das ist die Raum-Solltemperatur, nicht die Vorlauftemperatur"
-    Trotz des Namens betrifft diese Option **nicht** die Vorlauftemperatur, die die Lambda selbst über ihre Heizkurve regelt. Sie begrenzt nur, welche **Raum-Solltemperatur** Sie bei aktiver [Raumthermostat-Steuerung](raumthermometer.md) einstellen können – ohne sie hat die Option keine Wirkung. Für höhere Vorlauftemperaturen (z. B. bei Heizkörpern statt Fußbodenheizung) ist diese Einstellung **nicht** der richtige Ort; die Vorlauftemperatur stellen Sie an der Lambda selbst ein. Siehe [Issue #146](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/146).
+- **Auswahl:** `high_first` (höherwertiges Register zuerst) oder `low_first` (niederwertiges Register zuerst).
+- **Vorauswahl:** die Reihenfolge der eingestellten Firmware (`high_first` bis V0.0.9-3K, `low_first` ab V0.0.10-3K).
+- **Ändern** nur, wenn die akkumulierten Energiezähler trotz richtiger Firmware-Version unsinnige Werte zeigen, siehe [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).
+- Bei einem Firmwarewechsel über „Neu konfigurieren“ wird eine hier gewählte Reihenfolge zurückgesetzt; danach gilt die der neuen Firmware.
 
-### Firmware-Version
+### Perioden-Energiesensoren aktivieren
 
-**Beschreibung**: Aktualisieren Sie die Firmware-Version Ihrer Lambda-Wärmepumpe.
+- **Standard:** aus.
+- Schaltet für jeden Zyklus-, Energie-, Wärme- und COP-Zähler zusätzlich alle Perioden-Sensoren frei: stündlich, 2 h, 4 h, täglich, monatlich, jährlich und „gestern“. Die Lebenszeit-Summe (`total`) ist davon nicht betroffen — sie ist immer an.
+- Wirkt **rückwirkend**, auch auf bereits laufende Installationen: Beim Speichern werden alle betroffenen, bereits existierenden Entitäten automatisch aktiviert bzw. (beim Ausschalten) wieder deaktiviert. Eine Entität, die Sie selbst einzeln über **Entitäten** deaktiviert haben, lässt der Schalter in Ruhe.
+- Praktisch, wenn Sie das [Lambda-Energy-Dashboard](../Vorlagen/Lambda_energy_dashboard.md) nutzen möchten, ohne die 56 Perioden-Sensoren einzeln freizuschalten.
 
-- **Standard**: `V0.0.8-3K` (häufigste Feldversion)
-- **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren verfügbar sind
+### Raumthermostat verwenden
 
-**Verfügbare Firmware-Versionen:**
+- **Standard:** aus.
+- Schickt jedem Heizkreis die Raumtemperatur eines Sensors aus Home Assistant. Nach **Absenden** folgt der Schritt **„Raumtemperatur“**, in dem Sie pro Heizkreis einen Temperatursensor wählen.
+- Zusätzlich erscheinen pro Heizkreis die Zahlen-Entitäten **Raum Temperatur Offset** und **Raum Temperatur Faktor**.
+- Details: [Raumthermometer](raumthermometer.md).
 
-| Version | Firmware-Level |
-|---------|----------------|
-| `V1.1.0-3K` | 8 (neueste) |
-| `V0.0.10-3K` | 8 |
-| `V0.0.9-3K` | 7 |
-| `V0.0.8-3K` | 6 (Standard) |
-| `V0.0.7-3K` | 5 |
-| `V0.0.6-3K` | 4 |
-| `V0.0.5-3K` | 3 |
-| `V0.0.4-3K` | 2 |
-| `V0.0.3-3K` | 1 |
+### Kühlen
 
-**So finden Sie die Firmware-Version:**
-1. Klicken Sie auf der Lambda-Bedienoberfläche auf die Wärmepumpe
-2. Klicken Sie auf die "i" Taste auf der linken Seite
-3. Klicken Sie auf die Taste auf der rechten Seite, die wie ein Computerchip aussieht (letzte Taste)
-4. Die Firmware-Version wird dort angezeigt
+- **Standard:** aus.
+- Legt pro Heizkreis zusätzlich die Klima-Entität **Kühlkreis** an, mit der Sie die Raum-Solltemperatur für den Kühlbetrieb einstellen.
+- Auch hier folgt der Schritt **„Raumtemperatur“**: Der Kühlkreis braucht denselben Ist-Wert wie die Heizkreis-Regelung.
 
-**Hinweis**: Nach Änderung der Firmware-Version müssen Sie Home Assistant neu starten, damit die neuen Sensoren erkannt werden.
+### PV-Überschuss nutzen
 
-### Abfrage-Intervall
+- **Standard:** aus.
+- Meldet der Lambda regelmäßig (alle 9 Sekunden) den überschüssigen Solarstrom. Nach **Absenden** folgt der Schritt **„PV-Überschuss“**, in dem Sie den **PV-Leistungssensor** wählen (W oder kW, wird automatisch umgerechnet).
+- Details: [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md).
 
-**Beschreibung**: Wie oft die Integration Daten von der Lambda über Modbus abruft.
+### Kodierung des PV-Überschusses
 
-- **Standard**: 30 Sekunden
-- **Bereich**: 10 bis 300 Sekunden
-- **Hinweis**: Lambda erfordert ein Timeout von mindestens 60 Sekunden. Ein Wert von 30 Sekunden ist daher der empfohlene Standard.
+| Wert | Bedeutung |
+|---|---|
+| `pos` (Standard) | Nur Überschuss, vorzeichenlos (UINT16, 0–65535 W). Negative Werte werden als 0 gesendet. |
+| `neg` | Überschuss und Defizit, vorzeichenbehaftet (INT16, −32768–32767 W). |
 
-### Raumthermostat-Steuerung
+Die Kodierung muss zur Einstellung des E-Managers an der Lambda passen. Der Wert wird in das Lambda-Register 102 geschrieben.
 
-**Beschreibung**: Aktivieren Sie die Raumthermostat-Steuerung für präzise Temperaturkontrolle.
+## Nächste Schritte
 
-- **Standard**: Deaktiviert
-- **Optionen**: Aktiviert / Deaktiviert
-
-**Nach Aktivierung:**
-- Sie müssen für jeden Heizkreis einen Raumtemperatur-Sensor auswählen
-- Die Integration berechnet automatisch Anpassungen der Vorlauftemperatur
-- Weitere Informationen: [Raumthermostat](raumthermometer.md)
-
-**Konfiguration:**
-1. Aktivieren Sie "Raumthermostat-Steuerung"
-2. Klicken Sie auf **Weiter**
-3. Wählen Sie für jeden Heizkreis einen Raumtemperatur-Sensor aus
-4. Klicken Sie auf **Absenden**
-
-### PV-Überschuss-Steuerung
-
-**Beschreibung**: Aktivieren Sie die PV-Überschuss-Steuerung für optimale Nutzung von Solarstrom.
-
-- **Standard**: Deaktiviert
-- **Optionen**: Aktiviert / Deaktiviert
-
-**Nach Aktivierung:**
-- Sie müssen einen PV-Leistungssensor auswählen
-- Die Integration schreibt die PV-Leistung regelmäßig an die Lambda (standardmäßig alle 9 Sekunden)
-- Weitere Informationen: [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md)
-
-**Konfiguration:**
-1. Aktivieren Sie "PV-Überschuss"
-2. Klicken Sie auf **Weiter**
-3. Wählen Sie einen PV-Leistungssensor aus (z.B. Template-Sensor für PV-Überschuss)
-4. Klicken Sie auf **Absenden**
-
-**PV-Überschuss-Modi:**
-
-| Schlüssel | Beschreibung |
-|-----------|-------------|
-| `pos` (Standard) | Pos. E-Überschuss – nur positive Werte, UINT16 |
-| `entry` | E-Eintrag – nur positive Werte, UINT16 |
-| `neg` | Neg. E-Überschuss – positive und negative Werte, INT16 |
-
-Der Modus bestimmt, wie der Leistungswert des PV-Sensors an das Lambda-Register 102 (E-Manager Actual Power) übertragen wird.
-
-Nach der Anpassung der Optionen können Sie:
-
-- [Raumthermostat](raumthermometer.md) konfigurieren (falls aktiviert)
-- [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) verwenden (falls aktiviert)
-- [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) verwenden
-- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
-- [Historische Daten übernehmen](historische-daten.md) bei Wärmepumpenwechsel
-
+- [Raumthermometer](raumthermometer.md) einrichten
+- [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) einrichten
+- [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md)
+- [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md)

@@ -4,11 +4,13 @@ title: "Alle Sensoren der Integration"
 
 # Alle Sensoren der Integration
 
-*Zuletzt geändert am 20.04.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Diese Seite listet alle Sensoren auf, die die Lambda Heat Pumps Integration in Home Assistant erzeugt. Die Sensoren sind nach Gerät und Funktion gruppiert.
 
-> **Hinweis zur Benennung:** Die tatsächlichen Entitäts-IDs hängen vom konfigurierten `name_prefix` ab. Das Beispiel-Präfix in dieser Seite lautet `eu08l`. Bei einem anderen Präfix, z.B. `lambda`, beginnen alle IDs entsprechend mit `sensor.lambda_…`.
+> **Hinweis zur Benennung:** Die Entitäts-IDs werden aus dem **Namen** gebildet, den Sie bei der Einrichtung vergeben haben (in Kleinbuchstaben, ohne Leerzeichen). In dieser Seite lautet er `eu08l`. Heißt Ihre Lambda z. B. `Lambda`, beginnen alle IDs mit `sensor.lambda_…`.
+
+> **Firmware:** Einige Sensoren gibt es nur bei bestimmten Firmware-Versionen; das ist in der Tabelle vermerkt. Welche Firmware eingestellt ist und wie man sie ändert: [Firmware-Version ändern](firmware-wechsel.md).
 
 ---
 
@@ -20,7 +22,7 @@ Diese Sensoren liefern allgemeine Umgebungsdaten und den Status des Energiemanag
 
 | Sensor | Einheit | Beschreibung |
 |--------|---------|--------------|
-| `sensor.eu08l_ambient_temperature` | °C | Aktuelle Außentemperatur |
+| `sensor.eu08l_ambient_temperature` | °C | Aktuelle Außentemperatur (derzeit nur bis Firmware V0.0.9-3K) |
 | `sensor.eu08l_ambient_temperature_1h` | °C | Außentemperatur (Stundenmittel) |
 | `sensor.eu08l_ambient_temperature_calculated` | °C | Berechnete Außentemperatur |
 
@@ -86,10 +88,26 @@ Bei mehreren Wärmepumpen wird die Nummer hochgezählt: `hp1`, `hp2`, `hp3`.
 | `sensor.eu08l_hp1_vda_rating` | % | VdA-Bewertung |
 | `sensor.eu08l_hp1_eqm_rating` | % | EqM-Bewertung |
 | `sensor.eu08l_hp1_expansion_valve_opening_angle` | % | Öffnungswinkel Expansionsventil |
-| `sensor.eu08l_hp1_volume_flow_heat_sink` | l/h | Volumenstrom Wärmeabnehmer |
-| `sensor.eu08l_hp1_volume_flow_energy_source` | l/min | Volumenstrom Energiequelle |
+| `sensor.eu08l_hp1_volume_flow_heat_sink` | L/h | Volumenstrom Wärmeabnehmer |
+| `sensor.eu08l_hp1_volume_flow_energy_source` | L/min | Volumenstrom Energiequelle |
+
+### Undokumentierte Konfigurationsparameter
+
+Diese Register stehen nicht im Lambda-Modbus-Protokoll. Die neue Steuerung (ab V0.0.10-3K) liefert dort meist den Sonderwert 32768.
+
+| Sensor | Beschreibung |
+|--------|--------------|
+| `sensor.eu08l_hp1_config_parameter_24` | Konfigurationsparameter (Register 1024) |
+| `sensor.eu08l_hp1_config_parameter_33` | Konfigurationsparameter (Register 1033) |
+| `sensor.eu08l_hp1_config_parameter_50` | Konfigurationsparameter (Register 1050, stündlich gelesen) |
+| `sensor.eu08l_hp1_config_parameter_60` | Konfigurationsparameter (Register 1060, stündlich gelesen) |
 
 ### Maximalleistungen (Konfigurationsparameter)
+
+Diese Register werden stündlich abgefragt, nicht im normalen Abfrageintervall:
+Es sind Einstellungen des Installateurs, und die Steuerung liefert sie nur
+einzeln aus. Sie im normalen Intervall mitzulesen kostete elf der
+dreiundzwanzig Anfragen pro Abfrage.
 
 | Sensor | Einheit | Beschreibung |
 |--------|---------|--------------|
@@ -135,7 +153,7 @@ Entsprechend wie oben, aber für die thermische Wärmeabgabe (Suffix `_thermal_e
 | **Kühlen** | `cooling_thermal_energy_daily` | `cooling_thermal_energy_monthly` | `cooling_thermal_energy_yearly` | `cooling_thermal_energy_total` |
 | **Abtauen** | `defrost_thermal_energy_daily` | `defrost_thermal_energy_monthly` | `defrost_thermal_energy_yearly` | `defrost_thermal_energy_total` |
 
-Alle mit Präfix `sensor.eu08l_hp1_`, Einheit: **kWh**.
+Alle mit Präfix `sensor.eu08l_hp1_`, Einheit: **kWh**. Zusätzlich gibt es `heating_thermal_energy_hourly` für stündliche Auflösung.
 
 ### Effizienz – COP-Sensoren (berechnet)
 
@@ -145,6 +163,8 @@ Alle mit Präfix `sensor.eu08l_hp1_`, Einheit: **kWh**.
 | `sensor.eu08l_hp1_heating_cop_monthly` | Monats-COP Heizen |
 | `sensor.eu08l_hp1_heating_cop_yearly` | Jahres-COP Heizen |
 | `sensor.eu08l_hp1_heating_cop_total` | Gesamt-COP Heizen |
+| `sensor.eu08l_hp1_heating_cop_hourly` | Stunden-COP Heizen |
+| `sensor.eu08l_hp1_cop_calc` | Lifetime-COP (aus Controller-eigenen Registern, unabhängig von Home Assistant) |
 | `sensor.eu08l_hp1_hot_water_cop_daily` | Tages-COP Warmwasser |
 | `sensor.eu08l_hp1_hot_water_cop_monthly` | Monats-COP Warmwasser |
 | `sensor.eu08l_hp1_hot_water_cop_yearly` | Jahres-COP Warmwasser |
@@ -249,9 +269,10 @@ Bei mehreren Heizkreisen: `hc1`, `hc2`, `hc3`, …
 | `sensor.eu08l_hc1_error_number` | – | Fehlercode |
 | `sensor.eu08l_hc1_flow_line_temperature` | °C | Vorlauftemperatur |
 | `sensor.eu08l_hc1_return_line_temperature` | °C | Rücklauftemperatur |
-| `sensor.eu08l_hc1_room_device_temperature` | °C | Raumtemperatur (Gerät oder Thermostat) |
-| `sensor.eu08l_hc1_set_flow_line_temperature` | °C | Vorlauf-Sollwert |
-| `sensor.eu08l_hc1_target_temp_flow_line` | °C | Berechneter Vorlauf-Zielwert (FW 3+) |
+| `sensor.eu08l_hc1_room_device_temperature` | °C | Raumtemperatur, wie sie bei der Lambda ankommt (bei aktiver Raumthermostat-Steuerung von Home Assistant geschrieben) |
+| `sensor.eu08l_hc1_set_flow_line_temperature` | °C | Vorlauf-Sollwert-Vorgabe per Modbus (meist `unbekannt`, nur gefüllt, wenn sie jemand schreibt) |
+| `sensor.eu08l_hc1_flow_line_temperature_setpoint` | °C | Vorlauf-Sollwert (nur Firmware bis V0.0.4-3K) |
+| `sensor.eu08l_hc1_target_temp_flow_line` | °C | Vorlauf-Sollwert, mit dem die Lambda arbeitet (ab Firmware V0.0.5-3K) |
 | `sensor.eu08l_hc1_set_flow_line_offset_temperature` | °C | Vorlauf-Offset |
 | `sensor.eu08l_hc1_target_room_temperature` | °C | Raum-Solltemperatur |
 | `sensor.eu08l_hc1_set_cooling_mode_room_temperature` | °C | Soll-Raumtemperatur im Kühlbetrieb |
@@ -266,16 +287,39 @@ Bei mehreren Heizkreisen: `hc1`, `hc2`, `hc3`, …
 
 ---
 
+## Weitere Entitäten (Klima und Zahlen)
+
+Neben den Sensoren legt die Integration pro Modul diese Entitäten an:
+
+| Entität | Beschreibung |
+|---------|--------------|
+| `climate.eu08l_boil1_hot_water` | Warmwasser: Ist- und Solltemperatur, Solltemperatur einstellbar, siehe [Warmwasser](warmwasser-solltemperatur.md) |
+| `climate.eu08l_hc1_heating_circuit` | Heizkreis: Raum-Ist- und Raum-Solltemperatur |
+| `climate.eu08l_hc1_cooling_circuit` | Kühlkreis (nur mit Option „Kühlen“): Raum-Solltemperatur im Kühlbetrieb |
+| `number.eu08l_hc1_heating_curve_cold_outside_temp_number` | Heizkurve, Stützpunkt −22 °C (Handwert in HA) |
+| `number.eu08l_hc1_heating_curve_mid_outside_temp_number` | Heizkurve, Stützpunkt 0 °C (Handwert in HA) |
+| `number.eu08l_hc1_heating_curve_warm_outside_temp_number` | Heizkurve, Stützpunkt +22 °C (Handwert in HA) |
+| `number.eu08l_hc1_eco_temp_reduction_number` | Eco-Absenkung (Handwert in HA) |
+| `number.eu08l_hc1_flow_line_offset_temperature_number` | Vorlauf-Offset, wird an die Lambda geschrieben (Register 5050) |
+| `number.eu08l_hc1_room_thermostat_offset_number` | Raumthermostat-Offset (nur mit Raumthermostat-Steuerung) |
+| `number.eu08l_hc1_room_thermostat_factor_number` | Raumthermostat-Faktor (nur mit Raumthermostat-Steuerung) |
+
+Nach einem Update von 2.x können `climate`-Entitäten noch eine `sensor.`-ID tragen; siehe den Hinweis auf der Seite [Warmwasser](warmwasser-solltemperatur.md).
+
+---
+
 ## Übersicht: Anzahl Sensoren
 
 | Gerät | Nativ | Berechnet | Gesamt |
 |-------|-------|-----------|--------|
 | Hauptgerät (Main) | 10 | 0 | 10 |
-| Wärmepumpe (HP) | 42 | 89 | 131 |
+| Wärmepumpe (HP) | 42 (31 + 11 Konfigurationsparameter) | 78 | 120 |
 | Boiler | 7 | 0 | 7 |
 | Pufferspeicher | 11 | 0 | 11 |
 | Solarmodul | 8 | 0 | 8 |
-| Heizkreis | 11 | 1 | 12 |
+| Heizkreis | 11 (je nach Firmware einer der beiden Vorlauf-Sollwerte) | 1 | 12 |
+
+Von den 78 berechneten Sensoren pro Wärmepumpe sind standardmäßig 18 aktiviert (die Total-Zähler, die drei Total-COPs und der Lifetime-COP); der Rest lässt sich bei Bedarf in der Entity-Registry aktivieren.
 
 > Alle Sensoren außer dem Hauptgerät werden je Instanz erstellt. Mit 2 Wärmepumpen, 2 Heizkreisen, 1 Boiler usw. verdoppeln sich die entsprechenden Sensoren.
 

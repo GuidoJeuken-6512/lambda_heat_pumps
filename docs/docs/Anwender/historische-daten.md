@@ -4,7 +4,7 @@ title: "Historische Daten übernehmen"
 
 # Historische Daten übernehmen
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Wenn Sie eine Wärmepumpe austauschen oder die Zählerstände zurücksetzen, können Sie historische Daten in die Integration übernehmen. Dies ermöglicht es, die Kontinuität der Daten zu erhalten und historische Trends beizubehalten.
 
@@ -48,7 +48,7 @@ cycling_offsets:
 ### Funktionsweise
 
 1. **Beim Start**: Offsets werden einmalig auf Total-Sensoren angewendet, sobald sie initialisiert werden
-2. **Differenz-Tracking**: Das System merkt sich den zuletzt angewendeten Offset (`applied_offset`). Bei jedem Neustart wird nur die Differenz zum vorherigen Wert addiert — keine Doppelanwendung möglich
+2. **Differenz-Tracking**: Das System merkt sich den zuletzt angewendeten Offset (`applied_offset`). Bei jedem Start bzw. Neuladen wird nur die Differenz zum vorherigen Wert addiert — keine Doppelanwendung möglich
 3. **Nur Total-Sensoren**: Offsets gelten nur für `*_cycling_total` Sensoren
 4. **Automatische Anwendung**: Offsets werden automatisch geladen und angewendet
 5. **Positive und negative Werte**: Ein negativer Offset subtrahiert den Betrag vom Gesamtzähler (z. B. um einen zu hohen Ausgangswert zu korrigieren)
@@ -114,7 +114,7 @@ energy_consumption_offsets:
 ### Funktionsweise
 
 1. **Nur Total-Sensoren**: Offsets werden nur auf `*_energy_total` Sensoren angewendet
-2. **Differenz-Tracking**: Das System merkt sich den zuletzt angewendeten Offset. Bei Neustart wird nur die Änderung zum vorherigen Wert addiert — keine Doppelanwendung möglich
+2. **Differenz-Tracking**: Das System merkt sich den zuletzt angewendeten Offset. Bei jedem Start bzw. Neuladen wird nur die Änderung zum vorherigen Wert addiert — keine Doppelanwendung möglich
 3. **Einheiten**: Alle Werte müssen in kWh (Kilowattstunden) angegeben werden
 4. **Dezimalnotation**: Verwenden Sie Punkt (.) als Dezimaltrennzeichen in YAML
 5. **Positive und negative Werte**: Ein negativer Offset subtrahiert den Betrag vom Gesamtwert
@@ -160,7 +160,7 @@ Bevor Sie die Offsets konfigurieren, müssen Sie die historischen Werte ermittel
 ### Schritt 2: lambda_wp_config.yaml bearbeiten
 
 1. **Datei öffnen:**
-   - Die Datei befindet sich in `/config/lambda_heat_pumps/lambda_wp_config.yaml`
+   - Die Datei befindet sich in `/config/lambda_wp_config.yaml`
    - Falls die Datei nicht existiert, wird sie beim ersten Start automatisch erstellt
 
 2. **Offsets hinzufügen:**
@@ -170,11 +170,11 @@ Bevor Sie die Offsets konfigurieren, müssen Sie die historischen Werte ermittel
 3. **Datei speichern:**
    - Speichern Sie die Datei
 
-### Schritt 3: Home Assistant neu starten
+### Schritt 3: Integration neu laden
 
-1. **Home Assistant neu starten:**
-   - Starten Sie Home Assistant vollständig neu
-   - Die Offsets werden beim Start automatisch angewendet
+1. **Integration neu laden:**
+   - **Einstellungen** → **Geräte & Dienste** → Lambda → **⋮ → Neu laden**
+   - Die Offsets werden dabei automatisch angewendet; ein Neustart von Home Assistant ist nicht nötig
 
 2. **Überprüfen Sie die Sensoren:**
    - Überprüfen Sie, ob die Total-Sensoren die korrekten Werte anzeigen
@@ -188,8 +188,8 @@ Sie können Offsets jederzeit anpassen:
    - Ändern Sie die Offset-Werte
    - Speichern Sie die Datei
 
-2. **Home Assistant neu starten:**
-   - Starten Sie Home Assistant neu
+2. **Integration neu laden:**
+   - **⋮ → Neu laden** bei der Lambda-Integration
    - Die neuen Offsets werden automatisch angewendet
 
 **Hinweis**: Das System verhindert Doppelanwendung von Offsets durch intelligentes Tracking. Wenn Sie einen Offset erhöhen, wird nur die Differenz hinzugefügt.
@@ -210,7 +210,7 @@ Sie können Offsets jederzeit anpassen:
   - Konvertieren Sie Wh zu kWh (÷ 1000)
 
 ### "Offsets werden doppelt angewendet"
-- **Ursache**: Mehrfaches Neustarten ohne Änderung
+- **Ursache**: Vermutet nach mehrfachem Neustarten oder Neuladen
 - **Lösung**: 
   - Das System verhindert Doppelanwendung automatisch
   - Überprüfen Sie die Logs, um zu sehen, ob Offsets korrekt angewendet wurden

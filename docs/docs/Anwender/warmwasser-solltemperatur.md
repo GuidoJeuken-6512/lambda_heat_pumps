@@ -4,25 +4,28 @@ title: "Warmwasser Solltemperatur Steuerung"
 
 # Warmwasser Solltemperatur Steuerung
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration ermöglicht die Steuerung der Warmwasser-Solltemperatur über Home Assistant. Sie können die gewünschte Warmwassertemperatur direkt in Home Assistant einstellen, und die Integration schreibt diese Werte an die Lambda-Wärmepumpe.
 
-## Verfügbare Entitäten
+!!! info "Seit Version 3.5: Climate-Entity statt Number-Entity"
+    Die Warmwasser-Solltemperatur wird nicht mehr über eine separate Number-Entity gesteuert, sondern über die **Climate-Entity** des Boilers – dieselbe Entity, die auch die aktuelle Warmwassertemperatur anzeigt.
 
-Für jeden Kessel (Boiler) werden automatisch folgende Entitäten erstellt:
+## Verfügbare Entität
 
-### Number-Entity für Warmwasser-Solltemperatur
+Für jeden Kessel (Boiler) wird automatisch eine Climate-Entity erstellt:
 
-- **Entity-ID**: `number.*_boil1_target_temperature` (für Boiler 1)
-- **Bereich**: 25°C bis 65°C (Lambda-Standard)
-- **Schrittweite**: 0.1°C
-- **Einheit**: °C
-- **Beschreibung**: Solltemperatur für Warmwasser
+- **Entity-ID**: `climate.*_boil1_hot_water` (für Boiler 1)
+- **Bereich**: 25°C bis 65°C (Standard, in den Integrations-Optionen anpassbar)
+- **Aktuelle Temperatur**: `actual_high_temperature` (oberer Fühler)
+- **Zieltemperatur**: `target_high_temperature`
 
-**Beispiel-Entity-IDs:**
-- `number.eu08l_boil1_target_temperature` (für Boiler 1)
-- `number.eu08l_boil2_target_temperature` (für Boiler 2)
+**Beispiel-Entity-ID:** `climate.eu08l_boil1_hot_water`
+
+!!! warning "Nach dem Update von 2.x: Entitäts-ID prüfen"
+    Version 2.x hat diese Climate-Entität mit einer `sensor.`-ID registriert (z. B. `sensor.eu08l_boil1_hot_water`). Home Assistant behält beim Update die gespeicherte ID. Steht bei Ihnen noch `sensor.…_hot_water`, benennen Sie die Entität um (Entität öffnen → ⚙ → Entitäts-ID: `climate.…_boil1_hot_water`) und passen Sie Automationen und Dashboards an. Ab Home Assistant 2027.5 funktionieren Entitäten mit falscher Domain nicht mehr. Dasselbe gilt für `…_hc1_heating_circuit`.
+
+Bei mehreren Boilern erhält jeder seine eigene Climate-Entity (`boil1_hot_water`, `boil2_hot_water`, …). Der zugehörige Register-Wert bleibt zusätzlich als reiner **Sensor** (`sensor.*_boil1_target_high_temperature`) sichtbar – schreibbar ist aber nur die Climate-Entity.
 
 ## Verwendung
 
@@ -36,18 +39,16 @@ Für jeden Kessel (Boiler) werden automatisch folgende Entitäten erstellt:
 2. **Wählen Sie Ihren Kessel:**
    - Klicken Sie auf den entsprechenden Kessel (z.B. "Boil1")
 
-3. **Warmwasser-Solltemperatur finden:**
-   - Scrollen Sie zu den Number-Entities
-   - Suchen Sie nach "Target Temperature" oder "Solltemperatur"
+3. **Climate-Entity öffnen:**
+   - Öffnen Sie die Thermostat-Kachel des Boilers
 
 4. **Temperatur anpassen:**
-   - Klicken Sie auf die Number-Entity
-   - Geben Sie die gewünschte Temperatur ein (zwischen 25°C und 65°C)
-   - Klicken Sie auf **Speichern**
+   - Stellen Sie die gewünschte Solltemperatur ein (zwischen 25°C und 65°C)
+   - Die Änderung wird direkt an die Lambda geschrieben
 
 ### Über Automatisierungen
 
-Sie können die Warmwasser-Solltemperatur auch über Automatisierungen steuern:
+Sie steuern die Warmwasser-Solltemperatur über den Standard-Climate-Service `climate.set_temperature`:
 
 ```yaml
 automation:
@@ -56,55 +57,49 @@ automation:
       - platform: time
         at: "06:00:00"
     actions:
-      - action: number.set_value
-        metadata: {}
+      - action: climate.set_temperature
         target:
-          entity_id: number.eu08l_boil1_target_temperature
+          entity_id: climate.eu08l_boil1_hot_water
         data:
-          value: 55
+          temperature: 55
     mode: single
 ```
 
-### Über Services
-
-Sie können die Warmwasser-Solltemperatur auch direkt über Services setzen:
+### Über Services (Entwicklertools)
 
 ```yaml
 actions:
-  - action: number.set_value
-    metadata: {}
+  - action: climate.set_temperature
     target:
-      entity_id: number.eu08l_boil1_target_temperature
+      entity_id: climate.eu08l_boil1_hot_water
     data:
-      value: 50
+      temperature: 50
 mode: single
 ```
 
 ## Temperaturgrenzen
 
-Die Integration verwendet die Lambda-Standard-Temperaturgrenzen:
+Die Integration verwendet standardmäßig folgende Grenzen:
 
 - **Minimum**: 25°C
 - **Maximum**: 65°C
-- **Schrittweite**: 0.1°C
 
 Diese Grenzen können in den Integration-Optionen angepasst werden:
 
 1. Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
 2. Klicken Sie auf Ihre Lambda-Integration
 3. Klicken Sie auf **Konfigurieren**
-4. Scrollen Sie zu **Warmwasser-Temperaturgrenzen**
-5. Passen Sie die Werte an
+4. Passen Sie **Minimale Warmwassertemperatur** und **Maximale Warmwassertemperatur** an
 
-**Hinweis**: Die Anpassung der Grenzen in den Optionen wirkt sich auf alle Kessel aus.
+**Hinweis**: Die Anpassung der Grenzen in den Optionen wirkt sich auf alle Kessel aus, und erst nach einem Reload der Integration (automatisch nach dem Speichern der Optionen).
 
 ## Bidirektionale Synchronisation
 
 Die Integration synchronisiert die Warmwasser-Solltemperatur bidirektional:
 
-- **Lesen**: Die Integration liest den aktuellen Wert aus dem Modbus-Register
-- **Schreiben**: Änderungen in Home Assistant werden direkt an die Lambda geschrieben
-- **Automatische Aktualisierung**: Änderungen an der Lambda werden automatisch in Home Assistant übernommen
+- **Lesen**: Die Climate-Entity liest sowohl die aktuelle als auch die Soll-Temperatur direkt aus dem Modbus-Register
+- **Schreiben**: Änderungen in Home Assistant werden direkt an die Lambda geschrieben und lösen sofort einen erneuten Poll aus
+- **Automatische Aktualisierung**: Änderungen an der Lambda selbst werden beim nächsten regulären Poll (Standard alle 30 s) übernommen
 
 ## Beispiel-Szenarien
 
@@ -119,12 +114,11 @@ automation:
       - platform: time
         at: "06:00:00"
     actions:
-      - action: number.set_value
-        metadata: {}
+      - action: climate.set_temperature
         target:
-          entity_id: number.eu08l_boil1_target_temperature
+          entity_id: climate.eu08l_boil1_hot_water
         data:
-          value: 55
+          temperature: 55
     mode: single
 
   - alias: "Warmwasser abends senken"
@@ -132,18 +126,15 @@ automation:
       - platform: time
         at: "22:00:00"
     actions:
-      - action: number.set_value
-        metadata: {}
+      - action: climate.set_temperature
         target:
-          entity_id: number.eu08l_boil1_target_temperature
+          entity_id: climate.eu08l_boil1_hot_water
         data:
-          value: 45
+          temperature: 45
     mode: single
 ```
 
 ### Szenario 2: Temperatur basierend auf Tageszeit
-
-Passen Sie die Temperatur basierend auf der Tageszeit an:
 
 ```yaml
 automation:
@@ -162,45 +153,41 @@ automation:
                 after: "06:00:00"
                 before: "12:00:00"
             sequence:
-              - action: number.set_value
-                metadata: {}
+              - action: climate.set_temperature
                 target:
-                  entity_id: number.eu08l_boil1_target_temperature
+                  entity_id: climate.eu08l_boil1_hot_water
                 data:
-                  value: 55
+                  temperature: 55
           - conditions:
               - condition: time
                 after: "12:00:00"
                 before: "18:00:00"
             sequence:
-              - action: number.set_value
-                metadata: {}
+              - action: climate.set_temperature
                 target:
-                  entity_id: number.eu08l_boil1_target_temperature
+                  entity_id: climate.eu08l_boil1_hot_water
                 data:
-                  value: 50
+                  temperature: 50
           - conditions:
               - condition: time
                 after: "18:00:00"
                 before: "22:00:00"
             sequence:
-              - action: number.set_value
-                metadata: {}
+              - action: climate.set_temperature
                 target:
-                  entity_id: number.eu08l_boil1_target_temperature
+                  entity_id: climate.eu08l_boil1_hot_water
                 data:
-                  value: 48
+                  temperature: 48
           - conditions:
               - condition: time
                 after: "22:00:00"
                 before: "06:00:00"
             sequence:
-              - action: number.set_value
-                metadata: {}
+              - action: climate.set_temperature
                 target:
-                  entity_id: number.eu08l_boil1_target_temperature
+                  entity_id: climate.eu08l_boil1_hot_water
                 data:
-                  value: 45
+                  temperature: 45
     mode: single
 ```
 
@@ -211,11 +198,11 @@ automation:
 - **Lösung**: 
   - Überprüfen Sie die Modbus-Verbindung
   - Überprüfen Sie die Logs auf Fehlermeldungen
-  - Starten Sie Home Assistant neu
+  - Laden Sie die Integration neu (**⋮ → Neu laden**)
 
 ### "Temperatur außerhalb des Bereichs"
-- **Ursache**: Wert liegt außerhalb der erlaubten Grenzen (25°C - 65°C)
-- **Lösung**: Verwenden Sie einen Wert zwischen 25°C und 65°C
+- **Ursache**: Wert liegt außerhalb der erlaubten Grenzen (Standard 25°C – 65°C, siehe Integrations-Optionen)
+- **Lösung**: Verwenden Sie einen Wert innerhalb der konfigurierten Grenzen
 
 ### "Temperatur ändert sich nicht"
 - **Ursache**: Lambda-Wärmepumpe akzeptiert den Wert nicht
@@ -231,4 +218,3 @@ Nach der Einrichtung der Warmwasser-Solltemperatur-Steuerung können Sie:
 - [Raumthermostat](raumthermometer.md) konfigurieren
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
 - [Optionen des config_flow](optionen-config-flow.md) anpassen
-

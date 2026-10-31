@@ -4,9 +4,10 @@ title: "Lambda Energy Dashboard"
 
 # Lambda Energy Dashboard (Vorlage)
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 30.10.2026*
 
-### ⚠️ ⚠️ Achtung, dies Dashboard benötigt Sensoren, die erst mit der Version 2.3 der Lambda Integration herauskommen. Mit älteren Versionen werden viele Werte nicht gefunden.
+!!! info "Voraussetzungen"
+    Das Dashboard nutzt die Energie-, Taktungs- und COP-Sensoren der Integration. Tages-, Monats- und Jahreszähler sind standardmäßig deaktiviert. Am einfachsten schalten Sie sie alle zusammen über die Option **Perioden-Energiesensoren aktivieren** frei (**Einstellungen → Geräte & Dienste → Lambda Heat Pumps → Konfigurieren**, siehe [Optionen der Integration](../Anwender/optionen-config-flow.md#perioden-energiesensoren-aktivieren)). Alternativ können Sie die verwendeten Zähler auch einzeln beim Gerät unter „Entitäten“ aktivieren.
 
 Diese Vorlage erstellt ein Lovelace-Dashboard **„lambda Energy“** mit zwei Reitern:
 

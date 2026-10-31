@@ -1,0 +1,1074 @@
+"""Setting up a controller: what it finds, and what it creates."""
+
+from __future__ import annotations
+
+import pytest
+from homeassistant.config_entries import ConfigEntryState
+from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
+from homeassistant.core import HomeAssistant, valid_entity_id
+from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import issue_registry as ir
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.lambda_heat_pumps.const import (
+    CONF_FIRMWARE_VERSION,
+    CONF_INT32_REGISTER_ORDER,
+    CONF_PERIOD_SENSORS_ENABLED,
+    CONF_SLAVE_ID,
+    CONF_USE_LEGACY_MODBUS_NAMES,
+    DOMAIN,
+    ENTRY_VERSION,
+    ISSUE_REGISTER_ORDER,
+    REGISTER_ORDER_HIGH_FIRST,
+    REGISTER_ORDER_LOW_FIRST,
+)
+from custom_components.lambda_heat_pumps.coordinator import (
+    plausible_counter,
+    swap_words,
+)
+
+from .conftest import HOST, PORT, SLAVE_ID, Controller
+
+
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
+
+def entry_data(*, legacy: bool = False) -> dict:
+    """A config entry for the controller the `controller` fixture stands up."""
+    return {
+        CONF_NAME: "EU08L",
+        CONF_HOST: HOST,
+        CONF_PORT: PORT,
+        CONF_SLAVE_ID: SLAVE_ID,
+        CONF_FIRMWARE_VERSION: "V0.0.8-3K",
+        CONF_USE_LEGACY_MODBUS_NAMES: legacy,
+    }
+
+
+async def setup_entry(
+    hass: HomeAssistant, controller: Controller, *, legacy: bool = False, options=None
+) -> MockConfigEntry:
+    """Set up the controller."""
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=ENTRY_VERSION,
+        data=entry_data(legacy=legacy),
+        options=options or {},
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_setup_detects_the_modules_the_controller_has(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The probe finds one of each installed module, and none of the rest."""
+    entry = await setup_entry(hass, controller)
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.counts == {"hp": 1, "boil": 1, "buff": 0, "sol": 0, "hc": 1}
+
+
+async def test_the_connection_paces_its_requests(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Reads and writes on the connection are actually serialized.
+
+    modbus-connection only takes its own internal lock around a request when a
+    nonzero message (or unit) spacing is configured - with neither, two
+    requests can hit the wire at the same time, which is the same class of
+    transaction desync GitHub Issue #105 reported. Regression guard for that:
+    assert the integration always hands over a nonzero spacing, rather than
+    relying on the library's (unserialized) default.
+    """
+    await setup_entry(hass, controller)
+
+    assert controller.connection_kwargs
+    for kwargs in controller.connection_kwargs:
+        assert kwargs.get("message_spacing", 0) > 0
+
+
+def state_of(hass: HomeAssistant, unique_id: str) -> str:
+    """A sensor's state, found the way its identity is actually defined."""
+    entity_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, unique_id)
+    assert entity_id, f"no entity for {unique_id}"
+    return hass.states.get(entity_id).state
+
+
+async def enable_sensors(
+    hass: HomeAssistant, entry: MockConfigEntry, *unique_ids: str
+) -> None:
+    """Turn on entities that ship disabled, as a user would, and reload.
+
+    The per-period counters are off by default; a test that reads one has to
+    enable it first, then reload so it comes up with a state.
+    """
+    registry = er.async_get(hass)
+    for unique_id in unique_ids:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert entity_id, f"no entity for {unique_id}"
+        registry.async_update_entity(entity_id, disabled_by=None)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_setup_reads_the_controller(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Values come back decoded — scaled, signed, and state codes resolved."""
+    await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_ambient_temperature") == "4.2"
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+    assert state_of(hass, "eu08l_hp1_state") == "START COMPRESSOR"
+    assert state_of(hass, "eu08l_hp1_operating_state") == "CH"
+    assert state_of(hass, "eu08l_boil1_actual_high_temperature") == "48.0"
+    # A 32-bit counter, over two registers.
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+
+
+async def test_unique_ids_are_unchanged(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An existing installation's entities keep the ids they have always had."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    for unique_id in (
+        "eu08l_ambient_temperature",
+        "eu08l_hp1_flow_line_temperature",
+        "eu08l_hp1_heating_cycling_total",
+        "eu08l_hp1_heating_cycling_yesterday",
+        "eu08l_hp1_heating_energy_daily",
+        "eu08l_hp1_heating_thermal_energy_monthly",
+        "eu08l_hp1_heating_cop_total",
+        "eu08l_boil1_target_high_temperature",
+        "eu08l_hc1_heating_curve_flow_line_temperature_calc",
+    ):
+        assert registry.async_get_entity_id("sensor", DOMAIN, unique_id), unique_id
+
+    assert registry.async_get_entity_id("climate", DOMAIN, "eu08l_boil1_hot_water")
+    assert registry.async_get_entity_id(
+        "number", DOMAIN, "eu08l_hc1_flow_line_offset_temperature_number"
+    )
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_entity_ids_are_named_from_the_register_not_the_translation(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The entity id is the register's key, so it does not vary by language.
+
+    Home Assistant would otherwise build it from the translated name, which
+    makes the id depend on the language the instance runs in, and lets two names
+    that differ only by a sign collide.
+    """
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    for domain, unique_id in (
+        ("sensor", "eu08l_ambient_temperature"),
+        ("sensor", "eu08l_hp1_flow_line_temperature"),
+        ("sensor", "eu08l_boil1_actual_high_temperature"),
+        ("climate", "eu08l_boil1_hot_water"),
+        ("number", "eu08l_hc1_flow_line_offset_temperature_number"),
+    ):
+        entity_id = registry.async_get_entity_id(domain, DOMAIN, unique_id)
+        assert entity_id == f"{domain}.{unique_id}", unique_id
+
+
+async def test_climate_entities_get_a_climate_id_without_a_warning(
+    hass: HomeAssistant, controller: Controller, caplog: pytest.LogCaptureFixture
+) -> None:
+    """#122/#85: 2.x proposed `sensor.*` ids for its climate entities.
+
+    Home Assistant always registered them under `climate.*` (it only takes the
+    object id from a proposal) and warned about the wrong domain. 3.5 proposes
+    the right domain, so the warning is gone and the existing ids stay as they are.
+    """
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    climate = [
+        entity
+        for entity in registry.entities.values()
+        if entity.platform == DOMAIN and entity.entity_id.startswith("climate.")
+    ]
+    assert climate
+    assert not any(
+        entity.platform == DOMAIN
+        and entity.unique_id.endswith(("_hot_water", "_heating_circuit"))
+        and not entity.entity_id.startswith("climate.")
+        for entity in registry.entities.values()
+    )
+    assert "wrong domain" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("firmware", "served"),
+    [
+        ("V0.0.10-3K", True),
+        ("V1.0.2-3K", False),
+        ("V1.0.4-3K", False),
+        ("V1.0.8-3K", False),
+        # No dump says either way, so it keeps them.
+        ("V1.1.0-3K", True),
+    ],
+)
+async def test_the_new_controller_does_not_get_its_empty_registers(
+    hass: HomeAssistant, controller: Controller, firmware: str, served: bool
+) -> None:
+    """1024-1033 and 1051-1060 hold nothing on the V1.0.x controller (#100)."""
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: firmware}
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+
+    for unique_id in (
+        "eu08l_hp1_hot_gas_temperature",
+        "eu08l_hp1_config_parameter_24",
+        "eu08l_hp1_dhw_output_power_15c",
+        "eu08l_hp1_config_parameter_60",
+    ):
+        found = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert bool(found) is served, unique_id
+    # What the new controller does fill stays.
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_config_parameter_50"
+    )
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_flow_line_temperature"
+    )
+
+
+async def test_a_power_of_minus_32768_w_reads_unknown(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """0x8000 in a signed power is the controller's "no value", not -32768 W (#91)."""
+    controller.registers[102] = 0x8000  # E-Manager not on Modbus
+    controller.registers[1012] = 0x8000
+    await setup_entry(hass, controller, legacy=True)
+
+    assert state_of(hass, "eu08l_emgr_actual_power") == "unknown"
+    assert state_of(hass, "eu08l_hp1_inverter_power_consumption") == "unknown"
+
+
+async def test_request_registers_are_off_on_a_new_installation(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """They only hold a value while something requests one (#132, #143)."""
+    controller.install(3000)  # buffer 1
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    for unique_id in (
+        "eu08l_hp1_request_type",
+        "eu08l_buff1_request_type",
+        "eu08l_buff1_request_heat_sink_temp_diff_setpoint",
+        "eu08l_hc1_room_device_temperature",
+        "eu08l_hc1_set_flow_line_temperature",
+        "eu08l_hc1_operating_mode",
+    ):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert entity_id, unique_id
+        assert registry.async_get(entity_id).disabled_by is (
+            er.RegistryEntryDisabler.INTEGRATION
+        ), unique_id
+    # A measurement next to them is on.
+    flow = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hc1_flow_line_temperature"
+    )
+    assert registry.async_get(flow).disabled_by is None
+
+
+async def test_a_register_its_firmware_withdrew_is_not_modelled(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A register only older firmware serves is left out on a newer controller.
+
+    The controller still answers for it — it just stops reporting anything
+    through it — so probing cannot tell, and the sensor says which versions it
+    is good on instead.
+    """
+    registry = er.async_get(hass)
+
+    # V0.0.8-3K is version 6, inside the register's 1-7 range.
+    entry = await setup_entry(hass, controller, legacy=True)
+    assert state_of(hass, "eu08l_ambient_temperature") == "4.2"
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # V1.1.0-3K is version 13, past it.
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V1.1.0-3K"}
+    newer = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    newer.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(newer.entry_id)
+    await hass.async_block_till_done()
+
+    assert not registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_ambient_temperature"
+    )
+    # Its neighbours in the same block are unaffected.
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_ambient_temperature_calculated"
+    )
+
+
+async def test_a_register_that_changed_meaning_is_not_double_modelled(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """HC register 7 means something different before and after firmware 3.
+
+    Below firmware 3 it is the writable setpoint the circuit was asked for
+    (`flow_line_temperature_setpoint`); from firmware 3 on the controller
+    repurposes the same address for the read-only value it actually acts on
+    (`target_temp_flow_line`). Both used to be modelled unconditionally, so on
+    firmware 3+ they collided on the same register - GitHub Issue #112.
+    """
+    registry = er.async_get(hass)
+
+    # V0.0.8-3K is version 6, at/after the register's repurposing on firmware 3.
+    entry = await setup_entry(hass, controller, legacy=True)
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hc1_target_temp_flow_line"
+    )
+    assert not registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hc1_flow_line_temperature_setpoint"
+    )
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # V0.0.4-3K is version 2, before the repurposing.
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V0.0.4-3K"}
+    older = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    older.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(older.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hc1_flow_line_temperature_setpoint"
+    )
+    assert not registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hc1_target_temp_flow_line"
+    )
+
+
+async def test_a_register_with_nothing_behind_it_reads_unknown(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The controller's "no value" codes are not read as measurements.
+
+    It answers 0x8000 for a register its firmware does not have and -3000 for a
+    sensor that is not connected. Scaled like readings those are -327.68 °C and
+    -300.0 °C, which look plausible enough to be recorded as real.
+    """
+    controller.registers[1008] = 0x8000  # energy source outlet: no such register
+    controller.registers[5003] = 0xF448  # hc return line: no sensor connected
+    controller.registers[5006] = 0xF448  # and its operating mode with it
+    entry = await setup_entry(hass, controller, legacy=True)
+    # A request register; off by default.
+    await enable_sensors(hass, entry, "eu08l_hc1_operating_mode")
+
+    for unique_id in (
+        "eu08l_hp1_energy_source_outlet_temperature",
+        "eu08l_hc1_return_line_temperature",
+        "eu08l_hc1_operating_mode",
+    ):
+        assert state_of(hass, unique_id) in ("unknown", "unavailable"), unique_id
+
+    # A real reading in the same block is untouched.
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
+async def test_a_no_request_or_no_sensor_register_reads_unknown(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """0xFFFF ("no request" / "nothing fed in") is not read as a measurement.
+
+    Unlike 0x8000 and 0xF448 this is not a global sentinel — -1 is a genuine
+    value on other registers (e.g. temperature offsets) — so it is only
+    filtered on the handful of fields that actually use it this way: the
+    ambient temperature (no external sensor connected) and a buffer's request
+    registers (no active request).
+    """
+    controller.install(3000)  # buffer 1
+    controller.registers[2] = 0xFFFF  # ambient temperature: no external sensor
+    controller.registers[3005] = 0xFFFF  # buffer request type: no request
+    controller.registers[3006] = 0xFFFF  # buffer request flow line setpoint
+    entry = await setup_entry(hass, controller, legacy=True)
+    # Request registers; off by default.
+    await enable_sensors(
+        hass,
+        entry,
+        "eu08l_buff1_request_type",
+        "eu08l_buff1_request_flow_line_temp_setpoint",
+    )
+
+    for unique_id in (
+        "eu08l_ambient_temperature",
+        "eu08l_buff1_request_type",
+        "eu08l_buff1_request_flow_line_temp_setpoint",
+    ):
+        assert state_of(hass, unique_id) in ("unknown", "unavailable"), unique_id
+
+    # A register where -1 is a real value is untouched.
+    assert state_of(hass, "eu08l_hc1_set_flow_line_offset_temperature") == "0.0"
+
+
+async def test_modules_are_their_own_devices(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Each module hangs off the controller as its own device."""
+    entry = await setup_entry(hass, controller)
+    devices = dr.async_get(hass)
+
+    # async_get_device is deprecated since HA 2026.10 and raises in tests;
+    # identifiers are only unique per config entry now.
+    main = devices.async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
+    assert main is not None
+    assert main.name == "EU08L"
+
+    heat_pump = devices.async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id, "hp", 1), entry.entry_id
+    )
+    assert heat_pump is not None
+    assert heat_pump.name == "EU08L - HP1"
+    assert heat_pump.via_device_id == main.id
+
+    # via_device (an identifiers-tuple) is deprecated in favour of via_device_id
+    # (the registry's own id for the parent device) and logs a removal warning
+    # on current Home Assistant. Checking the resulting field above is not
+    # enough to catch a regression back to the deprecated kwarg, since some HA
+    # versions silently translate it — so also assert the coordinator itself
+    # never hands it out.
+    device_info = entry.runtime_data.device_info("hp", 1)
+    assert "via_device" not in device_info
+    assert device_info["via_device_id"] == main.id
+
+
+async def test_unload_closes_the_connection(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The integration owns the link, so it lets go of it."""
+    entry = await setup_entry(hass, controller)
+    connection = entry.runtime_data.connection
+
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    assert not connection.connected
+
+
+async def test_a_controller_that_changes_is_looked_at_again(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A register that stops answering makes the integration re-probe itself.
+
+    The map was read off the controller at setup, so a block it now refuses
+    means that map is stale. Rather than sitting there failing until the user
+    reloads it, the integration sets itself up again and carries on with what
+    the controller serves now.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+    # The controller stops serving a register it served at setup.
+    controller.refuse(1004)
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    # It set itself up again, and is working — without the refused register.
+    coordinator = entry.runtime_data
+    assert entry.state is ConfigEntryState.LOADED
+    assert coordinator.last_update_success
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") in (
+        "unknown",
+        "unavailable",
+    )
+    # Its neighbours, which the controller still serves, are read as before.
+    assert state_of(hass, "eu08l_hp1_return_line_temperature") == "28.9"
+
+
+async def test_a_boiler_that_serves_only_part_of_its_block(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A controller that answers only some of a module's registers keeps those.
+
+    The reported case: the boiler serves its temperatures but refuses the
+    circulation registers at the end of its block. The probe reads the block a
+    register at a time and builds the boiler from what answered, so the served
+    temperatures — and the hot-water climate's controls — come through instead of
+    the whole boiler going unavailable.
+    """
+    controller.refuse(2004)  # actual_circulation_temperature
+    controller.refuse(2005)  # actual_circulation_pump_state
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.counts["boil"] == 1
+    # The served temperatures are read; the climate's current/target read these.
+    assert state_of(hass, "eu08l_boil1_actual_high_temperature") == "48.0"
+    assert state_of(hass, "eu08l_boil1_target_high_temperature") == "52.0"
+    # Only the refused registers are unavailable, and nothing else broke.
+    assert state_of(hass, "eu08l_boil1_actual_circulation_temperature") in (
+        "unknown",
+        "unavailable",
+    )
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
+async def test_an_unserved_register_between_two_served_ones(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A hole in the middle of a block does not take the block down with it.
+
+    Dropping the field is not enough: the registers on either side would still be
+    read as one block, which spans the hole and is refused. The read has to be
+    split at the hole, so both sides still come through.
+    """
+    controller.refuse(2002)  # actual_high_temperature, between 2001 and 2003
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.last_update_success
+    # Both sides of the hole are read.
+    assert state_of(hass, "eu08l_boil1_operating_state") == "DHW"
+    assert state_of(hass, "eu08l_boil1_actual_low_temperature") == "0.0"
+    assert state_of(hass, "eu08l_boil1_target_high_temperature") == "52.0"
+    # Only the hole itself is unavailable.
+    assert state_of(hass, "eu08l_boil1_actual_high_temperature") in (
+        "unknown",
+        "unavailable",
+    )
+
+
+async def test_a_heat_pump_without_the_undocumented_registers(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A firmware that lacks the refrigerant and capacity registers still sets up.
+
+    They sit at the end of the heat pump's block and some firmware does not serve
+    them; the probe leaves them out, and the documented values are unaffected.
+    """
+    for address in (*range(1024, 1034), *range(1051, 1061)):
+        controller.refuse(address)
+    entry = await setup_entry(hass, controller, legacy=True)
+
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.last_update_success
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+    # A refrigerant register the controller does not serve reads unavailable.
+    assert state_of(hass, "eu08l_hp1_hot_gas_temperature") in ("unknown", "unavailable")
+    # The one config register just before the capacity block is still served.
+    assert state_of(hass, "eu08l_hp1_config_parameter_50") == "0"
+
+
+async def test_a_controller_that_stores_its_counters_low_word_first(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A low-first controller decodes its counters, and still names its states.
+
+    The low-first heat pump is a subclass that overrides only the two counters,
+    so it is the case where a field is inherited rather than declared on the
+    class being read — the state sensor has to find its labels all the same.
+    """
+    # The same 100000 Wh, stored low word first.
+    controller.registers[1020] = 0x86A0
+    controller.registers[1021] = 0x0001
+    await setup_entry(
+        hass,
+        controller,
+        legacy=True,
+        options={CONF_INT32_REGISTER_ORDER: REGISTER_ORDER_LOW_FIRST},
+    )
+
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+    # The state registers are declared on the base class, not the override.
+    assert state_of(hass, "eu08l_hp1_state") == "START COMPRESSOR"
+    assert state_of(hass, "eu08l_hp1_operating_state") == "CH"
+
+
+async def test_a_momentary_drop_is_reconnected_in_the_same_poll(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A blip costs nothing: the poll re-establishes the link and carries on."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+
+    controller.drop_the_link()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.last_update_success
+    assert entry.state is ConfigEntryState.LOADED
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
+async def test_an_unreachable_controller_goes_unavailable_without_reloading(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A controller that cannot be reached marks its entities unavailable.
+
+    Reloading would tear down every entity and re-probe the register map for
+    what is usually a temporary outage. The coordinator keeps trying to
+    reconnect on its own schedule instead, so the entities stay where they are.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_flow_line_temperature"
+    )
+
+    controller.go_offline()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # The device is down, but the entry was never reloaded.
+    assert not coordinator.last_update_success
+    assert entry.state is ConfigEntryState.LOADED
+    assert hass.states.get(entity_id).state == "unavailable"
+
+    # When it answers again the values come back — to the same entity, so
+    # nothing was recreated and its history is intact.
+    controller.come_back_online()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.last_update_success
+    assert hass.states.get(entity_id).state == "34.12"
+    assert (
+        registry.async_get_entity_id("sensor", DOMAIN, "eu08l_hp1_flow_line_temperature")
+        == entity_id
+    )
+
+
+async def test_the_register_order_defaults_to_what_the_firmware_uses(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Without the setting, the counters are read the way that firmware writes them.
+
+    V1.1.0-3K writes its 32-bit counters low word first, so a controller running
+    it reads correctly with nothing configured.
+    """
+    controller.registers[1020] = 0x86A0  # the same 100000 Wh, low word first
+    controller.registers[1021] = 0x0001
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V1.1.0-3K"}
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+
+
+@pytest.mark.parametrize(
+    ("as_read", "on_the_display"),
+    [
+        # Reported in #104, #133 and #90, and what the display said.
+        (-1341390833, 1028108),
+        (1146028282, 16401487),
+        (-2147023552, 88113159),
+        (1140719617, 82942),
+        (1989148679, 489104),
+        (-354877437, 256729),
+        (1525284885, 1399530),
+    ],
+)
+def test_the_misread_counters_from_the_issues_are_told_apart(
+    as_read: int, on_the_display: int
+) -> None:
+    assert not plausible_counter(as_read)
+    assert swap_words(as_read) == on_the_display
+    assert plausible_counter(on_the_display)
+    # And read the right way round, nothing is flagged.
+    assert not plausible_counter(swap_words(on_the_display))
+
+
+async def test_a_controller_that_disagrees_with_its_firmware_asks_for_the_other_order(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """#104: a V0.0.10-3K controller that writes its counters high word first.
+
+    The firmware default (low_first) misreads them as far over a GWh. That is
+    not published, and a repair issue names the order that reads them plausibly;
+    once it is set, the issue goes.
+    """
+    # The fixture's counters are high word first: 100000 and 400000 Wh.
+    data = entry_data(legacy=True) | {CONF_FIRMWARE_VERSION: "V0.0.10-3K"}
+    entry = MockConfigEntry(
+        domain=DOMAIN, version=ENTRY_VERSION, title="EU08L", data=data
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    issues = ir.async_get(hass)
+    issue_id = f"{ISSUE_REGISTER_ORDER}_{entry.entry_id}"
+    issue = issues.async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_placeholders["suggested"] == REGISTER_ORDER_HIGH_FIRST
+    # Nothing misread reaches the counters or the ratio built from them.
+    for unique_id in (
+        "eu08l_hp1_compressor_power_consumption_accumulated",
+        "eu08l_hp1_compressor_thermal_energy_output_accumulated",
+        "eu08l_hp1_cop_calc",
+    ):
+        assert state_of(hass, unique_id) == "unknown", unique_id
+
+    hass.config_entries.async_update_entry(
+        entry, options={CONF_INT32_REGISTER_ORDER: REGISTER_ORDER_HIGH_FIRST}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert issues.async_get_issue(DOMAIN, issue_id) is None
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+
+
+async def test_a_misread_counter_keeps_its_last_value_and_books_nothing(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A counter that turns implausible mid-run holds, and no energy is booked."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    before = dict(coordinator.totals[1].electrical)
+
+    # The same counter a few Wh later, words swapped: 0x86A5_0001.
+    controller.registers[1020] = 0x86A5
+    controller.registers[1021] = 0x0001
+    for _ in range(2):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+
+    assert (
+        state_of(hass, "eu08l_hp1_compressor_power_consumption_accumulated") == "100000"
+    )
+    assert coordinator.totals[1].electrical == before
+    assert ir.async_get(hass).async_get_issue(
+        DOMAIN, f"{ISSUE_REGISTER_ORDER}_{entry.entry_id}"
+    )
+
+
+async def test_only_the_totals_are_enabled_by_default(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A fresh install ships the running totals; the per-period counters are off."""
+    await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    def enabled(unique_id: str) -> bool:
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert entity_id, unique_id
+        return not registry.async_get(entity_id).disabled
+
+    # The totals a user actually builds on — and feeds to the energy dashboard.
+    assert enabled("eu08l_hp1_heating_cycling_total")
+    assert enabled("eu08l_hp1_heating_energy_total")
+    assert enabled("eu08l_hp1_heating_thermal_energy_total")
+    assert enabled("eu08l_hp1_heating_cop_total")
+    # The device's own lifetime register counters stay on too.
+    assert enabled("eu08l_hp1_compressor_power_consumption_accumulated")
+
+    # Everything reported over a period is created but disabled.
+    for unique_id in (
+        "eu08l_hp1_heating_cycling_daily",
+        "eu08l_hp1_heating_cycling_2h",
+        "eu08l_hp1_heating_cycling_yesterday",
+        "eu08l_hp1_compressor_start_cycling_monthly",
+        "eu08l_hp1_heating_energy_daily",
+        "eu08l_hp1_heating_energy_hourly",
+        "eu08l_hp1_heating_thermal_energy_yearly",
+        "eu08l_hp1_heating_cop_daily",
+    ):
+        assert not enabled(unique_id), unique_id
+
+
+async def test_the_period_toggle_enables_existing_period_sensors(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Turning the group toggle on retroactively enables existing period sensors."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+
+    def disabled_by(unique_id: str):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+        assert entity_id, unique_id
+        return registry.async_get(entity_id).disabled_by
+
+    assert disabled_by("eu08l_hp1_heating_cycling_daily") is er.RegistryEntryDisabler.INTEGRATION
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: True}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert disabled_by("eu08l_hp1_heating_cycling_daily") is None
+    # The total it never touches stays exactly as it was.
+    assert disabled_by("eu08l_hp1_heating_cycling_total") is None
+
+
+async def test_the_period_toggle_off_again_redisables_them(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Turning the toggle back off re-disables the period sensors it turned on."""
+    entry = await setup_entry(
+        hass, controller, legacy=True, options={CONF_PERIOD_SENSORS_ENABLED: True}
+    )
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_heating_cycling_daily"
+    )
+    assert registry.async_get(entity_id).disabled_by is None
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: False}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.INTEGRATION
+
+
+async def test_a_user_disabled_period_sensor_is_left_alone_by_the_toggle(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An entity a user disabled by hand is untouched, in either direction."""
+    entry = await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_heating_cycling_daily"
+    )
+    registry.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: True}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.USER
+
+
+async def test_a_float_unit_id_is_coerced_to_int(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """An entry storing the port and unit id as floats still connects.
+
+    The number selector that set them hands back floats, and older entries kept
+    them; the Modbus frame needs ints, so the backend must be handed ints.
+    """
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=ENTRY_VERSION,  # already migrated, so migration does not re-run
+        data={
+            CONF_NAME: "EU08L",
+            CONF_HOST: HOST,
+            CONF_PORT: 502.0,
+            CONF_SLAVE_ID: 1.0,
+            CONF_FIRMWARE_VERSION: "V0.0.8-3K",
+            CONF_USE_LEGACY_MODBUS_NAMES: True,
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.state is ConfigEntryState.LOADED
+    # Never a float — that is what tmodbus's struct.pack rejects.
+    assert controller.ports and all(type(p) is int for p in controller.ports)
+    assert controller.unit_ids and all(type(u) is int for u in controller.unit_ids)
+
+
+async def test_a_busy_controller_is_not_read_as_a_smaller_one(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Being too busy to answer is not the same as having nothing to say.
+
+    The module count is taken once and kept for the life of the entry, so a
+    controller that is merely busy while it is being probed must not come up
+    with modules missing. Setup fails instead, and Home Assistant retries it.
+    """
+    controller.answer_busy(2000)  # the boiler's own probe register
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=entry_data())
+    entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_a_busy_controller_is_not_read_as_a_shorter_register_map(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The same, for the registers a module serves rather than the modules.
+
+    The map is probed once. A busy answer recorded as "no such register" would
+    leave those entities unavailable until someone reloaded the integration.
+    """
+    controller.answer_busy(1024)  # inside the heat pump's block, past the probe
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=entry_data())
+    entry.add_to_hass(hass)
+
+    assert not await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.state is ConfigEntryState.SETUP_RETRY
+
+
+@pytest.mark.parametrize(
+    ("name", "unique_prefix", "id_prefix"),
+    [
+        ("EU08L", "eu08l", "eu08l"),
+        # A name with spaces: the shape the entities were registered under drops
+        # them, so the unique id has to as well or every entity is a new one.
+        ("Lambda EU10L", "lambdaeu10l", "lambdaeu10l"),
+        ("Meine WP", "meinewp", "meinewp"),
+        # An accented name keeps its accents in the unique id, because that is
+        # what the installation registered — but an entity id cannot have them.
+        ("Wärmepumpe Süd", "wärmepumpesüd", "warmepumpesud"),
+    ],
+)
+async def test_a_device_name_is_folded_the_way_it_always_was(
+    hass: HomeAssistant,
+    controller: Controller,
+    name: str,
+    unique_prefix: str,
+    id_prefix: str,
+) -> None:
+    """The device name is free text, and both ids have to cope with it."""
+    data = entry_data(legacy=True) | {CONF_NAME: name}
+    entry = MockConfigEntry(domain=DOMAIN, version=ENTRY_VERSION, data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{unique_prefix}_hp1_flow_line_temperature"
+    )
+    assert entity_id == f"sensor.{id_prefix}_hp1_flow_line_temperature"
+    assert valid_entity_id(entity_id)
+
+
+async def test_the_lifetime_coefficient_is_still_there(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """The controller's own lifetime COP, from its two accumulated counters.
+
+    It is the one sensor the rewrite dropped; existing installations have it,
+    with its history.
+    """
+    await setup_entry(hass, controller, legacy=True)
+
+    # 400000 Wh of heat for 100000 Wh of electricity.
+    assert state_of(hass, "eu08l_hp1_cop_calc") == "4.0"
+
+
+async def test_a_link_that_stops_answering_is_thrown_away(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A link can be up and useless; after a few silent polls it is reopened.
+
+    The socket stays open and the controller stops answering — the failure mode
+    of the serial-to-network bridges these are often reached through. Reopening
+    costs nothing: the same handles are used and nothing is rebuilt.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+    connection = coordinator.connection
+
+    controller.stop_answering()
+    for _ in range(2):
+        await coordinator.async_refresh()
+    # Two silent polls are bad luck, not a wedged link.
+    assert connection.connected
+    assert not coordinator.last_update_success
+
+    await coordinator.async_refresh()
+    # The third throws the link away, to be reopened by the next request.
+    assert not connection.connected
+
+    controller.answer_again()
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    assert coordinator.last_update_success
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "34.12"
+
+
+async def test_a_busy_answer_mid_poll_does_not_re_probe_the_controller(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Being busy is not the controller telling us it has changed.
+
+    A block it will not serve any more means the map read at setup is stale, and
+    the integration sets itself up again to find out what it has now. A block it
+    cannot serve *at this moment* means nothing of the sort — re-probing on that
+    would tear down every entity because the controller was briefly busy.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    coordinator = entry.runtime_data
+
+    controller.answer_busy(1004)  # inside a block the heat pump serves
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    # The heat pump is the only module that could not be read; it is reported
+    # rather than raised, so the rest of the controller carries on.
+    assert set(coordinator.failed) == {"hp1"}
+    assert "boil1" in coordinator.updated
+    assert state_of(hass, "eu08l_hp1_flow_line_temperature") == "unavailable"
+    assert state_of(hass, "eu08l_boil1_actual_high_temperature") == "48.0"
+    # The entry was not reloaded: it is still the same coordinator.
+    assert entry.runtime_data is coordinator
+    assert entry.state is ConfigEntryState.LOADED
+
+
+async def test_only_a_sensor_holding_a_value_asks_to_be_restored(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """A plain register sensor is not handed to the restore store.
+
+    The store writes every entity registered with it to disk on a timer, whether
+    or not that entity ever restores anything — so a register sensor, whose value
+    is simply whatever the model last decoded, has no business in it. Only the
+    ones that carry a value of their own do: the controller's own accumulating
+    counters, and the counters this integration keeps itself.
+    """
+    from homeassistant.helpers import restore_state
+
+    await setup_entry(hass, controller, legacy=True)
+    registered = set(restore_state.async_get(hass).entities)
+
+    assert registered, "nothing registered with the restore store at all"
+    # The controller's own lifetime counter holds its value across a restart.
+    electrical = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_compressor_power_consumption_accumulated"
+    )
+    assert electrical in registered
+    # A plain measurement does not.
+    flow_line = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_flow_line_temperature"
+    )
+    assert flow_line not in registered
+    # Nor does one of the capacity limits, off its own poll.
+    cooling = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_cooling_max_output_power"
+    )
+    assert cooling not in registered

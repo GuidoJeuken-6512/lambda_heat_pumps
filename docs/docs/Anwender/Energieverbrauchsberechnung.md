@@ -4,13 +4,13 @@ title: "Energie- und Wärmeverbrauchsberechnung"
 
 # Energie- und Wärmeverbrauchsberechnung
 
-*Zuletzt geändert am 16.04.2026*
+*Zuletzt geändert am 18.10.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Sensoren für **Stromverbrauch** (elektrische Energie) und **Wärmeabgabe** (thermische Energie) – jeweils nach Betriebsart (Heizen, Warmwasser, Kühlen, Abtauen) und Zeitraum (Total, Täglich, Monatlich, Jährlich). Damit ist eine vollständige Analyse des Energie- und Wärmeflusses Ihrer Wärmepumpe möglich.
 
 ⚠️ **Die Daten der Sensoren werden in der Integration berechnet, sie können nicht aus der Lambda ausgelesen werden. Daher können sie von den Werten in der Lambda abweichen. Zudem müssen sich die Tages-, Monats- & Jahres-Werte erst aufbauen.**
 
-Um die Total-Werte an die Anzeige der Lambda anzugleichen, können Offsets in der `lambda_wp_config.yaml` konfiguriert werden (siehe [Historische Daten übernehmen](historische-daten.md)).
+Um die Total-Werte an die Anzeige der Lambda anzugleichen, können Offsets in der `lambda_wp_config.yaml` konfiguriert werden (siehe [Offsets](offsets.md) und [Historische Daten übernehmen](historische-daten.md)).
 ## Übersicht
 
 Die Sensoren bieten:
@@ -56,7 +56,9 @@ Standardmäßig verwendet die Integration die internen Modbus-Sensoren:
 
 ### Externe Sensoren konfigurieren
 
-Sie können pro Wärmepumpe getrennt Quellsensoren für **Stromverbrauch** und **Wärmeabgabe** festlegen:
+Externe Zähler werden in der Datei `lambda_wp_config.yaml` im Konfigurationsordner von Home Assistant eingetragen (siehe [lambda_wp_config.yaml](lambda-wp-config.md)). Nach einer Änderung die Integration neu laden (**⋮ → Neu laden**).
+
+Sie können pro Wärmepumpe getrennt Quellsensoren für **Stromverbrauch** und **Wärmeabgabe** festlegen. Der Sensor muss einen **steigenden Gesamtzählerstand** in Wh, kWh oder MWh liefern (z. B. „Energie gesamt“ eines Shelly 3EM), keine momentane Leistung in W:
 
 - **`sensor_entity_id`**: Quellsensor für den elektrischen Verbrauch (z. B. Shelly3EM). Fehlt er, wird der Lambda-interne Sensor verwendet.
 - **`thermal_sensor_entity_id`** (optional): Quellsensor für die thermische Energie (Wärmeabgabe). Fehlt er, wird der Lambda-interne Thermik-Sensor verwendet.
@@ -70,7 +72,7 @@ energy_consumption_sensors:
 
 ### Energieverbrauchs-Offsets
 
-Offsets für historische Daten sind für alle Total-Sensoren möglich (siehe [Historische Daten übernehmen](historische-daten.md)):
+Offsets für historische Daten sind für alle Total-Sensoren möglich, elektrisch und thermisch (siehe [Offsets](offsets.md)):
 
 ```yaml
 energy_consumption_offsets:
@@ -79,36 +81,40 @@ energy_consumption_offsets:
     hot_water_energy_total: 0.0
     cooling_energy_total: 0.0
     defrost_energy_total: 0.0
+    heating_thermal_energy_total: 0.0
+    hot_water_thermal_energy_total: 0.0
+    cooling_thermal_energy_total: 0.0
+    defrost_thermal_energy_total: 0.0
 ```
 
 **⚠️ Die Offset Werte müssen in kWh angegeben werden!**
 
 ## Funktionsweise
 
-### Flankenerkennung
+### Zuordnung zur Betriebsart
 
-Die Integration nutzt die s.g. Flankenerkennung, um Energie- und Wärme-Deltas exakt dem aktiven Betriebsmodus zuzuordnen. Bei jedem Moduswechsel (Heizen / Kühlen / Abtauen...) wird das Delta berechnet und den passenden Sensoren (elektrisch/thermisch) zugewiesen.
+Bei jeder Abfrage (Standard alle 30 Sekunden) liest die Integration die beiden Zählerstände (elektrisch und thermisch) und berechnet, um wie viel sie seit der letzten Abfrage gestiegen sind. Dieser Zuwachs wird der Betriebsart zugeordnet, in der die Wärmepumpe **gerade** ist (Heizen, Warmwasser, Kühlen, Abtauen, sonst Standby). Eine feinere Aufteilung bietet die Lambda nicht an.
 
-### Automatische Einheitenkonvertierung
-Wenn ein externer Sensor für die Stromverbrauchsmessung eingesetzt wird, wird die Einheit dieses Sensors automatisch ausgelesen und die Werte ggf. korregiert.
+### Einheiten externer Zähler
 
-- **Wh**: Automatisch zu kWh (÷ 1000)
-- **kWh**: Direkt verwendet
-- **MWh**: Automatisch zu kWh (× 1000)
+- **Wh**, **kWh** und **MWh** werden automatisch umgerechnet.
+- Meldet ein externer Sensor eine andere Einheit (z. B. W), wird er nicht verwendet, und im Log erscheint eine Warnung.
 
-### Sensor-Wechsel-Erkennung & Schutzmechanismen
+### Schutzmechanismen
 
-- Automatische Erkennung und Behandlung von Sensorwechseln
-- Nullwert- und Rückwärtssprung-Schutz
-- Persistenz aller Zählerstände
+- **Neustart:** Der erste Wert nach dem Start dient nur als Ausgangspunkt und wird nicht gezählt.
+- **Wechsel oder Ausfall des Zählers:** Fällt ein externer Zähler aus, zählt die Integration vorübergehend mit dem Zähler der Lambda weiter und wechselt zurück, sobald er wieder Werte liefert. Bei jedem Wechsel und nach jedem Ausfall (auch wenn die Lambda selbst nicht antwortet) gilt dieselbe Regel wie beim Start: Der erste Wert ist nur Ausgangspunkt, erst die zweite Differenz wird gezählt. Lieber fehlt etwas Verbrauch, als dass ein Sprung zwischen zwei Zählern in den Summen landet.
+- **Nullwert:** Ein Zählerstand von 0 (meldet die Lambda während des Hochfahrens) wird ignoriert.
+- **Rückwärtssprung oder unplausibler Sprung:** Fällt ein Zähler, oder steigt er um mehr als **100 kWh pro Abfrage** (z. B. nach einem Tausch der Wärmepumpe oder bei falscher Register-Reihenfolge), wird dieser Zuwachs verworfen statt gezählt.
+- **Zählerstände über Neustarts:** Die Zähler stellen ihren letzten Stand beim Start von Home Assistant wieder her. Ist der letzte gespeicherte Zustand nicht brauchbar (z. B. direkt nach einem Update), greifen die Gesamtzähler auf die Langzeitstatistik von Home Assistant zurück.
 
 ## Beispiel-Konfigurationen
 
 ```yaml
 energy_consumption_sensors:
   hp1:
-    sensor_entity_id: "sensor.eu08l_hp1_compressor_power_consumption_accumulated"
-    # thermal_sensor_entity_id optional; weglassen = interner Thermik-Sensor
+    sensor_entity_id: "sensor.shelly_3em_lambda_energie_gesamt"   # externer Stromzähler, kWh
+    # thermal_sensor_entity_id optional; weglassen = Wärmezähler der Lambda
 energy_consumption_offsets:
   hp1:
     heating_energy_total: 0
@@ -153,8 +159,9 @@ hours_to_show: 720
 
 - **Sensor nicht gefunden**: Entity-ID prüfen, Sensor verfügbar?
 - **Falsche Werte**: Einheiten prüfen, Offsets prüfen, Sensorwechsel in Logs prüfen
-- **Werte springen**: Sensorwechsel/Neustart – Integration wartet automatisch auf stabile Werte
-- **Keine Aktualisierung**: Quellsensor liefert keine Werte oder Betriebsmodus nicht erkannt
+- **Werte springen**: Sprünge über 100 kWh pro Abfrage werden verworfen. Springen die akkumulierten Zähler der Lambda selbst, stimmt meist die Register-Reihenfolge nicht, siehe [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md)
+- **Keine Aktualisierung**: Quellsensor liefert keine Werte, oder der externe Zähler hat eine nicht unterstützte Einheit (Log prüfen)
+- **Tages-, Monats- oder Jahreszähler fehlen**: Sie sind bei einer Neuinstallation deaktiviert und lassen sich beim Gerät unter „Entitäten“ einschalten
 
 ## Nächste Schritte
 

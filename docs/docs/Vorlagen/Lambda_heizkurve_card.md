@@ -4,7 +4,10 @@ title: "Lambda Heizkurven-Card"
 
 # Lambda Heizkurven-Card (Vorlage)
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 06.09.2026*
+
+!!! info "Entity-IDs seit Version 3.5"
+    Die Heizkurven-Stützpunkte tragen seit dem 3.5-Rewrite ein `_number`-Suffix in ihrer Entity-ID (z. B. `number.eu08l_hc1_heating_curve_warm_outside_temp_number`), um sie intern von der gleichnamigen berechneten Sensor-Entität zu unterscheiden. Die Beispiele unten sind bereits entsprechend angepasst.
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 320px;">
@@ -78,9 +81,9 @@ Der folgende Code ist das komplette JS-Modul für die Heizkurven-Card. Zum Einri
         entity_x: "sensor.eu08l_ambient_temperature_calculated",
         entity_y: "sensor.eu08l_hc1_heating_curve_flow_line_temperature_calc",
         curve_points: [
-          [22, "number.eu08l_hc1_heating_curve_warm_outside_temp"],
-          [0, "number.eu08l_hc1_heating_curve_mid_outside_temp"],
-          [-22, "number.eu08l_hc1_heating_curve_cold_outside_temp"],
+          [22, "number.eu08l_hc1_heating_curve_warm_outside_temp_number"],
+          [0, "number.eu08l_hc1_heating_curve_mid_outside_temp_number"],
+          [-22, "number.eu08l_hc1_heating_curve_cold_outside_temp_number"],
         ],
         x_range: [22, -22],
         y_range: [10, 75],
@@ -372,9 +375,9 @@ title: Heizkurve
 entity_x: sensor.eu08l_ambient_temperature_calculated
 entity_y: sensor.eu08l_hc1_heating_curve_flow_line_temperature_calc
 curve_points:
-  - [22, "number.eu08l_hc1_heating_curve_warm_outside_temp"]   # X=22 °C, Y aus Number
-  - [0, "number.eu08l_hc1_heating_curve_mid_outside_temp"]    # X=0 °C, Y aus Number
-  - [-22, "number.eu08l_hc1_heating_curve_cold_outside_temp"] # X=-22 °C, Y aus Number
+  - [22, "number.eu08l_hc1_heating_curve_warm_outside_temp_number"]   # X=22 °C, Y aus Number
+  - [0, "number.eu08l_hc1_heating_curve_mid_outside_temp_number"]    # X=0 °C, Y aus Number
+  - [-22, "number.eu08l_hc1_heating_curve_cold_outside_temp_number"] # X=-22 °C, Y aus Number
 x_range: [22, -22]
 y_range: [10, 75]
 x_label: Außentemperatur °C
@@ -387,7 +390,7 @@ y_label: Vorlauf °C
 |----------------|--------------|
 | `entity_x`     | Sensor für die X-Achse (Außentemperatur). |
 | `entity_y`     | Sensor für die Y-Achse (Vorlauftemperatur). |
-| `curve_points` | Liste von Punkten: `[X °C, Y]` – Y entweder fester Wert (Zahl) oder Entity-ID (String) für Vorlauf aus Sensor/Number, z. B. `[22, "number.eu08l_hc1_heating_curve_warm_outside_temp"]` (mind. 2 Punkte). |
+| `curve_points` | Liste von Punkten: `[X °C, Y]` – Y entweder fester Wert (Zahl) oder Entity-ID (String) für Vorlauf aus Sensor/Number, z. B. `[22, "number.eu08l_hc1_heating_curve_warm_outside_temp_number"]` (mind. 2 Punkte). |
 | `x_range`     | X-Achse Bereich, z. B. `[22, -22]`. |
 | `y_range`     | Y-Achse Bereich, z. B. `[10, 75]`. |
 | `title`       | Titel über der Grafik. |

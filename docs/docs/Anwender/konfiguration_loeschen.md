@@ -4,7 +4,7 @@ title: "Konfiguration löschen"
 
 # Konfiguration löschen
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Falls Sie die Lambda Wärmepumpen Integration aus Home Assistant entfernen möchten, können Sie dies über die Home Assistant Benutzeroberfläche durchführen.
 
@@ -33,7 +33,7 @@ Falls Sie die Lambda Wärmepumpen Integration aus Home Assistant entfernen möch
       <li><strong>Integration löschen:</strong>
         <ul>
           <li>Klicken Sie auf die drei Punkte (Menü) oben rechts</li>
-          <li>Wählen Sie <strong>Integration löschen</strong> aus</li>
+          <li>Wählen Sie <strong>Löschen</strong> aus</li>
           <li>Bestätigen Sie die Löschung</li>
         </ul>
       </li>
@@ -49,7 +49,10 @@ Nach dem Löschen werden:
 
 ## Schritt 4: manuelle Nacharbeiten
 - Automatisierungen, die diese Entitäten verwenden, müssen manuell angepasst werden
-- Die Konfigurationsdatei `lambda_wp_config.yaml` bleibt erhalten, sie kann gelöscht werden. Sie wird bei einer Neueinrichtung mir den standard Einstellungen wieder angelegt.
+- Die Konfigurationsdatei `lambda_wp_config.yaml` bleibt erhalten, sie kann gelöscht werden. Sie wird bei einer Neueinrichtung mit den Standardeinstellungen (alles auskommentiert) wieder angelegt.
+
+!!! warning "Zählerstände gehen verloren"
+    Die Gesamtzähler der Integration (Taktungen, Energie, COP) zählen nur, was die Integration selbst erfasst hat. Nach dem Löschen und erneuten Anlegen beginnen sie wieder bei 0. Notieren Sie die Stände vorher und übernehmen Sie sie danach als [Offsets](offsets.md). Wollen Sie nur die Adresse oder Firmware ändern, nutzen Sie statt Löschen **⋮ → Neu konfigurieren**.
 
 ### Historische Daten
 
@@ -57,4 +60,4 @@ Historische Daten, die in Home Assistant gespeichert wurden, bleiben erhalten. F
 
 ## Integration erneut hinzufügen
 
-Falls Sie die Integration später erneut hinzufügen möchten, können Sie dies über die [Initiale Konfiguration](initiale-konfiguration.md) durchführen. Alle Einstellungen müssen neu konfiguriert werden.
+Falls Sie die Integration später erneut hinzufügen möchten, können Sie dies über die [Initiale Konfiguration](initiale-konfiguration.md) durchführen. Alle Einstellungen (Optionen, Heizkurve) müssen neu konfiguriert werden.

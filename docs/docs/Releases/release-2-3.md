@@ -60,7 +60,7 @@ energy_consumption_sensors:
 
 Ohne Angabe wird der Lambda-interne Modbus-Sensor (`compressor_thermal_energy_output_accumulated`) verwendet.
 
-**Weitere Informationen:** [lambda_wp_config.yaml – Energieverbrauchs-Sensoren](../Anwender/lambda-wp-config.md#4-energieverbrauchs-sensoren)
+**Weitere Informationen:** [lambda_wp_config.yaml – Energieverbrauchs-Sensoren](../Anwender/lambda-wp-config.md#2-energieverbrauchs-sensoren)
 
 ---
 

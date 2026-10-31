@@ -4,9 +4,11 @@ title: "Features"
 
 # Features der Lambda Heat Pumps Integration
 
-*Zuletzt geändert am 16.04.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und Überwachung Ihrer Lambda-Wärmepumpe über Home Assistant. Hier finden Sie eine Übersicht aller verfügbaren Features.
+
+Diese Dokumentation beschreibt **Version 3.5**. Sie setzt **Home Assistant 2026.9.0 oder neuer** voraus.
 
 ## 🔌 Modbus/TCP Kommunikation
 
@@ -19,7 +21,8 @@ Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und
 
 - **Hardware-Erkennung**: Automatische Erkennung verfügbarer Module (Wärmepumpen, Warmwasser Modul, Puffer, Solar, Heizkreise)
 - **Dynamische Entity-Erstellung**: Automatische Erstellung aller Sensoren und Entities basierend auf erkanntem Hardware
-- **Konfigurationsvalidierung**: Verhindert doppelte Konfigurationen und validiert bestehende Verbindungen
+- **Automatische Erkennung im Netzwerk**: Home Assistant schlägt eine Lambda im Netzwerk als „Entdeckt“ vor
+- **Konfigurationsvalidierung**: Verhindert doppelte Konfigurationen und prüft die Verbindung vor dem Anlegen
 
 ## 📊 Taktung-Sensoren
 
@@ -44,6 +47,8 @@ Umfassende Zähler für alle Betriebsmodi:
 | 2 Stunden | ✓ | ✓ | ✓ | ✓ | ✓ |
 | 4 Stunden | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Monatlich | — | — | — | — | ✓ |
+
+Standardmäßig aktiv sind nur die Total-Zähler; die übrigen Zeiträume lassen sich beim Gerät unter „Entitäten“ einschalten.
 
 ### Funktionen
 - **Automatischer Reset**: Tägliche Sensoren werden automatisch um Mitternacht zurückgesetzt
@@ -94,29 +99,37 @@ Optimale Nutzung von Solarstrom:
 Ein beliebiger Sensor, der den PV-Überschuss eurer PV-Anlage darstellt, kann hier eingebunden werden. Die Integration übermittelt dann den Überschuss an die Lambda, die wiederum ihre Steuerung danach ausrichtet.
 
 ## 💧 Warmwasser-Steuerung
-Über die Integration kann die Solltemperatur der WarmWasser Bereitung einfach konfiguriert werden.
+Über die Klima-Entität **Warmwasser** (`climate.<name>_boil1_hot_water`) lässt sich die Solltemperatur der Warmwasserbereitung einstellen.
 - **Temperaturbereich**: Konfigurierbarer Bereich (Standard: 25-65°C)
+
+## 🏠 Heizkreis und Kühlkreis
+- **Heizkreis** (`climate.<name>_hc1_heating_circuit`): Raum-Ist- und Raum-Solltemperatur des Heizkreises
+- **Kühlkreis** (`climate.<name>_hc1_cooling_circuit`, mit der Option „Kühlen“): Raum-Solltemperatur im Kühlbetrieb
+- **Vorlauf-Offset** (`number.<name>_hc1_flow_line_offset_temperature_number`): verschiebt die Vorlauftemperatur der Lambda um bis zu ±10 K
 
 
 ## 🎛️ Erweiterte Konfiguration
 
 ### YAML-basierte Konfiguration
-- **`lambda_wp_config.yaml`**: Erweiterte Konfigurationsmöglichkeiten
-- **Register-Deaktivierung**: Deaktivierung einzelner Register bei Firmware-Inkompatibilitäten
-- **Sensor-Namensüberschreibungen**: Anpassung von Sensor-Namen
+- **`lambda_wp_config.yaml`**: Für die Dinge, die es sonst nirgends gibt
 - **Cycling-Offsets**: Anpassung von Zählerständen
+- **Energieverbrauchs-Offsets**: Anpassung von Energie-Zählerständen
 - **Energieverbrauchssensoren**: Konfiguration externer Energiezähler
-- **Register-Reihenfolge**: Konfiguration für 32-Bit-Register
 
-Die optionene Konfiguration über die Lambda_wp_config.yaml ist hier erklärt [Optionale Konfiguration](lambda-wp-config.md)
+Register deaktivieren oder Sensoren umbenennen geht seit Version 3.5 direkt in Home Assistant (Entität deaktivieren/umbenennen), nicht mehr über diese Datei. Die optionale Konfiguration über die `lambda_wp_config.yaml` ist hier erklärt: [Optionale Konfiguration](lambda-wp-config.md)
 
 ### Integration-Optionen
 Nach der Ersteinrichtung können Sie zusätzliche Einstellungen anpassen:
 - Warmwassertemperaturbereich (min/max)
 - Heizkreistemperaturbereich (min/max)
 - Temperaturstufengröße
+- Abfrage-Intervall
+- Register-Reihenfolge (für 32-Bit-Register)
 - Raumthermostatsteuerung
-- PV-Überschuss-Steuerung
+- Kühlen (Kühlkreis-Entität)
+- PV-Überschuss-Steuerung und Kodierung des PV-Überschusses
+
+Die Firmware-Version gehört **nicht** zu diesen Optionen – sie wird nur beim Ersteinrichten oder über „Neu konfigurieren" gesetzt (siehe [Firmware-Version ändern](firmware-wechsel.md)).
 
 ## 🔧 Modbus-Aktionen
 
@@ -127,6 +140,9 @@ Damit kann jedes Register in einer Automatisierung in Home Assistant verwendet /
 ### Verfügbare Aktionen
 - **`read_modbus_register`**: Lesen von Werten aus Modbus-Registern
 - **`write_modbus_register`**: Schreiben von Werten in Modbus-Register
+- **`update_room_temperature`**: Raumtemperaturen sofort an die Heizkreise senden (sonst alle 9 Sekunden)
+
+Details: [Aktionen](aktionen-modbus.md)
 
 
 ## 🌍 Mehrsprachige Unterstützung
@@ -143,13 +159,15 @@ Damit kann jedes Register in einer Automatisierung in Home Assistant verwendet /
 
 ## 🛡️ Fehlerbehandlung
 
-- **Detailliertes Logging**: Umfassende Protokollierung für Fehleranalyse, Info / Warning und Debug Meldungen sind etabliert.
+- **Detailliertes Logging**: Umfassende Protokollierung für Fehleranalyse, Info / Warning und Debug Meldungen sind etabliert. Siehe [Debug Logs erzeugen](debug-logs-erzeugen.md).
+- **Diagnose-Download**: Enthält die Rohwerte aller Register, so wie die Lambda sie liefert.
+- **Statistik-Schutz**: Die Gesamtzähler bleiben auch verfügbar, wenn die Lambda zeitweise nicht antwortet, damit die Langzeitstatistik keinen Zählerreset sieht.
 - **Validierung**: Automatische Validierung von Konfigurationen und Werten.
 
 ## 📈 Monitoring & Statistiken
 
 - **Historische Daten**: Alle Sensoren landen in den Home Assistant historischen Daten, es gibt eine Anleitung für die Übernahme historischer Daten, wenn z.B. von einer anderen Lösung zu dieser Integration gewechselt wird.
-- **Firmware-Anpassungen**: Automatische Anpassung der Sensoren basierend auf Firmware-Version
+- **Firmware-Anpassungen**: Automatische Anpassung der Sensoren und der Register-Reihenfolge basierend auf der Firmware-Version (siehe [Firmware-Version ändern](firmware-wechsel.md))
 
 ## 🔐 Sicherheit & Zuverlässigkeit
 

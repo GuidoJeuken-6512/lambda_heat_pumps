@@ -1,0 +1,49 @@
+name: Documentation check
+
+# Builds the documentation without publishing it, and fails on broken images,
+# broken local links and on any warning Zensical prints (e.g. dead anchors).
+# Publishing stays with docsz.yml, which only runs on main.
+on:
+  push:
+    branches:
+      - "main"
+      - "3.*"
+    paths:
+      - "docs/**"
+      - "script/check_docs.py"
+      - ".github/workflows/docs-check.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "script/check_docs.py"
+      - ".github/workflows/docs-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.x
+      # Same unpinned install as docsz.yml, so the check sees what gets published.
+      - run: pip install zensical
+      - name: Build documentation
+        working-directory: docs
+        run: |
+          set -o pipefail
+          zensical build --clean 2>&1 | tee ../docs-build.log
+      - name: Check images, links and build warnings
+        run: python script/check_docs.py docs/site --build-log docs-build.log
+      # The built site, to look at locally before it goes live.
+      - name: Upload preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs-preview
+          path: docs/site
+          retention-days: 7

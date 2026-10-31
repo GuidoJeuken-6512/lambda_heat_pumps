@@ -1,176 +1,104 @@
 ---
-title: "Register-Reihenfolge für int32-Sensoren (Issue #22)"
+title: "Register-Reihenfolge für int32-Sensoren"
 ---
 
 # Register-Reihenfolge für int32-Sensoren
 
-*Zuletzt geändert am 12.07.2026*
+*Zuletzt geändert am 06.09.2026*
 
-Technische Dokumentation zur konfigurierbaren Register-Reihenfolge (Register/Word Order) bei 32-Bit-Modbus-Werten. Basis: [Issue #22](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22); erweitert in V2.7.0 um firmware-abhängigen Default.
+**Stand:** Release 3.5.2 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
-## Problemstellung
+Technische Dokumentation zur konfigurierbaren Register-Reihenfolge
+(Register/Word Order) bei den zwei 32-Bit-Zählern jeder Wärmepumpe
+(`compressor_power_consumption_accumulated`,
+`compressor_thermal_energy_output_accumulated`) und beim Solar-Energiezähler
+(`energy_total`). Hintergrund: [Issue #22](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22).
 
-### Symptome
+## Was sich geändert hat
 
-- **Falsche Werte** bei int32-Entitäten (z. B. Energie-Akkumulation Wh/kWh).
-- Lambda-Software zeigt korrekte Werte, Home Assistant zeigt abweichende oder unrealistische Werte.
-- Betroffen sind nur **32-Bit-Sensoren**, die aus zwei 16-Bit-Modbus-Registern zusammengesetzt werden.
+Die Einstellung lebt nicht mehr in `lambda_wp_config.yaml`, sondern als
+Options-Flow-Auswahl direkt an der Integration (`CONF_INT32_REGISTER_ORDER`,
+`config_flow.py`) — änderbar unter Einstellungen → Integrationen → Lambda Heat
+Pumps → Konfigurieren. Eine Änderung lädt die Integration automatisch neu
+(`LambdaOptionsFlow` erbt von `OptionsFlowWithReload`).
 
-### Ursache
+## Firmware-abhängiger Standard
 
-Es geht um die **Reihenfolge der Register (Register/Word Order)**, nicht um Byte-Endianness innerhalb eines einzelnen 16-Bit-Registers. Modbus nutzt innerhalb eines Registers typisch Big-Endian; die **Reihenfolge mehrerer Register** ist nicht normiert und kann je nach Gerät/Firmware unterschiedlich sein.
-
-Die Integration bildet zwei 16-Bit-Register zu einem 32-Bit-Wert:
-
-- **high_first (Standard):** `value = (Register[0] << 16) | Register[1]` (Register[0] = MSW, Register[1] = LSW)
-- **low_first:** `value = (Register[1] << 16) | Register[0]` (Register[0] = LSW, Register[1] = MSW)
-
-Verschiedene Lambda-Geräte/Firmware-Varianten erwarten unterschiedliche Reihenfolgen.
-
----
-
-## Konfiguration
-
-### Prioritätskette (niedrig → hoch)
-
-| Priorität | Quelle | Beschreibung |
-|---|---|---|
-| 1 | Absoluter Fallback | `"high_first"` — greift nur, wenn FW-Version unbekannt |
-| 2 | `FIRMWARE_CONFIG` | FW-abhängiger Default aus `const_base.py` *(ab V2.7.0)* |
-| 3 | YAML Legacy | `modbus.int32_byte_order` in `lambda_wp_config.yaml` (deprecated, wird migriert) |
-| 4 | YAML Explizit | `modbus.int32_register_order` in `lambda_wp_config.yaml` — **höchste Priorität** |
-
-Der YAML-Override in `lambda_wp_config.yaml` gewinnt immer — er überschreibt den FW-abhängigen Default.
-
-### YAML-Override (lambda_wp_config.yaml)
-
-```yaml
-modbus:
-  # "high_first" = Höherwertiges Register zuerst (Standard)
-  # "low_first" = Niedrigwertiges Register zuerst
-  int32_register_order: "high_first"   # oder "low_first"
-```
-
-Weitere Beispiele und Kontext: [modbus_wp_config.yaml – Modbus-Parameter](modbus-wp-config.md).
-
-### Firmware-abhängiger Default (FIRMWARE_CONFIG, ab V2.7.0)
-
-Jeder FW-Eintrag in `const_base.py` trägt einen `reg_order`-Wert:
+Anders als vorher ist `high_first` nicht mehr für jede Firmware der Standard.
+`FIRMWARE_CONFIG` (`const.py`) hinterlegt pro Firmware-Version die tatsächlich
+beobachtete Reihenfolge:
 
 ```python
-FIRMWARE_CONFIG: dict = {
-    "V1.1.0-3K":  {"version": 9, "reg_order": "low_first"},
+FIRMWARE_CONFIG: Final[dict[str, dict[str, Any]]] = {
+    "V1.1.0-3K": {"version": 10, "reg_order": "low_first"},
+    "V1.0.4-3K": {"version": 9, "reg_order": "low_first"},
     "V0.0.10-3K": {"version": 8, "reg_order": "low_first"},
-    "V0.0.9-3K":  {"version": 7, "reg_order": "high_first"},
-    # ...
+    "V0.0.9-3K": {"version": 7, "reg_order": "high_first"},
+    # ... ältere Firmware-Versionen: "high_first"
 }
-# Rückwärtskompatibilität — alle bestehenden Aufrufer unverändert:
-FIRMWARE_VERSION: dict = {k: v["version"] for k, v in FIRMWARE_CONFIG.items()}
 ```
 
-Wenn eine Firmware-Version einen anderen Register-Order verwendet, genügt es, den entsprechenden Eintrag in `FIRMWARE_CONFIG` mit dem richtigen `"reg_order"`-Wert zu setzen. `FIRMWARE_VERSION` wird automatisch abgeleitet — alle bestehenden Aufrufer bleiben unverändert.
+`firmware.py::default_register_order(name)` liest diesen Wert aus; der
+Coordinator verwendet ihn nur, wenn der Nutzer die Option nicht selbst gesetzt
+hat:
 
-**Hinweis:** Die beiden neuesten Firmware-Versionen (`V1.1.0-3K`, `V0.0.10-3K`) verwenden tatsächlich `"low_first"` — abweichend vom absoluten Fallback `"high_first"`, der für ältere Versionen zutrifft.
+```python
+# coordinator.py – LambdaCoordinator.__init__
+order = entry.options.get(CONF_INT32_REGISTER_ORDER) or default_register_order(
+    self.firmware_version
+)
+```
 
----
+Der Options-Flow („Konfigurieren“) schlägt denselben Wert vor: die gespeicherte
+Option, sonst `default_register_order(firmware)`. Wird unter „Neu
+konfigurieren“ (`async_step_reconfigure`) eine **andere** Firmware gewählt,
+entfernt der Flow `int32_register_order` aus den Options; danach gilt die
+Reihenfolge der neuen Firmware. Eine abweichende Reihenfolge lässt sich
+anschließend wieder unter „Konfigurieren“ setzen. Ändert sich nur Host, Port
+oder Slave-ID, bleibt die Option unangetastet.
 
-## Implementierung im Code
+## Wo die Reihenfolge tatsächlich wirkt
 
-### 1. Konfiguration laden: `get_int32_register_order` (modbus_utils.py)
+Anders als vorher gibt es keine eigene `combine_int32_registers()`-Funktion in
+diesem Repository mehr — das Kombinieren zweier 16-Bit-Register zu einem
+32-Bit-Wert übernimmt die Bibliothek `modbus-connection` selbst, gesteuert
+über den `word_order`-Parameter (`"big"` = high_first, `"little"` =
+low_first), den `LambdaHeatPump` beim Bau des Register-Modells entgegennimmt:
 
-- **Datei:** `custom_components/lambda_heat_pumps/modbus_utils.py`
-- **Funktion:** `async def get_int32_register_order(hass, entry=None) -> str`
-- Liest `lambda_wp_config.yaml` und gibt `"high_first"` oder `"low_first"` zurück.
-- **Priorität** (ab V2.7.0): absoluter Fallback → FW-Default aus `FIRMWARE_CONFIG` → YAML-Legacy → YAML-Explizit.
-- **Rückwärtskompatibilität:**
-  - Fehlt `int32_register_order`, wird `int32_byte_order` ausgewertet (mit Log-Hinweis zur Migration).
-  - Werte `"big"` → `"high_first"`, `"little"` → `"low_first"` (mit Log-Hinweis).
-  - Ungültige Werte → Fallback `"high_first"`.
-  - Ausnahme beim Laden → Fallback `"high_first"`.
-  - `entry=None` → FW-Default wird aus `DEFAULT_FIRMWARE` abgeleitet (identisches Verhalten wie vor V2.7.0).
+```python
+# coordinator.py
+word_order = "little" if order == REGISTER_ORDER_LOW_FIRST else "big"
+self.device = LambdaHeatPump(unit, ..., word_order=word_order)
+```
 
-### 2. Register kombinieren: `combine_int32_registers` (modbus_utils.py)
+`lambda_modbus/__init__.py::LambdaHeatPump.async_setup()` wählt daraufhin die
+passende Modell-Klasse für die beiden Module mit 32-Bit-Zählern:
 
-- **Datei:** `custom_components/lambda_heat_pumps/modbus_utils.py`
-- **Funktion:** `def combine_int32_registers(registers: list, register_order: str = "high_first") -> int`
-- Erwartet mindestens 2 Register; wirft `ValueError`, wenn nicht.
-- **Rückwärtskompatibilität:** `"big"` wird wie `"high_first"`, `"little"` wie `"low_first"` behandelt.
-- **Logik:**
-  - `register_order == "low_first"`: `(registers[1] << 16) | registers[0]`
-  - sonst (high_first): `(registers[0] << 16) | registers[1]`
+```python
+heat_pump_class = HeatPump if self._word_order == "big" else HeatPumpLowFirst
+solar_class = Solar if self._word_order == "big" else SolarLowFirst
+```
 
-### 3. Einbindung beim Start (__init__.py)
+`HeatPumpLowFirst`/`SolarLowFirst` (`lambda_modbus/heat_pump.py`,
+`lambda_modbus/solar.py`) sind schlichte Unterklassen, die nur die beiden
+betroffenen Felder mit `word_order="little"` neu deklarieren — die restlichen
+Register bleiben identisch zur Basisklasse.
 
-- **Datei:** `custom_components/lambda_heat_pumps/__init__.py`
-- **Zeitpunkt:** Vor dem ersten `async_refresh()` des Coordinators.
-- Coordinator erhält die globale Register-Reihenfolge:
-  - `coordinator._int32_register_order = await get_int32_register_order(hass, entry)` *(entry ab V2.7.0)*
-- Default im Coordinator: `"high_first"` (siehe `coordinator.py`).
+## Migration bestehender Installationen
 
-### 4. Verwendung im Coordinator (coordinator.py)
-
-- **Globale Reihenfolge:** `self._int32_register_order` (wird in __init__.py gesetzt).
-- **Batch-Read:** Für jeden int32-Sensor wird die Reihenfolge ermittelt als:
-  - `sensor_info.get("register_order") or sensor_info.get("byte_order") or self._int32_register_order`
-  - Anschließend: `combine_int32_registers([value, next_value], register_order)`.
-- **Single-Read (int32):** Es wird `combine_int32_registers(result.registers, self._int32_register_order)` verwendet.
-- Betroffen sind u. a. Batch-Lesevorgänge, Boiler-, Buffer-, Solar-, Heizkreis- und Energieverbrauchs-Int32-Sensoren.
-
-### 5. Firmware-Konfiguration (const_base.py) *(ab V2.7.0)*
-
-- **Datei:** `custom_components/lambda_heat_pumps/const_base.py`
-- **`FIRMWARE_CONFIG`:** Primärstruktur mit `version` (int) und `reg_order` (`"high_first"` / `"low_first"`) je FW-Version-String.
-- **`FIRMWARE_VERSION`:** Abgeleitetes Compat-Dict `{fw_str: int}` — alle bestehenden Aufrufer unverändert.
-- **Pflege:** Neuen FW-Eintrag in `FIRMWARE_CONFIG` mit korrektem `reg_order` anlegen; `FIRMWARE_VERSION` wird automatisch aktualisiert.
-
-### 6. Config-Template (const.py)
-
-- **LAMBDA_WP_CONFIG_TEMPLATE** enthält einen kommentierten Abschnitt zu `modbus.int32_register_order` mit `"high_first"` / `"low_first"` und kurzer Erklärung (Register/Word Order, nicht Byte-Endianness).
-
-### 7. Migration (migration.py)
-
-- **Funktion:** `migrate_to_register_order_terminology`
-- **Migration:** `modbus.int32_byte_order` → `modbus.int32_register_order` (Wert wird übernommen, Key umbenannt).
-- **Version:** `REGISTER_ORDER_TERMINOLOGY` (const_migration.py).
-
----
-
-## Betroffene Sensoren
-
-Alle Sensoren mit **data_type: "int32"** in den Templates, z. B.:
-
-- Energie-Akkumulation (z. B. `compressor_power_consumption_accumulated`, `compressor_thermal_energy_output_accumulated`)
-- Weitere int32-Sensoren für Boiler, Puffer, Solar, Heizkreise
-
-Die genaue Liste ergibt sich aus `const.py` (HP_SENSOR_TEMPLATES, CALCULATED_SENSOR_TEMPLATES usw.) über das Attribut `data_type: "int32"`.
-
----
-
-## Sensor-spezifische Overrides (Templates)
-
-Im Coordinator wird pro int32-Sensor optional eine eigene Reihenfolge unterstützt:
-
-- **register_order** oder **byte_order** im Sensor-Template überschreibt die globale `_int32_register_order`, falls gesetzt.
-- Beispiel (konzeptionell): `sensor_info.get("register_order") or sensor_info.get("byte_order") or self._int32_register_order`
-
-Damit können einzelne Sensoren bei Bedarf anders konfiguriert werden als die globale Einstellung.
-
----
+Eine Entry, die vor 3.5 angelegt wurde und die Option noch nicht gesetzt hat,
+bekommt beim ersten Setup nach dem Update einmalig den bisherigen Wert aus der
+**alten** `lambda_wp_config.yaml` übernommen (`modbus.int32_register_order`,
+mit Rückwärtskompatibilität für das noch ältere `int32_byte_order`/`big`/
+`little`) — siehe `_async_read_register_order()` in `__init__.py` und
+[Migrationssystem](migration-system.md). Ist die Datei nicht lesbar oder der
+Wert nicht gesetzt, greift der Firmware-Standard aus der Tabelle oben.
 
 ## Fehlerbehebung für Anwender
 
-1. **Falsche int32-Werte** → In `lambda_wp_config.yaml` unter `modbus` wechseln:
-   - von `int32_register_order: "high_first"` auf `"low_first"` oder umgekehrt.
-2. Integration neu laden oder Home Assistant neu starten.
-3. Werte mit Lambda-Software abgleichen.
+1. Falsche int32-Werte (Energiezähler springen unrealistisch oder zeigen
+   negative/riesige Zahlen) → unter den Integrations-Optionen die
+   Register-Reihenfolge auf den jeweils anderen Wert stellen.
+2. Werte mit der Lambda-Software abgleichen.
 
-Anwender-FAQ: [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).
-
----
-
-## Referenzen
-
-- [Issue #22 (GitHub)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/22)
-- [Release 2.7.0](../Releases/release-2-7-0.md) — Firmware-abhängiger Register-Order-Default
-- [modbus_wp_config.yaml – Modbus-Parameter](modbus-wp-config.md)
-- [FAQ – Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md)
+Siehe auch: [FAQ – Falsche/keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).

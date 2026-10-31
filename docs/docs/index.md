@@ -3,7 +3,7 @@ title: Home
 ---
 # Lambda Integration für Home Assistant
 
-*Zuletzt geändert am 21.03.2026*
+*Zuletzt geändert am 17.10.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -20,6 +20,8 @@ title: Home
   </div>
 </div>
 Die Integration ist mehrsprachig, im Moment wird Deutsch und Englisch unterstützt.
+
+Diese Dokumentation beschreibt **Version 3.5**. Sie benötigt **Home Assistant 2026.9.0 oder neuer**. Wer von Version 2.x kommt, findet die wichtigsten Hinweise unter [Installation – Update von Version 2.x](Anwender/installation.md#update-von-version-2x).
 
 Detaillierte Informationen zu den einzelnen Features finden Sie in den entsprechenden Unterseiten unter Anwender- bzw. Entwickler-Dokumentation.
 ### [Anwender Dokumentation](Anwender/features.md)

@@ -4,7 +4,7 @@ title: "Anpassungen der Sensoren abhängig von der Firmware"
 
 # Anpassungen der Sensoren abhängig von der Firmware
 
-*Zuletzt geändert am 25.07.2026*
+*Zuletzt geändert am 17.10.2026*
 
 Die Lambda Heat Pumps Integration erstellt automatisch Sensoren basierend auf der erkannten Hardware und der konfigurierten Firmware-Version. Die Firmware-Version bestimmt, welche Sensoren verfügbar sind und welche Register gelesen werden können.
 
@@ -25,7 +25,7 @@ Bei der Initialkonfiguration müssen Sie die Firmware-Version auswählen:
 
 - **Wichtig**: Die Firmware-Version bestimmt, welche Sensoren erstellt werden
 - **Falsche Firmware-Version**: Kann zu fehlenden oder falschen Sensoren führen
-- **Korrektur**: Wenn Sie die falsche Firmware-Version ausgewählt haben, müssen Sie die Integration entfernen und erneut hinzufügen
+- **Korrektur**: Öffnen Sie **Einstellungen** → **Geräte & Dienste** → Ihre Lambda-Integration → Menü (⋮) → **Neu konfigurieren** und wählen Sie dort die richtige Firmware. Die Firmware lässt sich **nicht** über die normalen Integrations-**Optionen** ändern, nur über „Neu konfigurieren" – das lädt die Integration danach automatisch neu. Details: [Firmware-Version ändern](firmware-wechsel.md).
 
 ## Sensor-Filterung basierend auf Firmware
 
@@ -35,111 +35,52 @@ Die Integration filtert Sensoren automatisch basierend auf der Firmware-Version:
 - **Nicht unterstützte Sensoren**: Sensoren, die für Ihre Firmware-Version nicht verfügbar sind, werden nicht erstellt
 - **Automatische Filterung**: Die Filterung erfolgt automatisch beim Start der Integration
 
+Unabhängig davon probt die Integration bei jedem Start zusätzlich, welche Register der **konkrete** Controller tatsächlich beantwortet. Ein Sensor entsteht also nur, wenn beide Prüfungen ihn zulassen: die gewählte Firmware kennt das Register, **und** der Controller antwortet tatsächlich darauf.
+
 ## Manuelle Anpassungen
 
-### Deaktivierte Register
+Für Register, die Ihre Lambda zwar meldet, aber die Sie nicht brauchen oder die falsche Werte liefern (z. B. eine nicht vorhandene Zirkulationspumpe), gibt es seit Version 3.5 keinen eigenen YAML-Mechanismus mehr (`disabled_registers`/`sensors_names_override` sind entfallen). Nutzen Sie stattdessen die Bordmittel von Home Assistant:
 
-Sie können bestimmte Register deaktivieren, wenn sie Probleme verursachen oder nicht benötigt werden:
-
-**Konfiguration in `lambda_wp_config.yaml`:**
-
-```yaml
-disabled_registers:
-  - 2004  # Beispiel: boil1_actual_circulation_temp
-  - 100000  # Beispiel: Weitere deaktivierte Register
-```
-
-**Zweck:**
-- Verhindert das Lesen von problematischen Registern
-- Reduziert Modbus-Traffic
-- Behebt Probleme mit nicht unterstützten Registern
-
-### Sensor-Name-Überschreibungen
-
-Sie können Standard-Sensornamen überschreiben:
-
-**Konfiguration in `lambda_wp_config.yaml`:**
-
-```yaml
-sensors_names_override:
-  - id: hp1_flow_temp
-    override_name: "Wohnzimmer Temperatur"
-  - id: hp1_return_temp
-    override_name: "Rücklauf Temperatur"
-```
-
-**Zweck:**
-- Anpassung der Sensornamen für bessere Lesbarkeit
-- Lokalisierung der Sensornamen
-- Anpassung an persönliche Präferenzen
+- **Sensor nicht anzeigen**: Entität in der Entity-Registry **deaktivieren** (Entität öffnen → Zahnrad → Deaktivieren). Details: [Entitäten löschen](entitaeten_loeschen.md). Die Integration liest die Lambda seit 3.5 blockweise; das Register wird also weiterhin abgefragt, nur die Entität erscheint nicht mehr.
+- **Sensor anders benennen**: Entität in Home Assistant **umbenennen** (Entität öffnen → Zahnrad → Name ändern). `unique_id` und Historie bleiben dabei erhalten.
 
 ## Register-Reihenfolge-Konfiguration
 
-Für 32-Bit-Werte aus mehreren 16-Bit-Registern kann die Register-Reihenfolge konfiguriert werden:
+Für 32-Bit-Werte aus mehreren 16-Bit-Registern (die beiden Energiezähler jeder Wärmepumpe, der Solar-Ertragszähler) kann die Register-Reihenfolge konfiguriert werden – seit 3.5 als **Integrations-Option**, nicht mehr in `lambda_wp_config.yaml`:
 
-**Konfiguration in `lambda_wp_config.yaml`:**
-
-```yaml
-modbus:
-  # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
-  # "high_first" = Höherwertiges Register zuerst (Standard)
-  # "low_first" = Niedrigwertiges Register zuerst
-  int32_register_order: "high_first"  # oder "low_first"
-```
+1. Gehen Sie zu **Einstellungen** → **Geräte & Dienste** → Ihre Lambda-Integration → **Konfigurieren**
+2. Stellen Sie **Register-Reihenfolge** auf `high_first` oder `low_first`
 
 **Wann ist das wichtig?**
-- **"high_first"**: Standard für die meisten Lambda-Modelle (höherwertiges Register zuerst)
-- **"low_first"**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen (niedrigwertiges Register zuerst)
-- **Rückwärtskompatibilität**: Alte Config mit `int32_byte_order` oder alten Werten (`big`/`little`) wird automatisch erkannt und migriert
-
-**Seit V2.7.0:** Der Default wird automatisch anhand der in der Integration eingestellten Firmware-Version gesetzt — für die aktuell neuesten Versionen `V1.1.0-3K` und `V0.0.10-3K` ist das bereits `"low_first"`. Ein Eintrag in `lambda_wp_config.yaml` ist nur noch nötig, um diesen Default zu überschreiben.
-
-**Achtung beim Ändern der Firmware-Version:** Da der Default aus der eingestellten Firmware-Version abgeleitet wird, kann ein Wechsel der Firmware-Version in den Integration-Optionen (z. B. beim Firmware-Update, siehe unten) auch die Register-Reihenfolge ändern — ohne YAML-Override. Bestehende 32-Bit-Sensoren wie Energiezähler können dadurch kurzzeitig einen unplausibel großen Wert anzeigen. Seit V2.8.0 verwirft die Integration einen solchen unplausiblen Sprung automatisch, statt ihn fälschlich als Verbrauch zu buchen — der Zähler setzt sich einfach auf den neuen, korrekten Wert zurück, ohne dass ein Sprung gebucht wird.
+- Jede Firmware hat einen dokumentierten Standardwert, den die Integration automatisch vorschlägt (z. B. `high_first` bis einschließlich V0.0.9-3K, `low_first` ab V0.0.10-3K) – Sie müssen die Option also nur ändern, wenn Ihr konkretes Gerät davon abweicht.
+- **Rückwärtskompatibilität**: War in einer älteren `lambda_wp_config.yaml` bereits `int32_register_order` (oder das noch ältere `int32_byte_order`/`big`/`little`) gesetzt, übernimmt die Integration diesen Wert beim ersten Start nach dem Update einmalig automatisch in die neue Option. Ohne Eintrag gilt die Reihenfolge der Firmware.
+- **Firmwarewechsel**: Eine hier gewählte Reihenfolge wird zurückgesetzt, wenn Sie die Firmware über „Neu konfigurieren" ändern (ab 3.5.7).
 
 **Fehlerbehebung:**
 - Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung
 
 ## Firmware-Update
 
-Wenn Sie die Firmware Ihrer Lambda-Wärmepumpe aktualisieren:
-
-1. **Überprüfen Sie die neue Firmware-Version:**
-   - Finden Sie die neue Firmware-Version auf der Lambda-Bedienoberfläche
-
-2. **Aktualisieren Sie die Konfiguration:**
-   - Gehen Sie zu **Einstellungen** → **Geräte & Dienste**
-   - Klicken Sie auf Ihre Lambda-Integration
-   - Klicken Sie auf **Konfigurieren**
-   - Aktualisieren Sie die Firmware-Version
-
-3. **Home Assistant neu starten:**
-   - Starten Sie Home Assistant neu, damit die neuen Sensoren erkannt werden
-
-4. **Überprüfen Sie die Sensoren:**
-   - Überprüfen Sie, ob alle erwarteten Sensoren vorhanden sind
-   - Überprüfen Sie, ob die Sensoren korrekte Werte anzeigen
-
-**Hinweis zu Energiezählern:** Falls sich durch die neue Firmware-Version auch die Register-Reihenfolge ändert (siehe oben), kann direkt nach dem Update ein einmaliger, unplausibler Wert im Log auftauchen. Das ist erwartetes Verhalten (seit V2.8.0 wird dieser verworfen statt gebucht) und kein Fehler — der Zähler zählt danach normal weiter.
+Wenn die Firmware Ihrer Lambda aktualisiert oder die Steuerung getauscht wurde, ändern Sie die Firmware-Version über **⋮ → Neu konfigurieren**. Ausführliche Anleitung, inklusive der Folgen für Sensoren und Register-Reihenfolge: [Firmware-Version ändern](firmware-wechsel.md).
 
 ## Häufige Probleme
 
 ### "Sensor fehlt nach Firmware-Update"
 - **Ursache**: Firmware-Version wurde nicht aktualisiert
-- **Lösung**: Aktualisieren Sie die Firmware-Version in den Integration-Optionen
+- **Lösung**: Aktualisieren Sie die Firmware-Version über „Neu konfigurieren" (siehe oben)
 
 ### "Falsche Werte in Sensoren"
 - **Ursache**: Falsche Register-Reihenfolge für 32-Bit-Werte
-- **Lösung**: Ändern Sie `int32_register_order` in `lambda_wp_config.yaml` von `"high_first"` zu `"low_first"` oder umgekehrt
+- **Lösung**: Zuerst die Firmware-Version prüfen ([Firmware-Version ändern](firmware-wechsel.md)), dann ggf. die Option **Register-Reihenfolge** in den Integrations-Optionen von `high_first` zu `low_first` oder umgekehrt ändern. Siehe auch [Falsche / keine Sensorwerte](../FAQ/falsche-keine-sensorwerte.md).
 
-### "Register-Fehler im Log"
-- **Ursache**: Register wird von der Firmware nicht unterstützt
-- **Lösung**: Fügen Sie das Register zur `disabled_registers` Liste in `lambda_wp_config.yaml` hinzu
+### "Failed to fetch … im Log"
+- **Ursache**: Ein Modul der Lambda hat auf die Abfrage nicht geantwortet. Die Meldung erscheint einmal, nicht bei jeder Abfrage; die Sensoren dieses Moduls sind so lange „nicht verfügbar“.
+- **Lösung**: Verbindung prüfen. Bedient die Lambda ein Modul dauerhaft nicht mehr, lädt sich die Integration automatisch neu und erkennt die Module neu. Das Deaktivieren einer Entität ändert an der Abfrage nichts.
 
 ## Nächste Schritte
 
 Nach der Anpassung der Sensoren können Sie:
 
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md) einrichten
-- [Raumthermostat](raumthermometer.md) konfigurieren
+- [Raumthermometer](raumthermometer.md) konfigurieren
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md) einrichten
-

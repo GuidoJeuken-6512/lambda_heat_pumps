@@ -4,416 +4,208 @@ title: "Modbus-Serialisierung - Technische Dokumentation"
 
 # Modbus-Serialisierung - Technische Dokumentation
 
-*Zuletzt geändert am 25.07.2026*
+*Zuletzt geändert am 06.09.2026*
 
-> **Update (V2.8.0 / Issue #105):** Diese Seite beschrieb ursprünglich **zwei** getrennte Locks (einen für Health-Checks, einen für alle übrigen Modbus-Operationen) als bewusstes Architektur-Feature. Das war ein Fehler: Ein Health-Check-Read konnte dadurch parallel zu einem echten Read/Write auf derselben Verbindung laufen und Modbus-Transaktionen auf der Leitung desynchronisieren — ein PV-Überschuss-/Raumtemperatur-Write konnte dadurch als erfolgreich geloggt werden, ohne das Gerät zu erreichen. Seit V2.8.0 gibt es nur noch **einen** gemeinsamen Lock; Details siehe [Release 2.8.0](../Releases/release-2-8-0.md). Die Seite wurde entsprechend korrigiert.
+**Stand:** Release 3.5.3 (Rewrite auf [`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)/`tmodbus`, Branch `3.5`; Hintergrund zum Rewrite: [Issue #99](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/99))
 
-Diese Dokumentation beschreibt die Serialisierung von Modbus-Operationen in der Lambda Heat Pumps Integration, um Transaction ID Mismatches zu vermeiden.
+Diese Dokumentation beschreibt zwei Modbus-Fehlerklassen, die der Rewrite
+eingeführt hatte: Race Conditions/Transaction-ID-Mismatches bei gleichzeitigen
+Requests (behoben in 3.5.2, unten) und den falschen Funktionscode bei
+Schreibvorgängen (behoben in 3.5.3, [siehe unten](#fc16-statt-fc06-bei-schreibvorgangen)).
 
 ## Übersicht
 
-Um Race Conditions und Transaction ID Mismatches bei gleichzeitigen Modbus-Requests zu vermeiden, verwendet die Integration **globale Locks** zur Serialisierung aller Modbus-Operationen. Dies stellt sicher, dass zu jedem Zeitpunkt nur eine Modbus-Operation ausgeführt wird.
+`modbus-connection` serialisiert Requests nicht standardmäßig über ein
+eigenes, immer aktives Lock in der Integration, sondern über einen **Pacer**,
+der Teil jeder `ModbusConnection`-Instanz ist. Der Pacer serialisiert nur dann
+wirklich, wenn ihm ein Zeitabstand (`message_spacing` bzw. `unit_spacing`
+größer als 0) mitgegeben wird — ohne das ist er ein reiner Durchreicher ohne
+Sperrwirkung.
 
-## Problem: Transaction ID Mismatches
+## Der Fehler: Pacer-Lock war inaktiv
 
-### Was sind Transaction ID Mismatches?
+### Quellcode-Fund
 
-Bei Modbus TCP/IP werden alle Requests mit einer eindeutigen **Transaction ID** versehen. Der Client sendet eine Request mit Transaction ID `X` und erwartet eine Response mit derselben Transaction ID `X`.
-
-**Problem**: Wenn mehrere Modbus-Requests gleichzeitig (parallel) gesendet werden, kann es zu folgenden Problemen kommen:
-
-1. **Transaction ID Konflikte**: Mehrere Requests erhalten möglicherweise die gleiche Transaction ID
-2. **Response-Verwirrung**: Responses können Requests falsch zugeordnet werden
-3. **Fehlerhafte Daten**: Falsche Daten werden gelesen/geschrieben
-4. **Modbus-Protokoll-Verletzungen**: Parallele Requests verletzen das Modbus-Protokoll (eine Verbindung = sequenziell)
-
-### Beispiel eines Transaction ID Mismatch Fehlers
-
-```
-ERROR: request ask for transaction_id=123 but got id=124, Skipping.
-```
-
-Dieser Fehler tritt auf, wenn:
-- Request 1 wird mit Transaction ID 123 gesendet
-- Request 2 wird gleichzeitig mit Transaction ID 124 gesendet
-- Response für Request 2 kommt zuerst an (Transaction ID 124)
-- pymodbus erwartet aber Response für Request 1 (Transaction ID 123)
-- Resultat: Fehler, Request wird übersprungen
-
-## Lösung: Globale Locks
-
-### Implementierung
-
-Die Integration verwendet **einen einzigen globalen asyncio.Lock** zur Serialisierung — seit V2.8.0 auch für Health-Checks (siehe Update-Hinweis oben):
+In `modbus_connection/_pacing.py` (Version 4.10.0, wie in `requirements.txt`
+gefordert) sieht `Pacer.paced()` so aus (gekürzt):
 
 ```python
-# custom_components/lambda_heat_pumps/modbus_utils.py
-# Shared by ALL Modbus operations (coordinator reads, connection health checks,
-# and writes) on a given connection.
-_modbus_read_lock: asyncio.Lock | None = None
+class Pacer:
+    def __init__(self, message_spacing: float = 0.0) -> None:
+        self._message_spacing = message_spacing
+        self._lock = asyncio.Lock()
+        ...
+
+    @asynccontextmanager
+    async def paced(self, unit_id: int) -> AsyncIterator[None]:
+        unit_spacing = self._unit_spacing.get(unit_id, 0.0)
+        if not self._message_spacing and not unit_spacing:
+            yield          # <-- kein Lock, kein Warten: einfach durchreichen
+            return
+        async with self._lock:
+            ...
 ```
 
-### Verwendung des Locks
-
-Der Lock wird in allen Modbus-Operationen verwendet:
-
-#### 1. Modbus Read-Operationen
-
-```85:88:custom_components/lambda_heat_pumps/modbus_utils.py
-    # Verwende globalen Lock, um parallele Modbus-Requests zu vermeiden
-    # Dies verhindert Transaction ID Mismatches, die auftreten können, wenn
-    # mehrere Requests gleichzeitig gesendet werden
-    async with _modbus_read_lock:
-```
-
-**Vollständiger Code:**
-
-```66:152:custom_components/lambda_heat_pumps/modbus_utils.py
-async def async_read_holding_registers(
-    client, address: int, count: int, slave_id: int = LAMBDA_MODBUS_UNIT_ID
-) -> Any:
-    """Read holding registers with Lambda-specific timeout and retry logic.
-    
-    Uses a global lock to prevent concurrent Modbus requests that could cause
-    Transaction ID mismatches.
-    """
-    last_exception = None
-    
-    # Check if client exists and is connected
-    if not client:
-        _LOGGER.info("❌ MODBUS READ: Connection not healthy for address %d", address)
-        raise Exception("Modbus client is None - connection lost")
-    
-    if not hasattr(client, 'connected') or not client.connected:
-        _LOGGER.info("❌ MODBUS READ: Connection not healthy for address %d", address)
-        raise Exception("Modbus client not connected")
-    
-    # Verwende globalen Lock, um parallele Modbus-Requests zu vermeiden
-    # Dies verhindert Transaction ID Mismatches, die auftreten können, wenn
-    # mehrere Requests gleichzeitig gesendet werden
-    async with _modbus_read_lock:
-        for attempt in range(LAMBDA_MAX_RETRIES):
-            try:
-                # For pymodbus 3.11.1, use only address as positional, rest as kwargs
-                try:
-                    # Try with slave parameter (most common in 3.x)
-                    return await asyncio.wait_for(
-                        client.read_holding_registers(address, count=count, slave=slave_id),
-                        timeout=LAMBDA_MODBUS_TIMEOUT
-                    )
-                except (TypeError, AttributeError):
-                    try:
-                        # Try with unit parameter
-                        return await asyncio.wait_for(
-                            client.read_holding_registers(address, count=count, unit=slave_id),
-                            timeout=LAMBDA_MODBUS_TIMEOUT
-                        )
-                    except (TypeError, AttributeError):
-                        try:
-                            # Try without slave/unit parameter
-                            return await asyncio.wait_for(
-                                client.read_holding_registers(address, count=count),
-                                timeout=LAMBDA_MODBUS_TIMEOUT
-                            )
-                        except TypeError:
-                            # Last resort: only address and count as positional
-                            return await asyncio.wait_for(
-                                client.read_holding_registers(address, count),
-                                timeout=LAMBDA_MODBUS_TIMEOUT
-                            )
-            except asyncio.TimeoutError as e:
-                last_exception = e
-                if attempt < LAMBDA_MAX_RETRIES - 1:
-                    _LOGGER.debug(
-                        "Modbus read timeout at address %d (attempt %d/%d), retrying in %ds",
-                        address, attempt + 1, LAMBDA_MAX_RETRIES, LAMBDA_RETRY_DELAY
-                    )
-                    await asyncio.sleep(LAMBDA_RETRY_DELAY)
-                else:
-                    _LOGGER.warning(
-                        "Modbus read timeout at address %d after %d attempts",
-                        address, LAMBDA_MAX_RETRIES
-                    )
-            except Exception as e:
-                last_exception = e
-                if attempt < LAMBDA_MAX_RETRIES - 1:
-                    _LOGGER.debug(
-                        "Modbus read error at address %d (attempt %d/%d): %s, retrying in %ds",
-                        address, attempt + 1, LAMBDA_MAX_RETRIES, e, LAMBDA_RETRY_DELAY
-                    )
-                    await asyncio.sleep(LAMBDA_RETRY_DELAY)
-                else:
-                    break
-    
-    # If we get here, all retries failed
-    if last_exception:
-        # Don't log as error if Home Assistant is stopping
-        if "Home Assistant is stopping" in str(last_exception) or "CancelledError" in str(last_exception):
-            _LOGGER.debug("Modbus read cancelled at address %d (HA stopping): %s", address, last_exception)
-        else:
-            _LOGGER.info(
-                "❌ MODBUS READ FAILED: address=%d, retries=%d, error=%s, caller=async_read_holding_registers",
-                address, LAMBDA_MAX_RETRIES, last_exception
-            )
-        raise last_exception
-```
-
-#### 2. Modbus Write-Operationen
-
-```189:220:custom_components/lambda_heat_pumps/modbus_utils.py
-async def async_write_register(
-    client, address: int, value: int, slave_id: int = LAMBDA_MODBUS_UNIT_ID
-) -> Any:
-    """Write single register with full API compatibility.
-    
-    Uses a global lock to prevent concurrent Modbus requests that could cause
-    Transaction ID mismatches.
-    """
-    async with _modbus_read_lock:
-        try:
-            # For pymodbus 3.11.1, use address as positional, rest as kwargs
-            try:
-                # Try with slave parameter (most common in 3.x)
-                return await client.write_register(address, value, slave=slave_id)
-            except (TypeError, AttributeError):
-                try:
-                    # Try with unit parameter
-                    return await client.write_register(address, value, unit=slave_id)
-                except (TypeError, AttributeError):
-                    # Try without slave/unit parameter
-                    return await client.write_register(address, value)
-
-        except Exception as e:
-            # Don't log as error if Home Assistant is stopping
-            if "Home Assistant is stopping" in str(e) or "CancelledError" in str(e):
-                _LOGGER.debug("Modbus write cancelled at address %d (HA stopping): %s", address, e)
-            else:
-                _LOGGER.info(
-                    "❌ MODBUS WRITE FAILED: address=%d, value=%d, error=%s, caller=async_write_register",
-                    address, value, e
-                )
-            raise
-```
-
-**Wichtig**: Der gleiche Lock (`_modbus_read_lock`) wird für **Read-, Write- und Health-Check-Operationen** verwendet (seit V2.8.0), um vollständige Serialisierung zu gewährleisten.
-
-#### 3. Health-Check-Operationen
+`BaseModbusConnection.__init__` (in `_client.py`) reicht `message_spacing`
+unverändert an den `Pacer` durch, mit Default `0.0`:
 
 ```python
-async def _test_connection_health(coordinator) -> bool:
-    """Test if the Modbus connection is healthy with robust API compatibility.
-
-    Uses the shared _modbus_read_lock (same lock as async_read_holding_registers/
-    async_write_registers) to strictly serialize against concurrent coordinator
-    reads and writes on the same connection - not just against other health
-    checks.
-    """
+def __init__(
+    self, params, *, timeout: float = 10,
+    message_spacing: float = 0.0, connect_delay: float = 0.0,
+) -> None:
+    ...
+    self._pacer = Pacer(message_spacing)
 ```
 
-**Seit V2.8.0** verwenden Health-Checks denselben `_modbus_read_lock` wie alle anderen Modbus-Operationen — nicht mehr einen separaten Lock. Vorher konnte ein Health-Check parallel zu einem echten Read/Write laufen, was zu genau der Race Condition führte, die dieser Mechanismus eigentlich verhindern sollte (Issue #105).
-
-## Architektur
-
-### Datenfluss
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Coordinator / Number / Service            │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  async_read_holding_registers()                       │  │
-│  │    └─ async with _modbus_read_lock:                  │  │
-│  │         └─ client.read_holding_registers()            │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  async_write_register()                               │  │
-│  │    └─ async with _modbus_read_lock:                  │  │
-│  │         └─ client.write_register()                    │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                                                              │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  _test_connection_health() (seit V2.8.0)              │  │
-│  │    └─ async with _modbus_read_lock:                  │  │
-│  │         └─ client.read_holding_registers(0, ...)      │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    _modbus_read_lock                        │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Serialisiert ALLE Modbus-Operationen                │  │
-│  │  - Read-Operationen                                  │  │
-│  │  - Write-Operationen                                 │  │
-│  │  - Health-Check-Operationen (seit V2.8.0)            │  │
-│  │  - Eine Operation nach der anderen                   │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Modbus Client (pymodbus)                 │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Sequenzielle Modbus-Requests                        │  │
-│  │  - Transaction ID wird korrekt zugeordnet            │  │
-│  │  - Keine Konflikte                                   │  │
-│  └──────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Lock-Strategie
-
-**Ein einziger Lock (`_modbus_read_lock`)**, seit V2.8.0 für **alle** Modbus-Operationen auf einer Verbindung:
-
-- Read-Operationen (`async_read_holding_registers`, `async_read_input_registers`)
-- Write-Operationen (`async_write_register`, `async_write_registers`)
-- Health-Check-Operationen (`_test_connection_health`, aufgerufen aus `wait_for_stable_connection`)
-
-**Warum nicht zwei Locks (frühere Architektur bis V2.7.0)?**
-
-Die ursprüngliche Begründung — "Health-Checks können parallel zu normalen Operationen laufen, ohne zu blockieren" — klingt nach einem Performance-Vorteil, war aber der **Kern von Issue #105**: Ein Health-Check-Read (eigener Lock) konnte tatsächlich *gleichzeitig* mit einem echten Coordinator-Read oder einem PV-Überschuss-/Raumtemperatur-Write (anderer Lock) auf derselben Verbindung laufen. Zwei parallele Requests auf derselben Modbus-Verbindung verletzen aber genau die Grundannahme, die dieses ganze Dokument beschreibt ("eine Verbindung = sequenziell", siehe oben) — mit dem Ergebnis, dass ein Write auf Protokollebene als erfolgreich zurückgemeldet werden konnte, während das Gerät den Wert nie tatsächlich übernahm. Seit V2.8.0 gibt es deshalb nur noch einen Lock: Der theoretische Geschwindigkeitsvorteil zweier Locks ist es nicht wert, die zentrale Garantie dieses Dokuments zu untergraben.
-
-## Verhalten
-
-### Sequenzielle Ausführung
-
-Mit dem Lock werden alle Modbus-Operationen **sequenziell** ausgeführt:
-
-```
-Request 1 → Lock erworben → Request gesendet → Response erhalten → Lock freigegeben
-                                                                    ↓
-Request 2 → Lock erworben → Request gesendet → Response erhalten → Lock freigegeben
-                                                                    ↓
-Request 3 → Lock erworben → Request gesendet → Response erhalten → Lock freigegeben
-```
-
-**Ohne Lock** (parallel, führt zu Fehlern):
-
-```
-Request 1 → Request gesendet ──────────→ Response erhalten
-Request 2 → Request gesendet ──────────→ Response erhalten
-Request 3 → Request gesendet ──────────→ Response erhalten
-         ↑                                 ↑
-         └─ Transaction ID Konflikte! ────┘
-```
-
-### Performance-Überlegungen
-
-**Vorteile**:
-- ✅ Keine Transaction ID Mismatches
-- ✅ Korrekte Datenzuordnung
-- ✅ Protokoll-konforme Implementierung
-- ✅ Stabil und zuverlässig
-
-**Nachteile**:
-- ⚠️ Sequenzielle Ausführung (langsamer als parallel)
-- ⚠️ Lock-Overhead (vernachlässigbar, ~0.1ms)
-
-**Fazit**: Der Performance-Overhead ist minimal im Vergleich zu den Vorteilen (Stabilität, Korrektheit).
-
-## Verwendung im Code
-
-### Alle Modbus-Operationen verwenden den Lock
-
-**Read-Operationen**:
-- `async_read_holding_registers()`
-- `async_read_input_registers()`
-
-**Write-Operationen**:
-- `async_write_register()`
-- `async_write_registers()`
-
-**Health-Checks**:
-- `_test_connection_health()` (verwendet seit V2.8.0 ebenfalls `_modbus_read_lock`)
-
-### Beispiel: Verwendung in Coordinator
+Die Integration hat die Verbindung bis Version 3.5.1 so aufgebaut:
 
 ```python
-# Im Coordinator wird async_read_holding_registers() verwendet
-result = await async_read_holding_registers(
-    self.client, 
-    address=1000, 
-    count=10, 
-    slave_id=1
+connection = ModbusConnection(
+    ModbusTcpParams(host=entry.data[CONF_HOST], port=port)
 )
-# Der Lock wird automatisch verwendet (intern in async_read_holding_registers)
 ```
 
-### Beispiel: Verwendung in Number-Entity
+— **ohne** `message_spacing` oder `unit_spacing` zu setzen. Damit griff der
+`asyncio.Lock` des Pacers nie: `paced()` hat bei jedem Read/Write sofort
+`yield` ausgeführt, ohne zu warten oder zu sperren.
+
+### Warum das ein Problem ist
+
+Der Poll-Loop des Coordinators (volle und schnelle Abfrage) und der
+Schreib-Timer für PV-Überschuss-/Raumtemperatur-Vorgaben (`services.py`)
+laufen mit unabhängigen Intervallen auf **derselben** `ModbusConnection`. Ohne
+Sperre können beide gleichzeitig ein Modbus-Request/Response auf derselben
+TCP-Verbindung anstoßen — exakt dieselbe Fehlerklasse wie das ursprünglich in
+der Vor-Rewrite-Integration behobene [Issue #105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105)
+(Transaction-ID-Desync: ein Schreibvorgang wird als erfolgreich geloggt, kommt
+am Gerät aber sporadisch nie an).
+
+Ob `tmodbus` selbst intern noch zusätzlich puffert oder in eine Warteschlange
+stellt, war ohne Einsicht in dessen Quellcode nicht abschließend zu klären;
+verlassen sollte man sich darauf nicht — der Pacer ist der einzige
+Serialisierungs-Mechanismus, den `modbus-connection` öffentlich dokumentiert
+und den diese Integration selbst kontrollieren kann.
+
+## Die Behebung
+
+`custom_components/lambda_heat_pumps/__init__.py` übergibt der
+`ModbusConnection` jetzt explizit ein `message_spacing` von 50 ms
+(`DEFAULT_MODBUS_MESSAGE_SPACING` in `const.py`):
 
 ```python
-# In number.py wird async_write_register() verwendet
-await async_write_register(
-    self._coordinator.client,
-    address=1050,
-    value=250,
-    slave_id=1
+connection = ModbusConnection(
+    ModbusTcpParams(host=entry.data[CONF_HOST], port=port),
+    message_spacing=DEFAULT_MODBUS_MESSAGE_SPACING,
 )
-# Der Lock wird automatisch verwendet (intern in async_write_register)
 ```
 
-## Wichtige Regeln
+Damit nimmt `paced()` bei jedem Request den `asyncio.Lock`, wartet die
+konfigurierte Mindestlücke ab und serialisiert so alle Reads und Writes auf
+der Verbindung — Poll-Loop und Schreib-Timer können sich nicht mehr
+überschneiden. 50 ms sind gegenüber den Mehrsekunden-Intervallen von Poll- und
+Schreib-Timer nicht wahrnehmbar.
 
-### ✅ RICHTIG: Lock wird automatisch verwendet
+Ein Regressionstest (`tests/test_init.py::test_the_connection_paces_its_requests`)
+stellt sicher, dass die Integration `ModbusConnection` nie wieder ohne ein
+gesetztes `message_spacing` aufbaut.
 
-Alle Modbus-Operationen verwenden die Wrapper-Funktionen aus `modbus_utils.py`, die den Lock automatisch verwenden:
+### Config-Flow-Verbindung ausgenommen
+
+Der einmalige Prüf-Read in `config_flow.py::async_can_connect()` (beim
+Einrichten der Integration) läuft auf einer eigenen, kurzlebigen Verbindung
+ohne parallelen Schreib- oder Poll-Vorgang — dort besteht die Race-Bedingung
+nicht, weshalb dort bewusst kein `message_spacing` gesetzt wurde.
+
+## Zusammenfassung (Pacing)
+
+1. ✅ `modbus-connection`s Pacer serialisiert Reads und Writes nur, wenn ein
+   Zeitabstand konfiguriert ist — der Default (`0.0`) tut das **nicht**.
+2. ✅ Die Integration setzt seit `3.5.2` ein `message_spacing` von 50 ms bei
+   Verbindungsaufbau, damit der Pacer tatsächlich sperrt.
+3. ⚠️ Wer `ModbusConnection` an anderer Stelle neu instanziiert (z. B. für ein
+   Diagnose-Werkzeug), muss dasselbe tun — sonst ist die neue Verbindung
+   wieder unserialisiert.
+
+## FC16 statt FC06 bei Schreibvorgängen
+
+### Der Fehler: falscher Funktionscode
+
+Bis einschließlich 3.5.2 schrieb jedes einzelne, schreibbare Register über
+`ModbusUnit.write_register()` — **Function Code 0x06 (Write Single
+Register)**. Lambdas eigene Modbus-Dokumentation ist an dieser Stelle
+eindeutig:
+
+> Alle Schreiboperationen müssen mit dem Funktionscode 0x10 (Dezimal 16)
+> „write multiple registers" durchgeführt werden, auch wenn nur ein einzelnes
+> Register beschrieben wird.
+
+FC06 wird von der Lambda also gar nicht implementiert — sie beantwortet es mit
+Exception Code 0x01 (Illegal Function). Live gegen echte Hardware (Firmware
+`V0.0.8-3K`) reproduzierbar, alle ~9 Sekunden:
+
+```
+Could not send the room temperature to circuit 1: write_register(5004, 243): Modbus Exception 0x01 for function code 0x06
+```
+
+Betroffen war jedes schreibbare Feld im Registermodell: die
+Raumthermostat-Steuerung (`room_device_temperature`, Register 5004), der
+PV-Überschuss-Export, sämtliche Warmwasser-/Heizkreis-/Kühlkreis-Sollwerte,
+der Vorlauf-Offset sowie der generische `write_modbus_register`-Service. Der
+Vor-3.5-Code (`pymodbus`-basiert) hatte dieses Problem nie, weil er
+ausnahmslos über `client.write_registers()` (FC16) schrieb, auch für ein
+einzelnes Register.
+
+### Die Behebung
+
+`modbus-connection` sieht für genau diesen Fall ein Feld-Flag vor
+(`model/_writing.py`, Version 4.10.0):
 
 ```python
-# ✅ RICHTIG: Verwendet Lock automatisch
-result = await async_read_holding_registers(client, address, count, slave_id)
+words = field.encode(value, scale_exponent)
+if field.force_fc16 or len(words) > 1:
+    await unit.write_registers(address, words)
+else:
+    await unit.write_register(address, words[0])
 ```
 
-### ❌ FALSCH: Direkter Client-Aufruf (ohne Lock)
+Jedes `writable=True`-Feld in `lambda_modbus/` (`heating_circuit.py`,
+`boiler.py`, `buffer.py`, `solar.py`, `heat_pump.py` inkl.
+`HeatPumpCapacityLimits`) setzt seit 3.5.3 zusätzlich `force_fc16=True`. Die
+zwei Stellen mit direktem Schreibzugriff unter Umgehung des Feldmodells
+(`services.py`: PV-Überschuss-Writer und der generische
+Register-Schreib-Service) rufen jetzt `unit.write_registers(address,
+[value])` statt `unit.write_register(address, value)` auf.
 
-Direkte Aufrufe auf den Modbus-Client umgehen den Lock und führen zu Transaction ID Mismatches:
+Ein `PackedBitsField` (gepacktes Bit-Register mit Read-Modify-Write) existiert
+im aktuellen Modell nicht — der eine FC06-Sonderpfad in `write_register_field()`,
+der `force_fc16` ignoriert (Read-Modify-Write eines gepackten Registers über
+FC06), kommt hier also nie zum Tragen.
 
-```python
-# ❌ FALSCH: Umgeht den Lock
-result = await client.read_holding_registers(address, count, slave=slave_id)
+### Verifikation
+
+Ohne HA-Fixtures, direkt gegen `modbus_connection.mock.MockModbusUnit`
+(`WriteEvent.function_code`):
+
+```
+address=5004 function_code=16 values=[242]   # room_device_temperature
+address=2050 function_code=16 values=[550]   # boiler target_high_temperature
 ```
 
-**Wichtig**: Niemals direkt auf `client.read_holding_registers()` oder `client.write_register()` zugreifen! Immer die Wrapper-Funktionen aus `modbus_utils.py` verwenden.
+Live gegen echte Hardware (Firmware `V0.0.8-3K`): Der
+Raumtemperatur-Schreibzugriff (Register 5004) sowie eine
+Warmwasser-Sollwertänderung über `climate.set_temperature`
+(`climate.<prefix>_boil1_hot_water`) kamen nach dem Fix korrekt an — der
+Controller liest den neu gesetzten Sollwert im nächsten Poll unverändert
+zurück, statt weiter den alten Wert zu melden.
 
-## Troubleshooting
+## Zusammenfassung (Funktionscode)
 
-### Transaction ID Mismatch Fehler
-
-**Symptom**:
-```
-ERROR: request ask for transaction_id=X but got id=Y, Skipping.
-```
-
-**Ursache**: 
-- Direkter Client-Aufruf (ohne Lock)
-- Lock nicht verwendet
-- Parallele Requests
-
-**Lösung**:
-1. Prüfe, ob Wrapper-Funktionen aus `modbus_utils.py` verwendet werden
-2. Prüfe, ob `async with _modbus_read_lock:` verwendet wird
-3. Prüfe, ob direkte Client-Aufrufe vorhanden sind
-
-### Performance-Probleme
-
-**Symptom**: Modbus-Operationen sind langsam
-
-**Ursache**: 
-- Lock blockiert alle Operationen
-- Viele sequenzielle Requests
-
-**Lösung**:
-- Sequenzielle Ausführung ist gewollt (verhindert Fehler)
-- Performance-Overhead ist minimal (~0.1ms pro Lock)
-- Alternative: Parallele Ausführung würde zu Transaction ID Mismatches führen
-
-## Zusammenfassung
-
-Die Serialisierung von Modbus-Operationen durch globale Locks stellt sicher, dass:
-
-1. ✅ **Keine Transaction ID Mismatches** auftreten
-2. ✅ **Korrekte Datenzuordnung** gewährleistet ist
-3. ✅ **Protokoll-konforme Implementierung** vorhanden ist
-4. ✅ **Stabile und zuverlässige** Modbus-Kommunikation stattfindet
-
-**Wichtig**: Alle Modbus-Operationen müssen die Wrapper-Funktionen aus `modbus_utils.py` verwenden, die den Lock automatisch verwenden. Direkte Client-Aufrufe umgehen den Lock und führen zu Fehlern.
-
+1. ✅ Lambda implementiert FC06 (Write Single Register) nicht — nur FC10/0x10
+   (Write Multiple Registers), auch für ein einzelnes Register.
+2. ✅ Jedes `writable=True`-Feld setzt seit `3.5.3` `force_fc16=True`; die
+   zwei direkten `write_register()`-Aufrufe in `services.py` wurden auf
+   `write_registers()` umgestellt.
+3. ⚠️ Ein neues schreibbares Feld im Registermodell braucht `force_fc16=True`
+   — ohne das schreibt es standardmäßig über FC06 und scheitert auf echter
+   Hardware.

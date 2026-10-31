@@ -1,10 +1,13 @@
 # Lambda Heat Pumps Integration for Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![maintainer](https://img.shields.io/badge/maintainer-%40GuidoJeuken--6512-blue.svg)](https://github.com/GuidoJeuken-6512)
-[![version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
-[![license](https://img.shields.io/github/license/GuidoJeuken-6512/lambda_heat_pumps.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/GuidoJeuken-6512/lambda_heat_pumps)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/GuidoJeuken-6512/lambda_heat_pumps/total?label=downloads)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/releases)
 ![Usage](https://img.shields.io/badge/dynamic/json?color=9932CC&logo=home-assistant&label=usage&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.lambda_heat_pumps.total)
+[![Stars](https://img.shields.io/github/stars/GuidoJeuken-6512/lambda_heat_pumps?style=flat)](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/stargazers)
+[![license](https://img.shields.io/github/license/GuidoJeuken-6512/lambda_heat_pumps.svg)](LICENSE)
+
+[![Open your Home Assistant instance and open this repository inside HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=GuidoJeuken-6512&repository=lambda_heat_pumps&category=integration)
 
 
 <a href="https://www.paypal.com/donate/?hosted_button_id=P3N7RRC2SNQ48">
@@ -232,7 +235,7 @@ cycling_offsets:
     hot_water_cycling_total: 50
 # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
 modbus:
-  int32_register_order: "high_first"  # "high_first" oder "low_first"
+  int32_register_order: "high_first"  # "high_first" oder "low_first" - Standard: "high_first"
 ```
 
 ---
@@ -248,16 +251,15 @@ In der `lambda_wp_config.yaml` können Sie die Register-Reihenfolge festlegen:
 # Modbus-Konfiguration
 modbus:
   # Register-Reihenfolge für 32-Bit-Register (int32-Sensoren)
-  # "high_first" = Höherwertiges Register zuerst
+  # "high_first" = Höherwertiges Register zuerst (Standard)
   # "low_first" = Niedrigwertiges Register zuerst
   int32_register_order: "high_first"  # oder "low_first"
 ```
 
 ### Wann ist das wichtig?
-- **"high_first"**: Verwendet bei den meisten Lambda-Modellen (höherwertiges Register zuerst)
+- **"high_first"**: Standard für die meisten Lambda-Modelle (höherwertiges Register zuerst)
 - **"low_first"**: Erforderlich für bestimmte Lambda-Modelle oder Firmware-Versionen (niedrigwertiges Register zuerst)
 - **Rückwärtskompatibilität**: Alte Config mit `int32_byte_order` oder alten Werten (`big`/`little`) wird automatisch erkannt und migriert
-- **Seit V2.7.0**: Der Default wird automatisch anhand der eingestellten Firmware-Version gesetzt (für `V1.1.0-3K` und `V0.0.10-3K` bereits `"low_first"`); die manuelle Einstellung überschreibt diesen Default weiterhin
 
 ### Fehlerbehebung
 Falls Sie falsche Werte in den Sensoren sehen, versuchen Sie die andere Register-Reihenfolge-Einstellung.
@@ -321,7 +323,7 @@ cycling_offsets:
     hot_water_cycling_total: 50
 # Register order for 32-bit registers (int32 sensors)
 modbus:
-  int32_register_order: "high_first"  # "high_first" or "low_first"
+  int32_register_order: "high_first"  # "high_first" or "low_first" - Default: "high_first"
 ```
 
 ---
@@ -337,16 +339,15 @@ In the `lambda_wp_config.yaml` you can set the register order:
 # Modbus configuration
 modbus:
   # Register order for 32-bit registers (int32 sensors)
-  # "high_first" = High-order register first
+  # "high_first" = High-order register first (Default)
   # "low_first" = Low-order register first
   int32_register_order: "high_first"  # or "low_first"
 ```
 
 ### When is this important?
-- **"high_first"**: Used by most Lambda models (high-order register first)
+- **"high_first"**: Default for most Lambda models (high-order register first)
 - **"low_first"**: Required for certain Lambda models or firmware versions (low-order register first)
 - **Backward Compatibility**: Old config with `int32_byte_order` or old values (`big`/`little`) is automatically detected and migrated
-- **Since V2.7.0**: The default is set automatically based on the configured firmware version (already `"low_first"` for `V1.1.0-3K` and `V0.0.10-3K`); a manual setting still overrides this default
 
 ### Troubleshooting
 If you see incorrect values in the sensors, try the other register order setting.
@@ -434,6 +435,8 @@ The integration linearly interpolates between these points based on the current 
 ---
 
 ## 📦 Manual Installation (without HACS)
+
+> ⚠️ **Requires Home Assistant ≥ 2026.9.** This integration depends on `modbus-connection[tmodbus]`, which is not installable/usable on older Home Assistant Core versions. HACS enforces this automatically; if you install manually, **you are responsible for checking your Home Assistant version yourself** — an older core will fail at setup with an unclear error rather than a helpful message.
 
 If you do not use HACS, you can install the integration manually:
 
