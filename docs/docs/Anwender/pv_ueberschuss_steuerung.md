@@ -28,7 +28,7 @@ Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu melde
     - `neg`: Überschuss und Bezug, −32768 bis 32767 W.
 3. **Absenden**. Im Schritt **„PV-Überschuss“** den **PV-Leistungssensor** wählen und erneut **Absenden**.
 
-<img src=”../assets/pv_surplus_de_1.png” alt=”Screenshot der Optionen „PV-Überschuss nutzen” und „Kodierung des PV-Überschusses”” style=”width: 100%; height: auto; border-radius: 8px;”>
+<img src="../assets/pv_surplus_de_1.png" alt="Optionen PV-Überschuss nutzen und Kodierung des PV-Überschusses" style="width: 100%; height: auto; border-radius: 8px;">
 
 ### Welcher Sensor?
 
