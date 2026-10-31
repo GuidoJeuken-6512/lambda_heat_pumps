@@ -1,7 +1,49 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
+## Schließ-Kommentare zum Release V3.6.1 (gepostet 31.10.2026)
+
+Release `V3.6.1` am 31.10.2026 veröffentlicht. Die Issues unten wurden mit diesen Kommentaren geschlossen. **Ausnahme: #137 ist auf GitHub noch offen** (Stand 31.10.2026, 19:40); der Kommentar ist dort noch nicht gepostet.
+
+**Behoben in 3.x**
+
+- **#82** (Falsche Firmware-Version übernommen)
+  > Fixed in 3.6.1 (change in 3.6.0): when upgrading from 2.x, a firmware version you changed later in the options dialog now takes precedence over the one originally set up, and an unknown firmware name raises a repair instead of silently falling back to the oldest version. You can always correct the firmware under ⋮ → Reconfigure. Closing — thanks for reporting!
+
+- **#85** (Entity mit falscher Domain)
+  > Fixed since 3.5: entity IDs are now suggested with the platform's own domain, so the "wrong domain" warning is gone. Existing entries are already registered as `climate.*` by Home Assistant, so nothing needs to be renamed. Available in 3.6.1 via HACS. Closing — thanks!
+
+- **#90** (Warmwasser thermisch = elektrisch, extreme Werte)
+  > The root cause was a 32-bit register order that didn't match the controller. 3.6.1 handles this: the upgrade keeps your firmware's order (or the one set explicitly in `lambda_wp_config.yaml`), and if the counters only make sense the other way round, a repair "Check the 32-bit register order" tells you which setting to choose — no energy is booked from misread counters until then. Old statistics can be cleaned up as described in the FAQ. Closing — please reopen if you still see wrong values after updating.
+
+- **#104** (Akkumulierte Energiezähler falsch / negativ)
+  > Fixed in 3.6.1: misread energy counters (below zero or above 1 GWh, but plausible with swapped words) are now detected and raise the repair "Check the 32-bit register order" with the setting to choose. Until then the counters keep their last plausible value and no energy is booked, so the statistics stay clean. The FAQ now explains how to repair statistics recorded with the wrong order. Closing — thanks for the detailed data that made this possible!
+
+- **#119** (Log-Flut durch Sonderwerte)
+  > Since the 3.x rewrite, sentinel values are no longer logged at all — they simply show as `unknown`. The remaining warnings (e.g. a module not answering) are logged once, not on every poll. Available in 3.6.1 via HACS; 2.x won't get further changes. Closing — thanks for the suggestion!
+
+- **#120** (PV-Überschuss: Screenshots fehlen)
+  > The PV-surplus page has been reworked: screenshots are back, the Lambda settings (E-meter type, measuring point, Manual vs. Automatic) are explained, and since 3.6.0 the integration sends 0 W when the source sensor has no value, so the E-Manager no longer drops into error 6. Docs: https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/pv_ueberschuss_steuerung/ — closing, thanks to everyone who contributed!
+
+- **#121** (`async_get_device` deprecated)
+  > Fixed since 3.5.4 (`async_get_device_by_identifier()` is used instead). With 3.6.1 this is now available via HACS; the warning only remains on 2.8.x. Closing — thanks!
+
+**Kein Fehler der Integration**
+
+- **#94** (Verlauf nach Update auf 2.6.0 weg)
+  > We couldn't reproduce this with the rewritten 3.x integration, which keeps entity IDs and history across updates. 3.6.1 is now available via HACS. Closing — please reopen with details if it happens again.
+
+- **#95** (Stützpunkte der Heizkurve statisch)
+  > The support point entities aren't Modbus registers: the Lambda doesn't expose its panel values, so they are the integration's own settings for the heating-curve calculation in Home Assistant and need to be copied from the panel once (see https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/heizkreis-steuerung/). That's intended. The odd values -300 and -3276.8 were controller sentinels and show as `unknown` since 3.5. Closing — thanks!
+
+- **#132** (Room Temperature / Set Flow Temperature `unknown`)
+  > This isn't a bug in the integration: these values are only filled while room thermostat control is active and a sensor is configured (see the "Raumthermometer" docs page). Since 3.6.0 such request registers are disabled by default on new installations. Closing — feel free to reopen if you have questions!
+
+- **#137** (E-Manager-Sollleistung ≠ 0)
+  > This is the Lambda's own behaviour, not the integration's: the integration only writes the surplus value you provide. The setpoint is calculated by the Lambda, and it only uses the surplus in "Automatic" mode. If the reported value includes the heat pump's own consumption, choose the matching measuring point. The PV-surplus page now explains this: https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/pv_ueberschuss_steuerung/ — closing, please reopen if it persists with the documented settings.
+
 - **Umsetzung:** Branch `3.6` (Version 3.6.0), siehe [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026).
 - **Stand:** 29.10.2026 (Erstanalyse 12.10.2026; HA-2026.10-Prüfung 19.10.2026; Tester-Rückmeldungen bis 21.10.2026; Issue-Aktivität 22.–29.10.2026 eingearbeitet, siehe [Nachtrag 29.10.2026](#nachtrag-29102026-issue-aktivität-seit-dem-22102026); Bewertung „betrifft 3.5.x“ und [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026))
+- **Nachtrag 31.10.2026:** `V3.6.1` ist veröffentlicht, `main` steht auf 3.6.1. Mit dem Release geschlossen: #82, #85, #90, #94, #95, #104, #119, #120, #121 (dazu #132, #122 als Duplikat von #85). #137 ist noch offen.
 - **`main` (2.x) wird nicht mehr geändert** (Entscheidung 22.10.2026). Alle Fixes nur noch in `3.5`; `main` bekommt sie mit dem Merge.
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 - **Geprüfter Code:** `origin/3.5` @ `be4728b` (Integration v3.5.7, noch ohne Tag); Erstanalyse gegen `55439d4` (v3.5.6)
@@ -24,26 +66,27 @@ Der Branch `3.5` ist ein Rewrite (PR #115: `modbus-connection`/`tmodbus` statt `
 | Issue | 3.5.x | Titel (gekürzt) | Status in 3.5 | Priorität |
 |---|---|---|---|---|
 | [#133](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/133) | ☑️ behoben in 3.5.7 (HW-Test offen) | Migration schreibt `high_first` über den Firmware-Default | ✅ **behoben** (F1 + F2, 17.10.2026), **geschlossen 27.10.**; HW-Test durch andere 2.8.x-Anwender offen | – |
-| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | 🔷 **ja** (F30, F31) | Akkumulierte Energiezähler falsch / negativ | ✅ Regression behoben (F1 + F2); **neu 23.10.: Anlage mit V0.0.10-3K braucht `high_first`** (bestätigt), Firmware-Tabelle passt nicht für alle Anlagen → F30 | 🟠 mittel |
-| [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | 🔷 **ja** (F30/F11) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **Regression behoben** (gleiche Ursache wie #104), HW-Test ausstehend | – |
-| [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | 🔷 **ja** (F4, Migration) | Falsche Firmware-Version übernommen | 🟠 **teilweise offen** (Migration bevorzugt veralteten Wert); Index-Fehler im Code nicht nachweisbar | mittel |
+| [#104](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/104) | ☑️ geschlossen (V3.6.1) | Akkumulierte Energiezähler falsch / negativ | ✅ **geschlossen 31.10.** mit V3.6.1: F1 + F2, Repair „Registerreihenfolge prüfen“ (F30), FAQ Statistik (F31) | – |
+| [#90](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/90) | ☑️ geschlossen (V3.6.1) | Warmwasser thermisch = elektrisch, extreme Werte | ✅ **geschlossen 31.10.** mit V3.6.1 (gleiche Ursache wie #104, F30) | – |
+| [#82](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/82) | ☑️ geschlossen (V3.6.1) | Falsche Firmware-Version übernommen | ✅ **geschlossen 31.10.** mit V3.6.1 (F4: Options vor Data, Repair bei unbekanntem Namen) | – |
 | [#100](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/100) | 🔷 **ja** (F26–F28) | Neue Steuerung FW 1.3.8 / 1.3.10 | **geschlossen 27.10.**, Befunde offen; V1.0.4-3K ✅ in 3.5.7; V1.0.2-3K (F26), neu gemeldet **V1.0.7-3K** (24.10., Frage unbeantwortet) → F26 erweitert; F27/F28 offen | mittel |
 | [#144](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/144) | ☑️ beantwortet (30.10.2026) | Neue Steuerung SW V1.4.1 (WP-FW **V1.0.8-3K**), 2.8.6 | ✅ **beantwortet 30.10.**: Doku-Seite "Heizkreis Steuerung" erstellt; erklärt, dass alle Werte außer Vorlauf Offset von Hand vom Lambda-Display übernommen werden; F26 (Firmware-Updates) ist separate Aufgabe | niedrig |
 | [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | 🔷 **ja** (gemeldet auf 3.5.6; F27, F12) | Viele Entitäten (v. a. Puffer) ohne Messwert, 3.5.6 | 🟡 **neu 28.10.**: EU13, V1.0.4-3K (Option V1.1.0-3K); passt zu `REGISTER_OHNE_WERTE.md` (3005–3009 = „keine Anforderung“); Screenshot auswerten, Rückfragen | niedrig–mittel |
 | [#142](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/142) | ❔ prüfen (gleiche Logik in 3.5; F32) | Raumtemperatur wird nicht nach 5004/5104 geschrieben, 2.8.6 | 🟡 **neu 28.10.**: Register lesen 62536 = −3000 (nichts geschrieben); Code schreibt nur mit Option „Raumthermostat-Steuerung“; Log fehlt | niedrig–mittel |
 | [#122](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/122) | ☑️ geschlossen (Duplikat) | Entity-ID mit falscher Domain (`sensor.*_heating_circuit`) | ✅ **geschlossen** (Duplikat von #85) | mittel (Frist HA 2027.5) |
-| [#85](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/85) | 🔷 **ja** (F5) | Entity-ID mit falscher Domain (`sensor.*_boil1_hot_water`) | 🟡 Code behoben ab 3.5; **Registry-Altlasten offen** (F5: automatische Umbenennung bei Setup) | mittel (Frist HA 2027.5) |
+| [#85](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/85) | ☑️ geschlossen (V3.6.1) | Entity-ID mit falscher Domain (`sensor.*_boil1_hot_water`) | ✅ **behoben** ab 3.5, **geschlossen 31.10.** mit V3.6.1; F5 entfällt (HA führt die Einträge bereits als `climate.*`, siehe Umsetzungsplan Schritt 2) | – |
 | [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | 🔷 **ja** (Retest „Automatik“; F15, F10) | E-Manager-Register springt auf 0 | 🟢 auf 3.5.6 **nicht reproduzierbar** (Retest 18.10., Modus „Manuell“); Modus „Automatik“ ungetestet | niedrig |
 | [#101](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/101) | 🔷 **ja** (F9) | Solarthermiemodul wird nicht erkannt | 🟡 unklar, Logs fehlen; Schwachstelle in der Modulerkennung | niedrig |
-| [#94](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/94) | – nein | Verlauf nach Update auf 2.6.0 weg | 🟢 in 3.5 nicht reproduzierbar | niedrig |
-| [#95](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/95) | – nein | Heizkurven-Stützpunkte zeigen statische Werte | 🟢 kein Code-Bug (so gewollt) + Sentinel-Werte behoben | niedrig |
-| [#132](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/132) | ☑️ geschlossen | Room Temperature / Set Flow Temperature `unknown` | ✅ **geschlossen** (kein Code-Bug, nur UX/Konfiguration — Raumthermostat muß aktiviert sein, Sensor muß konfiguriert sein) | niedrig |
-| [#120](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/120) | 🔷 **ja** (Doku F24) | Screenshots PV-Überschuss fehlen (toter Link) | 🟡 Bildpfade in `3.5` behoben (F14), `main` offen; neu: Doku zu „Manuell“/„Automatik“ (F24) | mittel (vor Merge 3.5 → main) |
+| [#94](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/94) | – nein | Verlauf nach Update auf 2.6.0 weg | ✅ **geschlossen 31.10.** (in 3.x nicht reproduzierbar) | – |
+| [#95](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/95) | – nein | Heizkurven-Stützpunkte zeigen statische Werte | ✅ **geschlossen 31.10.** (kein Code-Bug, so gewollt; Sentinel-Werte seit 3.5 `unknown`) | – |
+| [#132](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/132) | ☑️ geschlossen | Room Temperature / Set Flow Temperature `unknown` | ✅ **geschlossen 31.10.** (kein Code-Bug, nur UX/Konfiguration — Raumthermostat muß aktiviert sein, Sensor muß konfiguriert sein) | niedrig |
+| [#120](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/120) | ☑️ geschlossen (V3.6.1) | Screenshots PV-Überschuss fehlen (toter Link) | ✅ **geschlossen 31.10.**: Doku-Seite überarbeitet (F14, F24), 0 W bei fehlendem Quellwert (F15) | – |
+| [#119](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/119) | – nein (behoben seit 3.5.0, Rewrite) | Sonderwerte fluten das Log (2.8.x) | ✅ **geschlossen 31.10.**: Sonderwerte werden still `unknown`, restliche Warnungen nur einmal; Entitäten → F27/F28 | – |
 | [#134](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/134) | 🔷 **ja** (Doku F25) | Upgrade-Hinweise 2.8.6 → 3.5.6 (Setpoint-Entity, Statistik-Reparaturen) | ✅ **Changelog ergänzt/korrigiert** (17.10.2026), Issue geschlossen; Rückfrage zu V1.0.4-3K vs. V1.1.0-3K offen (F25) | – |
 | [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | 🔷 Enhancement (F17) | Heizkurve: Abweichung zum Pumpen-Sollwert (Enhancement) | 🟡 Doku korrigiert (beide Branches), Abweichungssensor offen (F17); Tester bestätigt Nutzen mit Live-Daten | niedrig |
 | [#136](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/136) | – nein (nicht geplant) | Setzen der Betriebsart (Heizkreis) wird zurückgesetzt | ⛔ **wird nicht umgesetzt** (22.10.2026), **geschlossen 22.10.** als „nicht geplant“ (F23) | – |
-| [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | – nein (Verhalten der Lambda; Doku F24) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss (2.8.6) | 🟡 **neu**, vermutlich Verhalten der Lambda; Rückfragen nötig | niedrig–mittel |
-| [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | ☑️ geschlossen | `device_registry.async_get_device` deprecated | ✅ **geschlossen** (behoben in 3.5.4; Duplikat #141) | – |
+| [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | – nein (Verhalten der Lambda; Doku F24) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss (2.8.6) | 🟢 Verhalten der Lambda, Doku F24 erledigt; Schließ-Kommentar entworfen, **auf GitHub noch offen** (31.10.) | niedrig |
+| [#121](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/121) | ☑️ geschlossen | `device_registry.async_get_device` deprecated | ✅ **geschlossen 31.10.** (behoben in 3.5.4, mit V3.6.1 über HACS; Duplikat #141) | – |
 | [#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112) | – nein (behoben in 3.5.5) | Register 5007 doppelt adressiert | ✅ **behoben** in 3.5.5 | – |
 
 Spalte 3.5.x: 🔷 betrifft 3.5.x, Arbeit offen · ☑️ betraf 3.5.x, behoben · ❔ noch unklar · ◽ nur optionale UX · – betrifft 3.5.x nicht (nur 2.x oder kein Code-Fehler). Reihenfolge der Umsetzung: [Umsetzungsplan 3.5.x](#umsetzungsplan-35x-stand-29102026).
