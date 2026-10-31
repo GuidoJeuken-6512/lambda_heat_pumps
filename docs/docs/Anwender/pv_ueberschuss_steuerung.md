@@ -4,7 +4,7 @@ title: "PV Überschuss Steuerung"
 
 # PV Überschuss Steuerung
 
-*Zuletzt geändert am 29.10.2026*
+*Zuletzt geändert am 31.10.2026*
 
 Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu meldet die Integration der Lambda regelmäßig, wie viel Solarstrom gerade übrig ist. Die Lambda regelt danach selbst.
 
@@ -28,7 +28,7 @@ Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu melde
     - `neg`: Überschuss und Bezug, −32768 bis 32767 W.
 3. **Absenden**. Im Schritt **„PV-Überschuss“** den **PV-Leistungssensor** wählen und erneut **Absenden**.
 
-<img src="../assets/baustelle_3_5.svg" alt="Baustelle: Screenshot der Optionen „PV-Überschuss nutzen“ und „Kodierung des PV-Überschusses“ in Version 3.5 folgt" style="width: 100%; max-width: 640px; height: auto; border-radius: 8px;">
+<img src=”../assets/pv_surplus_de_1.png” alt=”Screenshot der Optionen „PV-Überschuss nutzen” und „Kodierung des PV-Überschusses”” style=”width: 100%; height: auto; border-radius: 8px;”>
 
 ### Welcher Sensor?
 
