@@ -25,7 +25,8 @@
     "tmodbus"
   ],
   "requirements": [
-    "modbus-connection[tmodbus]>=4.8.1"
+    "modbus-connection[tmodbus]>=4.8.1",
+    "tmodbus>=0.6.1"
   ],
-  "version": "3.6.1"
+  "version": "3.6.2"
 }

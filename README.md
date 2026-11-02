@@ -456,6 +456,8 @@ If you do not use HACS, you can install the integration manually:
 ## 🛠️ Troubleshooting & Support
 - **Log-Analyse:** Aktiviere Debug-Logging für detaillierte Fehlerausgabe
 - **Häufige Probleme:** Siehe Abschnitt „Troubleshooting“ unten
+- **Home Assistant im Docker-Container:** Meldet das Log `cannot import name 'create_async_udp_client' from 'tmodbus'`, ist im Container ein zu altes `tmodbus` (vor 0.5) installiert. Ab Version 3.6.2 aktualisiert Home Assistant es beim Start selbst. Sonst im Container `pip install -U "tmodbus>=0.6.1"` ausführen und Home Assistant neu starten. Ein Update des Home-Assistant-Images behebt es ebenfalls ([#149](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/149)).
+  *English:* If the log shows `cannot import name 'create_async_udp_client' from 'tmodbus'`, the container has an outdated `tmodbus` (older than 0.5). From 3.6.2 on, Home Assistant upgrades it on startup. Otherwise run `pip install -U "tmodbus>=0.6.1"` inside the container and restart, or update the Home Assistant image.
 - **Support:**
   - [GitHub Issues](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues)
   - [Home Assistant Community](https://community.home-assistant.io/)
