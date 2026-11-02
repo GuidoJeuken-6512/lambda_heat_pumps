@@ -1,3 +1,4 @@
 # Must match the requirement in custom_components/lambda_heat_pumps/manifest.json,
 # which is what Home Assistant actually installs.
 modbus-connection[tmodbus]>=4.8.1
+tmodbus>=0.6.1
