@@ -10,6 +10,9 @@
 !custom_components/lambda_heat_pumps/translations/
 !custom_components/lambda_heat_pumps/translations/**/*.json
 !custom_components/lambda_heat_pumps/lambda_modbus/
+# The dashboard cards the integration serves (dashboard.py)
+!custom_components/lambda_heat_pumps/frontend/
+!custom_components/lambda_heat_pumps/frontend/*.js
 
 # Tests im Root nicht ignorieren
 !tests/
@@ -27,6 +30,7 @@ tests/playwright/
 !README.md
 !CHANGELOG.md
 !CHANGELOG_ALL_CHANGES.md
+!toDo.md
 !requirements.txt
 !requirements_test.txt
 !pytest.ini

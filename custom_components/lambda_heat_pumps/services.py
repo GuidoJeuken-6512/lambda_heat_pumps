@@ -45,6 +45,7 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_UPDATE_ROOM_TEMPERATURE = "update_room_temperature"
 SERVICE_READ_MODBUS_REGISTER = "read_modbus_register"
 SERVICE_WRITE_MODBUS_REGISTER = "write_modbus_register"
+SERVICE_GENERATE_DASHBOARD = "generate_dashboard"
 
 ATTR_REGISTER_ADDRESS = "register_address"
 ATTR_VALUE = "value"
@@ -222,6 +223,18 @@ def async_setup_services(hass: HomeAssistant) -> None:
     )
     hass.services.async_register(
         DOMAIN, SERVICE_WRITE_MODBUS_REGISTER, _write_register, schema=_WRITE_SCHEMA
+    )
+
+    async def _generate_dashboard(call: ServiceCall) -> None:
+        """Write the Lambda Cockpit dashboard again, e.g. after deleting it."""
+        # Imported here: the dashboard module pulls in the frontend.
+        from .dashboard import async_regenerate_dashboard
+
+        coordinator = _only_controller(hass)
+        await async_regenerate_dashboard(hass, coordinator.config_entry)
+
+    hass.services.async_register(
+        DOMAIN, SERVICE_GENERATE_DASHBOARD, _generate_dashboard
     )
 
 

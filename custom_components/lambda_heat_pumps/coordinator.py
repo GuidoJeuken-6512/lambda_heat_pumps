@@ -35,6 +35,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 from modbus_connection import (
     IllegalDataAddressError,
     ModbusConnection,
@@ -47,6 +48,7 @@ from .config_file import LambdaFileConfig
 from .config_file import async_load as async_load_config
 from .const import (
     CAPACITY_LIMIT_UPDATE_INTERVAL,
+    CONF_DEFROST_ROOM_BOOST,
     CONF_FAST_UPDATE_INTERVAL,
     CONF_FIRMWARE_VERSION,
     CONF_HOST,
@@ -54,6 +56,9 @@ from .const import (
     CONF_NAME_PREFIX,
     CONF_UPDATE_INTERVAL,
     CYCLE_MODES,
+    DEFAULT_DEFROST_BOOST_COUNT,
+    DEFAULT_DEFROST_BOOST_ROOM_TEMP,
+    DEFAULT_DEFROST_NORMAL_ROOM_TEMP,
     DEFAULT_FAST_UPDATE_INTERVAL,
     DEFAULT_INT32_REGISTER_ORDER,
     DEFAULT_UPDATE_INTERVAL,
@@ -62,7 +67,13 @@ from .const import (
     ISSUE_REGISTER_ORDER,
     MAX_PLAUSIBLE_COUNTER_WH,
     MAX_ENERGY_DELTA_KWH,
+    MAX_RUNTIME_GAP_SECONDS,
     MODE_COMPRESSOR_START,
+    MODE_DEFROST,
+    MODE_HEATING,
+    MODE_HEATING_ROD,
+    MODE_HEATING_TO_HOT_WATER,
+    MODE_HOT_WATER,
     MODE_STBY,
     MODULES,
     OPERATING_STATE_MODE,
@@ -74,7 +85,9 @@ from .const import (
     PERIOD_YEARLY,
     REGISTER_ORDER_HIGH_FIRST,
     REGISTER_ORDER_LOW_FIRST,
+    RUNTIME_MODES,
     SIGNAL_PERIOD_ROLLOVER,
+    SWITCH_STANDBY_GRACE_SECONDS,
     THERMAL_ENERGY_MODES,
 )
 from .firmware import default_register_order
@@ -134,13 +147,15 @@ class Totals:
     """One heat pump's running totals, keyed by mode.
 
     `cycles` counts entries into a mode; `electrical` and `thermal` accumulate
-    the energy spent in it, in kWh. All three count from Home Assistant's start,
-    not from the beginning of time — the entities hold the absolute values.
+    the energy spent in it, in kWh; `runtime` the hours spent in it. All count
+    from Home Assistant's start, not from the beginning of time — the entities
+    hold the absolute values.
     """
 
     cycles: dict[str, int] = field(default_factory=dict)
     electrical: dict[str, float] = field(default_factory=dict)
     thermal: dict[str, float] = field(default_factory=dict)
+    runtime: dict[str, float] = field(default_factory=dict)
 
 
 class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
@@ -196,15 +211,25 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             index: Totals() for index in range(1, counts["hp"] + 1)
         }
 
-        # The heating-curve settings the user edits through the number entities,
-        # keyed by (heating circuit, key). They are not registers — the curve is
-        # computed here, not by the controller — so the number entities publish
-        # them here for the heating-curve sensor to read.
-        self.settings: dict[tuple[int, str], float] = {}
+        # The settings the user edits through the number entities, keyed by
+        # (module, index, key). They are not registers — the heating curve is
+        # computed here, not by the controller, and the rest are copies of
+        # controller settings Modbus does not expose — so the number entities
+        # publish them here for the sensors that read them.
+        self.settings: dict[tuple[str, int, str], float] = {}
 
         # What the last poll saw, so an edge can be told from a steady state.
         self._last_operating_state: dict[int, int] = {}
         self._last_compressor_running: dict[int, bool] = {}
+        # When each heat pump was last looked at, for its running time.
+        self._last_tick: dict[int, datetime] = {}
+        # When each heat pump last left heating, for a switch to hot water that
+        # passes through a short standby.
+        self._left_heating_at: dict[int, datetime] = {}
+        # Defrosts since midnight across all heat pumps, and the circuits whose
+        # room setpoint has been raised for them today.
+        self.defrosts_today = 0
+        self.boosted_circuits: set[int] = set()
         # The Wh counters as of the last poll, and which source each came from:
         # the controller's register, or the entity id of an external meter.
         self._last_energy: dict[tuple[int, str], float] = {}
@@ -307,7 +332,10 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
     @callback
     def _rollover(self, now: datetime) -> None:
         """Tell the counters whose period just ended to start again at zero."""
-        for period in _periods_ending(now):
+        periods = _periods_ending(now)
+        if PERIOD_DAILY in periods:
+            self._start_new_day()
+        for period in periods:
             async_dispatcher_send(
                 self.hass,
                 SIGNAL_PERIOD_ROLLOVER.format(
@@ -524,14 +552,39 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
     def _track_cycles(
         self, index: int, operating_state: int, compressor_running: bool
     ) -> None:
-        """Count an entry into a mode, and a compressor start."""
+        """Count an entry into a mode, a compressor start, and running time."""
         totals = self.totals[index]
+        now = dt_util.utcnow()
 
         previous = self._last_operating_state.get(index)
         self._last_operating_state[index] = operating_state
         mode = OPERATING_STATE_MODE.get(operating_state, MODE_STBY)
+        previous_mode = (
+            None if previous is None else OPERATING_STATE_MODE.get(previous, MODE_STBY)
+        )
+        self._track_runtime(index, previous_mode, now)
+
         if previous is not None and previous != operating_state and mode in CYCLE_MODES:
             totals.cycles[mode] = totals.cycles.get(mode, 0) + 1
+            if mode == MODE_DEFROST:
+                self._count_defrost()
+
+        # A switch from heating to hot water: straight across, or through a
+        # standby short enough that the hot water still interrupted the heating.
+        if previous_mode == MODE_HEATING and mode != MODE_HEATING:
+            self._left_heating_at[index] = now
+        if previous_mode not in (None, MODE_HOT_WATER) and mode == MODE_HOT_WATER:
+            left = self._left_heating_at.pop(index, None)
+            if left is not None and (
+                previous_mode == MODE_HEATING
+                or (now - left).total_seconds() <= SWITCH_STANDBY_GRACE_SECONDS
+            ):
+                totals.cycles[MODE_HEATING_TO_HOT_WATER] = (
+                    totals.cycles.get(MODE_HEATING_TO_HOT_WATER, 0) + 1
+                )
+        elif mode not in (MODE_STBY, MODE_HEATING):
+            # Anything else in between (defrost, cooling) breaks the switch.
+            self._left_heating_at.pop(index, None)
 
         # A compressor start is the compressor beginning to run, whatever mode
         # the heat pump is in.
@@ -541,6 +594,103 @@ class LambdaCoordinator(DataUpdateCoordinator[LambdaHeatPump]):
             totals.cycles[MODE_COMPRESSOR_START] = (
                 totals.cycles.get(MODE_COMPRESSOR_START, 0) + 1
             )
+
+    @callback
+    def _track_runtime(
+        self, index: int, previous_mode: str | None, now: datetime
+    ) -> None:
+        """Book the time since the last look against the mode the pump was in.
+
+        The time is booked to the mode seen at the *start* of the interval: a
+        change seen now happened somewhere inside it, and the poll interval is
+        short against how long a mode runs. A gap longer than a few polls means
+        the controller was not answering, and nothing is booked for it.
+        """
+        last = self._last_tick.get(index)
+        self._last_tick[index] = now
+        if last is None or previous_mode is None:
+            return
+        seconds = (now - last).total_seconds()
+        if seconds <= 0 or seconds > MAX_RUNTIME_GAP_SECONDS:
+            return
+        hours = seconds / 3600
+        runtime = self.totals[index].runtime
+        if previous_mode in RUNTIME_MODES:
+            runtime[previous_mode] = runtime.get(previous_mode, 0.0) + hours
+        # The heating rod is read by the full poll only; its last known state
+        # stands for the interval in between.
+        rod = self.component("hp", index).relais_state_2nd_heating_stage
+        if rod is not None and int(rod) == 1:
+            runtime[MODE_HEATING_ROD] = runtime.get(MODE_HEATING_ROD, 0.0) + hours
+
+    def setting(self, module: str, index: int, key: str, default: float) -> float:
+        """A value the user set on one of the settings number entities."""
+        return self.settings.get((module, index, key), default)
+
+    @callback
+    def _count_defrost(self) -> None:
+        """Count a defrost towards today's, and raise the room setpoint if due.
+
+        Winter: a heat pump that has to defrost often is short of heat, so once
+        it has defrosted the configured number of times today, each circuit's
+        room setpoint is raised. Midnight puts it back (see `_start_new_day`).
+        """
+        self.defrosts_today += 1
+        if not self.config_entry.options.get(CONF_DEFROST_ROOM_BOOST, False):
+            return
+        for index in range(1, self.counts["hc"] + 1):
+            threshold = self.setting(
+                "hc", index, "defrost_boost_count", DEFAULT_DEFROST_BOOST_COUNT
+            )
+            if index in self.boosted_circuits or self.defrosts_today < threshold:
+                continue
+            self.boosted_circuits.add(index)
+            self._write_room_setpoint(
+                index,
+                self.setting(
+                    "hc",
+                    index,
+                    "defrost_boost_room_temperature",
+                    DEFAULT_DEFROST_BOOST_ROOM_TEMP,
+                ),
+            )
+
+    @callback
+    def _start_new_day(self) -> None:
+        """Forget yesterday's defrosts, and undo the room setpoint raised for them."""
+        self.defrosts_today = 0
+        boosted, self.boosted_circuits = self.boosted_circuits, set()
+        if not self.config_entry.options.get(CONF_DEFROST_ROOM_BOOST, False):
+            return
+        for index in sorted(boosted):
+            self._write_room_setpoint(
+                index,
+                self.setting(
+                    "hc",
+                    index,
+                    "defrost_normal_room_temperature",
+                    DEFAULT_DEFROST_NORMAL_ROOM_TEMP,
+                ),
+            )
+
+    @callback
+    def _write_room_setpoint(self, index: int, value: float) -> None:
+        """Write a circuit's room setpoint (5051) without holding up the caller."""
+
+        async def _write() -> None:
+            try:
+                await self.component("hc", index).write("target_room_temperature", value)
+            except ModbusError as err:
+                _LOGGER.warning(
+                    "Could not set the room setpoint of HC%d to %.1f °C: %s",
+                    index,
+                    value,
+                    err,
+                )
+
+        self.config_entry.async_create_background_task(
+            self.hass, _write(), f"{DOMAIN} room setpoint hc{index}"
+        )
 
     @callback
     def _track_energy(self, index: int) -> None:

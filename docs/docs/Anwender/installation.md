@@ -4,7 +4,7 @@ title: "Installation"
 
 # Installation
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 04.11.2026*
 
 ## Voraussetzungen
 
@@ -31,6 +31,9 @@ Nachdem HACS installiert und eingerichtet ist:
     - Wird Ihre Lambda im Netzwerk erkannt, schlägt Home Assistant sie unter **Einstellungen** → **Geräte & Dienste** als **Entdeckt** vor. Ein Klick auf **Hinzufügen** startet die Einrichtung mit bereits eingetragener IP-Adresse.
     - Andernfalls: **Einstellungen** → **Geräte & Dienste** → **Integration hinzufügen** → „Lambda Heat Pumps“.
     - Weiter mit der [initialen Konfiguration](initiale-konfiguration.md).
+5. **Optional: Dashboard anlegen.** Unter **Einstellungen** → **Geräte & Dienste** → Lambda → **Konfigurieren** den Schalter **Dashboard „Lambda Cockpit“ installieren** einschalten und **Absenden**. Unter **Einstellungen** → **Reparaturen** den Eintrag „Home Assistant neu starten, um das Lambda Cockpit anzuzeigen“ öffnen und mit **OK** bestätigen. Home Assistant startet neu, danach steht **Lambda Cockpit** in der Seitenleiste (falls nicht: Browser neu laden). Details: [Lambda Cockpit](lambda-cockpit.md).
+
+Die beiden Dashboard-Karten (`custom:lambda-cockpit-card`, `custom:lambda-entities-card`) bringt die Integration selbst mit. Eine eigene Ressource unter **Dashboards** → **Ressourcen** ist nicht nötig.
 
 ## Update von Version 2.x
 
@@ -41,3 +44,4 @@ Beim ersten Start nach dem Update übernimmt die Integration Ihren bestehenden E
 - Die Integration einrichten: [initiale Konfiguration](initiale-konfiguration.md)
 - Die verfügbaren Features erkunden: [Features](features.md)
 - Die Heizkurve eintragen: [Heizkurve](heizkurve.md)
+- Das Dashboard anlegen: [Lambda Cockpit](lambda-cockpit.md)

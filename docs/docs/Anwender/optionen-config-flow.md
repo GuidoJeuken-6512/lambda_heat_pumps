@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen der Integration („Konfigurieren“)
 
-*Zuletzt geändert am 30.10.2026*
+*Zuletzt geändert am 04.11.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -64,6 +64,17 @@ Ist ein Minimum nicht kleiner als das Maximum, lehnt der Dialog das Speichern ab
 - Wirkt **rückwirkend**, auch auf bereits laufende Installationen: Beim Speichern werden alle betroffenen, bereits existierenden Entitäten automatisch aktiviert bzw. (beim Ausschalten) wieder deaktiviert. Eine Entität, die Sie selbst einzeln über **Entitäten** deaktiviert haben, lässt der Schalter in Ruhe.
 - Praktisch, wenn Sie das [Lambda-Energy-Dashboard](../Vorlagen/Lambda_energy_dashboard.md) nutzen möchten, ohne die 56 Perioden-Sensoren einzeln freizuschalten.
 
+<img src="../assets/options_cockpit_de.png" alt="Options-Dialog mit dem Schalter Dashboard Lambda Cockpit installieren" style="max-width: 480px; width: 100%; height: auto; border-radius: 8px;">
+
+### Dashboard „Lambda Cockpit“ installieren
+
+- **Standard:** aus. Neu ab Version 3.7.0.
+- Legt das Dashboard **Lambda Cockpit** an: eine Übersicht der Wärmepumpe mit Warmwasser, Puffer, Heizkreis, Heizkurve, Schaltpunkten, Laufzeiten und Energie, dazu eine Liste aller Entitäten mit Erklärung.
+- Nach **Absenden** erscheint unter **Einstellungen** → **Reparaturen** der Eintrag „Home Assistant neu starten, um das Lambda Cockpit anzuzeigen“. Öffnen und **OK** startet Home Assistant neu; danach steht das Dashboard in der Seitenleiste. Ist es nicht sofort zu sehen, die Seite im Browser neu laden.
+- Mit dem Schalter entstehen zusätzlich die Einstellwerte für die Schaltpunkte (Hysteresen, Spreizung, Heizgrenze, maximale Temperaturen). Sie sind Kopien der Lambda-Einstellungen und werden einmal vom Display übernommen. Außerdem werden die Tageszähler eingeschaltet, die das Cockpit zeigt.
+- **Ausschalten** entfernt das Dashboard und diese Einstellwerte wieder, ohne Neustart. Eigene Änderungen am Dashboard gehen dabei verloren.
+- Details: [Lambda Cockpit](lambda-cockpit.md).
+
 ### Raumthermostat verwenden
 
 - **Standard:** aus.
@@ -98,3 +109,4 @@ Die Kodierung muss zur Einstellung des E-Managers an der Lambda passen. Der Wert
 - [PV Überschuss Steuerung](pv_ueberschuss_steuerung.md) einrichten
 - [Warmwasser Solltemperatur Steuerung](warmwasser-solltemperatur.md)
 - [Energie- und Wärmeverbrauchsberechnung](Energieverbrauchsberechnung.md)
+- [Lambda Cockpit](lambda-cockpit.md) installieren
