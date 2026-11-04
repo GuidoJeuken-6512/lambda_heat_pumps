@@ -20,3 +20,7 @@ class Boiler(LambdaComponent):
 
     # force_fc16: see heating_circuit.py — Lambda's protocol has no FC06.
     target_high_temperature = gauge(50, 0.1, writable=True, force_fc16=True, unit="°C")
+    # PV operation: how far the setpoint is raised while there is solar
+    # surplus (Lambda Modbus documentation V006). Outside the read ranges for
+    # now, so it is never probed or read; see PV_OFFSET_FIRMWARE_VERSIONS.
+    pv_temperature_increase = gauge(51, 0.1, writable=True, force_fc16=True, unit="K")

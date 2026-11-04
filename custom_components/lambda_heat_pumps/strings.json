@@ -57,7 +57,8 @@
           "cooling_mode_enabled": "Cooling",
           "pv_surplus": "Use solar surplus",
           "period_sensors_enabled": "Enable per-period energy sensors",
-          "pv_surplus_mode": "Solar surplus encoding"
+          "pv_surplus_mode": "Solar surplus encoding",
+          "install_dashboard": "Install the Lambda Cockpit dashboard"
         },
         "data_description": {
           "update_interval": "How often the controller is read, in seconds.",
@@ -65,7 +66,8 @@
           "room_thermostat_control": "Send each heating circuit the temperature of the room it heats, from another sensor.",
           "pv_surplus": "Send the controller the solar power going spare, so it can use it.",
           "period_sensors_enabled": "Also enables the hourly, 2h, 4h, daily, monthly, yearly and yesterday sensors for every counter (lifetime totals always stay on). Applies retroactively to existing entities too - except ones you disabled individually yourself.",
-          "pv_surplus_mode": "Whether the controller reads the surplus register as unsigned (surplus only) or signed (surplus and shortfall)."
+          "pv_surplus_mode": "Whether the controller reads the surplus register as unsigned (surplus only) or signed (surplus and shortfall).",
+          "install_dashboard": "Creates a 'Lambda Cockpit' dashboard with the cockpit and an overview of all entities, plus the settings it needs (switching hysteresis and the like, copied from the display). Appears after a restart of Home Assistant, which a repair offers. Turning this off removes the dashboard and its settings again; changes you made to the dashboard are lost."
         }
       },
       "room_sensors": {
@@ -556,6 +558,39 @@
       },
       "emgr_power_consumption_setpoint": {
         "name": "E-Manager Power Setpoint"
+      },
+      "heating_to_hot_water_cycling_total": {
+        "name": "Heating to Hot Water Switches Total"
+      },
+      "heating_to_hot_water_cycling_daily": {
+        "name": "Heating to Hot Water Switches Daily"
+      },
+      "heating_runtime_total": {
+        "name": "Heating Runtime Total"
+      },
+      "heating_runtime_daily": {
+        "name": "Heating Runtime Daily"
+      },
+      "hot_water_runtime_total": {
+        "name": "Hot Water Runtime Total"
+      },
+      "hot_water_runtime_daily": {
+        "name": "Hot Water Runtime Daily"
+      },
+      "defrost_runtime_total": {
+        "name": "Defrost Runtime Total"
+      },
+      "defrost_runtime_daily": {
+        "name": "Defrost Runtime Daily"
+      },
+      "heating_rod_runtime_total": {
+        "name": "Heating Rod Runtime Total"
+      },
+      "heating_rod_runtime_daily": {
+        "name": "Heating Rod Runtime Daily"
+      },
+      "schedule_outside_temperature_calc": {
+        "name": "Heating Schedule Outside Temperature calc."
       }
     },
     "climate": {
@@ -590,6 +625,60 @@
       },
       "eco_temp_reduction": {
         "name": "Eco Temperature Reduction"
+      },
+      "target_room_temperature": {
+        "name": "Room Setpoint"
+      },
+      "maximum_buffer_temp": {
+        "name": "Maximum Buffer Temperature"
+      },
+      "pv_temperature_increase": {
+        "name": "PV Temperature Increase"
+      },
+      "dhw_switch_on_hysteresis": {
+        "name": "Hot Water Switch-on Hysteresis"
+      },
+      "dhw_switch_off_hysteresis": {
+        "name": "Hot Water Switch-off Hysteresis"
+      },
+      "dhw_maximum_temperature": {
+        "name": "Hot Water Maximum Setpoint"
+      },
+      "buffer_switch_on_hysteresis_25": {
+        "name": "Buffer Switch-on Hysteresis at 25°C"
+      },
+      "buffer_switch_on_hysteresis_50": {
+        "name": "Buffer Switch-on Hysteresis at 50°C"
+      },
+      "buffer_switch_off_hysteresis": {
+        "name": "Buffer Switch-off Hysteresis"
+      },
+      "buffer_setpoint_offset": {
+        "name": "Buffer Setpoint Offset Heating"
+      },
+      "hc_switch_on_hysteresis": {
+        "name": "Heating Circuit Switch-on Hysteresis"
+      },
+      "hc_switch_off_hysteresis": {
+        "name": "Heating Circuit Switch-off Hysteresis"
+      },
+      "hc_temperature_spread": {
+        "name": "Heating Circuit Temperature Spread"
+      },
+      "heating_limit_outside_temperature": {
+        "name": "Heating Limit Outside Temperature"
+      },
+      "hc_maximum_flow_temperature": {
+        "name": "Heating Circuit Maximum Flow Temperature"
+      },
+      "defrost_boost_count": {
+        "name": "Defrosts Before Room Setpoint Boost"
+      },
+      "defrost_boost_room_temperature": {
+        "name": "Room Setpoint After Defrosts"
+      },
+      "defrost_normal_room_temperature": {
+        "name": "Room Setpoint From Midnight"
       }
     }
   },
@@ -621,6 +710,17 @@
     "register_order": {
       "title": "Check the 32-bit register order of {name}",
       "description": "The energy counters of {name} read as values a heat pump cannot have (below zero or above 1 GWh). Read with the other register order they are plausible, so the controller most likely writes its 32-bit counters the other way round than is usual for firmware {firmware}.\n\nUntil this is fixed the two counters keep their last plausible value and no energy is booked from them.\n\nOpen the integration, choose **Configure** and set the **32-bit register order** from {current} to **{suggested}**. Compare the counters with the heat pump display afterwards. This message disappears once the counters read plausibly."
+    },
+    "dashboard_restart_required": {
+      "title": "Restart Home Assistant to show the Lambda Cockpit",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Restart Home Assistant",
+            "description": "The Lambda Cockpit dashboard appears after a restart. Submit to restart Home Assistant now."
+          }
+        }
+      }
     }
   }
 }

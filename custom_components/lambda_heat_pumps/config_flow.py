@@ -44,6 +44,7 @@ from .const import (
     CONF_HEATING_CIRCUIT_TEMP_STEP,
     CONF_HOT_WATER_MAX_TEMP,
     CONF_HOT_WATER_MIN_TEMP,
+    CONF_INSTALL_DASHBOARD,
     CONF_INT32_REGISTER_ORDER,
     CONF_PERIOD_SENSORS_ENABLED,
     CONF_PV_POWER_SENSOR_ENTITY,
@@ -326,6 +327,10 @@ class LambdaOptionsFlow(OptionsFlowWithReload):
                 vol.Required(
                     CONF_PERIOD_SENSORS_ENABLED,
                     default=options.get(CONF_PERIOD_SENSORS_ENABLED, False),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_INSTALL_DASHBOARD,
+                    default=options.get(CONF_INSTALL_DASHBOARD, False),
                 ): BooleanSelector(),
                 vol.Required(
                     CONF_PV_SURPLUS_MODE,

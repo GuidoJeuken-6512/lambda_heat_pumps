@@ -4,11 +4,22 @@ title: "Features"
 
 # Features der Lambda Heat Pumps Integration
 
-*Zuletzt geändert am 17.10.2026*
+*Zuletzt geändert am 04.11.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und Überwachung Ihrer Lambda-Wärmepumpe über Home Assistant. Hier finden Sie eine Übersicht aller verfügbaren Features.
 
-Diese Dokumentation beschreibt **Version 3.5**. Sie setzt **Home Assistant 2026.9.0 oder neuer** voraus.
+Diese Dokumentation beschreibt **Version 3.7**. Sie setzt **Home Assistant 2026.9.0 oder neuer** voraus.
+
+## 🖥️ Lambda Cockpit (Dashboard) – neu ab 3.7.0
+
+Die Integration bringt ein fertiges Dashboard mit, das sich mit einem Schalter in den Optionen anlegen lässt:
+
+- **Cockpit:** Betriebszustand mit animierter Außeneinheit, Vorlauf/Rücklauf, Verdichter, Leistung und Arbeitszahl, Warmwasser, Puffer und Heizkreis im Stil der Lambda-Regelung, Heizkurve mit Außentemperatur laut Wärmefahrplan, aktuelle Schaltpunkte, Laufzeiten, Energie heute und Jahresarbeitszahl.
+- **Bedienung direkt im Cockpit:** Warmwasser-Solltemperatur, Heizkurven-Offset, Raum-Soll und maximale Puffertemperatur.
+- **Entitäten-Übersicht:** alle Entitäten der Integration nach Modulen sortiert, mit Suche und Erklärung zu jedem Wert.
+- **Deutsch und Englisch**, je nach Sprache des Benutzerprofils.
+
+Einrichtung und Details: [Lambda Cockpit](lambda-cockpit.md)
 
 ## 🔌 Modbus/TCP Kommunikation
 
@@ -50,6 +61,10 @@ Umfassende Zähler für alle Betriebsmodi:
 
 Standardmäßig aktiv sind nur die Total-Zähler; die übrigen Zeiträume lassen sich beim Gerät unter „Entitäten“ einschalten.
 
+### Umschaltungen und Laufzeiten (neu ab 3.7.0)
+- **Umschaltungen Heizen → Warmwasser**: gesamt und täglich; gezählt wird ein direkter Wechsel oder einer über eine Pause von höchstens 10 Minuten
+- **Laufzeit Heizen, Warmwasser, Abtauen und Heizstab**: gesamt und täglich, in Stunden
+
 ### Funktionen
 - **Automatischer Reset**: Tägliche Sensoren werden automatisch um Mitternacht zurückgesetzt
 - **Offset-Konfiguration**: Anpassbare Zählerstände für Wärmepumpenwechsel oder Zählerrücksetzungen
@@ -86,6 +101,8 @@ Heizkurven-Berechnung und -Steuerung:
 
 Die Funktion der Heizkurven-Berechnung ist hier näher erklärt: [Heizkurve](heizkurve.md)
 
+Neu ab 3.7.0: Der Sensor **Außentemperatur Wärmefahrplan ber.** zeigt, mit welcher Außentemperatur die Lambda laut Wärmefahrplan gerade rechnet. Die Integration rechnet sie aus dem Soll-Vorlauf über die Heizkurve zurück.
+
 ## 🏠 Raumthermostat-Steuerung
 
 Es kann ein beliebiges Thermometer aus Home Assistant zur Steuerung pro Heizkreis eingebudnen werden. Die Lambda erhöht / verringert dann die Vorlauftemperatur je nachdem, ob die Temperatur über oder unter dem Soll-Temperaturwert ist.
@@ -106,6 +123,8 @@ Ein beliebiger Sensor, der den PV-Überschuss eurer PV-Anlage darstellt, kann hi
 - **Heizkreis** (`climate.<name>_hc1_heating_circuit`): Raum-Ist- und Raum-Solltemperatur des Heizkreises
 - **Kühlkreis** (`climate.<name>_hc1_cooling_circuit`, mit der Option „Kühlen“): Raum-Solltemperatur im Kühlbetrieb
 - **Vorlauf-Offset** (`number.<name>_hc1_flow_line_offset_temperature_number`): verschiebt die Vorlauftemperatur der Lambda um bis zu ±10 K
+- **Raum-Soll** (`number.<name>_hc1_target_room_temperature_number`, neu ab 3.7.0): Raum-Solltemperatur der Lambda (Register 5051), auch ohne Raumthermostat-Steuerung
+- **Maximale Puffertemperatur** (`number.<name>_buff1_maximum_buffer_temp_number`, neu ab 3.7.0, nur mit Puffer): Register 3050
 
 
 ## 🎛️ Erweiterte Konfiguration
@@ -128,6 +147,10 @@ Nach der Ersteinrichtung können Sie zusätzliche Einstellungen anpassen:
 - Raumthermostatsteuerung
 - Kühlen (Kühlkreis-Entität)
 - PV-Überschuss-Steuerung und Kodierung des PV-Überschusses
+- Perioden-Energiesensoren aktivieren
+- Dashboard „Lambda Cockpit“ installieren (neu ab 3.7.0)
+
+Alle Optionen im Detail: [Optionen des Config Flow](optionen-config-flow.md)
 
 Die Firmware-Version gehört **nicht** zu diesen Optionen – sie wird nur beim Ersteinrichten oder über „Neu konfigurieren" gesetzt (siehe [Firmware-Version ändern](firmware-wechsel.md)).
 
@@ -141,6 +164,7 @@ Damit kann jedes Register in einer Automatisierung in Home Assistant verwendet /
 - **`read_modbus_register`**: Lesen von Werten aus Modbus-Registern
 - **`write_modbus_register`**: Schreiben von Werten in Modbus-Register
 - **`update_room_temperature`**: Raumtemperaturen sofort an die Heizkreise senden (sonst alle 9 Sekunden)
+- **`generate_dashboard`**: das Dashboard „Lambda Cockpit“ neu schreiben, z. B. nach dem Löschen (neu ab 3.7.0)
 
 Details: [Aktionen](aktionen-modbus.md)
 
@@ -179,6 +203,7 @@ Details: [Aktionen](aktionen-modbus.md)
 **Weitere Informationen zu einzelnen Features finden Sie in der entsprechenden Dokumentation:**
 - [Installation](installation.md)
 - [Initiale Konfiguration](initiale-konfiguration.md)
+- [Lambda Cockpit](lambda-cockpit.md)
 - [Heizkurve](heizkurve.md)
 - [Raumthermometer](raumthermometer.md)
 - [WarmWasser-Steuerung](warmwasser-solltemperatur.md)

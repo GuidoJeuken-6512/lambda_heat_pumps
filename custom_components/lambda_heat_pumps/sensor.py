@@ -15,7 +15,10 @@ period zeroes itself when that period rolls over.
 the same period.
 
 **The heating-curve sensor** works out what flow temperature a circuit should be
-asking for, from the curve the user configured and the weather outside.
+asking for, from the curve the user configured and the weather outside. Its
+counterpart reads the curve backwards: which outside temperature the controller's
+own flow setpoint corresponds to, which is what its heating schedule (the
+"Wärmefahrplan") currently assumes.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     PERCENTAGE,
     UnitOfEnergy,
+    UnitOfTime,
     UnitOfPower,
     UnitOfTemperature,
     UnitOfVolumeFlowRate,
@@ -47,8 +51,11 @@ from homeassistant.helpers.recorder import get_instance
 
 from .const import (
     ATTR_APPLIED_OFFSET,
+    COCKPIT_COUNTER_KEYS,
+    CONF_INSTALL_DASHBOARD,
     CONF_PERIOD_SENSORS_ENABLED,
     CONF_ROOM_THERMOSTAT_CONTROL,
+    CURVE_FLOW_MIN,
     CURVE_POINTS,
     CYCLE_MODES,
     DEFAULT_ECO_TEMP_REDUCTION,
@@ -59,6 +66,7 @@ from .const import (
     MODE_COMPRESSOR_START,
     MODE_COOLING,
     MODE_HEATING,
+    MODE_HEATING_TO_HOT_WATER,
     MODE_HOT_WATER,
     PERIOD_2H,
     PERIOD_4H,
@@ -67,6 +75,7 @@ from .const import (
     PERIOD_MONTHLY,
     PERIOD_TOTAL,
     PERIOD_YEARLY,
+    RUNTIME_MODES,
     SIGNAL_PERIOD_ROLLOVER,
     THERMAL_ENERGY_MODES,
 )
@@ -363,6 +372,10 @@ CONTROLLER_COMPONENTS = {"ambient_": "ambient", "emgr_": "e_manager"}
 # symmetrical, and changing them would orphan existing entities.
 CYCLE_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY, PERIOD_2H, PERIOD_4H)
 COMPRESSOR_START_PERIODS = (*CYCLE_PERIODS, PERIOD_MONTHLY)
+# New with the cockpit: how often heating gave way to hot water, and how long
+# each mode ran.
+SWITCH_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY)
+RUNTIME_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY)
 ENERGY_PERIODS = (PERIOD_TOTAL, PERIOD_DAILY, PERIOD_MONTHLY, PERIOD_YEARLY)
 HEATING_ENERGY_PERIODS = (*ENERGY_PERIODS, PERIOD_HOURLY)
 
@@ -396,6 +409,30 @@ def _read_curve(outside: float, curve: list[tuple[float, float]]) -> float | Non
             span = (outside - cold_x) / (warm_x - cold_x)
             return cold_y + span * (warm_y - cold_y)
     return flows[-1]
+
+
+def _read_curve_backwards(
+    flow: float, curve: list[tuple[float, float]]
+) -> float | None:
+    """The outside temperature at which the curve gives this flow temperature.
+
+    The inverse of `_read_curve`, on the same points, except that it does not
+    stop at the ends: a flow above the coldest point or below the warmest is
+    extended along the outer segment, since the controller's schedule can shift
+    the outside temperature well past the points the user drew.
+    """
+    flows = [y for _, y in curve]
+    if any(warmer >= colder for colder, warmer in zip(flows, flows[1:], strict=False)):
+        return None  # not a falling curve, or a flat one: no single answer
+    segments = list(zip(curve, curve[1:], strict=False))
+    for (cold_x, cold_y), (warm_x, warm_y) in segments:
+        if warm_y <= flow <= cold_y:
+            break
+    else:
+        (cold_x, cold_y), (warm_x, warm_y) = (
+            segments[0] if flow > flows[0] else segments[-1]
+        )
+    return cold_x + (cold_y - flow) / (cold_y - warm_y) * (warm_x - cold_x)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -458,8 +495,31 @@ def _energy_description(mode: str, period: str, *, thermal: bool) -> CounterDesc
     )
 
 
+def _runtime_description(mode: str, period: str) -> CounterDescription:
+    """How long a heat pump has run in a mode, in hours."""
+    return CounterDescription(
+        key=f"{mode}_runtime_{period}",
+        mode=mode,
+        period=period,
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.HOURS,
+        state_class=(
+            SensorStateClass.TOTAL_INCREASING
+            if period == PERIOD_TOTAL
+            else SensorStateClass.TOTAL
+        ),
+        entity_registry_enabled_default=period == PERIOD_TOTAL,
+        suggested_display_precision=2,
+        # Hundredths of an hour: a state change every 36 s, not on every poll.
+        decimals=2,
+        total=lambda coordinator, index, mode=mode: coordinator.totals[index].runtime.get(
+            mode, 0.0
+        ),
+    )
+
+
 def _counter_descriptions(
-    *, period_sensors_enabled: bool = False
+    *, period_sensors_enabled: bool = False, cockpit: bool = False
 ) -> Iterable[CounterDescription]:
     """Every counter a heat pump has.
 
@@ -468,7 +528,20 @@ def _counter_descriptions(
     default — only takes effect for a counter that does not exist yet; an
     existing one is reconciled separately, see
     `_reconcile_period_sensor_enablement()`.
+
+    `cockpit` ships the per-day counters the cockpit dashboard shows enabled,
+    whatever the group toggle says.
     """
+    for description in _all_counter_descriptions(period_sensors_enabled):
+        if cockpit and description.key in COCKPIT_COUNTER_KEYS:
+            description = replace(description, entity_registry_enabled_default=True)
+        yield description
+
+
+def _all_counter_descriptions(
+    period_sensors_enabled: bool,
+) -> Iterable[CounterDescription]:
+    """Every counter a heat pump has, before the cockpit's say."""
     for mode in CYCLE_MODES:
         periods = (
             COMPRESSOR_START_PERIODS
@@ -478,6 +551,18 @@ def _counter_descriptions(
         for period in periods:
             yield _with_period_sensors_enabled(
                 _cycle_description(mode, period), period_sensors_enabled
+            )
+
+    for period in SWITCH_PERIODS:
+        yield _with_period_sensors_enabled(
+            _cycle_description(MODE_HEATING_TO_HOT_WATER, period),
+            period_sensors_enabled,
+        )
+
+    for mode in RUNTIME_MODES:
+        for period in RUNTIME_PERIODS:
+            yield _with_period_sensors_enabled(
+                _runtime_description(mode, period), period_sensors_enabled
             )
 
     for mode in ELECTRICAL_ENERGY_MODES:
@@ -533,6 +618,7 @@ async def async_setup_entry(
     period_sensors_option = entry.options.get(CONF_PERIOD_SENSORS_ENABLED)
     period_sensors_enabled = bool(period_sensors_option)
     period_sensor_unique_ids: set[str] = set()
+    cockpit = bool(entry.options.get(CONF_INSTALL_DASHBOARD, False))
 
     for description in CONTROLLER_SENSORS:
         if not serves(description, level):
@@ -579,16 +665,19 @@ async def async_setup_entry(
 
         counters: dict[str, LambdaCounterSensor] = {}
         for description in _counter_descriptions(
-            period_sensors_enabled=period_sensors_enabled
+            period_sensors_enabled=period_sensors_enabled, cockpit=cockpit
         ):
             yesterday = (
-                yesterdays[description.mode]
+                yesterdays.get(description.mode)
                 if description.key.endswith("_cycling_daily")
                 else None
             )
             counter = LambdaCounterSensor(coordinator, description, index, yesterday)
             counters[description.key] = counter
-            if description.period != PERIOD_TOTAL:
+            # The group toggle leaves the cockpit's own counters alone.
+            if description.period != PERIOD_TOTAL and not (
+                cockpit and description.key in COCKPIT_COUNTER_KEYS
+            ):
                 period_sensor_unique_ids.add(counter.unique_id)
         entities += counters.values()
 
@@ -620,10 +709,11 @@ async def async_setup_entry(
         for index in range(1, coordinator.counts["hp"] + 1)
     ]
 
-    entities += [
-        LambdaHeatingCurveSensor(coordinator, index)
-        for index in range(1, coordinator.counts["hc"] + 1)
-    ]
+    for index in range(1, coordinator.counts["hc"] + 1):
+        entities += [
+            LambdaHeatingCurveSensor(coordinator, index),
+            LambdaScheduleOutsideTemperatureSensor(coordinator, index),
+        ]
 
     async_add_entities(entities)
 
@@ -1184,4 +1274,71 @@ class LambdaHeatingCurveSensor(LambdaEntity, SensorEntity):
 
     def _setting(self, key: str, default: float) -> float:
         """A value the user set on one of this circuit's number entities."""
-        return self.coordinator.settings.get((self._index, key), default)
+        return self.coordinator.setting("hc", self._index, key, default)
+
+
+class LambdaScheduleOutsideTemperatureSensor(LambdaEntity, SensorEntity):
+    """The outside temperature the controller's heating schedule assumes.
+
+    The controller does not report it. It modifies the outside temperature by its
+    heating schedule (the "Wärmefahrplan") and reads its own curve there, so the
+    flow setpoint it reports (5007) is that curve's value at the modified
+    temperature, plus the offset (5050) and, while there is solar surplus, the
+    PV increase (5053). Taking those off and reading the user's copy of the curve
+    backwards gives the temperature it used — as good as that copy matches the
+    controller's curve (about ±0.4 K).
+    """
+
+    _entity_domain = "sensor"
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+    _attr_translation_key = "schedule_outside_temperature_calc"
+
+    def __init__(self, coordinator: LambdaCoordinator, index: int) -> None:
+        """Bind the sensor to one heating circuit."""
+        super().__init__(
+            coordinator, "schedule_outside_temperature_calc", "hc", index
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        """The outside temperature behind the current flow setpoint."""
+        circuit = self.coordinator.component("hc", self._index)
+        setpoint = circuit.target_temp_flow_line
+        if setpoint is None:
+            setpoint = circuit.flow_line_temperature_setpoint
+        # A circuit with no request (standby, summer) reports a setpoint of 0:
+        # there is no schedule temperature behind that to read back.
+        if setpoint is None or setpoint < CURVE_FLOW_MIN:
+            return None
+        flow = setpoint - (circuit.set_flow_line_offset_temperature or 0.0)
+        surplus = self.coordinator.device.e_manager.actual_power
+        if surplus and surplus > 0:
+            flow -= circuit.pv_temperature_increase or 0.0
+
+        curve = [
+            (point, self.coordinator.setting("hc", self._index, key, default))
+            for point, key, default in CURVE_POINTS
+        ]
+        outside = _read_curve_backwards(flow, curve)
+        # Far past the curve's ends the extension means nothing any more.
+        if outside is None or not -40.0 <= outside <= 40.0:
+            return None
+        # The controller works in whole degrees more often than not; a whole
+        # degree within what the setpoint's 0.1 K resolution blurs is taken.
+        whole = round(outside)
+        slope = _curve_slope(curve, outside)
+        if slope and abs(whole - outside) <= 0.05 / slope:
+            outside = float(whole)
+        return round(outside, 1)
+
+
+def _curve_slope(curve: list[tuple[float, float]], outside: float) -> float:
+    """How many kelvin of flow one kelvin outside is worth, at this point."""
+    for (cold_x, cold_y), (warm_x, warm_y) in zip(curve, curve[1:], strict=False):
+        if outside <= warm_x:
+            break
+    return abs((cold_y - warm_y) / (warm_x - cold_x))

@@ -68,6 +68,10 @@ DEFAULT_INT32_REGISTER_ORDER: Final = REGISTER_ORDER_HIGH_FIRST
 # Repair issues. Each is raised per config entry, as `<key>_<entry_id>`.
 ISSUE_UNKNOWN_FIRMWARE: Final = "unknown_firmware"
 ISSUE_REGISTER_ORDER: Final = "register_order"
+# Raised once the bundled dashboard has been written: Lovelace only reads a
+# dashboard written to its storage on startup, so it needs a restart to appear.
+# Fixable — the repair restarts Home Assistant.
+ISSUE_DASHBOARD_RESTART: Final = "dashboard_restart_required"
 
 # The most a heat pump's own Wh counter can plausibly have reached: 1 GWh, ten
 # times what a large one generates in a lifetime. A counter read with its two
@@ -96,6 +100,12 @@ CONF_PV_POWER_SENSOR_ENTITY: Final = "pv_power_sensor_entity"
 CONF_PV_SURPLUS_MODE: Final = "pv_surplus_mode"
 DEFAULT_PV_SURPLUS_MODE: Final = "pos"
 PV_SURPLUS_MODE_OPTIONS: Final = ["pos", "neg"]
+# Ships the Lambda Cockpit dashboard (see dashboard.py). Opt-in: the dashboard
+# only appears after a restart, and it creates the cockpit's settings entities.
+CONF_INSTALL_DASHBOARD: Final = "install_dashboard"
+# Winter: raise each circuit's room setpoint once the heat pump has defrosted a
+# given number of times in a day, and put it back at midnight.
+CONF_DEFROST_ROOM_BOOST: Final = "defrost_room_boost"
 
 # Polling. The full poll reads the whole controller. The fast poll reads only the
 # two registers the cycle counters watch for an edge — a compressor start can
@@ -144,6 +154,21 @@ MODE_HOT_WATER: Final = "hot_water"
 MODE_COOLING: Final = "cooling"
 MODE_DEFROST: Final = "defrost"
 MODE_COMPRESSOR_START: Final = "compressor_start"
+# Not operating states either: a direct change from heating to hot water, and
+# the second heating stage (the heating rod) being switched on.
+MODE_HEATING_TO_HOT_WATER: Final = "heating_to_hot_water"
+MODE_HEATING_ROD: Final = "heating_rod"
+
+# How long the heat pump may sit in standby between heating and hot water for
+# the change to still count as a switch from one to the other. The controller
+# often passes through a short standby (or circulation) on the way.
+SWITCH_STANDBY_GRACE_SECONDS: Final = 600
+
+# The modes whose running time is tracked, in hours. Time between two polls is
+# only counted when the polls are close enough together to say what happened
+# in between; a longer gap (the controller not answering) counts nothing.
+RUNTIME_MODES: Final = (MODE_HEATING, MODE_HOT_WATER, MODE_DEFROST, MODE_HEATING_ROD)
+MAX_RUNTIME_GAP_SECONDS: Final = 300
 
 OPERATING_STATE_MODE: Final = {
     0: MODE_STBY,
@@ -227,3 +252,36 @@ DEFAULT_ROOM_THERMOSTAT_FACTOR: Final = 1.0
 # What the controller's flow-line offset register can be set to.
 FLOW_LINE_OFFSET_MIN: Final = -10.0
 FLOW_LINE_OFFSET_MAX: Final = 10.0
+
+# The firmware versions (ordinals, see FIRMWARE_CONFIG) whose register map has
+# the PV temperature increases (boiler 2051, buffer 3051, heating circuit 5053,
+# Lambda Modbus documentation V006). No released firmware is confirmed to serve
+# them yet, so the set is empty and their entities are not created. Enabling them
+# also needs the read ranges in lambda_modbus/ranges.py widened to reach them.
+PV_OFFSET_FIRMWARE_VERSIONS: Final[tuple[int | str, ...]] = ()
+
+# Defaults for the values the cockpit needs that cannot be read over Modbus. They
+# are copies of controller settings the user enters once from the display.
+DEFAULT_DEFROST_BOOST_COUNT: Final = 4
+DEFAULT_DEFROST_BOOST_ROOM_TEMP: Final = 22.0
+DEFAULT_DEFROST_NORMAL_ROOM_TEMP: Final = 21.0
+
+# Bump when the generated dashboard changes, so an installation with the option
+# on gets the new one written once.
+DASHBOARD_LAYOUT_VERSION: Final = 1
+DASHBOARD_URL_PATH: Final = "lambda-cockpit"
+
+# The per-day counters the cockpit shows. With the dashboard installed they are
+# created enabled and left out of the per-period group toggle, which would
+# otherwise switch them back off.
+COCKPIT_COUNTER_KEYS: Final = frozenset(
+    {
+        *(f"{mode}_energy_daily" for mode in ("heating", "hot_water", "cooling", "defrost", "stby")),
+        *(f"{mode}_thermal_energy_daily" for mode in ("heating", "hot_water", "cooling", "defrost")),
+        "heating_cycling_daily",
+        "hot_water_cycling_daily",
+        "defrost_cycling_daily",
+        "heating_to_hot_water_cycling_daily",
+        *(f"{mode}_runtime_daily" for mode in RUNTIME_MODES),
+    }
+)

@@ -38,3 +38,7 @@ class HeatingCircuit(LambdaComponent):
     set_flow_line_offset_temperature = gauge(50, 0.1, writable=True, force_fc16=True, unit="°C")
     target_room_temperature = gauge(51, 0.1, writable=True, force_fc16=True, unit="°C")
     set_cooling_mode_room_temperature = gauge(52, 0.1, writable=True, force_fc16=True, unit="°C")
+    # PV operation: how far the setpoint is raised while there is solar
+    # surplus (Lambda Modbus documentation V006). Outside the read ranges for
+    # now, so it is never probed or read; see PV_OFFSET_FIRMWARE_VERSIONS.
+    pv_temperature_increase = gauge(53, 0.1, writable=True, force_fc16=True, unit="K")

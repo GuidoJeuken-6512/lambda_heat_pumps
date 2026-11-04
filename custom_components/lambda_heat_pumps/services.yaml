@@ -1,5 +1,7 @@
 update_room_temperature:
 
+generate_dashboard:
+
 read_modbus_register:
   fields:
     register_address:

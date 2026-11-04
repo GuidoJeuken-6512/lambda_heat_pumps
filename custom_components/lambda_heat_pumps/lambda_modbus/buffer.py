@@ -30,3 +30,7 @@ class Buffer(LambdaComponent):
     modbus_request_heating_capacity = gauge(9, 0.1, unit="kW", nan=_NAN_WITH_NO_REQUEST)
 
     maximum_buffer_temp = gauge(50, 0.1, writable=True, force_fc16=True, unit="°C")
+    # PV operation: how far the setpoint is raised while there is solar
+    # surplus (Lambda Modbus documentation V006). Outside the read ranges for
+    # now, so it is never probed or read; see PV_OFFSET_FIRMWARE_VERSIONS.
+    pv_temperature_increase = gauge(51, 0.1, writable=True, force_fc16=True, unit="K")

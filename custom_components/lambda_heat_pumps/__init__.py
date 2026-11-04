@@ -37,6 +37,7 @@ from .const import (
 )
 from .config_file import FILENAME as CONFIG_FILENAME
 from .coordinator import LambdaConfigEntry, LambdaCoordinator
+from .dashboard import async_setup_dashboard
 from .module_auto_detect import async_detect_modules
 from .services import async_setup_services, async_setup_writers
 
@@ -98,6 +99,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: LambdaConfigEntry) -> bo
     async_setup_services(hass)
     async_setup_writers(coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # After the platforms: the dashboard is built from the entities they made.
+    await async_setup_dashboard(hass, entry)
     return True
 
 

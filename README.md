@@ -434,6 +434,14 @@ The integration linearly interpolates between these points based on the current 
 
 ---
 
+## 🖥️ Lambda Cockpit (Dashboard)
+
+Ab 3.7.0 liefert die Integration ein fertiges Dashboard mit: Optionen → **Dashboard „Lambda Cockpit“ installieren**, danach Home Assistant über die Reparaturmeldung neu starten. Details: [Lambda Cockpit](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit/).
+
+*English:* From 3.7.0 the integration ships a ready-made dashboard: Options → **Install the Lambda Cockpit dashboard**, then restart Home Assistant from the repair it raises.
+
+---
+
 ## 📦 Manual Installation (without HACS)
 
 > ⚠️ **Requires Home Assistant ≥ 2026.9.** This integration depends on `modbus-connection[tmodbus]`, which is not installable/usable on older Home Assistant Core versions. HACS enforces this automatically; if you install manually, **you are responsible for checking your Home Assistant version yourself** — an older core will fail at setup with an unclear error rather than a helpful message.

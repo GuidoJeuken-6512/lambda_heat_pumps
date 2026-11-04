@@ -57,7 +57,8 @@
           "cooling_mode_enabled": "Kühlen",
           "pv_surplus": "PV-Überschuss nutzen",
           "period_sensors_enabled": "Perioden-Energiesensoren aktivieren",
-          "pv_surplus_mode": "Kodierung des PV-Überschusses"
+          "pv_surplus_mode": "Kodierung des PV-Überschusses",
+          "install_dashboard": "Dashboard „Lambda Cockpit“ installieren"
         },
         "data_description": {
           "update_interval": "Wie oft der Regler ausgelesen wird, in Sekunden.",
@@ -65,7 +66,8 @@
           "room_thermostat_control": "Jedem Heizkreis die Temperatur seines Raums von einem anderen Sensor senden.",
           "pv_surplus": "Dem Regler den überschüssigen Solarstrom melden, damit er ihn nutzen kann.",
           "period_sensors_enabled": "Aktiviert für jeden Fühler auch die stündlichen, 2h-, 4h-, Tages-, Monats-, Jahres- und Gestern-Sensoren (Lebenszeit-Summen bleiben immer an). Wirkt auch rückwirkend auf bestehende Entitäten - außer solchen, die Sie selbst einzeln deaktiviert haben.",
-          "pv_surplus_mode": "Ob der Regler das Überschussregister vorzeichenlos (nur Überschuss) oder vorzeichenbehaftet (Überschuss und Defizit) liest."
+          "pv_surplus_mode": "Ob der Regler das Überschussregister vorzeichenlos (nur Überschuss) oder vorzeichenbehaftet (Überschuss und Defizit) liest.",
+          "install_dashboard": "Legt ein Dashboard „Lambda Cockpit“ an, mit dem Cockpit und einer Übersicht aller Entitäten, dazu die Einstellwerte, die es braucht (Schalthysteresen u. a., vom Display übernommen). Es erscheint nach einem Neustart von Home Assistant, den eine Reparaturmeldung anbietet. Ausschalten entfernt das Dashboard und seine Einstellwerte wieder; eigene Änderungen am Dashboard gehen dabei verloren."
         }
       },
       "room_sensors": {
@@ -556,6 +558,39 @@
       },
       "emgr_power_consumption_setpoint": {
         "name": "E-Manager Sollleistung"
+      },
+      "heating_to_hot_water_cycling_total": {
+        "name": "Umschaltungen Heizen-Warmwasser Gesamt"
+      },
+      "heating_to_hot_water_cycling_daily": {
+        "name": "Umschaltungen Heizen-Warmwasser Täglich"
+      },
+      "heating_runtime_total": {
+        "name": "Laufzeit Heizen Gesamt"
+      },
+      "heating_runtime_daily": {
+        "name": "Laufzeit Heizen Täglich"
+      },
+      "hot_water_runtime_total": {
+        "name": "Laufzeit Warmwasser Gesamt"
+      },
+      "hot_water_runtime_daily": {
+        "name": "Laufzeit Warmwasser Täglich"
+      },
+      "defrost_runtime_total": {
+        "name": "Laufzeit Abtauen Gesamt"
+      },
+      "defrost_runtime_daily": {
+        "name": "Laufzeit Abtauen Täglich"
+      },
+      "heating_rod_runtime_total": {
+        "name": "Laufzeit Heizstab Gesamt"
+      },
+      "heating_rod_runtime_daily": {
+        "name": "Laufzeit Heizstab Täglich"
+      },
+      "schedule_outside_temperature_calc": {
+        "name": "Außentemperatur Wärmefahrplan ber."
       }
     },
     "climate": {
@@ -590,6 +625,60 @@
       },
       "eco_temp_reduction": {
         "name": "Eco Temperatur Reduktion"
+      },
+      "target_room_temperature": {
+        "name": "Raum-Soll"
+      },
+      "maximum_buffer_temp": {
+        "name": "Maximale Puffertemperatur"
+      },
+      "pv_temperature_increase": {
+        "name": "PV-Temperaturerhöhung"
+      },
+      "dhw_switch_on_hysteresis": {
+        "name": "Warmwasser Einschalthysterese"
+      },
+      "dhw_switch_off_hysteresis": {
+        "name": "Warmwasser Ausschalthysterese"
+      },
+      "dhw_maximum_temperature": {
+        "name": "Warmwasser maximale Solltemperatur"
+      },
+      "buffer_switch_on_hysteresis_25": {
+        "name": "Puffer Einschalthysterese bei 25°C"
+      },
+      "buffer_switch_on_hysteresis_50": {
+        "name": "Puffer Einschalthysterese bei 50°C"
+      },
+      "buffer_switch_off_hysteresis": {
+        "name": "Puffer Ausschalthysterese"
+      },
+      "buffer_setpoint_offset": {
+        "name": "Puffer Solltemperaturoffset Heizbetrieb"
+      },
+      "hc_switch_on_hysteresis": {
+        "name": "Heizkreis Einschalthysterese"
+      },
+      "hc_switch_off_hysteresis": {
+        "name": "Heizkreis Ausschalthysterese"
+      },
+      "hc_temperature_spread": {
+        "name": "Heizkreis Temperaturspreizung"
+      },
+      "heating_limit_outside_temperature": {
+        "name": "Heizgrenze Außentemperatur"
+      },
+      "hc_maximum_flow_temperature": {
+        "name": "Heizkreis maximale Vorlauftemperatur"
+      },
+      "defrost_boost_count": {
+        "name": "Abtauungen bis Raum-Soll-Anhebung"
+      },
+      "defrost_boost_room_temperature": {
+        "name": "Raum-Soll nach Abtauungen"
+      },
+      "defrost_normal_room_temperature": {
+        "name": "Raum-Soll ab Mitternacht"
       }
     }
   },
@@ -621,6 +710,17 @@
     "register_order": {
       "title": "32-Bit-Registerreihenfolge von {name} prüfen",
       "description": "Die Energiezähler von {name} liefern Werte, die eine Wärmepumpe nicht haben kann (unter null oder über 1 GWh). Mit der anderen Registerreihenfolge gelesen sind sie plausibel. Die Steuerung legt ihre 32-Bit-Zähler also vermutlich andersherum ab, als es für die Firmware {firmware} üblich ist.\n\nBis das korrigiert ist, behalten die beiden Zähler ihren letzten plausiblen Wert, und es wird keine Energie aus ihnen gezählt.\n\nÖffne die Integration, wähle **Konfigurieren** und stelle die **32-Bit-Registerreihenfolge** von {current} auf **{suggested}**. Vergleiche die Zähler danach mit dem Display der Wärmepumpe. Dieser Hinweis verschwindet, sobald die Zähler plausibel sind."
+    },
+    "dashboard_restart_required": {
+      "title": "Home Assistant neu starten, um das Lambda Cockpit anzuzeigen",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Home Assistant neu starten",
+            "description": "Das Dashboard „Lambda Cockpit“ erscheint nach einem Neustart. Absenden startet Home Assistant jetzt neu."
+          }
+        }
+      }
     }
   }
 }

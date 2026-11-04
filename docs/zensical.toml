@@ -59,6 +59,7 @@ nav = [
     { "Raumthermometer" = "Anwender/raumthermometer.md" },
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
     { "PV Überschuss Steuerung" = "Anwender/pv_ueberschuss_steuerung.md" },
+    { "Lambda Cockpit (Dashboard)" = "Anwender/lambda-cockpit.md" },
     { "Energieverbrauchsberechnung" = "Anwender/Energieverbrauchsberechnung.md" },
 #    { "Korrektur Verbrauchsberechnung" = "Anwender/energiesensoren-entwicklerwerkzeuge.md" },
     { "COP-Sensoren (Leistungszahl)" = "Anwender/cop-sensoren.md" },
