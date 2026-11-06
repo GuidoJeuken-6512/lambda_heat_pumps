@@ -296,3 +296,9 @@ def unreachable() -> Iterator[None]:
         patch("custom_components.lambda_heat_pumps.config_flow.ModbusConnection", connector),
     ):
         yield
+
+
+@pytest.fixture
+def hass_config_dir(hass_tmp_config_dir: str) -> str:
+    """Give each test an existing, isolated Home Assistant config directory."""
+    return hass_tmp_config_dir
