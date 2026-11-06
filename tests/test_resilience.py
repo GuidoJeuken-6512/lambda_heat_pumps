@@ -20,7 +20,7 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from modbus_connection import ModbusTimeoutError
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant.common import async_fire_time_changed
 
 from custom_components.lambda_heat_pumps.coordinator import _TIMEOUTS_BEFORE_RECYCLING
 
@@ -524,7 +524,7 @@ async def test_the_capacity_limits_are_polled_on_the_hour(
     from datetime import timedelta
 
     from freezegun.api import FrozenDateTimeFactory
-    from pytest_homeassistant_custom_component.common import async_fire_time_changed
+    from pytest_homeassistant.common import async_fire_time_changed
 
     entry = await setup_entry(hass, controller, legacy=True)
     coordinator = entry.runtime_data

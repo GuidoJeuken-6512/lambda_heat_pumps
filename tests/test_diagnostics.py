@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from homeassistant.components.diagnostics import REDACTED
 from homeassistant.core import HomeAssistant
-from pytest_homeassistant_custom_component.common import MockConfigEntry
-from pytest_homeassistant_custom_component.components.diagnostics import (
+from pytest_homeassistant.common import MockConfigEntry
+from pytest_homeassistant.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
 
