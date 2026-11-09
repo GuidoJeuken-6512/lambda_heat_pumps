@@ -392,13 +392,12 @@ async def test_a_no_request_or_no_sensor_register_reads_unknown(
     """0xFFFF ("no request" / "nothing fed in") is not read as a measurement.
 
     Unlike 0x8000 and 0xF448 this is not a global sentinel — -1 is a genuine
-    value on other registers (e.g. temperature offsets) — so it is only
-    filtered on the handful of fields that actually use it this way: the
-    ambient temperature (no external sensor connected) and a buffer's request
-    registers (no active request).
+    value on other registers (e.g. temperature offsets, or -0.1 °C outside) —
+    so it is only filtered on the fields that actually use it this way: a
+    buffer's request registers (no active request).
     """
     controller.install(3000)  # buffer 1
-    controller.registers[2] = 0xFFFF  # ambient temperature: no external sensor
+    controller.registers[2] = 0xFFFF  # ambient temperature: -0.1 °C (#153)
     controller.registers[3005] = 0xFFFF  # buffer request type: no request
     controller.registers[3006] = 0xFFFF  # buffer request flow line setpoint
     entry = await setup_entry(hass, controller, legacy=True)
@@ -411,14 +410,14 @@ async def test_a_no_request_or_no_sensor_register_reads_unknown(
     )
 
     for unique_id in (
-        "eu08l_ambient_temperature",
         "eu08l_buff1_request_type",
         "eu08l_buff1_request_flow_line_temp_setpoint",
     ):
         assert state_of(hass, unique_id) in ("unknown", "unavailable"), unique_id
 
-    # A register where -1 is a real value is untouched.
+    # Registers where -1 is a real value are untouched.
     assert state_of(hass, "eu08l_hc1_set_flow_line_offset_temperature") == "0.0"
+    assert state_of(hass, "eu08l_ambient_temperature") == "-0.1"
 
 
 async def test_modules_are_their_own_devices(
