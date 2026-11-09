@@ -8,7 +8,7 @@ from unittest.mock import patch
 import yaml
 from homeassistant.core import HomeAssistant, State
 import pytest
-from pytest_homeassistant_custom_component.common import mock_restore_cache_with_extra_data
+from pytest_homeassistant.common import mock_restore_cache_with_extra_data
 
 from custom_components.lambda_heat_pumps.config_file import FILENAME
 from custom_components.lambda_heat_pumps.const import ATTR_APPLIED_OFFSET

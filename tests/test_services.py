@@ -15,7 +15,7 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.util import dt as dt_util
 import pytest
 from modbus_connection import ModbusTimeoutError
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant.common import async_fire_time_changed
 
 from custom_components.lambda_heat_pumps.const import (
     CONF_PV_POWER_SENSOR_ENTITY,

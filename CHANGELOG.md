@@ -17,6 +17,12 @@
 > - **Firmware 3+ (from V0.0.5-3K, incl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` is gone.** On this firmware, heating-circuit register 7 is the read-only target flow temperature the controller works with, not a writable setpoint request ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Its replacement is `hcX_target_temp_flow_line`. The old entity stays behind as "no longer provided", and dashboards, helpers and automations using it break silently. → To keep the history: delete the orphaned `…_flow_line_temperature_setpoint` entity, then rename `…_target_temp_flow_line` to the old entity_id (Settings → Entities → entity → ⚙ → Entity ID).
 > - Back up before upgrading.
 
+### [3.6.3] - unreleased
+
+**Outside temperature no longer flips to "unknown" at -0.1 °C** ([#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153)). The raw value of -0.1 °C was mistaken for the controller's "no sensor" code, so around freezing `ambient_temperature` kept switching between a value and unknown. A missing sensor is still recognised by its own code (-300 °C).
+
+**Docker / older Home Assistant:** `tmodbus>=0.6.1` is now a requirement of its own, so Home Assistant installs a version that has the UDP client the integration needs ([#149](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/149)).
+
 ### [3.6.1] - 2026-10-30
 
 **New option: enable all per-period energy sensors at once.** The hourly, 2h, 4h, daily, monthly, yearly and "yesterday" breakdown sensors (cycling, energy, thermal energy and COP) ship disabled by default — only the lifetime totals are on. The new **"Enable per-period energy sensors"** toggle under *Configure* turns all of them on (or off again) at once, retroactively for existing installations too, not just new ones; an entity you disabled yourself individually is left alone either way. The lifetime totals are unaffected and always stay on. Useful for the [Lambda Energy Dashboard template](https://guidojeuken-6512.github.io/lambda_heat_pumps/Vorlagen/Lambda_energy_dashboard/), which needs these sensors enabled.
@@ -79,6 +85,12 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 > - Reparaturen zu *unbekannten Entitätsreferenzen* in Dashboards/Templates bedeuten, dass eine 2.x-Entität in 3.5 umbenannt oder entfernt wurde — Karte/Template anpassen.
 > - **Firmware 3+ (ab V0.0.5-3K, inkl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` entfällt.** Auf dieser Firmware ist Heizkreis-Register 7 die schreibgeschützte Vorlauf-Solltemperatur, mit der die Steuerung arbeitet, keine beschreibbare Sollwert-Anforderung ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Ersatz ist `hcX_target_temp_flow_line`. Die alte Entität bleibt als „nicht mehr bereitgestellt“ zurück; Dashboards, Helfer und Automationen, die sie nutzen, brechen stillschweigend. → Um den Verlauf zu behalten: die verwaiste `…_flow_line_temperature_setpoint`-Entität löschen, dann `…_target_temp_flow_line` auf die alte entity_id umbenennen (Einstellungen → Entitäten → Entität → ⚙ → Entitäts-ID).
 > - Vor dem Update ein Backup erstellen.
+
+### [3.6.3] - unveröffentlicht
+
+**Außentemperatur springt bei -0,1 °C nicht mehr auf „unbekannt“** ([#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153)). Der Rohwert für -0,1 °C wurde für den Code „kein Fühler“ der Lambda gehalten; um den Gefrierpunkt wechselte `ambient_temperature` deshalb ständig zwischen Wert und unbekannt. Ein fehlender Fühler wird weiter an seinem eigenen Code (-300 °C) erkannt.
+
+**Docker / ältere Home-Assistant-Installationen:** `tmodbus>=0.6.1` ist jetzt eine eigene Anforderung, damit Home Assistant eine Version mit dem benötigten UDP-Client installiert ([#149](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/149)).
 
 ### [3.6.1] - 2026-10-30
 
