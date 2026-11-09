@@ -48,6 +48,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.recorder import get_instance
+from homeassistant.helpers.storage import Store
 
 from .const import (
     ATTR_APPLIED_OFFSET,
@@ -699,7 +700,9 @@ async def async_setup_entry(
                 if period != PERIOD_TOTAL:
                     period_sensor_unique_ids.add(cop.unique_id)
 
-    if period_sensors_option is not None:
+    if period_sensors_option is not None and await _period_toggle_changed(
+        hass, entry, period_sensors_enabled
+    ):
         _reconcile_period_sensor_enablement(
             hass, entry, period_sensor_unique_ids, period_sensors_enabled
         )
@@ -716,6 +719,31 @@ async def async_setup_entry(
         ]
 
     async_add_entities(entities)
+
+
+# The group toggle value last applied to the registry, by config entry id.
+_PERIOD_TOGGLE_KEY = f"{DOMAIN}.period_sensors"
+
+
+async def _period_toggle_changed(
+    hass: HomeAssistant, entry: LambdaConfigEntry, enabled: bool
+) -> bool:
+    """Whether the group toggle differs from what was last applied, and remember it.
+
+    The options form always saves the toggle, so its value alone does not say
+    the user flipped it: saving the options for any other reason would sweep
+    period sensors enabled one by one back off. Only a change is applied. With
+    nothing remembered yet (first start after the update) an "off" toggle
+    changes nothing, while "on" is applied once.
+    """
+    store: Store[dict[str, bool]] = Store(hass, 1, _PERIOD_TOGGLE_KEY)
+    applied = await store.async_load() or {}
+    last = applied.get(entry.entry_id)
+    if last == enabled:
+        return False
+    applied[entry.entry_id] = enabled
+    await store.async_save(applied)
+    return last is not None or enabled
 
 
 def _reconcile_period_sensor_enablement(

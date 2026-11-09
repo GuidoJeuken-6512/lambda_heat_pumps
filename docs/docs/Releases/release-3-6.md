@@ -4,7 +4,7 @@ title: "Release 3.6"
 
 # Release 3.6
 
-*Zuletzt geändert am 31.10.2026*
+*Zuletzt geändert am 09.11.2026*
 
 Version 3.x ist eine von Grund auf neu geschriebene Fassung der Integration. Sie nutzt die überarbeitete Modbus-Anbindung von Home Assistant ([`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)) und benötigt **Home Assistant 2026.9.0 oder neuer**. **3.6.1 ist das erste über HACS verteilte Release nach 2.8.6.** Wer bisher 2.8.x nutzt, springt damit direkt auf den neuen Stand.
 
@@ -67,5 +67,5 @@ Was in `lambda_wp_config.yaml` bleibt: Offsets und externe Energiezähler, siehe
 | 3.5.5 | Doppelte Belegung von Heizkreis-Register 7 bei Firmware ab V0.0.5-3K (#112) |
 | 3.5.4 | Veraltete Home-Assistant-Funktion ersetzt (#121) |
 | 3.5.3 | Schreibzugriffe schlugen fehl (falscher Modbus-Funktionscode) |
-| 3.5.2 | Sonderwert 0xFFFF (−0,1 °C) wird bei Außentemperatur und Anforderungen als „unbekannt“ angezeigt; Modbus-Zugriffe sauber serialisiert |
+| 3.5.2 | Sonderwert 0xFFFF wird bei Anforderungen als „unbekannt“ angezeigt (bei der Außentemperatur ab 3.6.3 wieder als −0,1 °C, #153); Modbus-Zugriffe sauber serialisiert |
 | 3.5.0 | Neu geschriebene Integration |

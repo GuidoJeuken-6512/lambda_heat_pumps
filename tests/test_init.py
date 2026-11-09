@@ -865,6 +865,47 @@ async def test_a_user_disabled_period_sensor_is_left_alone_by_the_toggle(
     assert registry.async_get(entity_id).disabled_by is er.RegistryEntryDisabler.USER
 
 
+async def test_saving_the_options_keeps_individually_enabled_period_sensors(
+    hass: HomeAssistant, controller: Controller
+) -> None:
+    """Saving the options with the toggle unchanged leaves period sensors alone.
+
+    The options form always stores the toggle (off by default). That alone must
+    not disable a period sensor the user turned on by hand.
+    """
+    entry = await setup_entry(hass, controller, legacy=True)
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_hp1_compressor_start_cycling_daily"
+    )
+    registry.async_update_entity(entity_id, disabled_by=None)
+
+    # First save of the options form: the toggle shows up as "off".
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: False}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get(entity_id).disabled_by is None
+
+    # Saved again for some other reason, toggle still off.
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, "unrelated": 1}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get(entity_id).disabled_by is None
+
+    # Flipping it on and off again is still applied.
+    for value, expected in ((True, None), (False, er.RegistryEntryDisabler.INTEGRATION)):
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, CONF_PERIOD_SENSORS_ENABLED: value}
+        )
+        await hass.config_entries.async_reload(entry.entry_id)
+        await hass.async_block_till_done()
+        assert registry.async_get(entity_id).disabled_by is expected, value
+
+
 async def test_a_float_unit_id_is_coerced_to_int(
     hass: HomeAssistant, controller: Controller
 ) -> None:

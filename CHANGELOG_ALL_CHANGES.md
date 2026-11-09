@@ -7,6 +7,28 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.7.0] - unreleased
+
+**Lambda Cockpit: a ready-made dashboard.** The new option **"Install dashboard “Lambda Cockpit”"** under *Configure* creates a dashboard for the heat pump: operating state, hot water, heating circuit, heating curve with the heat schedule, switching points, runtimes, energy and efficiency, plus a page listing every entity of the integration with an explanation. A repair then offers to restart Home Assistant, which is needed once for a new dashboard. Turning the option off removes the dashboard again. Hot water setpoint, heating curve offset, room setpoint and maximum buffer temperature can be set from the cockpit. The cards `custom:lambda-cockpit-card` and `custom:lambda-entities-card` are available in any dashboard, with or without the option. Texts follow the user's language (German/English). [Guide](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit/)
+
+**New sensors and controls:** runtime of heating, hot water, defrost and heating rod (total and daily), switches from heating to hot water (total and daily), the outside temperature the controller works with according to its heat schedule (calculated back from the flow setpoint and the heating curve), room setpoint (register 5051) and maximum buffer temperature (register 3050) as numbers.
+
+**Details on the cockpit:**
+- The dashboard is stored like any dashboard created in the UI and can be edited; a newer layout of the integration rewrites it once. Entity ids are resolved through the entity registry, so renamed entities and legacy prefixes are picked up.
+- A few settings the switching-point display needs (hysteresis, spread, heating limit, maximum temperatures) are not available over Modbus. With the option on they are created as configuration numbers holding a copy of the values on the controller's display; changing them does not change the controller.
+- The cockpit's daily counters are enabled with the option even while "Enable per-period energy sensors" is off.
+- Firefox: the cards register themselves again once Home Assistant has replaced the custom element registry with its polyfill, so they no longer show "Custom element doesn't exist".
+
+**Individually enabled period sensors stay enabled.** Since 3.6.1, saving the options for any reason disabled every per-period sensor while "Enable per-period energy sensors" was off, including ones enabled by hand (e.g. `hp1_compressor_start_cycling_daily`). The toggle now only acts when it is actually flipped. Sensors disabled this way under 3.6.1 are not re-enabled automatically; turn them back on under Settings → Entities.
+
+### [3.6.3] - unreleased
+
+**Outside temperature no longer flips to "unknown" at -0.1 °C** ([#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153)). Since 3.5.2 the ambient temperature (register 2) also treated 0xFFFF as "no external sensor". Scaled by 0.1 that is -0.1 °C, a genuine reading, so around freezing the sensor kept switching between a value and unknown. A missing sensor reports -3000 (-300 °C) and is still filtered. The buffer request registers and the heating circuit operating mode keep the 0xFFFF filter: there -1 does mean "no request".
+
+**`tmodbus>=0.6.1` is a requirement of its own** ([#149](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/149)). Home Assistant only checks the requirements a manifest names, not those of its dependencies, so a Docker install could keep an older `tmodbus` without the UDP client `modbus-connection` imports. 3.6.2 was not released; its changes ship with 3.6.3.
+
+**Tests** run against `pytest-homeassistant` 2026.11.0 instead of `pytest-homeassistant-custom-component` ([#154](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/pull/154)).
+
 ### [3.6.1] - 2026-10-30
 
 **New option: enable all per-period energy sensors at once.** The hourly, 2h, 4h, daily, monthly, yearly and "yesterday" breakdown sensors (cycling, energy, thermal energy and COP, 56 entities per heat pump across all of them) ship disabled by default — only the lifetime totals are on, since the energy dashboard and `utility_meter` can derive the rest from a total. The new **"Enable per-period energy sensors"** toggle under *Configure* turns all of them on (or off again) at once. It applies retroactively to existing installations too, not just new ones, by walking the entity registry directly — `entity_registry_enabled_default` only ever takes effect the first time an entity is created, so flipping it alone would have done nothing for an existing install. An entity you disabled yourself individually (not through this toggle) is left alone, in either direction. The lifetime totals are unaffected and always stay on.
@@ -483,6 +505,28 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.7.0] - unveröffentlicht
+
+**Lambda Cockpit: ein fertiges Dashboard.** Die neue Option **„Dashboard ‚Lambda Cockpit‘ installieren“** unter *Konfigurieren* legt ein Dashboard für die Wärmepumpe an: Betriebszustand, Warmwasser, Heizkreis, Heizkurve mit Wärmefahrplan, Schaltpunkte, Laufzeiten, Energie und Arbeitszahlen, dazu eine Seite mit allen Entitäten der Integration und einer Erklärung. Danach bietet eine Reparaturmeldung den einmal nötigen Neustart von Home Assistant an. Ausschalten entfernt das Dashboard wieder. Warmwasser-Soll, Offset der Heizkurve, Raum-Soll und maximale Puffertemperatur lassen sich im Cockpit einstellen. Die Karten `custom:lambda-cockpit-card` und `custom:lambda-entities-card` stehen in jedem Dashboard zur Verfügung, auch ohne die Option. Die Texte folgen der Sprache des Benutzers (Deutsch/Englisch). [Anleitung](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit/)
+
+**Neue Sensoren und Regler:** Laufzeit Heizen, Warmwasser, Abtauen und Heizstab (gesamt und täglich), Umschaltungen Heizen → Warmwasser (gesamt und täglich), die Außentemperatur, mit der die Lambda laut Wärmefahrplan rechnet (aus Soll-Vorlauf und Heizkurve zurückgerechnet), Raum-Soll (Register 5051) und maximale Puffertemperatur (Register 3050) als Regler.
+
+**Details zum Cockpit:**
+- Das Dashboard wird wie ein in der Oberfläche angelegtes gespeichert und lässt sich bearbeiten; ein neuerer Aufbau der Integration schreibt es einmal neu. Die Entitäts-IDs werden über die Entity-Registry ermittelt, umbenannte Entitäten und Legacy-Präfixe passen also.
+- Einige Werte für die Schaltpunkte (Hysteresen, Spreizung, Heizgrenze, Maximaltemperaturen) gibt es nicht per Modbus. Mit der Option entstehen sie als Konfigurations-Regler mit einer Kopie der Werte aus dem Lambda-Display; eine Änderung verstellt die Lambda nicht.
+- Die Tageszähler des Cockpits schaltet die Option ein, auch wenn „Perioden-Energiesensoren aktivieren“ aus ist.
+- Firefox: Die Karten melden sich erneut an, nachdem Home Assistant die Registry für eigene Elemente durch sein Polyfill ersetzt hat, und zeigen kein „Custom element doesn't exist“ mehr.
+
+**Einzeln aktivierte Perioden-Sensoren bleiben aktiv.** Seit 3.6.1 deaktivierte das Speichern der Optionen aus beliebigem Grund alle Perioden-Sensoren, solange „Perioden-Energiesensoren aktivieren“ aus war, auch von Hand eingeschaltete (z. B. `hp1_compressor_start_cycling_daily`). Der Schalter wirkt jetzt nur noch, wenn er tatsächlich umgelegt wird. Unter 3.6.1 so deaktivierte Sensoren werden nicht automatisch wieder aktiviert; bitte unter Einstellungen → Entitäten einschalten.
+
+### [3.6.3] - unveröffentlicht
+
+**Außentemperatur springt bei -0,1 °C nicht mehr auf „unbekannt“** ([#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153)). Seit 3.5.2 filterte die Außentemperatur (Register 2) zusätzlich 0xFFFF als „kein externer Fühler“. Mit Faktor 0,1 ist das -0,1 °C, ein echter Messwert; um den Gefrierpunkt wechselte der Sensor deshalb ständig zwischen Wert und unbekannt. Ein fehlender Fühler meldet -3000 (-300 °C) und wird weiter gefiltert. Die Puffer-Anforderungsregister und die Heizkreis-Betriebsart behalten den 0xFFFF-Filter: Dort bedeutet -1 tatsächlich „keine Anforderung“.
+
+**`tmodbus>=0.6.1` ist eine eigene Anforderung** ([#149](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/149)). Home Assistant prüft nur die im Manifest genannten Anforderungen, nicht die der Abhängigkeiten; eine Docker-Installation konnte so ein älteres `tmodbus` ohne den UDP-Client behalten, den `modbus-connection` importiert. 3.6.2 wurde nicht veröffentlicht; die Änderungen kommen mit 3.6.3.
+
+**Tests** laufen gegen `pytest-homeassistant` 2026.11.0 statt `pytest-homeassistant-custom-component` ([#154](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/pull/154)).
 
 ### [3.6.1] - 2026-10-30
 

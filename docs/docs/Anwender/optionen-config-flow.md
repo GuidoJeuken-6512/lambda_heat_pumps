@@ -4,7 +4,7 @@ title: "Optionen des config_flow"
 
 # Optionen der Integration („Konfigurieren“)
 
-*Zuletzt geändert am 04.11.2026*
+*Zuletzt geändert am 09.11.2026*
 
 <div style="display: flex; gap: 20px; align-items: flex-start; margin: 20px 0; flex-wrap: wrap;">
   <div style="flex: 0 0 50%; min-width: 300px;">
@@ -61,7 +61,8 @@ Ist ein Minimum nicht kleiner als das Maximum, lehnt der Dialog das Speichern ab
 
 - **Standard:** aus.
 - Schaltet für jeden Zyklus-, Energie-, Wärme- und COP-Zähler zusätzlich alle Perioden-Sensoren frei: stündlich, 2 h, 4 h, täglich, monatlich, jährlich und „gestern“. Die Lebenszeit-Summe (`total`) ist davon nicht betroffen — sie ist immer an.
-- Wirkt **rückwirkend**, auch auf bereits laufende Installationen: Beim Speichern werden alle betroffenen, bereits existierenden Entitäten automatisch aktiviert bzw. (beim Ausschalten) wieder deaktiviert. Eine Entität, die Sie selbst einzeln über **Entitäten** deaktiviert haben, lässt der Schalter in Ruhe.
+- Wirkt **rückwirkend**, auch auf bereits laufende Installationen: Wenn Sie den Schalter umlegen, werden alle betroffenen, bereits existierenden Entitäten automatisch aktiviert bzw. (beim Ausschalten) wieder deaktiviert. Eine Entität, die Sie selbst einzeln über **Entitäten** deaktiviert haben, lässt der Schalter in Ruhe.
+- Speichern Sie die Optionen aus einem anderen Grund und lassen den Schalter, wie er ist, bleiben einzeln aktivierte Perioden-Sensoren aktiv (ab 3.7.0).
 - Praktisch, wenn Sie das [Lambda-Energy-Dashboard](../Vorlagen/Lambda_energy_dashboard.md) nutzen möchten, ohne die 56 Perioden-Sensoren einzeln freizuschalten.
 
 <img src="../assets/options_cockpit_de.png" alt="Options-Dialog mit dem Schalter Dashboard Lambda Cockpit installieren" style="max-width: 480px; width: 100%; height: auto; border-radius: 8px;">

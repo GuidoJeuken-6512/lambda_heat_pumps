@@ -1,23 +1,23 @@
 # ToDo
 
-*Stand 04.11.2026, Branch `feature/lambda-cockpit` (3.7.0)*
+*Stand 09.11.2026, Branch `feature/lambda-cockpit` (3.7.0)*
 
 ## Offen aus dem Lambda Cockpit
 
-- [ ] **`sensor.eu08l_hp1_compressor_start_cycling_daily` ist nicht mehr vorhanden** (gemeldet 04.11.2026).
+- [x] **`sensor.eu08l_hp1_compressor_start_cycling_daily` ist nicht mehr vorhanden** — behoben 09.11.2026: Schalter wirkt nur noch beim Umlegen (`_period_toggle_changed`, Store `lambda_heat_pumps.period_sensors`). (gemeldet 04.11.2026).
   - **Befund (Test-Container):** Die Entität existiert noch, ist aber von der Integration deaktiviert (`disabled_by: integration`, geändert am 04.11. 18:39:21 = Speichern der Optionen). Insgesamt 48 Perioden-Sensoren sind so deaktiviert.
   - **Ursache (seit 3.6.1, nicht durch das Cockpit):** Der Options-Dialog speichert beim ersten Absenden immer auch `period_sensors_enabled` (Standard: aus). Ab dann gleicht `_reconcile_period_sensor_enablement()` (`sensor.py`) bei jedem Laden alle Perioden-Sensoren an den Schalter an und deaktiviert auch solche, die der Nutzer vorher **einzeln aktiviert** hatte. Nur vom Nutzer *deaktivierte* bleiben verschont. Wer die Optionen aus einem anderen Grund speichert (hier: Dashboard-Schalter), verliert also seine einzeln eingeschalteten Tages-/Monatszähler.
   - **Vorschlag:** Nur angleichen, wenn sich der Schalter tatsächlich geändert hat (zuletzt angewendeten Wert pro Eintrag in einem `Store` merken). Ohne gemerkten Wert und mit Schalter „aus“ nichts deaktivieren. Test dazu; Hinweis im Changelog für Nutzer von 3.6.1.
   - **Sofort-Abhilfe für Betroffene:** Entität unter Einstellungen → Entitäten wieder aktivieren, oder den Schalter „Perioden-Energiesensoren aktivieren“ einschalten.
 
-- [ ] **Wärmefahrplan-Sensor firmwareabhängig machen.** `schedule_outside_temperature_calc` nur für Firmware anlegen, deren Soll-Vorlauf (5007) die Rückrechnung zulässt. Im Standby meldet die Lambda 0 °C (derzeit abgefangen: Sensor „unbekannt“).
+- [x] ~~**Wärmefahrplan-Sensor firmwareabhängig machen.**~~ Bleibt so (Entscheidung 09.11.2026). `schedule_outside_temperature_calc` nur für Firmware anlegen, deren Soll-Vorlauf (5007) die Rückrechnung zulässt. Im Standby meldet die Lambda 0 °C (derzeit abgefangen: Sensor „unbekannt“).
 - [ ] **Sporadischer „Konfigurationsfehler“ beim Laden des Cockpits.** „Custom element doesn't exist: lambda-cockpit-card“, obwohl die JS-Datei mit HTTP 200 geladen wird; keine Konsolenfehler. Gehäuft kurz nach einem HA-Neustart, Neuladen der Seite hilft. Reproduzierbar mit dem Playwright-Skript gegen den Test-Container.
   - **Firefox (immer, behoben 09.11.2026, nicht committet):** HA lädt die Karten vor dem eigenen Code und ersetzt in Firefox danach `window.customElements` durch ein Polyfill für „scoped custom element registries“, das die vorher definierten Elemente nicht kennt. Beide Karten melden sich jetzt erneut in der aktuellen Registry an, bis `home-assistant` definiert ist (`lccDefine` / `lecDefine`). Mit Playwright in Firefox und Chrome geprüft.
   - **Chrome/Edge (sporadisch):** beobachten, ob der Fehler mit dieser Änderung auch dort verschwindet.
 - [ ] **Screenshot des Cockpits für die Doku** (`docs/docs/Anwender/lambda-cockpit.md`).
-- [ ] **Options-Screenshot erneuern:** `docs/docs/assets/options_cockpit_de.png` zeigt noch den alten Hilfetext („Ausschalten entfernt das Dashboard nicht“).
+- [x] **Options-Screenshot erneuern** (erledigt 09.11.2026): `docs/docs/assets/options_cockpit_de.png` zeigt noch den alten Hilfetext („Ausschalten entfernt das Dashboard nicht“).
 - [ ] **Live-Entfernen bestätigen:** Option im laufenden Betrieb ausschalten → Dashboard verschwindet ohne Neustart (bisher nur über Neustart nachgestellt).
-- [ ] **Release-Seite 3.7 und Changelog** schreiben.
+- [x] **Release-Seite 3.7 und Changelog** geschrieben 09.11.2026 (`docs/docs/Releases/release-3-7.md`, `CHANGELOG.md`, `CHANGELOG_ALL_CHANGES.md`). Beim Release Datum eintragen.
 - [ ] **Doku-Build prüfen:** Bilder innerhalb nummerierter Listen (`lambda-cockpit.md`) im Doku-Check der CI.
 - [ ] **Standardwerte der Einstellwerte** (Hysteresen, Spreizung, Heizgrenze, max. Temperaturen) mit den Werkseinstellungen der Lambda abgleichen; derzeit Schätzwerte.
 
