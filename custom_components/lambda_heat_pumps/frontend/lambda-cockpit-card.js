@@ -1488,9 +1488,29 @@ td.dim{color:var(--mut)}td.red{color:#fca5a5}
 @media (max-width:480px){.leftcol{width:78px}.pvbadge{flex-direction:column;gap:2px;padding:4px;text-align:center}.pvbadge b{font-size:13px}.bd b{font-size:15px}.bd span{font-size:10px}.hhead .opline{font-size:19px}.atrow b{font-size:16px}.atrow div{padding:3px 10px}.hero{gap:8px;padding:10px}.counters{grid-template-columns:repeat(2,1fr)}.bd{padding:4px 7px}}
 `;
 
-if (!customElements.get("lambda-cockpit-card")) {
-  customElements.define("lambda-cockpit-card", LambdaCockpitCard);
+// Home Assistant loads this file before its own code. In browsers without
+// scoped custom element registries (Firefox) it then replaces
+// window.customElements with a polyfill that does not know elements defined
+// before, and the card shows "Custom element doesn't exist". So define it again
+// in whatever registry is current, until Home Assistant itself is up.
+function lccDefine(name, cls) {
+  const define = () => {
+    const reg = window.customElements;
+    if (!reg.get(name)) reg.define(name, cls);
+  };
+  define();
+  let tries = 0;
+  const timer = setInterval(() => {
+    try {
+      define();
+    } catch (err) {
+      console.warn(`${name}: define failed`, err);
+    }
+    if (window.customElements.get("home-assistant") || ++tries > 300) clearInterval(timer);
+  }, 100);
 }
+
+lccDefine("lambda-cockpit-card", LambdaCockpitCard);
 window.customCards = window.customCards || [];
 if (!window.customCards.find((c) => c.type === "lambda-cockpit-card")) {
   window.customCards.push({

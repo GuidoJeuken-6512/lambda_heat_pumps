@@ -345,7 +345,29 @@ ha-card{background:linear-gradient(180deg,#0b1324,#0f1b33);color:var(--txt);bord
 @media (max-width:480px){.per{grid-template-columns:repeat(2,1fr)}}
 `;
 
-if (!customElements.get("lambda-entities-card")) customElements.define("lambda-entities-card", LambdaEntitiesCard);
+// Home Assistant loads this file before its own code. In browsers without
+// scoped custom element registries (Firefox) it then replaces
+// window.customElements with a polyfill that does not know elements defined
+// before, and the card shows "Custom element doesn't exist". So define it again
+// in whatever registry is current, until Home Assistant itself is up.
+function lecDefine(name, cls) {
+  const define = () => {
+    const reg = window.customElements;
+    if (!reg.get(name)) reg.define(name, cls);
+  };
+  define();
+  let tries = 0;
+  const timer = setInterval(() => {
+    try {
+      define();
+    } catch (err) {
+      console.warn(`${name}: define failed`, err);
+    }
+    if (window.customElements.get("home-assistant") || ++tries > 300) clearInterval(timer);
+  }, 100);
+}
+
+lecDefine("lambda-entities-card", LambdaEntitiesCard);
 window.customCards = window.customCards || [];
 if (!window.customCards.find((c) => c.type === "lambda-entities-card"))
   window.customCards.push({ type: "lambda-entities-card", name: "Lambda Entities", description: "Every entity of the lambda_heat_pumps integration, grouped by module, with explanations" });
