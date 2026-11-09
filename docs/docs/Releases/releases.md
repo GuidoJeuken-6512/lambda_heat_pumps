@@ -6,7 +6,7 @@ title: "Releases"
 
 Übersicht der Release-Dokumentation.
 
-- [Release 3.7](release-3-7.md) (enthält 3.6.3)
+- [Release 3.7](release-3-7.md) (aktuelles Release)
 - [Release 3.6](release-3-6.md) (enthält 3.5.x)
 - [Release 2.6.0](release-2-6-0.md)
 - [Release 2.5.0](release-2-5-0.md)

@@ -6,7 +6,7 @@ title: "Release 3.6"
 
 *Zuletzt geändert am 09.11.2026*
 
-Version 3.x ist eine von Grund auf neu geschriebene Fassung der Integration. Sie nutzt die überarbeitete Modbus-Anbindung von Home Assistant ([`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)) und benötigt **Home Assistant 2026.9.0 oder neuer**. **3.6.1 ist das erste über HACS verteilte Release nach 2.8.6.** Wer bisher 2.8.x nutzt, springt damit direkt auf den neuen Stand.
+Version 3.x ist eine von Grund auf neu geschriebene Fassung der Integration. Sie nutzt die überarbeitete Modbus-Anbindung von Home Assistant ([`modbus-connection`](https://github.com/home-assistant-libs/modbus-connection)) und benötigt **Home Assistant 2026.9.0 oder neuer**. **3.6.1 war das erste über HACS verteilte Release nach 2.8.6.** Wer bisher 2.8.x nutzt, springt mit einem Update direkt auf den neuen Stand. Aktuell ist [Release 3.7](release-3-7.md).
 
 Alle Einzeländerungen stehen im [Changelog](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/blob/main/CHANGELOG.md){:target="_blank" rel="noopener noreferrer"}. Diese Seite fasst zusammen, was sich für Anwender ändert.
 
@@ -67,5 +67,5 @@ Was in `lambda_wp_config.yaml` bleibt: Offsets und externe Energiezähler, siehe
 | 3.5.5 | Doppelte Belegung von Heizkreis-Register 7 bei Firmware ab V0.0.5-3K (#112) |
 | 3.5.4 | Veraltete Home-Assistant-Funktion ersetzt (#121) |
 | 3.5.3 | Schreibzugriffe schlugen fehl (falscher Modbus-Funktionscode) |
-| 3.5.2 | Sonderwert 0xFFFF wird bei Anforderungen als „unbekannt“ angezeigt (bei der Außentemperatur ab 3.6.3 wieder als −0,1 °C, #153); Modbus-Zugriffe sauber serialisiert |
+| 3.5.2 | Sonderwert 0xFFFF wird bei Anforderungen als „unbekannt“ angezeigt (bei der Außentemperatur ab 3.7.0 wieder als −0,1 °C, #153); Modbus-Zugriffe sauber serialisiert |
 | 3.5.0 | Neu geschriebene Integration |

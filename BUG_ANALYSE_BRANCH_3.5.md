@@ -1,9 +1,9 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 09.11.2026 (neue Issues nach V3.6.1: #151, #152, #153; Fix für #153 auf Branch `fix/3.6.3`, noch nicht gepusht)
+- **Stand:** 09.11.2026 (neue Issues nach V3.6.1: #151, #152, #153; #153 behoben in 3.7.0)
 - **Geschlossene Issues (V3.6.1):** #82, #85, #90, #94, #95, #104, #119, #120, #121, #122 (Duplikat #85), #132, #133, #134, #136, #140, #141 (Duplikat #121), #144. 
 - **Geschlossen nach V3.6.1:** #138 (Doku Hydraulic Card), #142 (gelöst), #149 (tmodbus-Anforderung, 3.6.2)
-- **Offene Issues, noch in Arbeit:** #153 (behoben in 3.6.3, unveröffentlicht), #152, #151, #137, #143 (Feedback ausstehend)
+- **Offene Issues, noch in Arbeit:** #153 (behoben in 3.7.0), #152, #151, #137, #143 (Feedback ausstehend)
 - **Technische Schulden (Enhancement):** #128, #101, #105 (Tests/Regressionen ausstehend)
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 
@@ -14,7 +14,7 @@
 | Issue | Titel | Status | Priorität |
 |---|---|---|---|
 | [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss | Verhalten der Lambda (Schließ-Kommentar entworfen, auf GitHub noch offen) | niedrig |
-| [#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153) | Außentemperatur „unbekannt“ bei 0 °C | **Bug, behoben in 3.6.3** (Branch `fix/3.6.3`): −0,1 °C wurde als Sonderwert 0xFFFF verworfen | mittel |
+| [#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153) | Außentemperatur „unbekannt“ bei 0 °C | **Bug, behoben in 3.7.0**: −0,1 °C wurde als Sonderwert 0xFFFF verworfen | mittel |
 | [#152](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/152) | `ambient_temperature` fehlt nach 3.6.1 | Firmware-Sperre `"1-7"`; Rückfrage Firmware und Werte vor dem Update | niedrig–mittel |
 | [#151](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/151) | PV-Modus endet nicht, Psoll springt auf 0 (2.6.0) | Lambda-Verhalten wie #137; 0-Sprünge vermutlich evcc parallel | niedrig |
 | [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | Viele Entitäten ohne Messwert (Puffer) | Feedback zu Screenshot (EU13, V1.0.4-3K) | niedrig–mittel |
@@ -28,13 +28,13 @@
 
 ### #153: Außentemperatur „unbekannt“ bei 0 °C
 
-**Status:** Bug der Integration, behoben auf Branch `fix/3.6.3` (Version 3.6.3, nicht gepusht, nicht veröffentlicht).
+**Status:** Bug der Integration, behoben in 3.7.0 (Fix auf main als 3.6.3, nicht einzeln veröffentlicht).
 
 Seit 3.5.2 (Commit c2b07d1) filterte `Ambient.temperature` (Register 2) zusätzlich 0xFFFF als „kein externer Fühler“. Bei Faktor 0,1 ist 0xFFFF aber −0,1 °C, ein echter Messwert. Um den Gefrierpunkt sprang der Sensor deshalb bei jedem Abruf mit −0,1 °C auf „unbekannt“. Die CSV des Melders bestätigt das: 32 × unbekannt, 24 × −0,2, 8 × 0,0, kein einziges Mal −0,1. Ein fehlender Fühler meldet −3000 (0xF448, `NO_SENSOR`) und wird weiter gefiltert.
 
 **Fix:** `NO_REQUEST` bei `Ambient.temperature` entfernt (`lambda_modbus/general.py`); Test `test_a_no_request_or_no_sensor_register_reads_unknown` erwartet jetzt −0,1 °C. Die Puffer-Anforderungsregister und die Heizkreis-Betriebsart behalten den Filter (dort bedeutet −1 wirklich „keine Anforderung“).
 
-**Nächste Schritte:** Push und Release 3.6.3 nach Freigabe, dann im Issue antworten.
+**Nächste Schritte:** Im Issue antworten (Fix in 3.7.0), danach schließen.
 
 ---
 

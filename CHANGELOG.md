@@ -17,7 +17,7 @@
 > - **Firmware 3+ (from V0.0.5-3K, incl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` is gone.** On this firmware, heating-circuit register 7 is the read-only target flow temperature the controller works with, not a writable setpoint request ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Its replacement is `hcX_target_temp_flow_line`. The old entity stays behind as "no longer provided", and dashboards, helpers and automations using it break silently. → To keep the history: delete the orphaned `…_flow_line_temperature_setpoint` entity, then rename `…_target_temp_flow_line` to the old entity_id (Settings → Entities → entity → ⚙ → Entity ID).
 > - Back up before upgrading.
 
-### [3.7.0] - unreleased
+### [3.7.0] - 2026-11-09
 
 **Lambda Cockpit: a ready-made dashboard.** The new option **"Install dashboard “Lambda Cockpit”"** under *Configure* creates a dashboard for the heat pump: operating state, hot water, heating circuit, heating curve with the heat schedule, switching points, runtimes, energy and efficiency, plus a page listing every entity of the integration with an explanation. A repair then offers to restart Home Assistant, which is needed once for a new dashboard. Turning the option off removes the dashboard again. Hot water setpoint, heating curve offset, room setpoint and maximum buffer temperature can be set from the cockpit. The cards `custom:lambda-cockpit-card` and `custom:lambda-entities-card` are available in any dashboard, with or without the option. Texts follow the user's language (German/English). [Guide](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit/)
 
@@ -25,7 +25,7 @@
 
 **Individually enabled period sensors stay enabled.** Since 3.6.1, saving the options for any reason disabled every per-period sensor while "Enable per-period energy sensors" was off, including ones enabled by hand (e.g. `hp1_compressor_start_cycling_daily`). The toggle now only acts when it is actually flipped. Sensors disabled this way under 3.6.1 are not re-enabled automatically; turn them back on under Settings → Entities.
 
-### [3.6.3] - unreleased
+### [3.6.3] - not released separately, included in 3.7.0
 
 **Outside temperature no longer flips to "unknown" at -0.1 °C** ([#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153)). The raw value of -0.1 °C was mistaken for the controller's "no sensor" code, so around freezing `ambient_temperature` kept switching between a value and unknown. A missing sensor is still recognised by its own code (-300 °C).
 
@@ -94,7 +94,7 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 > - **Firmware 3+ (ab V0.0.5-3K, inkl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` entfällt.** Auf dieser Firmware ist Heizkreis-Register 7 die schreibgeschützte Vorlauf-Solltemperatur, mit der die Steuerung arbeitet, keine beschreibbare Sollwert-Anforderung ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Ersatz ist `hcX_target_temp_flow_line`. Die alte Entität bleibt als „nicht mehr bereitgestellt“ zurück; Dashboards, Helfer und Automationen, die sie nutzen, brechen stillschweigend. → Um den Verlauf zu behalten: die verwaiste `…_flow_line_temperature_setpoint`-Entität löschen, dann `…_target_temp_flow_line` auf die alte entity_id umbenennen (Einstellungen → Entitäten → Entität → ⚙ → Entitäts-ID).
 > - Vor dem Update ein Backup erstellen.
 
-### [3.7.0] - unveröffentlicht
+### [3.7.0] - 2026-11-09
 
 **Lambda Cockpit: ein fertiges Dashboard.** Die neue Option **„Dashboard ‚Lambda Cockpit‘ installieren“** unter *Konfigurieren* legt ein Dashboard für die Wärmepumpe an: Betriebszustand, Warmwasser, Heizkreis, Heizkurve mit Wärmefahrplan, Schaltpunkte, Laufzeiten, Energie und Arbeitszahlen, dazu eine Seite mit allen Entitäten der Integration und einer Erklärung. Danach bietet eine Reparaturmeldung den einmal nötigen Neustart von Home Assistant an. Ausschalten entfernt das Dashboard wieder. Warmwasser-Soll, Offset der Heizkurve, Raum-Soll und maximale Puffertemperatur lassen sich im Cockpit einstellen. Die Karten `custom:lambda-cockpit-card` und `custom:lambda-entities-card` stehen in jedem Dashboard zur Verfügung, auch ohne die Option. Die Texte folgen der Sprache des Benutzers (Deutsch/Englisch). [Anleitung](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit/)
 
@@ -102,7 +102,7 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 
 **Einzeln aktivierte Perioden-Sensoren bleiben aktiv.** Seit 3.6.1 deaktivierte das Speichern der Optionen aus beliebigem Grund alle Perioden-Sensoren, solange „Perioden-Energiesensoren aktivieren“ aus war, auch von Hand eingeschaltete (z. B. `hp1_compressor_start_cycling_daily`). Der Schalter wirkt jetzt nur noch, wenn er tatsächlich umgelegt wird. Unter 3.6.1 so deaktivierte Sensoren werden nicht automatisch wieder aktiviert; bitte unter Einstellungen → Entitäten einschalten.
 
-### [3.6.3] - unveröffentlicht
+### [3.6.3] - nicht einzeln veröffentlicht, enthalten in 3.7.0
 
 **Außentemperatur springt bei -0,1 °C nicht mehr auf „unbekannt“** ([#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153)). Der Rohwert für -0,1 °C wurde für den Code „kein Fühler“ der Lambda gehalten; um den Gefrierpunkt wechselte `ambient_temperature` deshalb ständig zwischen Wert und unbekannt. Ein fehlender Fühler wird weiter an seinem eigenen Code (-300 °C) erkannt.
 
