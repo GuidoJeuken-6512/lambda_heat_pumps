@@ -79,7 +79,6 @@ const LCC_TEXT = {
     fn_room_info: "Die Integration schickt die Raumtemperatur des gewählten Fühlers an die Lambda (Register 5004, Raumaufschaltung).",
     foot: "Lambda Cockpit v{0} · Tippen auf einen Wert öffnet den Verlauf", error: "Lambda Cockpit Fehler",
     just_now: "gerade eben", since_min: "seit {0} min", since_h: "seit {0} h {1} min", since_d: "seit {0} d {1} h",
-    ends_soon: "endet gleich", possible_again: "wieder möglich", runs_for: "läuft noch", again_in: "wieder in",
     never: "nie",
   },
   en: {
@@ -128,7 +127,6 @@ const LCC_TEXT = {
     fn_room_info: "The integration sends the room temperature of the chosen sensor to the Lambda (register 5004, room influence).",
     foot: "Lambda Cockpit v{0} · tap a value for its history", error: "Lambda Cockpit error",
     just_now: "just now", since_min: "for {0} min", since_h: "for {0} h {1} min", since_d: "for {0} d {1} h",
-    ends_soon: "ends soon", possible_again: "possible again", runs_for: "runs for", again_in: "again in",
     never: "never",
   },
 };
@@ -137,6 +135,9 @@ function L(key, ...args) {
   const t = (LCC_TEXT[LCC_LANG] || LCC_TEXT.de)[key] ?? LCC_TEXT.de[key] ?? key;
   return args.length ? t.replace(/\{(\d)\}/g, (_, i) => args[i]) : t;
 }
+// How long after a circulation run the card still mentions it.
+const LCC_CIRC_RECENT_MS = 30 * 60000;
+
 const LCC_LOCALE = () => (LCC_LANG === "de" ? "de-DE" : "en-GB");
 
 // The controller's state labels, as the integration's enum sensors report them.
@@ -204,13 +205,6 @@ function lccDur(ms) {
   if (h < 24) return L("since_h", h, m % 60);
   return L("since_d", Math.floor(h / 24), h % 24);
 }
-function lccCd(zk) {
-  const ms = zk.until - Date.now();
-  if (ms <= 0) return zk.mode === "run" ? L("ends_soon") : L("possible_again");
-  const m = Math.floor(ms / 60000);
-  const sec = Math.floor((ms % 60000) / 1000);
-  return `${zk.mode === "run" ? L("runs_for") : L("again_in")} ${m}:${String(sec).padStart(2, "0")}`;
-}
 function lccDurHM(h) {
   if (!(h >= 0)) return "–";
   const t = Math.round(h * 60);
@@ -254,8 +248,6 @@ class LambdaCockpitCard extends HTMLElement {
     this._config = {
       details_path: "",
       wp_soll_offset: 1, // flow set of HP/buffer = circuit flow set + 1 K, if the setting is missing
-      zirk_run_min: 5,
-      zirk_pause_min: 30,
       tariffs: { standard: { name: "Standard", price: null, color: "#60a5fa" }, windows: [] },
       ...config,
       entities: { sun: "sun.sun", ...(config.entities || {}) },
@@ -538,45 +530,13 @@ class LambdaCockpitCard extends HTMLElement {
     return Number.isNaN(t) ? this._n("ww_set") : t;
   }
 
-  // Circulation: run or pause time from the pump state
+  // Circulation pump: running, or ended within the last half hour
   _zirkInfo() {
     const s = this._st("ww_zirk_pump");
-    if (!s) return { mode: "ready" };
-    const on = /^(on|1)$/i.test(String(s.state).trim());
-    const t = new Date(s.last_changed).getTime();
-    const run = this._config.zirk_run_min * 60000;
-    const pause = this._config.zirk_pause_min * 60000;
-    if (on) return { mode: "run", until: t + run };
-    const until = t + pause;
-    if (Date.now() < until) return { mode: "pause", until };
-    return { mode: "ready" };
-  }
-
-  connectedCallback() {
-    if (this._tick) return;
-    this._tick = setInterval(() => {
-      if (!this.shadowRoot) return;
-      this.shadowRoot.querySelectorAll(".cd[data-until]").forEach((el) => {
-        const ms = parseInt(el.dataset.until, 10) - Date.now();
-        if (ms <= 0) {
-          el.textContent = el.dataset.mode === "run" ? L("ends_soon") : L("possible_again");
-          if (!el.dataset.done) {
-            el.dataset.done = "1";
-            this._sig = "";
-            setTimeout(() => this._hass && this._render(), 1500);
-          }
-          return;
-        }
-        const m = Math.floor(ms / 60000);
-        const sec = Math.floor((ms % 60000) / 1000);
-        el.textContent = `${el.dataset.mode === "run" ? L("runs_for") : L("again_in")} ${m}:${String(sec).padStart(2, "0")}`;
-      });
-    }, 1000);
-  }
-
-  disconnectedCallback() {
-    clearInterval(this._tick);
-    this._tick = null;
+    if (!s) return { mode: "idle" };
+    if (/^(on|1)$/i.test(String(s.state).trim())) return { mode: "run" };
+    const ago = Date.now() - new Date(s.last_changed).getTime();
+    return ago < LCC_CIRC_RECENT_MS ? { mode: "pause", ago } : { mode: "idle" };
   }
 
   _flash(el) {
@@ -707,14 +667,11 @@ class LambdaCockpitCard extends HTMLElement {
     const showWw = this._has("ww_top") || this._has("ww_state");
     const showBuf = this._has("buf_top") || this._has("buf_state");
     const showHc = this._has("hc_vl") || this._has("hc_state");
-    // Circulation: a short note while a new run is not possible
+    // Circulation: a short note while the pump runs or has just run
     const zk = this._zirkInfo();
     let zTxt = "";
     if (zk.mode === "run") zTxt = L("circ_runs");
-    else if (zk.mode === "pause") {
-      const start = zk.until - (this._config.zirk_pause_min + this._config.zirk_run_min) * 60000;
-      zTxt = L("ago", Math.max(0, Math.round((Date.now() - start) / 60000)));
-    }
+    else if (zk.mode === "pause") zTxt = L("ago", Math.round(zk.ago / 60000));
     const hcRun = /^(heating|eco)$/i.test(String(hcState).trim());
     const wwRun = !/stby|off|unknown|unavail/i.test(wwState);
     const bRun = !/stby|off|unknown|unavail/i.test(bState);
@@ -1457,20 +1414,6 @@ td.dim{color:var(--mut)}td.red{color:#fca5a5}
 .cstep span{font-size:12px;color:var(--mut);margin-right:auto}
 .cstep button{width:30px;height:30px;border-radius:50%;border:1px solid #27406b;background:#183057;color:var(--txt);font-size:18px;cursor:pointer}
 .cstep b{font-size:17px;min-width:50px;text-align:center}
-.act.zirk.run{border-color:#10b981;box-shadow:0 0 14px rgba(16,185,129,.35)}
-.act.zirk.run em{color:#34d399}
-.act.zirk.pause{opacity:.75;border-style:dashed}
-.act.zirk.pause em{color:#fbbf24}
-.act em.cd{font-variant-numeric:tabular-nums}
-.mbox.small{width:min(420px,100%)}
-.wwrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--card);border:1px solid var(--line)}
-.wwrow span{font-size:13px;color:var(--mut)}.wwrow b{font-size:18px}
-.stepper.inline{flex:none;padding:0;border:none;background:none;gap:6px}
-.stepper.inline b{min-width:60px;font-size:18px}
-.wwziel{text-align:center;font-size:15px;padding:6px}.wwziel b{font-size:24px;color:#f87171}
-.wwziel em{display:block;font-style:normal;font-size:11px;color:var(--mut);margin-top:2px}
-.mbtns{display:flex;gap:8px}
-.act.go{background:linear-gradient(180deg,#b91c1c,#7f1d1d);border-color:#ef4444}
 .ctrl:hover{transform:translateY(-2px)}
 .cbar{display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:linear-gradient(180deg,#2f7196,#1d4f6e)}
 .cval{font-size:13px;font-weight:700;padding:1px 8px;border:1px solid #cbd5e1;border-radius:3px;background:#0f2233}
