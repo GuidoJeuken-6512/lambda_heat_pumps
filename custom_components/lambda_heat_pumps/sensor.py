@@ -55,11 +55,13 @@ from .const import (
     COCKPIT_COUNTER_KEYS,
     CONF_INSTALL_DASHBOARD,
     CONF_PERIOD_SENSORS_ENABLED,
+    CONF_PV_SURPLUS_MODE,
     CONF_ROOM_THERMOSTAT_CONTROL,
     CURVE_FLOW_MIN,
     CURVE_POINTS,
     CYCLE_MODES,
     DEFAULT_ECO_TEMP_REDUCTION,
+    DEFAULT_PV_SURPLUS_MODE,
     DEFAULT_ROOM_THERMOSTAT_FACTOR,
     DEFAULT_ROOM_THERMOSTAT_OFFSET,
     DOMAIN,
@@ -113,6 +115,10 @@ class LambdaSensorDescription(SensorEntityDescription):
     # A Wh counter the controller keeps itself. A reading it cannot have is
     # not published, so a wrong register order does not reach the statistics.
     lifetime_counter: bool = False
+    # The register the PV surplus is written to. Its encoding is the user's
+    # choice (option ``pv_surplus_mode``): "pos" writes it unsigned, so it is
+    # read back unsigned too, or a surplus above 32767 W would read negative.
+    pv_surplus_register: bool = False
 
     @cached_property
     def is_total(self) -> bool:
@@ -145,9 +151,12 @@ def _state(key: str, **kwargs) -> LambdaSensorDescription:
     return LambdaSensorDescription(key=key, device_class=SensorDeviceClass.ENUM, **kwargs)
 
 
-def _power(key: str, unit=UnitOfPower.WATT, precision=0) -> LambdaSensorDescription:
+def _power(
+    key: str, unit=UnitOfPower.WATT, precision=0, **kwargs
+) -> LambdaSensorDescription:
     return LambdaSensorDescription(
         key=key,
+        **kwargs,
         device_class=SensorDeviceClass.POWER,
         native_unit_of_measurement=unit,
         state_class=SensorStateClass.MEASUREMENT,
@@ -219,7 +228,7 @@ CONTROLLER_SENSORS: tuple[LambdaSensorDescription, ...] = (
     _temperature("ambient_temperature_calculated"),
     _count("emgr_error_number"),
     _state("emgr_operating_state"),
-    _power("emgr_actual_power"),
+    _power("emgr_actual_power", pv_surplus_register=True),
     _power("emgr_actual_power_consumption"),
     _power("emgr_power_consumption_setpoint"),
 )
@@ -829,6 +838,17 @@ class LambdaRegisterEntity(LambdaEntity):
         value = getattr(self._component_of(self.coordinator), self._attribute)
         if isinstance(value, LambdaState):
             return value.label
+        if (
+            self.entity_description.pv_surplus_register
+            and isinstance(value, int)
+            and value < 0
+            and self.coordinator.config_entry.options.get(
+                CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE
+            )
+            == "pos"
+        ):
+            # Decoded signed by the model; "pos" means it was written unsigned.
+            return value + 0x10000
         return value
 
 
