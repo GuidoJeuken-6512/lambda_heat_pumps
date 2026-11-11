@@ -385,13 +385,6 @@ class LambdaCockpitCard extends HTMLElement {
     if (key === "hc_soll" && v <= 0) return NaN;
     return v;
   }
-  // Solar surplus in W, positive while there is one. With the encoding "neg"
-  // the controller takes a surplus as negative and grid draw as positive.
-  _surplus() {
-    const v = this._n("pv_surplus");
-    const s = this._st("pv_surplus");
-    return s && s.attributes && s.attributes.pv_surplus_mode === "neg" ? -v : v;
-  }
   _t(key) {
     const s = this._st(key);
     return s ? s.state : "unavailable";
@@ -854,7 +847,7 @@ class LambdaCockpitCard extends HTMLElement {
       !errOk ? `<span class="badge bad" data-ent="${lccEsc(this._id("err"))}">⚠ ${lccEsc(lccState(err))} #${lccEsc(this._t("errnum"))}</span>` : "",
       hsOn ? `<span class="badge warn" data-ent="${lccEsc(this._id("heizstab"))}">🔥 ${L("heating_rod")}</span>` : "",
     ].join("");
-    const surplus = this._surplus();
+    const surplus = this._n("pv_surplus");
     const pvOn = surplus > 0;
     const night = this._t("sun") === "below_horizon";
     const pvIcon = pvOn ? '<i class="pvi sun">☀️</i>' : night ? '<i class="pvi moon">🌙</i>' : '<i class="pvi cloud">☁️</i>';
@@ -1071,7 +1064,7 @@ class LambdaCockpitCard extends HTMLElement {
   }
 
   _tileSchaltpunkte() {
-    const pvOn = this._surplus() > 0;
+    const pvOn = this._n("pv_surplus") > 0;
     const blk = (title, ist, istLbl, ein, aus, running, extra, infoKey, infoTxt) => {
       const okv = [ein, aus].every((x) => !Number.isNaN(x));
       const lo = Math.min(ein, aus, Number.isNaN(ist) ? ein : ist) - 3;

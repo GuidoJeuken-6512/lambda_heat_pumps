@@ -61,7 +61,7 @@ Danach ist der Überschuss auf der Seite Energie-Management der Lambda sichtbar:
 
 ## Prüfen
 
-- **In Home Assistant:** Der Sensor `sensor.<name>_emgr_actual_power` („E-Manager Leistung“) zeigt den Wert, den die Lambda gerade gespeichert hat. `sensor.<name>_emgr_operating_state` und `sensor.<name>_emgr_error_number` zeigen Zustand und Fehler des E-Managers.
+- **In Home Assistant:** Der Sensor `sensor.<name>_emgr_actual_power` („E-Manager Leistung“) zeigt den Überschuss, den die Lambda gerade gespeichert hat – positiv bei Überschuss, auch mit der Kodierung `neg` (dort steht er negativ im Register; Netzbezug erscheint als negativer Wert). `sensor.<name>_emgr_operating_state` und `sensor.<name>_emgr_error_number` zeigen Zustand und Fehler des E-Managers.
 - **An der Lambda:** Seite Energie-Management.
 
 Weitere Informationen: [Optionen des Config Flow](optionen-config-flow.md)

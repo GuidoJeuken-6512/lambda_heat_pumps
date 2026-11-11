@@ -840,19 +840,15 @@ class LambdaRegisterEntity(LambdaEntity):
         value = getattr(self._component_of(self.coordinator), self._attribute)
         if isinstance(value, LambdaState):
             return value.label
-        if (
-            self.entity_description.pv_surplus_register
-            and isinstance(value, int)
-            and value < 0
-            and _pv_surplus_mode(self.coordinator) == "pos"
-        ):
-            # Decoded signed by the model; "pos" means it was written unsigned.
-            return value + 0x10000
+        if self.entity_description.pv_surplus_register and isinstance(value, int):
+            # Shown as the surplus, positive while there is one, whatever the
+            # encoding it was written with.
+            return _decode_pv_surplus(value, _pv_surplus_mode(self.coordinator))
         return value
 
     @property
     def extra_state_attributes(self) -> dict[str, str] | None:
-        """The PV surplus encoding, so a card can tell surplus from grid draw."""
+        """The PV surplus encoding the register was written with."""
         if not self.entity_description.pv_surplus_register:
             return None
         return {"pv_surplus_mode": _pv_surplus_mode(self.coordinator)}
@@ -873,11 +869,21 @@ def pv_surplus_watts(coordinator: LambdaCoordinator) -> float | None:
     point "Neg. E-Überschuss"), so the sign is turned round here.
     """
     value = coordinator.device.e_manager.actual_power
-    if not isinstance(value, (int, float)):
+    if not isinstance(value, int):
         return None
-    if _pv_surplus_mode(coordinator) == "neg":
-        return float(-value)
-    return float(value + 0x10000 if value < 0 else value)
+    return float(_decode_pv_surplus(value, _pv_surplus_mode(coordinator)))
+
+
+def _decode_pv_surplus(value: int, mode: str) -> int:
+    """Register 102, decoded signed by the model, as a surplus in W.
+
+    "pos" was written unsigned, so it is read back unsigned. "neg" carries a
+    surplus as a negative number and grid draw as a positive one, so the sign
+    is turned round: a surplus is positive, grid draw negative.
+    """
+    if mode == "neg":
+        return -value
+    return value + 0x10000 if value < 0 else value
 
 
 class LambdaSensor(LambdaRegisterEntity, SensorEntity):
