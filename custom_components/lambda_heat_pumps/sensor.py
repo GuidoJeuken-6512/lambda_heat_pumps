@@ -118,6 +118,8 @@ class LambdaSensorDescription(SensorEntityDescription):
     # The register the PV surplus is written to. Its encoding is the user's
     # choice (option ``pv_surplus_mode``): "pos" writes it unsigned, so it is
     # read back unsigned too, or a surplus above 32767 W would read negative.
+    # "neg" (the controller's metering point "Neg. E-Überschuss") carries a
+    # surplus as a negative number and grid draw as a positive one.
     pv_surplus_register: bool = False
 
     @cached_property
@@ -842,14 +844,40 @@ class LambdaRegisterEntity(LambdaEntity):
             self.entity_description.pv_surplus_register
             and isinstance(value, int)
             and value < 0
-            and self.coordinator.config_entry.options.get(
-                CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE
-            )
-            == "pos"
+            and _pv_surplus_mode(self.coordinator) == "pos"
         ):
             # Decoded signed by the model; "pos" means it was written unsigned.
             return value + 0x10000
         return value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str] | None:
+        """The PV surplus encoding, so a card can tell surplus from grid draw."""
+        if not self.entity_description.pv_surplus_register:
+            return None
+        return {"pv_surplus_mode": _pv_surplus_mode(self.coordinator)}
+
+
+def _pv_surplus_mode(coordinator: LambdaCoordinator) -> str:
+    """The configured PV surplus encoding, "pos" or "neg"."""
+    mode = coordinator.config_entry.options.get(
+        CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE
+    )
+    return "neg" if mode == "neg" else "pos"
+
+
+def pv_surplus_watts(coordinator: LambdaCoordinator) -> float | None:
+    """The solar surplus register 102 holds, in W, positive while there is one.
+
+    With "neg" the controller expects a surplus as a negative number (metering
+    point "Neg. E-Überschuss"), so the sign is turned round here.
+    """
+    value = coordinator.device.e_manager.actual_power
+    if not isinstance(value, (int, float)):
+        return None
+    if _pv_surplus_mode(coordinator) == "neg":
+        return float(-value)
+    return float(value + 0x10000 if value < 0 else value)
 
 
 class LambdaSensor(LambdaRegisterEntity, SensorEntity):
@@ -1363,7 +1391,7 @@ class LambdaScheduleOutsideTemperatureSensor(LambdaEntity, SensorEntity):
         if setpoint is None or setpoint < CURVE_FLOW_MIN:
             return None
         flow = setpoint - (circuit.set_flow_line_offset_temperature or 0.0)
-        surplus = self.coordinator.device.e_manager.actual_power
+        surplus = pv_surplus_watts(self.coordinator)
         if surplus and surplus > 0:
             flow -= circuit.pv_temperature_increase or 0.0
 
