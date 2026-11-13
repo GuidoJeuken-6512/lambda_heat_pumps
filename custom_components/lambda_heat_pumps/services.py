@@ -134,8 +134,9 @@ async def async_write_pv_surplus(coordinator: LambdaCoordinator) -> None:
             power *= 1000
 
     if options.get(CONF_PV_SURPLUS_MODE, DEFAULT_PV_SURPLUS_MODE) == "neg":
-        # The controller reads this register as signed, so a shortfall can be
-        # sent as well as a surplus.
+        # The controller reads this register as signed (metering point "Neg.
+        # E-Überschuss": surplus negative, grid draw positive). The source's
+        # value is sent as it is, so it has to use that sign.
         raw = max(-32768, min(32767, int(power))) & 0xFFFF
     else:
         raw = max(0, min(65535, int(power)))

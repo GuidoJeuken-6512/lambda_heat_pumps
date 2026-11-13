@@ -4,7 +4,7 @@ title: "PV Überschuss Steuerung"
 
 # PV Überschuss Steuerung
 
-*Zuletzt geändert am 31.10.2026*
+*Zuletzt geändert am 11.11.2026*
 
 Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu meldet die Integration der Lambda regelmäßig, wie viel Solarstrom gerade übrig ist. Die Lambda regelt danach selbst.
 
@@ -25,7 +25,7 @@ Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu melde
 1. **Einstellungen** → **Geräte & Dienste** → Lambda → **Konfigurieren**.
 2. **PV-Überschuss nutzen** einschalten und bei **Kodierung des PV-Überschusses** die Variante wählen, die zur Lambda passt:
     - `pos`: nur Überschuss, 0 bis 65535 W. Negative Werte werden als 0 gesendet.
-    - `neg`: Überschuss und Bezug, −32768 bis 32767 W.
+    - `neg`: Überschuss **negativ**, Netzbezug positiv, −32768 bis 32767 W (Messpunkt „Neg. E-Überschuss“ an der Lambda). Der Wert des Sensors wird unverändert gesendet, er muss also die Einspeisung negativ liefern – wie ein Netzzähler.
 3. **Absenden**. Im Schritt **„PV-Überschuss“** den **PV-Leistungssensor** wählen und erneut **Absenden**.
 
 <img src="../assets/pv_surplus_de_1.png" alt="Optionen PV-Überschuss nutzen und Kodierung des PV-Überschusses" style="width: 100%; height: auto; border-radius: 8px;">
@@ -34,7 +34,7 @@ Die Lambda kann ihre Leistung erhöhen, wenn PV-Überschuss vorliegt. Dazu melde
 
 Der Sensor soll den **Überschuss** zeigen, also die Leistung, die sonst ins Netz ginge, nicht die gesamte PV-Erzeugung.
 
-- Liefert Ihr Zähler die Einspeisung als **negativen** Wert, bauen Sie einen Template-Sensor, der das Vorzeichen umdreht, oder nutzen Sie die Kodierung `neg`.
+- Liefert Ihr Zähler die Einspeisung als **negativen** Wert, bauen Sie einen Template-Sensor, der das Vorzeichen umdreht (Kodierung `pos`), oder nutzen Sie die Kodierung `neg` mit dem Messpunkt „Neg. E-Überschuss“ an der Lambda.
 - Ein Beispiel aus einer laufenden Anlage: Einspeisung ins Netz, plus Ladeleistung der Hausbatterie, sobald deren Ladestand über einer Schwelle (z. B. 80 %) liegt; `0 W`, wenn die Quelle länger als 2 Minuten keine neuen Werte liefert.
 
 ## Einstellungen an der Lambda
@@ -61,7 +61,7 @@ Danach ist der Überschuss auf der Seite Energie-Management der Lambda sichtbar:
 
 ## Prüfen
 
-- **In Home Assistant:** Der Sensor `sensor.<name>_emgr_actual_power` („E-Manager Leistung“) zeigt den Wert, den die Lambda gerade gespeichert hat. `sensor.<name>_emgr_operating_state` und `sensor.<name>_emgr_error_number` zeigen Zustand und Fehler des E-Managers.
+- **In Home Assistant:** Der Sensor `sensor.<name>_emgr_actual_power` („E-Manager Leistung“) zeigt den Überschuss, den die Lambda gerade gespeichert hat – positiv bei Überschuss, auch mit der Kodierung `neg` (dort steht er negativ im Register; Netzbezug erscheint als negativer Wert). `sensor.<name>_emgr_operating_state` und `sensor.<name>_emgr_error_number` zeigen Zustand und Fehler des E-Managers.
 - **An der Lambda:** Seite Energie-Management.
 
 Weitere Informationen: [Optionen des Config Flow](optionen-config-flow.md)

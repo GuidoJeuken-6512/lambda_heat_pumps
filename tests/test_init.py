@@ -259,6 +259,32 @@ async def test_a_power_of_minus_32768_w_reads_unknown(
     assert state_of(hass, "eu08l_hp1_inverter_power_consumption") == "unknown"
 
 
+@pytest.mark.parametrize(
+    ("mode", "raw", "expected"),
+    [
+        ("pos", 40000, "40000"),  # written unsigned, read back unsigned
+        ("neg", 0xFC18, "1000"),  # written signed: 1000 W surplus
+        ("pos", 1500, "1500"),
+        ("neg", 1500, "-1500"),  # 1500 W grid draw
+        ("pos", 0x8000, "unknown"),  # still the controller's "no value" (#91)
+    ],
+)
+async def test_pv_surplus_register_reads_as_it_was_encoded(
+    hass: HomeAssistant, controller: Controller, mode: str, raw: int, expected: str
+) -> None:
+    """Register 102 is decoded with the configured PV surplus encoding."""
+    controller.registers[102] = raw
+    await setup_entry(hass, controller, legacy=True, options={"pv_surplus_mode": mode})
+
+    assert state_of(hass, "eu08l_emgr_actual_power") == expected
+    # Shown as the surplus either way; the encoding stays visible.
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, "eu08l_emgr_actual_power"
+    )
+    state = hass.states.get(entity_id)
+    assert state.attributes["pv_surplus_mode"] == mode
+
+
 async def test_request_registers_are_off_on_a_new_installation(
     hass: HomeAssistant, controller: Controller
 ) -> None:

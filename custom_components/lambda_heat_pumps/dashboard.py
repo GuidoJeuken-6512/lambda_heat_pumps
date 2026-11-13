@@ -19,6 +19,7 @@ suffixes and legacy prefixes all resolve to what is really there.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import logging
 from pathlib import Path
@@ -175,17 +176,21 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(FRONTEND_URL, str(folder), cache_headers=False)]
     )
-    version = await _integration_version(hass)
+    keys = await hass.async_add_executor_job(_card_cache_keys, folder)
     for card in FRONTEND_CARDS:
-        add_extra_js_url(hass, f"{FRONTEND_URL}/{card}?v={version}")
+        add_extra_js_url(hass, f"{FRONTEND_URL}/{card}?v={keys[card]}")
 
 
-async def _integration_version(hass: HomeAssistant) -> str:
-    """The integration's version, to make a browser fetch a new card after an update."""
-    from homeassistant.loader import async_get_integration
+def _card_cache_keys(folder: Path) -> dict[str, str]:
+    """A key per card from its content, so a browser fetches it again on any change.
 
-    integration = await async_get_integration(hass, DOMAIN)
-    return str(integration.version or "0")
+    The integration's version stays the same between releases, so a browser
+    kept an old card next to a newer integration and showed its values wrong.
+    """
+    return {
+        card: hashlib.sha256((folder / card).read_bytes()).hexdigest()[:12]
+        for card in FRONTEND_CARDS
+    }
 
 
 def _unique_id(entry: LambdaConfigEntry, module: str | None, index: int, key: str) -> str:

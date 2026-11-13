@@ -66,7 +66,7 @@
           "room_thermostat_control": "Send each heating circuit the temperature of the room it heats, from another sensor.",
           "pv_surplus": "Send the controller the solar power going spare, so it can use it.",
           "period_sensors_enabled": "Also enables the hourly, 2h, 4h, daily, monthly, yearly and yesterday sensors for every counter (lifetime totals always stay on). Applies retroactively to existing entities too - except ones you disabled individually yourself.",
-          "pv_surplus_mode": "Whether the controller reads the surplus register as unsigned (surplus only) or signed (surplus and shortfall).",
+          "pv_surplus_mode": "Whether the controller reads the surplus register as unsigned (surplus only) or signed: surplus negative, grid draw positive, as for the controller's metering point \"Neg. E-Überschuss\" (the source sensor's value is sent unchanged).",
           "install_dashboard": "Creates a 'Lambda Cockpit' dashboard with the cockpit and an overview of all entities, plus the settings it needs (switching hysteresis and the like, copied from the display). Appears after a restart of Home Assistant, which a repair offers. Turning this off removes the dashboard and its settings again; changes you made to the dashboard are lost."
         }
       },

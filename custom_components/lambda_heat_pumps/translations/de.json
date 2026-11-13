@@ -66,7 +66,7 @@
           "room_thermostat_control": "Jedem Heizkreis die Temperatur seines Raums von einem anderen Sensor senden.",
           "pv_surplus": "Dem Regler den überschüssigen Solarstrom melden, damit er ihn nutzen kann.",
           "period_sensors_enabled": "Aktiviert für jeden Fühler auch die stündlichen, 2h-, 4h-, Tages-, Monats-, Jahres- und Gestern-Sensoren (Lebenszeit-Summen bleiben immer an). Wirkt auch rückwirkend auf bestehende Entitäten - außer solchen, die Sie selbst einzeln deaktiviert haben.",
-          "pv_surplus_mode": "Ob der Regler das Überschussregister vorzeichenlos (nur Überschuss) oder vorzeichenbehaftet (Überschuss und Defizit) liest.",
+          "pv_surplus_mode": "Ob der Regler das Überschussregister vorzeichenlos (nur Überschuss) oder vorzeichenbehaftet liest: Überschuss negativ, Netzbezug positiv, wie beim Messpunkt „Neg. E-Überschuss“ der Lambda (der Wert des Quellsensors wird unverändert gesendet).",
           "install_dashboard": "Legt ein Dashboard „Lambda Cockpit“ an, mit dem Cockpit und einer Übersicht aller Entitäten, dazu die Einstellwerte, die es braucht (Schalthysteresen u. a., vom Display übernommen). Es erscheint nach einem Neustart von Home Assistant, den eine Reparaturmeldung anbietet. Ausschalten entfernt das Dashboard und seine Einstellwerte wieder; eigene Änderungen am Dashboard gehen dabei verloren."
         }
       },
