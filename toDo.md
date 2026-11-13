@@ -1,6 +1,6 @@
 # ToDo
 
-*Stand 09.11.2026, Branch `feature/lambda-cockpit` (3.7.0)*
+*Stand 09.11.2026, `main` (3.7.0)*
 
 ## Offen aus dem Lambda Cockpit
 
@@ -20,6 +20,9 @@
 - [x] **Release-Seite 3.7 und Changelog** geschrieben 09.11.2026 (`docs/docs/Releases/release-3-7.md`, `CHANGELOG.md`, `CHANGELOG_ALL_CHANGES.md`). Beim Release Datum eintragen.
 - [ ] **Doku-Build prüfen:** Bilder innerhalb nummerierter Listen (`lambda-cockpit.md`) im Doku-Check der CI.
 - [ ] **Standardwerte der Einstellwerte** (Hysteresen, Spreizung, Heizgrenze, max. Temperaturen) mit den Werkseinstellungen der Lambda abgleichen; derzeit Schätzwerte.
+- [ ] **Heizkreis ohne eigenen Rücklauffühler** (gemeldet 09.11.2026, Prod-Anlage): `hc1_return_line_temperature` (Register 5003) ist dauerhaft „unbekannt“; Kachel Heizkreis zeigt links ein leeres Feld „–“, Schaltpunkte Heizkreis zeigen „RL –“ und „noch – K“. Ein Klick auf die Kachel öffnet `hc1_flow_line_temperature` (ganze Kachel verknüpft, nicht das Feld).
+  - **Leeres Feld ausblenden**, wenn der Heizkreis-Rücklauf keinen Wert hat.
+  - **Ersatz für die Schaltpunkte:** ohne Heizkreis-Rücklauf `hp1_return_line_temperature` verwenden. Vorher bei Lambda klären, ob die Regelung in diesem Fall wirklich nach dem WP-Rücklauf schaltet.
 
 ## Später / Verbesserungen
 
