@@ -129,7 +129,7 @@ class LambdaEntitiesCard extends HTMLElement {
       this.shadowRoot.addEventListener("input", (e) => {
         if (e.target.id === "q") {
           this._q = e.target.value.toLowerCase();
-          this._render(true);
+          this._render();
         }
       });
     }
@@ -243,7 +243,11 @@ class LambdaEntitiesCard extends HTMLElement {
     </div>`;
   }
 
-  _render(keepFocus) {
+  // The frame with the search field is built once (and again only when the
+  // language or the back link changes); later renders replace just the
+  // count and the list. Replacing the field itself would drop its focus
+  // and close the on-screen keyboard on every update.
+  _render() {
     if (!this._hass) return;
     const data = this._collect();
     const sec = (title, body) => (body ? `<div class="sub">${title}</div>${body}` : "");
@@ -268,19 +272,19 @@ class LambdaEntitiesCard extends HTMLElement {
         ${open ? `<div class="gb">${body}</div>` : ""}
       </div>`;
     }).join("");
-    const q = this._q;
-    this.shadowRoot.innerHTML = `<style>${LEC_CSS}</style>
+    const frame = `${LEC_LANG}|${this._config.back_path || ""}`;
+    if (this._frame !== frame || !this.shadowRoot.getElementById("list")) {
+      this._frame = frame;
+      this.shadowRoot.innerHTML = `<style>${LEC_CSS}</style>
       <ha-card><div class="wrap">
-        <div class="hd">${this._config.back_path ? `<button class="back" data-act="back">${LT("back")}</button>` : ""}<div><b>${LT("title")}</b><em>${LT("count", total)}</em></div></div>
-        <input id="q" type="search" placeholder="${lecEsc(LT("search"))}" value="${lecEsc(q)}">
-        ${groups}
+        <div class="hd">${this._config.back_path ? `<button class="back" data-act="back">${LT("back")}</button>` : ""}<div><b>${LT("title")}</b><em id="count"></em></div></div>
+        <input id="q" type="search" placeholder="${lecEsc(LT("search"))}" value="${lecEsc(this._q)}">
+        <div id="list"></div>
         <div class="foot">${LT("foot", LEC_VERSION)}</div>
       </div></ha-card>`;
-    if (keepFocus) {
-      const inp = this.shadowRoot.getElementById("q");
-      inp.focus();
-      inp.setSelectionRange(q.length, q.length);
     }
+    this.shadowRoot.getElementById("count").textContent = LT("count", total);
+    this.shadowRoot.getElementById("list").innerHTML = groups;
   }
 
   _click(ev) {
@@ -313,6 +317,7 @@ ha-card{background:linear-gradient(180deg,#0b1324,#0f1b33);color:var(--txt);bord
 .hd b{font-size:20px;display:block}.hd em{font-style:normal;font-size:12px;color:var(--mut)}
 #q{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:12px;border:1px solid var(--line);background:var(--card2);color:var(--txt);font-size:14px;outline:none}
 #q:focus{border-color:#5eead4}
+#list{display:flex;flex-direction:column;gap:10px}
 .grp{border:1px solid var(--line);border-radius:16px;background:var(--card);overflow:hidden}
 .grp.alt,.grp.nb{border-style:dashed;opacity:.9}
 .gh{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer;background:linear-gradient(90deg,rgba(47,113,150,.35),transparent)}

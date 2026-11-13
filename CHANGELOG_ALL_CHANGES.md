@@ -7,6 +7,16 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.7.1] - unreleased
+
+**No more deprecation warnings with Home Assistant 2026.11.** The hot water and room thermostats use Home Assistant's new temperature interface; 2026.9 and 2026.10 keep working.
+
+**Lambda Cockpit:**
+- The search in the entity overview no longer loses focus after every letter or every update, so the on-screen keyboard stays open ([#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160)).
+- The switching-point tile reminds you to check the copied hysteresis and limit values against the controller's display, since they start with default values; the hint can be hidden per browser ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
+- The heating curve notes that a shown heat-schedule shift can also mean the copy of the heating curve does not match the controller ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
+- Documentation: step-by-step guide for showing heating circuit 2 or 3 ([#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157)), and why runtimes on the day of installation look too low.
+
 ### [3.7.0] - 2026-11-09
 
 **Lambda Cockpit: a ready-made dashboard.** The new option **"Install dashboard “Lambda Cockpit”"** under *Configure* creates a dashboard for the heat pump: operating state, hot water, heating circuit, heating curve with the heat schedule, switching points, runtimes, energy and efficiency, plus a page listing every entity of the integration with an explanation. A repair then offers to restart Home Assistant, which is needed once for a new dashboard. Turning the option off removes the dashboard again. Hot water setpoint, heating curve offset, room setpoint and maximum buffer temperature can be set from the cockpit. The cards `custom:lambda-cockpit-card` and `custom:lambda-entities-card` are available in any dashboard, with or without the option. Texts follow the user's language (German/English). [Guide](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit/)
@@ -505,6 +515,16 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.7.1] - unveröffentlicht
+
+**Keine Veraltet-Warnungen mehr mit Home Assistant 2026.11.** Warmwasser- und Raum-Thermostat nutzen die neue Temperatur-Schnittstelle von Home Assistant; 2026.9 und 2026.10 funktionieren weiter.
+
+**Lambda Cockpit:**
+- Die Suche in der Entitäten-Übersicht verliert nach jedem Buchstaben und bei jedem Update nicht mehr den Fokus, die Bildschirmtastatur bleibt offen ([#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160)).
+- Die Kachel „Schaltpunkte aktuell“ erinnert daran, die kopierten Hysterese- und Grenzwerte mit dem Display abzugleichen, weil sie mit Standardwerten starten; der Hinweis lässt sich pro Browser ausblenden ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
+- Die Heizkurve weist darauf hin, dass eine angezeigte Wärmefahrplan-Verschiebung auch eine nicht passende Kopie der Heizkurve bedeuten kann ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
+- Doku: Schritt-für-Schritt-Anleitung für Heizkreis 2 oder 3 ([#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157)) und Erklärung, warum die Laufzeiten am Installationstag zu niedrig wirken.
 
 ### [3.7.0] - 2026-11-09
 

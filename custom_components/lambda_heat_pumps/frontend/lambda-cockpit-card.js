@@ -64,6 +64,9 @@ const LCC_TEXT = {
     sp_info_buf_pv: " + PV-Offset Puffer",
     sp_info_hc: "RL-Soll = Soll-VL ({0} °C, enthält Offset und ggf. PV-Erhöhung) − Spreizung ({1} K). Anforderung ab RL-Soll + Einschalthysterese ({2} K), Ende bei RL-Soll + Ausschalthysterese ({3} K). Heizbetrieb nur, solange die berechnete AT unter der Heizgrenze liegt. Annahme: Lambda wertet hier den Rücklauf aus.",
     sp_copy_hint: "Die Hysterese- und Grenzwerte sind Kopien der Lambda-Einstellungen (nicht per Modbus lesbar). Bitte einmal vom Display übernehmen: Gerät → Konfiguration.",
+    sp_copy_check: "Die Hysterese- und Grenzwerte sind Kopien der Lambda-Einstellungen und starten mit Standardwerten. Bitte mit dem Display abgleichen (Gerät → Konfiguration), sonst stimmen die Schaltpunkte nicht.",
+    hide: "ausblenden",
+    wfp_check: "Verschiebung, obwohl der Wärmefahrplan aus ist? Dann passt die Kopie der Heizkurve nicht zur Lambda: Stützpunkte mit dem Display vergleichen.",
     limits: "GRENZWERTE", info: "Info", buf_max: "Puffer max.", hc_max: "Heizkreis max. VL",
     ww_max: "WW max. Soll", heat_limit_at: "Heizgrenze AT", tag_lambda: "Lambda", tag_copy: "Kopie",
     limits_info: "<b>Lambda</b> = wird direkt in die Lambda geschrieben.<br><b>Kopie</b> = für diese Werte gibt es kein Modbus-Register. Sie sind eine Kopie der Lambda-Einstellung und werden für die Berechnungen im Cockpit genutzt (z. B. Heizgrenze ✓/✗ bei den Schaltpunkten). Eine Änderung hier verstellt die Lambda nicht – bitte in der Lambda selbst mitändern.",
@@ -112,6 +115,9 @@ const LCC_TEXT = {
     sp_info_buf_pv: " + PV buffer offset",
     sp_info_hc: "Return set = flow set ({0} °C, includes offset and any PV increase) − spread ({1} K). Request from return set + switch-on hysteresis ({2} K), end at return set + switch-off hysteresis ({3} K). Heating only while the calculated outside temperature is below the heating limit. Assumption: the Lambda evaluates the return here.",
     sp_copy_hint: "The hysteresis and limit values are copies of the Lambda's settings (not readable over Modbus). Copy them from the display once: device → configuration.",
+    sp_copy_check: "The hysteresis and limit values are copies of the Lambda's settings and start with default values. Check them against the display (device → configuration), otherwise the switching points are off.",
+    hide: "hide",
+    wfp_check: "A shift although the heating schedule is off? Then the copy of the heating curve does not match the Lambda: compare its points with the display.",
     limits: "LIMITS", info: "Info", buf_max: "Buffer max.", hc_max: "Circuit max. flow",
     ww_max: "DHW max. set", heat_limit_at: "Heating limit OT", tag_lambda: "Lambda", tag_copy: "copy",
     limits_info: "<b>Lambda</b> = written to the Lambda directly.<br><b>Copy</b> = these values have no Modbus register. They copy the Lambda's setting and are used for the cockpit's calculations (e.g. heating limit ✓/✗ in the switching points). Changing them here does not change the Lambda – change it there as well.",
@@ -135,6 +141,9 @@ function L(key, ...args) {
   const t = (LCC_TEXT[LCC_LANG] || LCC_TEXT.de)[key] ?? LCC_TEXT.de[key] ?? key;
   return args.length ? t.replace(/\{(\d)\}/g, (_, i) => args[i]) : t;
 }
+// Set in this browser once the user has hidden the "check the copies" hint.
+const LCC_COPY_HINT_KEY = "lambda-cockpit-copy-hint-hidden";
+
 // How long after a circulation run the card still mentions it.
 const LCC_CIRC_RECENT_MS = 30 * 60000;
 
@@ -458,6 +467,13 @@ class LambdaCockpitCard extends HTMLElement {
       this._render();
       history.pushState(null, "", el.dataset.path);
       window.dispatchEvent(new CustomEvent("location-changed", { bubbles: true, composed: true }));
+    } else if (act === "hide-copy") {
+      try {
+        localStorage.setItem(LCC_COPY_HINT_KEY, "1");
+      } catch (err) {
+        // Without storage the hint just stays.
+      }
+      this._render();
     } else if (act === "noop") {
       return;
     } else if (act === "popup") {
@@ -1059,8 +1075,17 @@ class LambdaCockpitCard extends HTMLElement {
         ${box(20, "curve_p22")}${box(0, "curve_0")}${box(-20, "curve_m22")}
       </svg>
       <div class="legend"><span><i style="background:#ef4444"></i>${L("curve")}</span><span><i style="background:#3b82f6"></i>${L("at_calc")} ${lccFmt(atC, 1)}°</span><span><i style="background:#22c55e"></i>${wfpActive ? `${L("wfp_at")} ${lccFmt(atW, 1)}°` : L("wfp_none")}</span></div>
+      ${wfpActive ? `<div class="hint">${L("wfp_check")}</div>` : ""}
       <div class="hkoff">${this._numCtl(`📈 ${L("curve_offset")}`, "offset", "K", 0.5)}</div>
     </div>`;
+  }
+
+  _copyHintHidden() {
+    try {
+      return localStorage.getItem(LCC_COPY_HINT_KEY) === "1";
+    } catch (err) {
+      return false;
+    }
   }
 
   _tileSchaltpunkte() {
@@ -1114,7 +1139,11 @@ class LambdaCockpitCard extends HTMLElement {
     return `
     <div class="tile sp">
       <div class="th"><span>🎯 ${L("sp_title")}</span><em>${pvOn ? `☀️ ${L("pv_active")}` : L("without_pv")}</em></div>
-      ${missing ? `<div class="hint" style="margin-bottom:8px">${L("sp_copy_hint")}</div>` : ""}
+      ${missing
+        ? `<div class="hint" style="margin-bottom:8px">${L("sp_copy_hint")}</div>`
+        : this._copyHintHidden()
+          ? ""
+          : `<div class="hint" style="margin-bottom:8px">${L("sp_copy_check")} <a class="hidelink" data-act="hide-copy">${L("hide")}</a></div>`}
       ${has("ww_top") ? blk(`🚿 ${L("hot_water")}`, this._n("ww_top"), L("top"), wwEin, wwAus, opMode === "ww", `${L("set")} ${lccFmt(wwSoll, 1)}°${wwPv ? ` (${L("incl_pv", lccFmt(wwPv, 1))})` : ""}`, "sp_ww",
         L("sp_info_ww", pvOn ? L("sp_info_ww_pv") : "", lccFmt(this._n("p_ww_ein"), 1), lccFmt(this._n("p_ww_aus"), 1))) : ""}
       ${has("buf_top") ? blk(`🧱 ${L("buffer")}`, this._n("buf_top"), L("top"), bEin, bAus, opMode === "heat", `${L("set")} ${lccFmt(bSoll, 1)}°`, "sp_buf",
@@ -1267,6 +1296,7 @@ small{font-size:.6em;color:var(--mut);margin-left:2px;font-weight:500}
 .fun{margin-top:10px;font-size:13px;line-height:1.5}
 .ducks{font-size:18px;letter-spacing:2px;line-height:1.3}
 .hint{font-size:11px;color:var(--mut)}
+.hidelink{color:#5eead4;cursor:pointer;text-decoration:underline;white-space:nowrap}
 .curve{width:100%;height:auto}
 .gl{stroke:#1e2d47;stroke-width:1}.gt{fill:#64748b;font-size:10px}
 .cv{fill:none;stroke:#38bdf8;stroke-width:3;filter:drop-shadow(0 0 4px #38bdf8)}

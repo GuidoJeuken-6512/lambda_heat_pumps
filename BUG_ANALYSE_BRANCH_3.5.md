@@ -1,10 +1,10 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 09.11.2026 (neue Issues nach V3.6.1: #151, #152, #153; #153 behoben in 3.7.0)
+- **Stand:** 13.11.2026 (Abgleich mit GitHub; Änderungen für 3.7.1 noch nicht released)
 - **Geschlossene Issues (V3.6.1):** #82, #85, #90, #94, #95, #104, #119, #120, #121, #122 (Duplikat #85), #132, #133, #134, #136, #140, #141 (Duplikat #121), #144. 
 - **Geschlossen nach V3.6.1:** #138 (Doku Hydraulic Card), #142 (gelöst), #149 (tmodbus-Anforderung, 3.6.2)
-- **Geschlossen (Stand 13.11.2026):** #105 (evcc-Konflikt), #161 (evcc und Register 102), #165 (Heizkreis-Betriebsart, nicht geplant)
-- **Offene Issues, noch in Arbeit:** #153 (behoben in 3.7.0), #152, #151, #137, #143 (Feedback ausstehend)
+- **Geschlossen:** #153 (behoben in 3.7.0), #105 und #161 (GitHub geschlossen), #165 (lokal als „nicht geplant“ notiert; auf GitHub noch offen, bitte prüfen)
+- **Offen, noch in Arbeit:** #152, #151, #137, #143, #101, #128 und die Cockpit-Issues (siehe Abschnitt unten)
 - **Technische Schulden (Enhancement):** #128, #101, #105 (Tests/Regressionen ausstehend)
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 
@@ -15,12 +15,12 @@
 | Issue | Titel | Status | Priorität |
 |---|---|---|---|
 | [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss | Verhalten der Lambda (Schließ-Kommentar entworfen, auf GitHub noch offen) | niedrig |
-| [#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153) | Außentemperatur „unbekannt“ bei 0 °C | **Bug, behoben in 3.7.0**: −0,1 °C wurde als Sonderwert 0xFFFF verworfen | mittel |
+| [#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153) | Außentemperatur „unbekannt“ bei 0 °C | **FIXED** in 3.7.0 (GitHub geschlossen) | – |
 | [#152](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/152) | `ambient_temperature` fehlt nach 3.6.1 | Firmware-Sperre `"1-7"`; Rückfrage Firmware und Werte vor dem Update | niedrig–mittel |
 | [#151](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/151) | PV-Modus endet nicht, Psoll springt auf 0 (2.6.0) | Lambda-Verhalten wie #137; 0-Sprünge vermutlich evcc parallel | niedrig |
 | [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | Viele Entitäten ohne Messwert (Puffer) | Feedback zu Screenshot (EU13, V1.0.4-3K) | niedrig–mittel |
 | [#101](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/101) | Solarthermiemodul wird nicht erkannt | Logs fehlen; Timeout-Logik prüfen (F9) | niedrig |
-| [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | **Geschlossen** (Ursache: zweiter Modbus-Client, evcc) | – |
+| [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | **Geschlossen** (GitHub), Ursache zweiter Modbus-Client (evcc) | – |
 | [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Sollwert (Enhancement) | Doku OK, Abweichungs-Sensor offen (F17) | niedrig |
 
 ---
@@ -117,23 +117,23 @@ Neues Dashboard aus 3.7.0. Alle Meldungen stammen vom 10. bis 12.11.2026. Nichts
 
 | Issue | Titel | Einordnung | Priorität |
 |---|---|---|---|
-| [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | Fehler, Karte baut die Suche bei jeder Eingabe neu auf | mittel |
-| [#162](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/162) | Raumtemperatur an Lambda immer ausgegraut | Offen, Ursache nicht gefunden (Raum-Regler und Raum-Anzeige getrennt prüfen) | mittel |
-| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | Bekannte Grenze, siehe toDo „Mehrere Wärmepumpen / Heizkreise“; PV-Symbol ist Wunsch | mittel |
-| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | Nach Neustarts da, Ursache offen; Vorschlag für die Heizkurve | niedrig–mittel |
-| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | Mehrere berechtigte Punkte, siehe Details | mittel |
-| [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | Wunsch; Sensor existiert bereits | niedrig |
-| [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Geschlossen, nicht geplant** (wie #31, #98, #125, #136): Anforderung mit Zeitlimit, kein Rücklesen | – |
+| [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | **FIXED** in 3.7.1 (nicht released), Suchfeld bleibt erhalten | mittel |
+| [#162](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/162) | Raumtemperatur an Lambda immer ausgegraut | **Offen**, Ursache nicht gefunden; Entitätsliste vom Melder anfordern | mittel |
+| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **Doku-Teil FIXED** in 3.7.1 (nicht released). Auswahl mehrerer Heizkreise in der Karte offen | mittel |
+| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Offen**: nach Neustarts da, Ursache offen; Vorschlag für die Heizkurve | niedrig–mittel |
+| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1 (nicht released): Punkte 1, 6, 7. Offen: 2, 3, 5 | mittel |
+| [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | **Offen** (Wunsch); Sensor existiert bereits | niedrig |
+| [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
 
 Nicht cockpit-spezifisch, aber neu: [#161](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/161) (evcc und Register 102). Ursache wie bei #105: zwei Quellen schreiben in Register 102. Ein Melder hat es gelöst, indem er die PV-Option der Integration abgeschaltet hat und nur evcc schreiben lässt. Einordnung bei #105.
 
 ### #160: Entitäten-Suche schließt nach jedem Buchstaben
 
-**Status:** Fehler, Ursache wahrscheinlich bekannt.
+**Status:** behoben am 13.11.2026, noch nicht released.
 
-Die Entitäten-Karte baut bei jeder Eingabe in das Suchfeld die ganze Ansicht neu auf (`lambda-entities-card.js`, Eingabe-Handler `_render(true)`). Das Eingabefeld wird dabei ersetzt und verliert den Fokus.
+Die Entitäten-Karte baute bei jeder Eingabe und bei jedem HA-Update (alle 5 s) die ganze Ansicht neu auf. Das Suchfeld wurde ersetzt, verlor den Fokus, und auf dem Handy schloss die Tastatur. Jetzt entsteht das Gerüst mit dem Suchfeld einmal; danach werden nur Zähler und Liste erneuert. Mit Playwright in Chrome und Firefox geprüft: alte Karte verliert Fokus und Eingabe, neue behält beides.
 
-**Nächste Schritte:** Eingabefeld beim Neuaufbau erhalten oder nur die Liste neu zeichnen. Danach mit Playwright testen (Tippen Buchstabe für Buchstabe).
+**Nächste Schritte:** mit 3.7.1 ausliefern, dann im Issue antworten.
 
 ---
 
@@ -157,7 +157,9 @@ Das Cockpit zeigt wie im Original nur Heizkreis 1 (siehe toDo „Mehrere Wärmep
 
 Das PV-Symbol bei den Schaltpunkten ist nur eine Anzeige. Platzierung ist Geschmackssache.
 
-**Nächste Schritte:** Entscheiden, ob das Cockpit weitere Heizkreise per Auswahl anzeigt (größerer Umbau). Bis dahin in der Antwort auf die YAML-Möglichkeit verweisen und die Schlüssel für Heizkreis 2 nennen.
+**Umgesetzt am 13.11.2026 (nicht released):** Schritt-für-Schritt-Anleitung in `docs/docs/Anwender/lambda-cockpit.md`: Karte kopieren, `_hc1_` durch `_hc2_` ersetzen, Tabelle der Heizkreis-Schlüssel, Hinweis zum Bild (immer Fußbodenheizung).
+
+**Nächste Schritte:** Im Issue auf die Anleitung verweisen. Eine Auswahl in der Karte bleibt ein größerer Umbau.
 
 ---
 
@@ -185,7 +187,12 @@ Vermutlich lädt die Karte, bevor die Werte der Heizkurve als Zustände vorliege
 6. **Laufzeiten am ersten Tag:** Die Tageszähler starten mit der Installation. Die Zeit davor zählt als „Ruhe/Sonst.“.
 7. **Wärmefahrplan-Verschiebung bei falscher Kurvenkopie (Nachtrag):** Bei ausgeschaltetem Wärmefahrplan zeigte der Sensor −1 K Verschiebung. Ursache: Der Kurvenpunkt 0 °C wurde am Display geändert, die Kopie in HA nicht. **Vorschlag:** Hinweis, dass eine Verschiebung auch auf eine nicht passende Kurvenkopie hinweisen kann. Bei ausgeschaltetem Wärmefahrplan sollte der Sensor ±0,4 K um „AT berechnet“ liegen; das ist ein guter Test für die Kopie.
 
-**Nächste Schritte:** Punkte 1, 2 und 7 als Verbesserung umsetzen. Punkt 3 und 5 prüfen, Punkt 6 als Hinweis in der Doku. Dem Melder kurz antworten, dass die Punkte aufgenommen sind.
+**Umgesetzt am 13.11.2026 (nicht released):**
+- Punkt 1: Hinweis „mit dem Display abgleichen“ erscheint jetzt auch, wenn die Kopie-Werte vorhanden sind; pro Browser ausblendbar.
+- Punkt 6: Doku erklärt die Laufzeiten am Installationstag.
+- Punkt 7: Hinweis unter der Heizkurve bei angezeigter Verschiebung; Doku beschreibt den Sensor als Kontrolle der Kurvenkopie.
+
+**Offen:** Punkte 2 (Modulationsziel) und 3 (Puffer-Status) beruhen auf Annahmen über die Regelung der Lambda; erst mit Lambda klären. Punkt 5 (Warmwasser-Eco) braucht Daten zur Eco-Zeit.
 
 ---
 

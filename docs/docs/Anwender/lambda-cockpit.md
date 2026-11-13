@@ -4,7 +4,7 @@ title: "Lambda Cockpit"
 
 # Lambda Cockpit
 
-*Zuletzt geändert am 04.11.2026*
+*Zuletzt geändert am 13.11.2026*
 
 Ab Version 3.7.0 bringt die Integration ein fertiges Dashboard mit: das **Lambda Cockpit**. Es zeigt die Wärmepumpe auf einer Seite, mit animierter Außeneinheit, Warmwasser, Puffer und Heizkreis im Stil der Lambda-Regelung, Heizkurve mit Wärmefahrplan, Schaltpunkten, Laufzeiten, Energie und Jahresarbeitszahl. Dazu kommt eine Übersicht aller Entitäten der Integration, sortiert nach Modulen und mit einer Erklärung zu jedem Wert.
 
@@ -51,13 +51,16 @@ Mit der Option entstehen zusätzlich **Einstellwerte**, die das Cockpit für die
 
 Eine Änderung dieser Werte verstellt die Lambda nicht. Ändern Sie sie bei Bedarf in der Lambda selbst mit.
 
-Die Tageszähler, die das Cockpit zeigt (Energie, Starts, Abtauungen, Laufzeiten), schaltet die Option ein, auch wenn **Perioden-Energiesensoren aktivieren** aus ist.
+Solange diese Werte nicht mit dem Display abgeglichen sind, stimmen die Schaltpunkte nicht. Die Kachel **Schaltpunkte aktuell** erinnert deshalb daran. Den Hinweis können Sie nach dem Abgleich mit **ausblenden** schließen; das gilt für den jeweiligen Browser.
+
+Die Tageszähler, die das Cockpit zeigt (Energie, Starts, Abtauungen, Laufzeiten), schaltet die Option ein, auch wenn **Perioden-Energiesensoren aktivieren** aus ist. Am Tag der Installation beginnen sie erst ab diesem Zeitpunkt zu zählen. **Laufzeiten heute** zeigt die Zeit davor deshalb als „Ruhe/Sonst.“, auch wenn die Wärmepumpe lief. Ab dem nächsten Tag stimmen die Werte.
 
 ## Neue Sensoren und Regler (für alle, auch ohne Dashboard)
 
 - **Laufzeit Heizen / Warmwasser / Abtauen / Heizstab**, gesamt und täglich, in Stunden.
 - **Umschaltungen Heizen-Warmwasser**, gesamt und täglich. Gezählt wird ein Wechsel direkt von Heizen zu Warmwasser oder über eine Pause von höchstens 10 Minuten.
 - **Außentemperatur Wärmefahrplan ber.** (Heizkreis): die Außentemperatur, mit der die Lambda laut Wärmefahrplan gerade rechnet. Die Integration rechnet sie aus dem Soll-Vorlauf (Register 5007) über die [Heizkurve](heizkurve.md) zurück, abzüglich des Offsets. Die Genauigkeit liegt bei etwa ±0,4 K und hängt davon ab, dass die Stützpunkte der Heizkurve mit der Lambda übereinstimmen.
+  Der Wert taugt damit auch als Kontrolle der Heizkurven-Kopie: Ist der Wärmefahrplan an der Lambda ausgeschaltet, sollte er höchstens etwa 0,4 K von **AT berechnet** abweichen. Zeigt das Cockpit trotzdem eine Verschiebung, passen die Stützpunkte in Home Assistant nicht zu denen am Display.
 - **Raum-Soll** (Heizkreis, Register 5051) als Regler, auch ohne Raumthermostat-Steuerung.
 - **Maximale Puffertemperatur** (Puffer, Register 3050) als Regler.
 
@@ -88,7 +91,37 @@ Die übrigen Einträge unter `entities:` hat die Integration beim Anlegen selbst
 
 ## Mehrere Wärmepumpen oder Heizkreise
 
-Das Cockpit zeigt Wärmepumpe 1, Boiler 1, Puffer 1 und Heizkreis 1. Mit mehreren Lambda-Anlagen wird das Dashboard für die zuletzt eingerichtete geschrieben. Andere Module lassen sich in der Karten-YAML eintragen, indem Sie die Entitäten unter `entities:` austauschen.
+Das Cockpit zeigt Wärmepumpe 1, Boiler 1, Puffer 1 und Heizkreis 1. Mit mehreren Lambda-Anlagen wird das Dashboard für die zuletzt eingerichtete geschrieben.
+
+### Heizkreis 2 oder 3 anzeigen
+
+Für jeden weiteren Heizkreis legen Sie eine Kopie der Cockpit-Karte an und tauschen darin die Entitäten des Heizkreises aus. Die Karte kennt nur einen Satz Schlüssel (`hc_vl`, `offset`, `p_hk_ein` …); Sie ändern also die **Werte** dieser Schlüssel, nicht ihre Namen. Neue Schlüssel wie `hc2_vl` übergeht die Karte ohne Fehlermeldung.
+
+Legen Sie die Kopie in einem **eigenen Dashboard** an. Das Dashboard „Lambda Cockpit“ schreibt die Integration bei einer neuen Version gegebenenfalls neu, eigene Ansichten darin gingen dann verloren.
+
+1. Dashboard **Lambda Cockpit** öffnen, oben rechts auf den Stift (**Dashboard bearbeiten**), dann an der Cockpit-Karte auf **Bearbeiten** und unten auf **Code-Editor anzeigen**. Den gesamten YAML-Text kopieren und den Editor mit **Abbrechen** verlassen.
+2. **Einstellungen** → **Dashboards** → **Dashboard hinzufügen** → **Neues Dashboard von Grund auf**, z. B. mit dem Titel „Lambda Heizkreis 2“.
+3. Im neuen Dashboard auf den Stift, die Ansicht bearbeiten und als **Ansichtstyp** „Panel (einzelne Karte)“ wählen. Dann **Karte hinzufügen** → **Manuell** und den kopierten Text einfügen.
+4. Im eingefügten Text **jedes `_hc1_` durch `_hc2_` ersetzen** (für Heizkreis 3 durch `_hc3_`). Nur die Entitäten des Heizkreises enthalten `_hc1_`; Wärmepumpe, Boiler und Puffer bleiben unverändert. Betroffen sind diese Schlüssel:
+
+    | Schlüssel | Bedeutung |
+    |---|---|
+    | `hc_vl`, `hc_rl` | Vorlauf, Rücklauf |
+    | `hc_soll` (ältere Firmware: `hc_soll_old`) | Soll-Vorlauf |
+    | `hc_state` | Betriebszustand |
+    | `offset` | Offset Heizkurve |
+    | `room_set`, `raum_soll` | Raum-Soll (Anzeige, Regler) |
+    | `curve_m22`, `curve_0`, `curve_p22`, `curve_calc` | Heizkurve |
+    | `wfp_at` | Außentemperatur Wärmefahrplan |
+    | `p_hk_ein`, `p_hk_aus`, `p_hk_spr`, `p_hk_grenze`, `p_hk_max` | Einstellwerte für die Schaltpunkte |
+
+5. Nutzt der Heizkreis die Raumthermostat-Steuerung: beim Schlüssel `room` den Raumfühler eintragen, den Sie in den Optionen für diesen Heizkreis gewählt haben.
+6. **Speichern**. Die Einstellwerte des zweiten Heizkreises (Hysteresen, Spreizung, Heizgrenze, max. Vorlauf) einmal am Gerät des Heizkreises unter **Konfiguration** vom Lambda-Display übernehmen.
+
+Beispiel: Aus `hc_vl: sensor.eu08l_hc1_flow_line_temperature` wird `hc_vl: sensor.eu08l_hc2_flow_line_temperature`.
+
+!!! note "Bild des Heizkreises"
+    Die Karte zeichnet den Heizkreis immer als Fußbodenheizung, auch bei Heizkörpern. Die Werte stimmen trotzdem.
 
 ## Die Karten in einem eigenen Dashboard
 
