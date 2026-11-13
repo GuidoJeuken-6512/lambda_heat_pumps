@@ -106,6 +106,11 @@ class LambdaClimate(LambdaEntity, ClimateEntity):
 
     entity_description: LambdaClimateDescription
 
+    # Home Assistant 2026.11 reads the native_* members. The old names stay
+    # for 2026.9/2026.10; providing both in this class keeps 2026.11 from
+    # reporting them as deprecated (it prefers the native ones). Drop the
+    # old ones once the minimum version is 2026.11.
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
 
@@ -155,14 +160,24 @@ class LambdaClimate(LambdaEntity, ClimateEntity):
         )
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """What it is now."""
         return getattr(self._component, self.entity_description.current)
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """What the controller is aiming for."""
         return getattr(self._component, self.entity_description.target)
+
+    @property
+    def current_temperature(self) -> float | None:
+        """What it is now (Home Assistant before 2026.11)."""
+        return self.native_current_temperature
+
+    @property
+    def target_temperature(self) -> float | None:
+        """What the controller is aiming for (Home Assistant before 2026.11)."""
+        return self.native_target_temperature
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Ask the controller for a different temperature."""

@@ -131,6 +131,23 @@ async def test_setting_the_hot_water_temperature(
     assert hass.states.get(climate).attributes["temperature"] == 55.0
 
 
+def test_the_climate_entity_uses_no_deprecated_temperature_api(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Defining the thermostat class reports nothing deprecated.
+
+    Home Assistant 2026.11 checks this when the class is created, so the
+    module is loaded again here to run that check.
+    """
+    import importlib
+
+    from custom_components.lambda_heat_pumps import climate
+
+    caplog.clear()
+    importlib.reload(climate)
+    assert "provides the deprecated" not in caplog.text
+
+
 async def test_the_hot_water_climate_keeps_its_controls_when_part_is_refused(
     hass: HomeAssistant, controller: Controller
 ) -> None:
