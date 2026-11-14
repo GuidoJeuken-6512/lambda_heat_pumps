@@ -20,7 +20,9 @@
 - A heating circuit without its own return sensor no longer shows an empty return field and switching point ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)). The room sensor is taken per heating circuit.
 - **Compressor starts today** in the top area, as a tile under “Switches”; the three outside temperatures moved up next to the operating state, so the area does not grow. A cockpit from 3.7.0 shows the tile without being rewritten ([#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167)).
 - Switching the dashboard option off removes the dashboard again even after the integration was deleted and set up anew (an old entry kept it).
+- A small **?** on every part of the cockpit opens its section of the new help page [Lambda Cockpit: the tiles](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/) (German) in a new tab. The page also says which values have to be copied from the controller's display by hand.
 - Documentation: why runtimes on the day of installation look too low.
+- Documentation: several heat pumps (not supported) and several heating circuits (automatic) are described separately; the issue templates link to the documentation.
 
 ### [3.7.0] - 2026-11-09
 
@@ -534,7 +536,9 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Ein Heizkreis ohne eigenen Rücklauffühler zeigt kein leeres Rücklauf-Feld und keinen leeren Schaltpunkt mehr ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)). Der Raumfühler wird je Heizkreis zugeordnet.
 - **Kompressorstarts heute** im oberen Bereich, als Kachel unter „Umschaltungen“; die drei Außentemperaturen stehen dafür jetzt oben neben dem Betriebszustand, der Bereich wird nicht größer. Ein Cockpit aus 3.7.0 zeigt die Kachel, ohne neu geschrieben zu werden ([#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167)).
 - Das Ausschalten der Dashboard-Option entfernt das Dashboard wieder, auch nachdem die Integration gelöscht und neu eingerichtet wurde (ein alter Eintrag hielt es fest).
+- Ein kleines **?** an jedem Teil des Cockpits öffnet in einem neuen Tab den passenden Abschnitt der neuen Hilfeseite [Lambda Cockpit: die Kacheln](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/). Dort steht auch, welche Werte vom Lambda-Display von Hand übertragen werden müssen.
 - Doku: Erklärung, warum die Laufzeiten am Installationstag zu niedrig wirken.
+- Doku: mehrere Wärmepumpen (nicht unterstützt) und mehrere Heizkreise (automatisch) getrennt beschrieben; die Issue-Vorlagen verweisen auf die Doku.
 
 ### [3.7.0] - 2026-11-09
 

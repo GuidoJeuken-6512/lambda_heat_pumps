@@ -4,7 +4,7 @@ title: "Lambda Cockpit"
 
 # Lambda Cockpit
 
-*Zuletzt geändert am 13.11.2026*
+*Zuletzt geändert am 14.11.2026*
 
 Ab Version 3.7.0 bringt die Integration ein fertiges Dashboard mit: das **Lambda Cockpit**. Es zeigt die Wärmepumpe auf einer Seite, mit animierter Außeneinheit, Warmwasser, Puffer und Heizkreis im Stil der Lambda-Regelung, Heizkurve mit Wärmefahrplan, Schaltpunkten, Laufzeiten, Energie und Jahresarbeitszahl. Dazu kommt eine Übersicht aller Entitäten der Integration, sortiert nach Modulen und mit einer Erklärung zu jedem Wert.
 
@@ -74,6 +74,8 @@ Die Tageszähler, die das Cockpit zeigt (Energie, Starts, Kompressorstarts, Abta
 
 ## Was das Cockpit zeigt und was nicht
 
+Jeder Teil des Cockpits ist auf einer eigenen Seite erklärt: [Lambda Cockpit: die Kacheln](lambda-cockpit-kacheln.md). Das Symbol **?** oben an einer Kachel öffnet den passenden Abschnitt in einem neuen Browser-Tab.
+
 - **Raumtemperatur:** nur bei eingeschalteter Raumthermostat-Steuerung, dann vom dort gewählten Fühler.
 - **Vorlauf-Werte unter der Heizkurve:** VL berechnet (Integration), VL Soll (Lambda), VL ist und die Abweichung Soll − berechnet. Liegt die Abweichung bei 1 K oder mehr, ist sie hervorgehoben; oft passt dann die Kopie der Heizkurve nicht zur Lambda.
 - **Heizkreis ohne eigenen Rücklauffühler:** Das Rücklauf-Feld und der Schaltpunkt des Heizkreises entfallen, statt dauerhaft „–“ zu zeigen.
@@ -99,13 +101,15 @@ tariffs:
 
 Die übrigen Einträge unter `entities:` hat die Integration beim Anlegen selbst eingetragen, die bleiben stehen.
 
-## Mehrere Wärmepumpen oder Heizkreise
+## Mehrere Wärmepumpen
 
-Das Cockpit zeigt Wärmepumpe 1, Boiler 1, Puffer 1 und Heizkreis 1. Mit mehreren Lambda-Anlagen wird das Dashboard für die zuletzt eingerichtete geschrieben.
+**Nicht unterstützt.** Das Cockpit zeigt Wärmepumpe 1, Boiler 1 und Puffer 1. Weitere Wärmepumpen, Boiler oder Puffer einer Anlage erscheinen nicht im Cockpit; ihre Entitäten stehen in der Übersicht **Alle Lambda-Entitäten**.
 
-### Heizkreis 2 oder 3 anzeigen
+Sind mehrere Lambda-Anlagen eingerichtet, gibt es trotzdem nur ein Dashboard „Lambda Cockpit“. Es zeigt die zuletzt eingerichtete Anlage.
 
-Weitere Heizkreise zeigt die Karte **Lambda Heizkreis** (`custom:lambda-heating-circuit-card`). Sie enthält nur, was zum Heizkreis gehört: die Heizkreis-Kachel mit Vorlauf, Rücklauf und Raum-Soll, die Heizkurve mit Offset, den Schaltpunkt des Heizkreises sowie Heizgrenze und maximalen Vorlauf.
+## Mehrere Heizkreise
+
+**Automatisch.** Die Integration erkennt die Heizkreise der Lambda und legt das Cockpit passend an. Einzurichten ist dafür nichts.
 
 **Ein Heizkreis:** Das Cockpit zeigt ihn wie bisher vollständig, es gibt keine weiteren Reiter.
 
@@ -119,6 +123,8 @@ Weitere Heizkreise zeigt die Karte **Lambda Heizkreis** (`custom:lambda-heating-
 
 !!! warning "Eigene Änderungen am Cockpit"
     Beim Absenden wird das Dashboard „Lambda Cockpit“ neu geschrieben, eigene Änderungen daran gehen verloren. Wer sie behalten möchte, ignoriert die Meldung und fügt die Karte selbst in ein eigenes Dashboard ein (siehe unten).
+
+Die Reiter zeigen die Karte **Lambda Heizkreis** (`custom:lambda-heating-circuit-card`). Sie enthält nur, was zum Heizkreis gehört: die Heizkreis-Kachel mit Vorlauf, Rücklauf und Raum-Soll, die Heizkurve mit Offset, den Schaltpunkt des Heizkreises sowie Heizgrenze und maximalen Vorlauf.
 
 **Karte selbst hinzufügen:** In einem beliebigen Dashboard **Karte hinzufügen** → **Lambda Heizkreis** wählen, oder im Code-Editor:
 
@@ -145,4 +151,4 @@ Die Einstellwerte des Heizkreises (Hysteresen, Spreizung, Heizgrenze, max. Vorla
 
 Die Karten `custom:lambda-cockpit-card`, `custom:lambda-heating-circuit-card` und `custom:lambda-entities-card` sind nach der Installation der Integration immer verfügbar, auch ohne die Option. Fügen Sie die Cockpit- oder Heizkreis-Karte ohne `entities:` hinzu, sucht sie sich die Entitäten der ersten Lambda selbst (die Heizkreis-Karte die des Heizkreises aus `circuit:`).
 
-Weitere Informationen: [Optionen des Config Flow](optionen-config-flow.md), [Heizkurve](heizkurve.md)
+Weitere Informationen: [Lambda Cockpit: die Kacheln](lambda-cockpit-kacheln.md), [Optionen des Config Flow](optionen-config-flow.md), [Heizkurve](heizkurve.md)

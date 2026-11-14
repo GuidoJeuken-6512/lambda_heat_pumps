@@ -60,6 +60,7 @@ nav = [
     { "Warmwasser Solltemperatur Steuerung" = "Anwender/warmwasser-solltemperatur.md" },
     { "PV Überschuss Steuerung" = "Anwender/pv_ueberschuss_steuerung.md" },
     { "Lambda Cockpit (Dashboard)" = "Anwender/lambda-cockpit.md" },
+    { "Lambda Cockpit: die Kacheln" = "Anwender/lambda-cockpit-kacheln.md" },
     { "Energieverbrauchsberechnung" = "Anwender/Energieverbrauchsberechnung.md" },
 #    { "Korrektur Verbrauchsberechnung" = "Anwender/energiesensoren-entwicklerwerkzeuge.md" },
     { "COP-Sensoren (Leistungszahl)" = "Anwender/cop-sensoren.md" },

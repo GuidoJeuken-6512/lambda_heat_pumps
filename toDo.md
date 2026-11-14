@@ -14,6 +14,7 @@
 - [ ] **Sporadischer „Konfigurationsfehler“ beim Laden des Cockpits.** „Custom element doesn't exist: lambda-cockpit-card“, obwohl die JS-Datei mit HTTP 200 geladen wird; keine Konsolenfehler. Gehäuft kurz nach einem HA-Neustart, Neuladen der Seite hilft. Reproduzierbar mit dem Playwright-Skript gegen den Test-Container.
   - **Firefox (immer, behoben in 3.7.0):** HA lädt die Karten vor dem eigenen Code und ersetzt in Firefox danach `window.customElements` durch ein Polyfill für „scoped custom element registries“, das die vorher definierten Elemente nicht kennt. Beide Karten melden sich jetzt erneut in der aktuellen Registry an, bis `home-assistant` definiert ist (`lccDefine` / `lecDefine`). Mit Playwright in Firefox und Chrome geprüft.
   - **Chrome/Edge (sporadisch):** beobachten, ob der Fehler mit dieser Änderung auch dort verschwindet.
+- [x] **Hilfeseite je Kachel** (14.11.2026, 3.7.1, nicht released): `docs/docs/Anwender/lambda-cockpit-kacheln.md`, „?“ an jeder Kachel öffnet den Abschnitt in neuem Tab. Bei neuen Kacheln Abschnitt und Anker mitpflegen (`LCC_HELP_URL`, `_help()`).
 - [ ] **Screenshot des Cockpits für die Doku** (`docs/docs/Anwender/lambda-cockpit.md`).
 - [x] **Options-Screenshot erneuern** (erledigt 09.11.2026): `docs/docs/assets/options_cockpit_de.png` zeigt noch den alten Hilfetext („Ausschalten entfernt das Dashboard nicht“).
 - [ ] **Live-Entfernen bestätigen:** Option im laufenden Betrieb ausschalten → Dashboard verschwindet ohne Neustart (bisher nur über Neustart nachgestellt).

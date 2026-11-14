@@ -66,7 +66,7 @@ const LCC_TEXT = {
     sp_info_hc: "RL-Soll = Soll-VL ({0} °C, enthält Offset und ggf. PV-Erhöhung) − Spreizung ({1} K). Anforderung ab RL-Soll + Einschalthysterese ({2} K), Ende bei RL-Soll + Ausschalthysterese ({3} K). Heizbetrieb nur, solange die berechnete AT unter der Heizgrenze liegt. Annahme: Lambda wertet hier den Rücklauf aus.",
     sp_copy_hint: "Die Hysterese- und Grenzwerte sind Kopien der Lambda-Einstellungen (nicht per Modbus lesbar). Bitte einmal vom Display übernehmen: Gerät → Konfiguration.",
     sp_copy_check: "Die Hysterese- und Grenzwerte sind Kopien der Lambda-Einstellungen und starten mit Standardwerten. Bitte mit dem Display abgleichen (Gerät → Konfiguration), sonst stimmen die Schaltpunkte nicht.",
-    hide: "ausblenden",
+    hide: "ausblenden", help: "Hilfe zu diesem Teil (öffnet einen neuen Tab)",
     wfp_check: "Verschiebung, obwohl der Wärmefahrplan aus ist? Dann passt die Kopie der Heizkurve nicht zur Lambda: Stützpunkte mit dem Display vergleichen.",
     limits: "GRENZWERTE", info: "Info", buf_max: "Puffer max.", hc_max: "Heizkreis max. VL",
     ww_max: "WW max. Soll", heat_limit_at: "Heizgrenze AT", tag_lambda: "Lambda", tag_copy: "Kopie",
@@ -118,7 +118,7 @@ const LCC_TEXT = {
     sp_info_hc: "Return set = flow set ({0} °C, includes offset and any PV increase) − spread ({1} K). Request from return set + switch-on hysteresis ({2} K), end at return set + switch-off hysteresis ({3} K). Heating only while the calculated outside temperature is below the heating limit. Assumption: the Lambda evaluates the return here.",
     sp_copy_hint: "The hysteresis and limit values are copies of the Lambda's settings (not readable over Modbus). Copy them from the display once: device → configuration.",
     sp_copy_check: "The hysteresis and limit values are copies of the Lambda's settings and start with default values. Check them against the display (device → configuration), otherwise the switching points are off.",
-    hide: "hide",
+    hide: "hide", help: "Help for this part (opens a new tab, German)",
     wfp_check: "A shift although the heating schedule is off? Then the copy of the heating curve does not match the Lambda: compare its points with the display.",
     limits: "LIMITS", info: "Info", buf_max: "Buffer max.", hc_max: "Circuit max. flow",
     ww_max: "DHW max. set", heat_limit_at: "Heating limit OT", tag_lambda: "Lambda", tag_copy: "copy",
@@ -143,6 +143,9 @@ function L(key, ...args) {
   const t = (LCC_TEXT[LCC_LANG] || LCC_TEXT.de)[key] ?? LCC_TEXT.de[key] ?? key;
   return args.length ? t.replace(/\{(\d)\}/g, (_, i) => args[i]) : t;
 }
+// The help page: one section per part of the card.
+const LCC_HELP_URL = "https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/";
+
 // Slots added after 3.7.0. A dashboard written before does not list them, so
 // the card looks them up itself.
 const LCC_LATE_KEYS = ["starts_vd"];
@@ -507,6 +510,7 @@ class LambdaCockpitCard extends HTMLElement {
 
   // ---------- Interaction ----------
   _onClick(ev) {
+    if (ev.composedPath().some((n) => n.classList && n.classList.contains("help"))) return;
     const el = ev.composedPath().find((n) => n.dataset && (n.dataset.act || n.dataset.ent));
     if (!el) return;
     const act = el.dataset.act;
@@ -616,6 +620,11 @@ class LambdaCockpitCard extends HTMLElement {
     const d = unit === "" ? 0 : 1;
     const txt = `${v > 0 && unit === "K" ? "+" : ""}${lccFmt(v, d)}${unit === "K" ? " K" : unit === "°" ? "°" : ""}${pend ? ' <i class="sync">⟳</i>' : ""}`;
     return this._ctl(label, txt, `data-act="num"${step ? ` data-step="${step}"` : ""}`, id);
+  }
+
+  // A "?" that opens this part's section of the help page in a new tab.
+  _help(anchor) {
+    return `<a class="help" href="${LCC_HELP_URL}#${anchor}" target="_blank" rel="noopener" title="${lccEsc(L("help"))}" aria-label="${lccEsc(L("help"))}">?</a>`;
   }
 
   _info_(key, text) {
@@ -790,7 +799,7 @@ class LambdaCockpitCard extends HTMLElement {
           ? this._ctl(`🌡️ ${L("setpoint")}`, `${lccFmt(this._pendVal(this._id("ww_climate")), 0)}°`, 'data-act="clim"', this._id("ww_climate"))
           : ""}
         ${this._numCtl(`☀️ ${L("pv_increase")}`, "ww_pv_offset", "K", 0.5)}
-        <div class="cfoot">${L("hot_water")}</div>
+        <div class="cfoot">${L("hot_water")}${this._help("brauchwasser")}</div>
       </div>`;
     const buf = !showBuf ? "" : `
       <div class="ctrl" data-ent="${lccEsc(this._id("buf_top"))}">
@@ -805,7 +814,7 @@ class LambdaCockpitCard extends HTMLElement {
           ${this._box(104, 101, 52, 22, bLow)}
         </svg></div>
         ${this._numCtl(`☀️ ${L("pv_increase")}`, "buf_pv_offset", "K", 0.5)}
-        <div class="cfoot">${L("buffer")}</div>
+        <div class="cfoot">${L("buffer")}${this._help("puffer")}</div>
       </div>`;
     const hc = this._hcTiles();
     return `<div class="ctrls">${ww}${buf}${hc}</div>`;
@@ -863,7 +872,7 @@ class LambdaCockpitCard extends HTMLElement {
         </svg></div>
         ${this._numCtl(`🎯 ${L("room_setpoint")}`, "raum_soll", "°", 0.5)}
         ${this._numCtl(`☀️ ${L("pv_increase")}`, "pv_offset", "K", 0.5)}
-        <div class="cfoot">${L("floor")}${numbered || circuit > 1 ? ` ${circuit}` : ""}</div>
+        <div class="cfoot">${L("floor")}${numbered || circuit > 1 ? ` ${circuit}` : ""}${this._help("heizkreis")}</div>
       </div>`;
   }
 
@@ -991,6 +1000,7 @@ class LambdaCockpitCard extends HTMLElement {
           <div class="opline" data-ent="${lccEsc(this._id("op"))}"><span class="dot"></span>${lccEsc(op.text)}</div>
           ${alerts}
           <div class="since">${lccEsc(since)}</div>
+          ${this._help("oberer-bereich")}
           <div class="atrow">
             ${this._has("wfp_at") ? `<div class="wfp" data-ent="${lccEsc(this._id("wfp_at"))}"><span>${L("wfp_at")}</span><b>${lccFmt(this._atWfp(), 1)}°</b></div>` : ""}
             <div data-ent="${lccEsc(this._id("atcalc"))}"><span>${L("at_calc")}</span><b>${lccFmt(this._n("atcalc"), 1)}°</b></div>
@@ -1028,7 +1038,7 @@ class LambdaCockpitCard extends HTMLElement {
 
     <div class="row2">
       ${this._has("src_pv") || this._has("src_grid") ? `<div class="panel">
-        <div class="ph">🔌 ${L("src_now")} <span>${sum > 0 ? lccFmt(sum, 0) + " W" : L("hp_idle")}</span></div>
+        <div class="ph"><b>🔌 ${L("src_now")}${this._help("stromquelle-und-netzentgelt")}</b> <span>${sum > 0 ? lccFmt(sum, 0) + " W" : L("hp_idle")}</span></div>
         <div class="srcbar">
           ${sum > 0
             ? `<i style="width:${(pv / sum) * 100}%;background:#fbbf24" data-ent="${lccEsc(this._id("src_pv"))}"></i><i style="width:${(bat / sum) * 100}%;background:#34d399" data-ent="${lccEsc(this._id("src_bat"))}"></i><i style="width:${(grid / sum) * 100}%;background:#f87171" data-ent="${lccEsc(this._id("src_grid"))}"></i>`
@@ -1037,7 +1047,7 @@ class LambdaCockpitCard extends HTMLElement {
         <div class="legend"><span><i style="background:#fbbf24"></i>PV ${lccFmt(pv, 0)} W</span><span><i style="background:#34d399"></i>${L("storage")} ${lccFmt(bat, 0)} W</span><span><i style="background:#f87171"></i>${L("grid")} ${lccFmt(grid, 0)} W</span></div>
       </div>` : ""}
       ${tf.windows.length || tf.standard.price != null ? `<div class="panel">
-        <div class="ph">💶 ${L("tariff_title")} <span style="color:${tn.color}">${lccEsc(tn.name)} · ${lccFmt(tn.price, 2)} ct</span></div>
+        <div class="ph"><b>💶 ${L("tariff_title")}${this._help("stromquelle-und-netzentgelt")}</b> <span style="color:${tn.color}">${lccEsc(tn.name)} · ${lccFmt(tn.price, 2)} ct</span></div>
         <div class="tbar">${segs}<div class="needle" style="left:${nowPos}%"></div></div>
         <div class="tticks"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
         <div class="tleft" style="color:${tn.color}">${L("tariff_left", lccDurHM(tn.endsIn))}</div>
@@ -1045,7 +1055,7 @@ class LambdaCockpitCard extends HTMLElement {
     </div>
 
     <div class="panel">
-      <div class="ph">🎛️ ${L("actions")}</div>
+      <div class="ph"><b>🎛️ ${L("actions")}${this._help("aktionen")}</b></div>
       <div class="actions">
         <button class="act ghost" data-act="popup"><span>🤖</span>${L("functions_btn")}<em>${fnOn} ${L("active")}</em></button>
       </div>
@@ -1078,7 +1088,7 @@ class LambdaCockpitCard extends HTMLElement {
     const rest = Math.max(0, elapsed - parts.reduce((s, p) => s + (p[1] || 0), 0) + (parts[3][1] || 0));
     return `
     <div class="tile">
-      <div class="th"><span>⏱️ ${L("runtimes")}</span><em>${lccFmt((run / Math.max(elapsed, 0.01)) * 100, 0)} % ${L("active")}</em></div>
+      <div class="th"><span>⏱️ ${L("runtimes")}${this._help("laufzeiten-heute")}</span><em>${lccFmt((run / Math.max(elapsed, 0.01)) * 100, 0)} % ${L("active")}</em></div>
       <div class="rt">
         <svg viewBox="0 0 100 100" class="donut"><circle cx="50" cy="50" r="${r}" fill="none" stroke="#0f172a" stroke-width="14"/>${donut}
           <text x="50" y="48" text-anchor="middle" class="dv">${lccHours(run)}</text><text x="50" y="62" text-anchor="middle" class="dl">${L("compressor")}</text></svg>
@@ -1116,7 +1126,7 @@ class LambdaCockpitCard extends HTMLElement {
     const otot = (netz || 0) + (eigen || 0);
     return `
     <div class="tile">
-      <div class="th"><span>⚡ ${L("energy_today")}</span><em>${lccFmt(tot, 2)} kWh</em></div>
+      <div class="th"><span>⚡ ${L("energy_today")}${this._help("energie-heute")}</span><em>${lccFmt(tot, 2)} kWh</em></div>
       ${bar(`🔥 ${L("heating")}`, sHz, wHz, copHz, "#fb923c", "strom_hz", "waerme_hz")}
       ${bar(`🚿 ${L("hot_water")}`, sWw, wWw, copWw, "#38bdf8", "strom_ww", "waerme_ww")}
       ${origin ? `<div class="ph" style="margin-top:10px">${L("origin_today")}</div>
@@ -1132,7 +1142,7 @@ class LambdaCockpitCard extends HTMLElement {
     const sc = (x) => lccClamp((x - 1) / 6, 0, 1);
     return `
     <div class="tile">
-      <div class="th"><span>🏆 ${L("efficiency")}</span><em>${L("jaz")}</em></div>
+      <div class="th"><span>🏆 ${L("efficiency")}${this._help("effizienz")}</span><em>${L("jaz")}</em></div>
       <div class="rings">
         ${this._ring(sc(jaz), "#a78bfa", L("total"), lccFmt(jaz, 2), "", this._id("e_out"))}
         ${this._ring(sc(jHz), "#fb923c", L("heating"), lccFmt(jHz, 2), L("since_ha"), this._id("hz_out"))}
@@ -1173,7 +1183,7 @@ class LambdaCockpitCard extends HTMLElement {
     };
     return `
     <div class="tile hk">
-      <div class="th"><span>📈 ${L("curve_title")}</span><em>${L("set_flow")} ${lccFmt(soll, 1)}°</em></div>
+      <div class="th"><span>📈 ${L("curve_title")}${this._help("heizkurve")}</span><em>${L("set_flow")} ${lccFmt(soll, 1)}°</em></div>
       <svg class="curve2" viewBox="0 0 ${W} ${H}">
         <rect x="${pad.l}" y="${pad.t}" width="${W - pad.l - pad.r}" height="${yBot - pad.t}" fill="#2b3138"/>
         ${grid}
@@ -1239,7 +1249,7 @@ class LambdaCockpitCard extends HTMLElement {
     const bAus = bSoll + this._n("p_buf_aus");
     return `
     <div class="tile sp">
-      <div class="th"><span>🎯 ${L("sp_title")}</span><em>${pvOn ? `☀️ ${L("pv_active")}` : L("without_pv")}</em></div>
+      <div class="th"><span>🎯 ${L("sp_title")}${this._help("schaltpunkte")}</span><em>${pvOn ? `☀️ ${L("pv_active")}` : L("without_pv")}</em></div>
       ${missing
         ? `<div class="hint" style="margin-bottom:8px">${L("sp_copy_hint")}</div>`
         : this._copyHintHidden()
@@ -1305,7 +1315,7 @@ class LambdaCockpitCard extends HTMLElement {
     if (!rows) return "";
     return `
     <div class="tile grz">
-      <div class="th"><span>ℹ️ ${L("limits")}</span><em>${L("info")}</em></div>
+      <div class="th"><span>ℹ️ ${L("limits")}${this._help("grenzwerte")}</span><em>${L("info")}</em></div>
       ${rows}
       <div class="hint">${this._info_("grz", L("limits_info"))} ${L("limits_hint")}</div>
     </div>`;
@@ -1422,6 +1432,11 @@ small{font-size:.6em;color:var(--mut);margin-left:2px;font-weight:500}
 .tile.wide{grid-column:span 2}
 @media (max-width:700px){.tile.wide{grid-column:span 1}}
 .th{display:flex;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.14em;font-weight:700;color:var(--mut);margin-bottom:10px}
+.help{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;margin-left:7px;border-radius:50%;border:1px solid currentColor;font-size:11px;font-weight:700;letter-spacing:0;line-height:1;color:var(--mut);text-decoration:none;vertical-align:middle;opacity:.8;cursor:pointer}
+.help:hover{opacity:1;color:#5eead4}
+.cfoot .help{color:#cbd5e1}
+.hhead .help{align-self:center;margin-left:0}
+.ph b{font-weight:inherit}
 .th em{font-style:normal;letter-spacing:0;font-size:12px;padding:3px 10px;border-radius:999px;background:#1a2640;color:var(--mut)}
 .th em.hot{background:rgba(251,146,60,.15);color:#fdba74;box-shadow:0 0 10px rgba(251,146,60,.25)}
 .tankwrap{display:flex;gap:10px;align-items:center}
@@ -1656,14 +1671,14 @@ class LambdaHeatingCircuitCard extends LambdaCockpitCard {
       html = `
       <ha-card>
         <div class="wrap">
-          <div class="th"><span>♨️ ${L("hc_card", circuit)}</span></div>
+          <div class="th"><span>♨️ ${L("hc_card", circuit)}${this._help("karte-lambda-heizkreis")}</span></div>
           <div class="row2 curverow">
             <div class="ctrls">${this._hcTile()}</div>
             ${this._tileHeizkurve()}
           </div>
           ${sp || limits ? `
           <div class="tile sp">
-            <div class="th"><span>🎯 ${L("sp_title")}</span></div>
+            <div class="th"><span>🎯 ${L("sp_title")}${this._help("schaltpunkte")}</span></div>
             ${this._has("p_hk_spr") ? "" : `<div class="hint" style="margin-bottom:8px">${L("sp_copy_hint")}</div>`}
             ${sp}
             ${limits}

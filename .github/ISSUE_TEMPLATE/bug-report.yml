@@ -2,6 +2,12 @@ name: 🐞 Bug report
 description: Create a report to help us improve
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 📖 **[Bitte vorher die Dokumentation lesen / Please read the documentation first](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/)**
+
+        **Viele Fragen sind dort schon beantwortet. / Many questions are already answered there.**
   - type: textarea
     id: background
     attributes:
