@@ -18,6 +18,7 @@ from custom_components.lambda_heat_pumps.const import (
     CONF_DEFROST_ROOM_BOOST,
     CONF_INSTALL_DASHBOARD,
     DOMAIN,
+    ISSUE_DASHBOARD_HEATING_CIRCUITS,
     ISSUE_DASHBOARD_RESTART,
 )
 from custom_components.lambda_heat_pumps.repairs import async_create_fix_flow
@@ -280,6 +281,9 @@ async def test_the_dashboard_is_written_with_the_option(
     # Only functions that exist; nothing for unreleased firmware.
     assert card["features"] == {"room_thermostat": False, "pv_surplus": False}
     assert config["views"][1]["cards"][0]["type"] == "custom:lambda-entities-card"
+    # One heating circuit: no tabs, no further tiles, the cockpit's icon as before.
+    assert "heating_circuits" not in card
+    assert config["views"][0]["icon"] == "mdi:heat-pump"
 
     items = hass_storage["lovelace_dashboards"]["data"]["items"]
     assert [item["url_path"] for item in items] == ["lambda-cockpit"]
@@ -287,14 +291,43 @@ async def test_the_dashboard_is_written_with_the_option(
 
     # The per-day counters the cockpit shows are switched on.
     registry = er.async_get(hass)
-    daily = registry.async_get(card["entities"]["strom_hz"])
-    assert daily is not None and daily.disabled_by is None
+    for slot in ("strom_hz", "starts_vd"):
+        daily = registry.async_get(card["entities"][slot])
+        assert daily is not None and daily.disabled_by is None
+    assert card["entities"]["starts_vd"] == "sensor.eu08l_hp1_compressor_start_cycling_daily"
 
     # Not written again on a reload.
     del hass_storage["lovelace.lambda_cockpit"]
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done(wait_background_tasks=True)
     assert "lovelace.lambda_cockpit" not in hass_storage
+
+
+async def test_a_cockpit_from_an_older_version_gets_the_compressor_starts(
+    hass: HomeAssistant, controller: Controller, hass_storage: dict
+) -> None:
+    """A dashboard written before the slot existed is kept; the counter is switched on."""
+    entry = await setup_entry(
+        hass, controller, legacy=True, options={CONF_INSTALL_DASHBOARD: True}
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    config = hass_storage["lovelace.lambda_cockpit"]["data"]["config"]
+    card = config["views"][0]["cards"][0]
+    entity_id = card["entities"].pop("starts_vd")
+
+    # As in 3.7.0: the counter was created switched off by the integration.
+    registry = er.async_get(hass)
+    registry.async_update_entity(
+        entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    # The dashboard is not rewritten (the card finds the slot itself) ...
+    card = hass_storage["lovelace.lambda_cockpit"]["data"]["config"]["views"][0]["cards"][0]
+    assert "starts_vd" not in card["entities"]
+    # ... and the counter it shows is on.
+    assert registry.async_get(entity_id).disabled_by is None
 
 
 async def test_the_dashboard_finds_renamed_entities(
@@ -371,6 +404,26 @@ async def test_switching_the_option_off_removes_the_dashboard(
     assert "lovelace.lambda_cockpit" in hass_storage
 
 
+async def test_an_entry_that_no_longer_exists_does_not_keep_the_dashboard(
+    hass: HomeAssistant, controller: Controller, hass_storage: dict
+) -> None:
+    """A controller deleted earlier left its mark; switching off still removes it."""
+    entry = await setup_entry(
+        hass, controller, legacy=True, options={CONF_INSTALL_DASHBOARD: True}
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    # What a deleted and newly set up integration leaves behind.
+    hass_storage["lambda_heat_pumps.dashboard"]["data"]["deleted_entry_id"] = 1
+
+    hass.config_entries.async_update_entry(entry, options={CONF_INSTALL_DASHBOARD: False})
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+
+    assert "lovelace.lambda_cockpit" not in hass_storage
+    assert hass_storage["lovelace_dashboards"]["data"]["items"] == []
+    assert hass_storage["lambda_heat_pumps.dashboard"]["data"] == {}
+
+
 async def test_a_dashboard_the_integration_did_not_write_is_left_alone(
     hass: HomeAssistant, controller: Controller, hass_storage: dict
 ) -> None:
@@ -385,3 +438,92 @@ async def test_a_dashboard_the_integration_did_not_write_is_left_alone(
     await hass.async_block_till_done(wait_background_tasks=True)
 
     assert hass_storage["lovelace_dashboards"]["data"]["items"]
+
+
+# --------------------------------------------------------------------------
+# Further heating circuits
+# --------------------------------------------------------------------------
+
+
+async def test_a_second_heating_circuit_gets_its_own_card(
+    hass: HomeAssistant, controller: Controller, hass_storage: dict
+) -> None:
+    """Several circuits: a tile each in the cockpit, and a tab each with the details."""
+    controller.install(5100)  # heating circuit 2
+    entry = await setup_entry(
+        hass, controller, legacy=True, options={CONF_INSTALL_DASHBOARD: True}
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    circuits = entry.runtime_data.counts["hc"]
+    assert circuits >= 2
+
+    views = hass_storage["lovelace.lambda_cockpit"]["data"]["config"]["views"]
+    assert [view["path"] for view in views] == [
+        "cockpit",
+        *(f"heating-circuit-{circuit}" for circuit in range(1, circuits + 1)),
+        "lambda-cockpit-entities",
+    ]
+    # Tabs with titles, not bare icons, so they are found.
+    assert all(view.get("icon") is None for view in views[: circuits + 1])
+
+    # The cockpit keeps circuit 1 and gets a tile for each further one.
+    cockpit = views[0]["cards"][0]
+    assert cockpit["entities"]["hc_vl"] == "sensor.eu08l_hc1_flow_line_temperature"
+    assert [c["circuit"] for c in cockpit["heating_circuits"]] == list(range(2, circuits + 1))
+    extra = cockpit["heating_circuits"][0]["entities"]
+    assert extra["hc_vl"] == "sensor.eu08l_hc2_flow_line_temperature"
+    assert "vl" not in extra
+
+    # One tab per circuit, each with the circuit's own card.
+    for index, circuit in ((1, 1), (2, 2)):
+        card = views[index]["cards"][0]
+        assert card["type"] == "custom:lambda-heating-circuit-card"
+        assert card["circuit"] == circuit
+        assert card["entities"]["hc_vl"] == f"sensor.eu08l_hc{circuit}_flow_line_temperature"
+        assert card["entities"]["offset"] == (
+            f"number.eu08l_hc{circuit}_flow_line_offset_temperature_number"
+        )
+    # Nothing to offer: the new cockpit already has them.
+    assert ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS) is None
+
+
+async def test_an_existing_cockpit_is_only_rewritten_after_asking(
+    hass: HomeAssistant, controller: Controller, hass_storage: dict
+) -> None:
+    """A cockpit written with one circuit gets a repair, not a silent rewrite."""
+    entry = await setup_entry(
+        hass, controller, legacy=True, options={CONF_INSTALL_DASHBOARD: True}
+    )
+    await hass.async_block_till_done(wait_background_tasks=True)
+    issues = ir.async_get(hass)
+    assert issues.async_get_issue(DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS) is None
+    assert len(hass_storage["lovelace.lambda_cockpit"]["data"]["config"]["views"]) == 2
+
+    # A second circuit turns up: the user is asked, the dashboard stays as it is.
+    controller.install(5100)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    issue = issues.async_get_issue(DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS)
+    assert issue is not None and issue.is_fixable
+    assert len(hass_storage["lovelace.lambda_cockpit"]["data"]["config"]["views"]) == 2
+
+    flow = await async_create_fix_flow(hass, ISSUE_DASHBOARD_HEATING_CIRCUITS, issue.data)
+    flow.hass = hass
+    result = await flow.async_step_init()
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "confirm"
+
+    result = await flow.async_step_confirm({})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done(wait_background_tasks=True)
+    views = hass_storage["lovelace.lambda_cockpit"]["data"]["config"]["views"]
+    assert [view["path"] for view in views][1:3] == ["heating-circuit-1", "heating-circuit-2"]
+    assert views[0].get("icon") is None
+    assert views[0]["cards"][0]["heating_circuits"][0]["circuit"] == 2
+    assert issues.async_get_issue(DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS) is None
+
+    # Asked once: a reload does not ask again.
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert issues.async_get_issue(DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS) is None
+

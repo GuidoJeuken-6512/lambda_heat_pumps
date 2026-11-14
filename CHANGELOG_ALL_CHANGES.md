@@ -15,7 +15,12 @@
 - The search in the entity overview no longer loses focus after every letter or every update, so the on-screen keyboard stays open ([#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160)).
 - The switching-point tile reminds you to check the copied hysteresis and limit values against the controller's display, since they start with default values; the hint can be hidden per browser ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
 - The heating curve notes that a shown heat-schedule shift can also mean the copy of the heating curve does not match the controller ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
-- Documentation: step-by-step guide for showing heating circuit 2 or 3 ([#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157)), and why runtimes on the day of installation look too low.
+- **New card “Lambda Heizkreis”** (`custom:lambda-heating-circuit-card`) for further heating circuits: circuit tile, heating curve, switching point and limits of one circuit; `circuit: 2` picks the circuit, `heating_type: radiator` draws radiators ([#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157)). With several circuits the cockpit shows a heating tile for each circuit on its main page, and each circuit gets a tab with its tile, heating curve, switching point and limits; with one circuit the cockpit stays as it was. An existing cockpit is not rewritten on its own: a repair offers it and warns that changes made to the dashboard are lost.
+- Under the heating curve: flow calculated, flow setpoint, flow actual and the gap between the Lambda's setpoint and the calculated one ([#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156), [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128)).
+- A heating circuit without its own return sensor no longer shows an empty return field and switching point ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)). The room sensor is taken per heating circuit.
+- **Compressor starts today** in the top area, as a tile under “Switches”; the three outside temperatures moved up next to the operating state, so the area does not grow. A cockpit from 3.7.0 shows the tile without being rewritten ([#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167)).
+- Switching the dashboard option off removes the dashboard again even after the integration was deleted and set up anew (an old entry kept it).
+- Documentation: why runtimes on the day of installation look too low.
 
 ### [3.7.0] - 2026-11-09
 
@@ -524,7 +529,12 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Die Suche in der Entitäten-Übersicht verliert nach jedem Buchstaben und bei jedem Update nicht mehr den Fokus, die Bildschirmtastatur bleibt offen ([#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160)).
 - Die Kachel „Schaltpunkte aktuell“ erinnert daran, die kopierten Hysterese- und Grenzwerte mit dem Display abzugleichen, weil sie mit Standardwerten starten; der Hinweis lässt sich pro Browser ausblenden ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
 - Die Heizkurve weist darauf hin, dass eine angezeigte Wärmefahrplan-Verschiebung auch eine nicht passende Kopie der Heizkurve bedeuten kann ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)).
-- Doku: Schritt-für-Schritt-Anleitung für Heizkreis 2 oder 3 ([#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157)) und Erklärung, warum die Laufzeiten am Installationstag zu niedrig wirken.
+- **Neue Karte „Lambda Heizkreis“** (`custom:lambda-heating-circuit-card`) für weitere Heizkreise: Heizkreis-Kachel, Heizkurve, Schaltpunkt und Grenzwerte eines Heizkreises; `circuit: 2` wählt den Heizkreis, `heating_type: radiator` zeichnet Heizkörper ([#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157)). Bei mehreren Heizkreisen zeigt das Cockpit auf der Hauptseite für jeden Heizkreis die Kachel Heizbetrieb, und jeder Heizkreis bekommt einen Reiter mit Kachel, Heizkurve, Schaltpunkt und Grenzwerten; mit einem Heizkreis bleibt das Cockpit wie bisher. Ein bestehendes Cockpit wird nicht von selbst neu geschrieben: Eine Reparaturmeldung bietet es an und warnt, dass eigene Änderungen am Dashboard verloren gehen.
+- Unter der Heizkurve: VL berechnet, VL Soll, VL ist und die Abweichung zwischen dem Soll der Lambda und dem berechneten Wert ([#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156), [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128)).
+- Ein Heizkreis ohne eigenen Rücklauffühler zeigt kein leeres Rücklauf-Feld und keinen leeren Schaltpunkt mehr ([#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163)). Der Raumfühler wird je Heizkreis zugeordnet.
+- **Kompressorstarts heute** im oberen Bereich, als Kachel unter „Umschaltungen“; die drei Außentemperaturen stehen dafür jetzt oben neben dem Betriebszustand, der Bereich wird nicht größer. Ein Cockpit aus 3.7.0 zeigt die Kachel, ohne neu geschrieben zu werden ([#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167)).
+- Das Ausschalten der Dashboard-Option entfernt das Dashboard wieder, auch nachdem die Integration gelöscht und neu eingerichtet wurde (ein alter Eintrag hielt es fest).
+- Doku: Erklärung, warum die Laufzeiten am Installationstag zu niedrig wirken.
 
 ### [3.7.0] - 2026-11-09
 

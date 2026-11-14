@@ -30,6 +30,12 @@ Die Texte erscheinen auf Deutsch oder Englisch, je nach Sprache Ihres Benutzerpr
 
 Das Dashboard können Sie wie jedes andere bearbeiten. Ändert eine neue Version der Integration den Aufbau, wird es einmal neu geschrieben; eigene Änderungen gehen dann verloren. Wer viel anpasst, kopiert sich die Karten besser in ein eigenes Dashboard.
 
+### Nach einem Update der Integration
+
+- **Die Karten sind sofort aktuell.** Der Browser lädt nach dem Update die neue Fassung von Cockpit-, Heizkreis- und Entitäten-Karte, auch in einem eigenen Dashboard. Neue Anzeigen innerhalb der Karten sind damit ohne Zutun da. Fehlen sie, die Seite im Browser neu laden.
+- **Der Aufbau des Dashboards bleibt.** Ansichten, Reiter und die eingetragenen Entitäten schreibt die Integration nur neu, wenn eine Version den Aufbau ändert (dann einmalig beim Start) oder wenn eine Reparaturmeldung es anbietet und Sie sie absenden, z. B. für weitere Heizkreise.
+- **Selbst neu schreiben:** Die Aktion `lambda_heat_pumps.generate_dashboard` (Entwicklerwerkzeuge → Aktionen) schreibt das Dashboard jederzeit komplett neu, mit dem Aufbau der installierten Version. Eigene Änderungen am Dashboard „Lambda Cockpit“ gehen dabei verloren. Ist die Option „Lambda Cockpit“ ausgeschaltet, entfernt die Integration das so erzeugte Dashboard beim nächsten Start wieder.
+
 ## Dashboard entfernen
 
 Schalten Sie **Dashboard „Lambda Cockpit“ installieren** unter **Konfigurieren** wieder aus und **Absenden**. Die Integration entfernt dann das Dashboard und die Einstellwerte, die nur das Cockpit brauchte. Ein Neustart ist dafür nicht nötig; steht der Eintrag noch in der Seitenleiste, die Seite im Browser neu laden.
@@ -53,7 +59,9 @@ Eine Änderung dieser Werte verstellt die Lambda nicht. Ändern Sie sie bei Beda
 
 Solange diese Werte nicht mit dem Display abgeglichen sind, stimmen die Schaltpunkte nicht. Die Kachel **Schaltpunkte aktuell** erinnert deshalb daran. Den Hinweis können Sie nach dem Abgleich mit **ausblenden** schließen; das gilt für den jeweiligen Browser.
 
-Die Tageszähler, die das Cockpit zeigt (Energie, Starts, Abtauungen, Laufzeiten), schaltet die Option ein, auch wenn **Perioden-Energiesensoren aktivieren** aus ist. Am Tag der Installation beginnen sie erst ab diesem Zeitpunkt zu zählen. **Laufzeiten heute** zeigt die Zeit davor deshalb als „Ruhe/Sonst.“, auch wenn die Wärmepumpe lief. Ab dem nächsten Tag stimmen die Werte.
+Die Tageszähler, die das Cockpit zeigt (Energie, Starts, Kompressorstarts, Abtauungen, Laufzeiten), schaltet die Option ein, auch wenn **Perioden-Energiesensoren aktivieren** aus ist. Am Tag der Installation beginnen sie erst ab diesem Zeitpunkt zu zählen. **Laufzeiten heute** zeigt die Zeit davor deshalb als „Ruhe/Sonst.“, auch wenn die Wärmepumpe lief. Ab dem nächsten Tag stimmen die Werte.
+
+**Kompressorstarts heute** steht im oberen Bereich als Kachel unter **Umschaltungen**. Zusammen mit der Laufzeit heute zeigt er, wie oft der Verdichter taktet. Die drei Außentemperaturen (AT Wärmefahrplan, AT berechnet, AT ist) stehen oben neben dem Betriebszustand. In einem Dashboard aus 3.7.0 erscheint die Kachel nach dem Update von selbst; der Zähler wird dafür eingeschaltet.
 
 ## Neue Sensoren und Regler (für alle, auch ohne Dashboard)
 
@@ -67,6 +75,8 @@ Die Tageszähler, die das Cockpit zeigt (Energie, Starts, Abtauungen, Laufzeiten
 ## Was das Cockpit zeigt und was nicht
 
 - **Raumtemperatur:** nur bei eingeschalteter Raumthermostat-Steuerung, dann vom dort gewählten Fühler.
+- **Vorlauf-Werte unter der Heizkurve:** VL berechnet (Integration), VL Soll (Lambda), VL ist und die Abweichung Soll − berechnet. Liegt die Abweichung bei 1 K oder mehr, ist sie hervorgehoben; oft passt dann die Kopie der Heizkurve nicht zur Lambda.
+- **Heizkreis ohne eigenen Rücklauffühler:** Das Rücklauf-Feld und der Schaltpunkt des Heizkreises entfallen, statt dauerhaft „–“ zu zeigen.
 - **PV-Überschuss:** nur bei eingeschalteter PV-Überschuss-Steuerung.
 
 ### Optionale Angaben in der Karten-YAML
@@ -95,36 +105,44 @@ Das Cockpit zeigt Wärmepumpe 1, Boiler 1, Puffer 1 und Heizkreis 1. Mit mehrere
 
 ### Heizkreis 2 oder 3 anzeigen
 
-Für jeden weiteren Heizkreis legen Sie eine Kopie der Cockpit-Karte an und tauschen darin die Entitäten des Heizkreises aus. Die Karte kennt nur einen Satz Schlüssel (`hc_vl`, `offset`, `p_hk_ein` …); Sie ändern also die **Werte** dieser Schlüssel, nicht ihre Namen. Neue Schlüssel wie `hc2_vl` übergeht die Karte ohne Fehlermeldung.
+Weitere Heizkreise zeigt die Karte **Lambda Heizkreis** (`custom:lambda-heating-circuit-card`). Sie enthält nur, was zum Heizkreis gehört: die Heizkreis-Kachel mit Vorlauf, Rücklauf und Raum-Soll, die Heizkurve mit Offset, den Schaltpunkt des Heizkreises sowie Heizgrenze und maximalen Vorlauf.
 
-Legen Sie die Kopie in einem **eigenen Dashboard** an. Das Dashboard „Lambda Cockpit“ schreibt die Integration bei einer neuen Version gegebenenfalls neu, eigene Ansichten darin gingen dann verloren.
+**Ein Heizkreis:** Das Cockpit zeigt ihn wie bisher vollständig, es gibt keine weiteren Reiter.
 
-1. Dashboard **Lambda Cockpit** öffnen, oben rechts auf den Stift (**Dashboard bearbeiten**), dann an der Cockpit-Karte auf **Bearbeiten** und unten auf **Code-Editor anzeigen**. Den gesamten YAML-Text kopieren und den Editor mit **Abbrechen** verlassen.
-2. **Einstellungen** → **Dashboards** → **Dashboard hinzufügen** → **Neues Dashboard von Grund auf**, z. B. mit dem Titel „Lambda Heizkreis 2“.
-3. Im neuen Dashboard auf den Stift, die Ansicht bearbeiten und als **Ansichtstyp** „Panel (einzelne Karte)“ wählen. Dann **Karte hinzufügen** → **Manuell** und den kopierten Text einfügen.
-4. Im eingefügten Text **jedes `_hc1_` durch `_hc2_` ersetzen** (für Heizkreis 3 durch `_hc3_`). Nur die Entitäten des Heizkreises enthalten `_hc1_`; Wärmepumpe, Boiler und Puffer bleiben unverändert. Betroffen sind diese Schlüssel:
+**Mehrere Heizkreise:** Das Cockpit zeigt auf der Hauptseite für jeden Heizkreis die Kachel **Heizbetrieb**. Heizkurve, Schaltpunkt, Heizgrenze und maximaler Vorlauf eines Heizkreises stehen auf seinem eigenen Reiter **Heizkreis 1**, **Heizkreis 2** … oben im Dashboard.
 
-    | Schlüssel | Bedeutung |
-    |---|---|
-    | `hc_vl`, `hc_rl` | Vorlauf, Rücklauf |
-    | `hc_soll` (ältere Firmware: `hc_soll_old`) | Soll-Vorlauf |
-    | `hc_state` | Betriebszustand |
-    | `offset` | Offset Heizkurve |
-    | `room_set`, `raum_soll` | Raum-Soll (Anzeige, Regler) |
-    | `curve_m22`, `curve_0`, `curve_p22`, `curve_calc` | Heizkurve |
-    | `wfp_at` | Außentemperatur Wärmefahrplan |
-    | `p_hk_ein`, `p_hk_aus`, `p_hk_spr`, `p_hk_grenze`, `p_hk_max` | Einstellwerte für die Schaltpunkte |
+**Dashboard aus einer früheren Version:** Unter **Einstellungen** → **Reparaturen** erscheint **„Weitere Heizkreise zum Lambda Cockpit hinzufügen“**. Erst wenn Sie die Meldung öffnen und absenden, schreibt die Integration das Dashboard neu: mit den Kacheln aller Heizkreise auf der Hauptseite und einem Reiter je Heizkreis. Ein Neustart ist dafür nicht nötig.
 
-5. Nutzt der Heizkreis die Raumthermostat-Steuerung: beim Schlüssel `room` den Raumfühler eintragen, den Sie in den Optionen für diesen Heizkreis gewählt haben.
-6. **Speichern**. Die Einstellwerte des zweiten Heizkreises (Hysteresen, Spreizung, Heizgrenze, max. Vorlauf) einmal am Gerät des Heizkreises unter **Konfiguration** vom Lambda-Display übernehmen.
+**Später ein Heizkreis dazugekommen:** Das Dashboard müssen Sie dafür nicht entfernen. Die Integration merkt sich, für wie viele Heizkreise sie das Dashboard geschrieben hat. Erkennt sie beim nächsten Laden (Neustart von Home Assistant oder Neuladen der Integration) mehr Heizkreise, erscheint dieselbe Meldung unter **Reparaturen**; Absenden ergänzt Kachel und Reiter des neuen Heizkreises. Solange der neue Heizkreis noch nicht erkannt ist, kommt keine Meldung.
 
-Beispiel: Aus `hc_vl: sensor.eu08l_hc1_flow_line_temperature` wird `hc_vl: sensor.eu08l_hc2_flow_line_temperature`.
+**Heizkreis weggefallen:** Dafür gibt es keine Meldung; Kachel und Reiter des entfernten Heizkreises bleiben stehen und zeigen „–“. Schalten Sie in den Optionen das Lambda Cockpit einmal aus und wieder ein, oder rufen Sie die Aktion `lambda_heat_pumps.generate_dashboard` auf (Entwicklerwerkzeuge → Aktionen). Auch dabei gehen eigene Änderungen am Dashboard verloren.
 
-!!! note "Bild des Heizkreises"
-    Die Karte zeichnet den Heizkreis immer als Fußbodenheizung, auch bei Heizkörpern. Die Werte stimmen trotzdem.
+!!! warning "Eigene Änderungen am Cockpit"
+    Beim Absenden wird das Dashboard „Lambda Cockpit“ neu geschrieben, eigene Änderungen daran gehen verloren. Wer sie behalten möchte, ignoriert die Meldung und fügt die Karte selbst in ein eigenes Dashboard ein (siehe unten).
+
+**Karte selbst hinzufügen:** In einem beliebigen Dashboard **Karte hinzufügen** → **Lambda Heizkreis** wählen, oder im Code-Editor:
+
+```yaml
+type: custom:lambda-heating-circuit-card
+circuit: 2              # Nummer des Heizkreises
+heating_type: radiator  # optional: Heizkörper statt Fußbodenheizung
+```
+
+Ohne `entities:` sucht sich die Karte die Entitäten des angegebenen Heizkreises selbst. Nutzt der Heizkreis die Raumthermostat-Steuerung, tragen Sie den Raumfühler zusätzlich ein:
+
+```yaml
+features:
+  room_thermostat: true
+entities:
+  room: sensor.wohnzimmer_temperatur
+```
+
+Die Einstellwerte des Heizkreises (Hysteresen, Spreizung, Heizgrenze, max. Vorlauf) einmal am Gerät des Heizkreises unter **Konfiguration** vom Lambda-Display übernehmen; sonst stimmt der Schaltpunkt nicht.
+
+`heating_type: radiator` gibt es auch für die Cockpit-Karte, wenn Heizkreis 1 Heizkörper versorgt.
 
 ## Die Karten in einem eigenen Dashboard
 
-Die Karten `custom:lambda-cockpit-card` und `custom:lambda-entities-card` sind nach der Installation der Integration immer verfügbar, auch ohne die Option. Fügen Sie die Cockpit-Karte ohne `entities:` hinzu, sucht sie sich die Entitäten der ersten Lambda selbst.
+Die Karten `custom:lambda-cockpit-card`, `custom:lambda-heating-circuit-card` und `custom:lambda-entities-card` sind nach der Installation der Integration immer verfügbar, auch ohne die Option. Fügen Sie die Cockpit- oder Heizkreis-Karte ohne `entities:` hinzu, sucht sie sich die Entitäten der ersten Lambda selbst (die Heizkreis-Karte die des Heizkreises aus `circuit:`).
 
 Weitere Informationen: [Optionen des Config Flow](optionen-config-flow.md), [Heizkurve](heizkurve.md)

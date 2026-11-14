@@ -72,6 +72,8 @@ ISSUE_REGISTER_ORDER: Final = "register_order"
 # dashboard written to its storage on startup, so it needs a restart to appear.
 # Fixable — the repair restarts Home Assistant.
 ISSUE_DASHBOARD_RESTART: Final = "dashboard_restart_required"
+# Offers to add the further heating circuits to a cockpit written before.
+ISSUE_DASHBOARD_HEATING_CIRCUITS: Final = "dashboard_heating_circuits"
 
 # The most a heat pump's own Wh counter can plausibly have reached: 1 GWh, ten
 # times what a large one generates in a lifetime. A counter read with its two
@@ -280,6 +282,7 @@ COCKPIT_COUNTER_KEYS: Final = frozenset(
         *(f"{mode}_thermal_energy_daily" for mode in ("heating", "hot_water", "cooling", "defrost")),
         "heating_cycling_daily",
         "hot_water_cycling_daily",
+        "compressor_start_cycling_daily",
         "defrost_cycling_daily",
         "heating_to_hot_water_cycling_daily",
         *(f"{mode}_runtime_daily" for mode in RUNTIME_MODES),

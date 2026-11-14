@@ -721,6 +721,17 @@
           }
         }
       }
+    },
+    "dashboard_heating_circuits": {
+      "title": "Weitere Heizkreise zum Lambda Cockpit hinzufügen",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Heizkreise zum Lambda Cockpit hinzufügen",
+            "description": "Diese Wärmepumpe hat mehr als einen Heizkreis. Absenden zeigt im Lambda Cockpit eine Kachel für jeden Heizkreis und legt je Heizkreis einen Reiter mit Kachel, Heizkurve und Schaltpunkt an.\n\nDazu wird das Dashboard neu geschrieben: **Eigene Änderungen am Dashboard „Lambda Cockpit“ gehen verloren.** Wer sie behalten möchte, ignoriert diese Meldung und fügt die Karte „Lambda Heizkreis“ stattdessen in ein eigenes Dashboard ein."
+          }
+        }
+      }
     }
   }
 }

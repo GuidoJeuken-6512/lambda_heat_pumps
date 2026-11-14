@@ -21,7 +21,7 @@
 | [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | Viele Entitäten ohne Messwert (Puffer) | Feedback zu Screenshot (EU13, V1.0.4-3K) | niedrig–mittel |
 | [#101](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/101) | Solarthermiemodul wird nicht erkannt | Logs fehlen; Timeout-Logik prüfen (F9) | niedrig |
 | [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | **Geschlossen** (GitHub), Ursache zweiter Modbus-Client (evcc) | – |
-| [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Sollwert (Enhancement) | Doku OK, Abweichungs-Sensor offen (F17) | niedrig |
+| [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Sollwert (Enhancement) | Abweichung Soll − berechnet im Cockpit sichtbar (3.7.1, nicht released); Abweichungs-Sensor (F17) offen | niedrig |
 
 ---
 
@@ -111,18 +111,20 @@ Ein Abweichungs-Sensor (Soll − Ist) würde helfen, Regelprobleme zu erkennen (
 
 ---
 
-## Lambda Cockpit: offene Issues (Stand 13.11.2026)
+## Lambda Cockpit: offene Issues (Stand 14.11.2026)
 
-Neues Dashboard aus 3.7.0. Alle Meldungen stammen vom 10. bis 12.11.2026. Nichts davon ist beantwortet oder geschlossen. 
+Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 14.11.2026.
 
 | Issue | Titel | Einordnung | Priorität |
 |---|---|---|---|
 | [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | **FIXED** in 3.7.1 (nicht released), Suchfeld bleibt erhalten | mittel |
-| [#162](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/162) | Raumtemperatur an Lambda immer ausgegraut | **Offen**, Ursache nicht gefunden; Entitätsliste vom Melder anfordern | mittel |
-| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **Doku-Teil FIXED** in 3.7.1 (nicht released). Auswahl mehrerer Heizkreise in der Karte offen | mittel |
-| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Offen**: nach Neustarts da, Ursache offen; Vorschlag für die Heizkurve | niedrig–mittel |
-| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1 (nicht released): Punkte 1, 6, 7. Offen: 2, 3, 5 | mittel |
+| [#162](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/162) | Raumtemperatur an Lambda immer ausgegraut | **Offen**; Raumfühler wird ab 3.7.1 je Heizkreis zugeordnet (kann helfen). Entitätsliste und Optionen vom Melder anfordern | mittel |
+| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **FIXED** in 3.7.1 (nicht released): bei mehreren Heizkreisen Kachel Heizbetrieb je Heizkreis auf der Hauptseite, Reiter je Heizkreis mit Karte „Lambda Heizkreis“; Reparaturmeldung für bestehende Cockpits. PV-Symbol offen | mittel |
+| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Teils FIXED** in 3.7.1 (nicht released): Vorlauf-Werte in der Heizkurve. Offen: fehlende Daten nach dem Start (Ursache unklar) | niedrig–mittel |
+| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1 (nicht released): Punkte 1, 4, 6, 7. Offen: 2, 3, 5 | mittel |
 | [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | **Offen** (Wunsch); Sensor existiert bereits | niedrig |
+| [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1 (nicht released): Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile | niedrig–mittel |
+| [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Offen** (Frage, neu 14.11.2026); Antwort nötig: eigene HACS-Karte oder Teile ins Cockpit | – |
 | [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
 
 Nicht cockpit-spezifisch, aber neu: [#161](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/161) (evcc und Register 102). Ursache wie bei #105: zwei Quellen schreiben in Register 102. Ein Melder hat es gelöst, indem er die PV-Option der Integration abgeschaltet hat und nur evcc schreiben lässt. Einordnung bei #105.
@@ -160,6 +162,39 @@ Das PV-Symbol bei den Schaltpunkten ist nur eine Anzeige. Platzierung ist Geschm
 **Umgesetzt am 13.11.2026 (nicht released):** Schritt-für-Schritt-Anleitung in `docs/docs/Anwender/lambda-cockpit.md`: Karte kopieren, `_hc1_` durch `_hc2_` ersetzen, Tabelle der Heizkreis-Schlüssel, Hinweis zum Bild (immer Fußbodenheizung).
 
 **Nächste Schritte:** Im Issue auf die Anleitung verweisen. Eine Auswahl in der Karte bleibt ein größerer Umbau.
+
+
+#### Lösungsvarianten (13.11.2026)
+
+| | Variante | Für den Nutzer | Aufwand | Risiko |
+|---|---|---|---|---|
+| A | Option `heating_circuit: 2` in der Cockpit-Karte; die Karte sucht die Entitäten des Heizkreises selbst | eine Zeile YAML, aber weiter ein ganzes Cockpit je Heizkreis | klein | gering |
+| B | Eigene Karte `custom:lambda-heating-circuit-card` mit `circuit: 2`: Hydraulik-Kachel, Heizkurve mit Offset, Schaltpunkte Heizkreis, Heizgrenze, max. Vorlauf | kleine Karte, beliebig oft ins Dashboard ziehbar | mittel | gering bis mittel |
+| C | Auswahl HK1/HK2/HK3 im Cockpit selbst | alles in einem Dashboard | mittel | mittel (Umbau für alle) |
+| D | Integration ergänzt das erzeugte Dashboard um eine Heizkreis-Karte (B) je weiterem Heizkreis | kein Einrichten | klein, wenn B existiert | siehe unten |
+
+**Umgesetzt am 13.11.2026 (3.7.1, nicht released):** Heizkreis-Karte als Unterklasse der Cockpit-Karte in derselben Datei (keine neue JS-Datei), gemeinsame Bausteine `_hcTile`, `_spHc`, `_vlRow`; bei mehreren Heizkreisen Kachel je Heizkreis im Cockpit (`heating_circuits` in der Karten-Konfiguration) und ein Reiter je Heizkreis (Entscheidung Nutzer 13.11.2026: bei einem Heizkreis keine Reiter); Reparatur `dashboard_heating_circuits` für bestehende. Cockpit vor/nach dem Umbau verglichen: einzige Änderung ist die neue Vorlauf-Zeile.
+
+**Entscheidung:** B + D. D wird nicht automatisch ausgeführt: Bei mehr als einem Heizkreis erscheint eine Reparaturmeldung „Heizkreise 2/3 zum Lambda Cockpit hinzufügen“. Erst die Bestätigung schreibt das Dashboard neu; der Dialog warnt, dass eigene Änderungen am Cockpit verloren gehen. Neuinstallationen bekommen die Heizkreis-Karten direkt. Muster: vorhandene Reparatur mit Bestätigung (`repairs.py`, Neustart).
+
+**Risiken für bestehende Nutzer und Gegenmaßnahmen:**
+- Eigene Änderungen am erzeugten Dashboard gehen beim Neuschreiben verloren → nur nach Bestätigung (siehe oben), `DASHBOARD_LAYOUT_VERSION` nicht für alle erhöhen.
+- `async_write_dashboard` schaltet nur die Entitäten von Ansicht 0, Karte 0 ein (`dashboard.py`) → auf alle erzeugten Karten ausweiten, sonst bleiben Werte von HK2/3 leer.
+- Raumfühler gibt es nur für HK1 (`_external_entities`) → Fühler je Heizkreis aus `room_temperature_entity_{n}`.
+- Neue JS-Datei → `lccDefine` (Firefox-Registry) gleich nutzen, in `FRONTEND_CARDS` eintragen.
+- Nicht betroffen: eigene Dashboards, die nach der Doku kopierten Heizkreis-Karten, Nutzer mit einem Heizkreis.
+
+**Vorhandene Bausteine:** `resolve_entities(hass, entry, indexes={"hc": 2})` löst schon andere Heizkreise auf, wird aber noch nirgends so aufgerufen. Anzahl der Heizkreise: `entry.runtime_data.counts["hc"]`. Die Darstellung steckt heute in drei Methoden der Cockpit-Karte (Heizkreis-Teil von `_ctrlTiles`, `_tileHeizkurve`, Heizkreis-Block in `_tileSchaltpunkte`); diese als gemeinsame Funktionen herauslösen, die Cockpit und Heizkreis-Karte beide nutzen.
+
+**Mehrwert für andere offene Punkte (gleiche Kacheln, einmal umgesetzt für Cockpit und Heizkreis-Karte):**
+- **#156:** VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve.
+- **#128:** Abweichung zwischen dem echten Soll-Vorlauf der Lambda (`hc_soll`, Register 5007) und der Kurve aus der Kopie (`curve_calc`) sichtbar machen. Passt zum Hinweis aus #163 Punkt 7 (Kurvenkopie prüfen).
+- **#163 Punkt 4 / toDo „Heizkreis ohne Rücklauffühler“:** leeres RL-Feld und Heizkreis-Block der Schaltpunkte ausblenden, wenn der Fühler fehlt.
+- **#162:** Raumfühler je Heizkreis richtig zuordnen; kann den „ausgegrauten“ Raumwert erklären oder beheben (Ursache noch beim Melder klären).
+- **#157 (maeffjus):** Option `type: floor | radiator` für das Bild (Fußbodenheizung oder Heizkörper).
+- Nicht passend: #113 (Kühl-Soll schreiben, Register mit Zeitlimit), #77 (Spreizung der Wärmepumpe, nicht des Heizkreises), #165 (nicht geplant).
+
+**Prüfung:** Die bestehende Testseite mit nachgebauten HA-Daten (Playwright, Chrome und Firefox) vor und nach dem Herauslösen vergleichen, damit das Cockpit für bestehende Nutzer gleich aussieht. pytest: Dashboard mit zwei Heizkreisen (`controller.install(5100)`), Reparaturmeldung, Bestätigung schreibt die Heizkreis-Karte.
 
 ---
 
@@ -203,6 +238,36 @@ Vermutlich lädt die Karte, bevor die Werte der Heizkurve als Zustände vorliege
 Der Melder schlägt vor, den Wert unter dem Ventil im Heizen- bzw. Warmwasser-Bild anzuzeigen. Die Karten-Kacheln sind groß, das Layout müsste dafür schmaler werden.
 
 **Nächste Schritte:** Anzeige unter dem Ventil prüfen. Die Kacheln wären dann nicht mehr frei wählbar; das bleibt eine Entscheidung.
+
+---
+
+### #167: Kompressorstarts täglich im Cockpit
+
+**Status:** Wunsch (14.11.2026). In „Laufzeiten heute“ stehen „Starts Heizen“, „Starts WW“ und „Umschaltungen“; gewünscht ist ein vierter Zähler „Kompressorstarts“, im gleichen Stil, mit Verlauf beim Anklicken.
+
+Der Sensor existiert: `sensor.*_hp1_compressor_start_cycling_daily`. Er gehört aber nicht zu den Zählern, die das Cockpit eingeschaltet hält (`COCKPIT_COUNTER_KEYS` in `const.py`). Ohne „Perioden-Energiesensoren aktivieren“ ist er deshalb meist deaktiviert.
+
+**Umgesetzt (14.11.2026, 3.7.1, nicht released):** Kachel „Kompressorstarts heute“ in einer fünften Zeile unter „Umschaltungen“, gleiche Größe wie die übrigen; die drei AT-Werte stehen dafür in der Kopfzeile neben dem Betriebszustand. Höhe des oberen Bereichs in Chrome und Firefox bei 1100, 700 und 390 px gleich oder kleiner als vorher. Test für ein Dashboard aus 3.7.0.
+
+**Umsetzung:**
+- Slot `starts_vd` → `compressor_start_cycling_daily` in `dashboard.py` (`_SLOTS`) und in `_resolveMap` der Karte.
+- `compressor_start_cycling_daily` in `COCKPIT_COUNTER_KEYS` aufnehmen, damit er mit dem Cockpit eingeschaltet wird.
+- Vierter Chip in `_tileRuntime`, Texte de/en.
+- **Bestehende Dashboards:** Die eingetragene Entitäten-Liste kennt den neuen Slot nicht. Die Karte sucht Slots aus `LCC_LATE_KEYS` selbst; die Integration schaltet den Zähler beim Start ein (`_LATE_SLOTS` in `dashboard.py`). Kein Neuschreiben nötig.
+
+---
+
+### #166: Prototyp einer Karte im Stil des Lambda-Displays
+
+**Status:** Frage an den Maintainer (14.11.2026), kein Fehler. Manuel2030 hat eine Karte gebaut, die sich an der Bedienoberfläche des Reglers orientiert: Übersicht mit allen Heizkreisen, Detailansicht je Modul, Bedienung erst nach Bestätigung, eigene Grafiken ohne Lambda-Logos. Getestet mit EU13L, 3.7.0, drei Heizkreisen.
+
+Angeboten sind zwei Wege:
+1. Eigene Karte in einem eigenen Repo (HACS), in der Doku unter „Vorlagen“ verlinkt wie die Heat Pump Hydraulic Card; Pflege beim Autor.
+2. Einzelne Teile per PR ins Cockpit, z. B. alle Heizkreise oder Heizkörper-/FBH-Grafik.
+
+**Einordnung:** Die Punkte aus Weg 2 sind mit 3.7.1 schon umgesetzt (Kachel je Heizkreis, Reiter je Heizkreis, `heating_type: radiator`). Weg 1 passt besser: keine Pflege im Cockpit, keine doppelte Bedienlogik. Für die Antwort an den Autor wichtig: Entitäten über die unique_id finden (wie `_resolveMap` der Cockpit-Karte), nicht über die entity_id; die Slot-Namen der Integration bleiben stabil.
+
+**Nächste Schritte:** Antwort mit Empfehlung Weg 1; Verweis auf 3.7.1 (Heizkreise) erst nach dem Release.
 
 ---
 

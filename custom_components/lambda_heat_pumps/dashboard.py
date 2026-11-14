@@ -42,6 +42,7 @@ from .const import (
     DASHBOARD_LAYOUT_VERSION,
     DASHBOARD_URL_PATH,
     DOMAIN,
+    ISSUE_DASHBOARD_HEATING_CIRCUITS,
     ISSUE_DASHBOARD_RESTART,
 )
 from .coordinator import LambdaConfigEntry
@@ -64,6 +65,10 @@ _ENTITIES_PATH = f"{DASHBOARD_URL_PATH}-entities"
 # options, which the options flow replaces wholesale on every save.
 _STATE_KEY = f"{DOMAIN}.dashboard"
 _STATE_VERSION = 1
+
+# How many heating circuits each entry's dashboard was written with. A cockpit
+# written before the heating circuit cards existed has no entry here.
+_CIRCUITS_KEY = f"{DOMAIN}.dashboard_circuits"
 
 # What each of the cockpit's slots shows: (slot, domain, module, key). The
 # unique id is built the way entity.py builds it; module None is the controller.
@@ -129,6 +134,7 @@ _SLOTS: tuple[tuple[str, str, str | None, str], ...] = (
     ("waerme_kuehl", "sensor", "hp", "cooling_thermal_energy_daily"),
     ("starts_hz", "sensor", "hp", "heating_cycling_daily"),
     ("starts_ww", "sensor", "hp", "hot_water_cycling_daily"),
+    ("starts_vd", "sensor", "hp", "compressor_start_cycling_daily"),
     ("umschalt", "sensor", "hp", "heating_to_hot_water_cycling_daily"),
     ("abtau_tag", "sensor", "hp", "defrost_cycling_daily"),
     ("lz_hz", "sensor", "hp", "heating_runtime_daily"),
@@ -196,6 +202,11 @@ def _unique_id(entry: LambdaConfigEntry, module: str | None, index: int, key: st
     return f"{legacy}{module_prefix}{key}"
 
 
+# Slots added after 3.7.0. A dashboard written before does not list them; the
+# card looks them up itself (`LCC_LATE_KEYS` in the card).
+_LATE_SLOTS = ("starts_vd",)
+
+
 def resolve_entities(
     hass: HomeAssistant, entry: LambdaConfigEntry, indexes: dict[str, int] | None = None
 ) -> dict[str, str]:
@@ -217,17 +228,61 @@ def resolve_entities(
     return resolved
 
 
-def _external_entities(entry: LambdaConfigEntry) -> dict[str, str]:
-    """The entities the cockpit shows that do not belong to the integration."""
+def _external_entities(entry: LambdaConfigEntry, circuit: int = 1) -> dict[str, str]:
+    """The entities a card shows that do not belong to the integration.
+
+    The room sensor is the one chosen for this heating circuit; the PV source
+    only matters to the cockpit, which shows circuit 1.
+    """
     options = entry.options
     external: dict[str, str] = {}
     if options.get(CONF_ROOM_THERMOSTAT_CONTROL) and (
-        room := options.get(CONF_ROOM_TEMPERATURE_ENTITY.format(1))
+        room := options.get(CONF_ROOM_TEMPERATURE_ENTITY.format(circuit))
     ):
         external["room"] = room
-    if options.get(CONF_PV_SURPLUS) and (pv := options.get(CONF_PV_POWER_SENSOR_ENTITY)):
+    if circuit == 1 and options.get(CONF_PV_SURPLUS) and (
+        pv := options.get(CONF_PV_POWER_SENSOR_ENTITY)
+    ):
         external["pv_source"] = pv
     return external
+
+
+def _heating_circuits(entry: LambdaConfigEntry) -> int:
+    """How many heating circuits the controller has (1 before setup has run)."""
+    counts = getattr(getattr(entry, "runtime_data", None), "counts", None) or {}
+    return max(1, int(counts.get("hc", 1) or 1))
+
+
+# What the heating circuit card reads: the circuit's own slots and the outside
+# temperature the curve is drawn against.
+_HEATING_CIRCUIT_SLOTS = {slot for slot, _domain, module, _key in _SLOTS if module == "hc"} | {
+    "atcalc"
+}
+
+
+def _circuit_entities(
+    hass: HomeAssistant, entry: LambdaConfigEntry, circuit: int
+) -> dict[str, str]:
+    """One heating circuit's entities, with its own room sensor."""
+    resolved = resolve_entities(hass, entry, {"hc": circuit})
+    entities = {k: v for k, v in resolved.items() if k in _HEATING_CIRCUIT_SLOTS}
+    entities.update(
+        {k: v for k, v in _external_entities(entry, circuit).items() if k == "room"}
+    )
+    return entities
+
+
+def _heating_circuit_card(
+    hass: HomeAssistant, entry: LambdaConfigEntry, circuit: int
+) -> dict[str, Any]:
+    """The card for one heating circuit's tab."""
+    return {
+        "type": "custom:lambda-heating-circuit-card",
+        "config_entry": entry.entry_id,
+        "circuit": circuit,
+        "features": _features(entry),
+        "entities": _circuit_entities(hass, entry, circuit),
+    }
 
 
 def _features(entry: LambdaConfigEntry) -> dict[str, bool]:
@@ -243,24 +298,45 @@ def build_dashboard(hass: HomeAssistant, entry: LambdaConfigEntry) -> dict[str, 
     """The dashboard's config: the cockpit, and the entity overview behind it."""
     entities = {**resolve_entities(hass, entry), **_external_entities(entry)}
     german = str(hass.config.language or "en").startswith("de")
+    # One heating circuit: the cockpit shows it whole, as it always did. Several:
+    # the cockpit shows each one's tile, and each gets a tab with its tile, heating
+    # curve and switching point. The views carry no icon, or Lovelace would show
+    # the tabs as bare icons that are easy to miss.
+    circuits = _heating_circuits(entry)
+    cockpit: dict[str, Any] = {
+        "type": "custom:lambda-cockpit-card",
+        "config_entry": entry.entry_id,
+        "details_path": f"/{DASHBOARD_URL_PATH}/{_ENTITIES_PATH}",
+        "features": _features(entry),
+        "entities": entities,
+    }
+    circuit_views: list[dict[str, Any]] = []
+    if circuits > 1:
+        cockpit["heating_circuits"] = [
+            {"circuit": circuit, "entities": _circuit_entities(hass, entry, circuit)}
+            for circuit in range(2, circuits + 1)
+        ]
+        circuit_views = [
+            {
+                "title": f"Heizkreis {circuit}" if german else f"Heating circuit {circuit}",
+                "path": f"heating-circuit-{circuit}",
+                "type": "panel",
+                "cards": [_heating_circuit_card(hass, entry, circuit)],
+            }
+            for circuit in range(1, circuits + 1)
+        ]
     return {
         "title": "Lambda",
         "views": [
             {
                 "title": "Cockpit",
                 "path": "cockpit",
-                "icon": "mdi:heat-pump",
+                # One circuit, no tabs: the icon it always had.
+                **({} if circuit_views else {"icon": "mdi:heat-pump"}),
                 "type": "panel",
-                "cards": [
-                    {
-                        "type": "custom:lambda-cockpit-card",
-                        "config_entry": entry.entry_id,
-                        "details_path": f"/{DASHBOARD_URL_PATH}/{_ENTITIES_PATH}",
-                        "features": _features(entry),
-                        "entities": entities,
-                    }
-                ],
+                "cards": [cockpit],
             },
+            *circuit_views,
             {
                 "title": "Lambda Entitäten" if german else "Lambda entities",
                 "path": _ENTITIES_PATH,
@@ -295,7 +371,19 @@ def _enable_shown_entities(hass: HomeAssistant, entity_ids: list[str]) -> None:
 async def async_write_dashboard(hass: HomeAssistant, entry: LambdaConfigEntry) -> bool:
     """Write the dashboard. Returns whether a restart is needed for it to appear."""
     config = build_dashboard(hass, entry)
-    _enable_shown_entities(hass, list(config["views"][0]["cards"][0]["entities"].values()))
+    _enable_shown_entities(
+        hass,
+        [
+            entity_id
+            for view in config["views"]
+            for card in view.get("cards", [])
+            for entities in (
+                card.get("entities", {}),
+                *(c["entities"] for c in card.get("heating_circuits", [])),
+            )
+            for entity_id in entities.values()
+        ],
+    )
 
     # A dashboard Lovelace already knows is saved through it, which updates it
     # live — only a new one has to wait for a restart.
@@ -422,6 +510,21 @@ async def async_setup_dashboard(hass: HomeAssistant, entry: LambdaConfigEntry) -
     await async_register_frontend(hass)
     state_store: Store[dict[str, int]] = Store(hass, _STATE_VERSION, _STATE_KEY)
     state = await state_store.async_load() or {}
+    # Only controllers that are still set up with the option on count. An entry
+    # deleted (or set up anew) would otherwise keep the dashboard forever.
+    stale = [
+        entry_id
+        for entry_id in state
+        if entry_id != entry.entry_id
+        and (
+            (other := hass.config_entries.async_get_entry(entry_id)) is None
+            or not other.options.get(CONF_INSTALL_DASHBOARD, False)
+        )
+    ]
+    if stale:
+        for entry_id in stale:
+            del state[entry_id]
+        await state_store.async_save(state)
 
     if not entry.options.get(CONF_INSTALL_DASHBOARD, False):
         # Only a dashboard this entry put there is taken away, and only once no
@@ -430,6 +533,7 @@ async def async_setup_dashboard(hass: HomeAssistant, entry: LambdaConfigEntry) -
             return
         del state[entry.entry_id]
         await state_store.async_save(state)
+        await _forget_circuits(hass, entry)
         if state:
             return
         ir.async_delete_issue(hass, DOMAIN, ISSUE_DASHBOARD_RESTART)
@@ -443,6 +547,13 @@ async def async_setup_dashboard(hass: HomeAssistant, entry: LambdaConfigEntry) -
         return
 
     if state.get(entry.entry_id) == DASHBOARD_LAYOUT_VERSION:
+        # The dashboard stays as it is; the card finds slots added since on its
+        # own, but only entities that are switched on.
+        resolved = resolve_entities(hass, entry)
+        _enable_shown_entities(
+            hass, [resolved[slot] for slot in _LATE_SLOTS if slot in resolved]
+        )
+        await _offer_heating_circuits(hass, entry)
         return
 
     async def _write() -> None:
@@ -463,6 +574,7 @@ async def async_setup_dashboard(hass: HomeAssistant, entry: LambdaConfigEntry) -
             _LOGGER.info("Lambda Cockpit dashboard written; restart to see it")
         state[entry.entry_id] = DASHBOARD_LAYOUT_VERSION
         await state_store.async_save(state)
+        await _remember_circuits(hass, entry)
 
     # After the platforms have added their entities: the dashboard looks them up.
     entry.async_create_background_task(hass, _write(), f"{DOMAIN} dashboard")
@@ -483,3 +595,45 @@ async def async_regenerate_dashboard(hass: HomeAssistant, entry: LambdaConfigEnt
     state = await state_store.async_load() or {}
     state[entry.entry_id] = DASHBOARD_LAYOUT_VERSION
     await state_store.async_save(state)
+    await _remember_circuits(hass, entry)
+
+
+async def _remember_circuits(hass: HomeAssistant, entry: LambdaConfigEntry) -> None:
+    """Note how many heating circuits the dashboard now shows; no offer is open."""
+    store: Store[dict[str, int]] = Store(hass, 1, _CIRCUITS_KEY)
+    data = await store.async_load() or {}
+    data[entry.entry_id] = _heating_circuits(entry)
+    await store.async_save(data)
+    ir.async_delete_issue(hass, DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS)
+
+
+async def _forget_circuits(hass: HomeAssistant, entry: LambdaConfigEntry) -> None:
+    """The dashboard is gone for this entry: no record, no offer."""
+    store: Store[dict[str, int]] = Store(hass, 1, _CIRCUITS_KEY)
+    data = await store.async_load() or {}
+    if data.pop(entry.entry_id, None) is not None:
+        await store.async_save(data)
+    ir.async_delete_issue(hass, DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS)
+
+
+async def _offer_heating_circuits(hass: HomeAssistant, entry: LambdaConfigEntry) -> None:
+    """Offer to add further heating circuits to a cockpit that does not show them.
+
+    The cockpit is not rewritten on its own: that would throw away whatever the
+    user changed on it. A repair asks first; confirming rewrites it.
+    """
+    circuits = _heating_circuits(entry)
+    store: Store[dict[str, int]] = Store(hass, 1, _CIRCUITS_KEY)
+    shown = (await store.async_load() or {}).get(entry.entry_id, 1)
+    if circuits > 1 and shown < circuits:
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            ISSUE_DASHBOARD_HEATING_CIRCUITS,
+            data={"entry_id": entry.entry_id},
+            is_fixable=True,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_DASHBOARD_HEATING_CIRCUITS,
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS)

@@ -721,6 +721,17 @@
           }
         }
       }
+    },
+    "dashboard_heating_circuits": {
+      "title": "Add the further heating circuits to the Lambda Cockpit",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Add heating circuits to the Lambda Cockpit",
+            "description": "This heat pump has more than one heating circuit. Submit to show a tile for each heating circuit in the Lambda Cockpit, and a tab per heating circuit with its tile, heating curve and switching point.\n\nThe dashboard is written again for this: **changes you made to the Lambda Cockpit dashboard are lost.** If you want to keep them, ignore this repair and add the “Lambda Heizkreis” card to a dashboard of your own instead."
+          }
+        }
+      }
     }
   }
 }
