@@ -7,7 +7,7 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
-### [3.7.1] - unreleased
+### [3.7.1] - 2026-11-14
 
 **No more deprecation warnings with Home Assistant 2026.11.** The hot water and room thermostats use Home Assistant's new temperature interface; 2026.9 and 2026.10 keep working.
 
@@ -23,6 +23,8 @@
 - A small **?** on every part of the cockpit opens its section of the new help page [Lambda Cockpit: the tiles](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/) (German) in a new tab. The page also says which values have to be copied from the controller's display by hand.
 - Documentation: why runtimes on the day of installation look too low.
 - Documentation: several heat pumps (not supported) and several heating circuits (automatic) are described separately; the issue templates link to the documentation.
+
+**Update:** after updating, reload the cockpit page in the browser once (Ctrl+F5; in the Companion App reset the frontend cache) so the new cards are loaded.
 
 ### [3.7.0] - 2026-11-09
 
@@ -523,7 +525,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
 
-### [3.7.1] - unveröffentlicht
+### [3.7.1] - 2026-11-14
 
 **Keine Veraltet-Warnungen mehr mit Home Assistant 2026.11.** Warmwasser- und Raum-Thermostat nutzen die neue Temperatur-Schnittstelle von Home Assistant; 2026.9 und 2026.10 funktionieren weiter.
 
@@ -539,6 +541,8 @@ This release contains significant changes to the Entity Registry and sensor nami
 - Ein kleines **?** an jedem Teil des Cockpits öffnet in einem neuen Tab den passenden Abschnitt der neuen Hilfeseite [Lambda Cockpit: die Kacheln](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/). Dort steht auch, welche Werte vom Lambda-Display von Hand übertragen werden müssen.
 - Doku: Erklärung, warum die Laufzeiten am Installationstag zu niedrig wirken.
 - Doku: mehrere Wärmepumpen (nicht unterstützt) und mehrere Heizkreise (automatisch) getrennt beschrieben; die Issue-Vorlagen verweisen auf die Doku.
+
+**Update:** Nach dem Update die Cockpit-Seite im Browser einmal neu laden (Strg+F5; in der Companion App den Frontend-Cache zurücksetzen), damit die neuen Karten geladen werden.
 
 ### [3.7.0] - 2026-11-09
 

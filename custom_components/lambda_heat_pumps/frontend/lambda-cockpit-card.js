@@ -10,7 +10,7 @@
 // the card YAML; a slot without an entity hides what depends on it.
 // =====================================================================
 
-const LCC_VERSION = "3.7.0";
+const LCC_VERSION = "3.7.1";
 
 // The slots the card reads. Filled from the card config.
 const LCC_SLOTS = [

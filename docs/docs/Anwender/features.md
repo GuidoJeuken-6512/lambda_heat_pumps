@@ -4,7 +4,7 @@ title: "Features"
 
 # Features der Lambda Heat Pumps Integration
 
-*Zuletzt geändert am 04.11.2026*
+*Zuletzt geändert am 14.11.2026*
 
 Die Lambda Heat Pumps Integration bietet umfassende Funktionen zur Steuerung und Überwachung Ihrer Lambda-Wärmepumpe über Home Assistant. Hier finden Sie eine Übersicht aller verfügbaren Features.
 
@@ -14,8 +14,10 @@ Diese Dokumentation beschreibt **Version 3.7**. Sie setzt **Home Assistant 2026.
 
 Die Integration bringt ein fertiges Dashboard mit, das sich mit einem Schalter in den Optionen anlegen lässt:
 
-- **Cockpit:** Betriebszustand mit animierter Außeneinheit, Vorlauf/Rücklauf, Verdichter, Leistung und Arbeitszahl, Warmwasser, Puffer und Heizkreis im Stil der Lambda-Regelung, Heizkurve mit Außentemperatur laut Wärmefahrplan, aktuelle Schaltpunkte, Laufzeiten, Energie heute und Jahresarbeitszahl.
+- **Cockpit:** Betriebszustand mit animierter Außeneinheit, Vorlauf/Rücklauf, Verdichter, Leistung und Arbeitszahl, Kompressorstarts heute, Warmwasser, Puffer und Heizkreis im Stil der Lambda-Regelung, Heizkurve mit Außentemperatur laut Wärmefahrplan, aktuelle Schaltpunkte, Laufzeiten, Energie heute und Jahresarbeitszahl.
 - **Bedienung direkt im Cockpit:** Warmwasser-Solltemperatur, Heizkurven-Offset, Raum-Soll und maximale Puffertemperatur.
+- **Mehrere Heizkreise (ab 3.7.1):** Kachel Heizbetrieb je Heizkreis auf der Hauptseite und ein Reiter je Heizkreis mit Heizkurve, Schaltpunkt und Grenzwerten; dazu die Karte **Lambda Heizkreis** für eigene Dashboards.
+- **Hilfe zu jeder Kachel (ab 3.7.1):** Das **?** öffnet die Erklärung auf der Seite [Lambda Cockpit: die Kacheln](lambda-cockpit-kacheln.md).
 - **Entitäten-Übersicht:** alle Entitäten der Integration nach Modulen sortiert, mit Suche und Erklärung zu jedem Wert.
 - **Deutsch und Englisch**, je nach Sprache des Benutzerprofils.
 

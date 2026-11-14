@@ -17,7 +17,7 @@
 > - **Firmware 3+ (from V0.0.5-3K, incl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` is gone.** On this firmware, heating-circuit register 7 is the read-only target flow temperature the controller works with, not a writable setpoint request ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Its replacement is `hcX_target_temp_flow_line`. The old entity stays behind as "no longer provided", and dashboards, helpers and automations using it break silently. → To keep the history: delete the orphaned `…_flow_line_temperature_setpoint` entity, then rename `…_target_temp_flow_line` to the old entity_id (Settings → Entities → entity → ⚙ → Entity ID).
 > - Back up before upgrading.
 
-### [3.7.1] - unreleased
+### [3.7.1] - 2026-11-14
 
 **No more deprecation warnings with Home Assistant 2026.11.** The hot water and room thermostats use Home Assistant's new temperature interface; 2026.9 and 2026.10 keep working.
 
@@ -33,6 +33,8 @@
 - A small **?** on every part of the cockpit opens its section of the new help page [Lambda Cockpit: the tiles](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/) (German) in a new tab. The page also says which values have to be copied from the controller's display by hand.
 - Documentation: why runtimes on the day of installation look too low.
 - Documentation: several heat pumps (not supported) and several heating circuits (automatic) are described separately; the issue templates link to the documentation.
+
+**Update:** after updating, reload the cockpit page in the browser once (Ctrl+F5; in the Companion App reset the frontend cache) so the new cards are loaded.
 
 ### [3.7.0] - 2026-11-09
 
@@ -111,7 +113,7 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 > - **Firmware 3+ (ab V0.0.5-3K, inkl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` entfällt.** Auf dieser Firmware ist Heizkreis-Register 7 die schreibgeschützte Vorlauf-Solltemperatur, mit der die Steuerung arbeitet, keine beschreibbare Sollwert-Anforderung ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Ersatz ist `hcX_target_temp_flow_line`. Die alte Entität bleibt als „nicht mehr bereitgestellt“ zurück; Dashboards, Helfer und Automationen, die sie nutzen, brechen stillschweigend. → Um den Verlauf zu behalten: die verwaiste `…_flow_line_temperature_setpoint`-Entität löschen, dann `…_target_temp_flow_line` auf die alte entity_id umbenennen (Einstellungen → Entitäten → Entität → ⚙ → Entitäts-ID).
 > - Vor dem Update ein Backup erstellen.
 
-### [3.7.1] - unveröffentlicht
+### [3.7.1] - 2026-11-14
 
 **Keine Veraltet-Warnungen mehr mit Home Assistant 2026.11.** Warmwasser- und Raum-Thermostat nutzen die neue Temperatur-Schnittstelle von Home Assistant; 2026.9 und 2026.10 funktionieren weiter.
 
@@ -127,6 +129,8 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 - Ein kleines **?** an jedem Teil des Cockpits öffnet in einem neuen Tab den passenden Abschnitt der neuen Hilfeseite [Lambda Cockpit: die Kacheln](https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/). Dort steht auch, welche Werte vom Lambda-Display von Hand übertragen werden müssen.
 - Doku: Erklärung, warum die Laufzeiten am Installationstag zu niedrig wirken.
 - Doku: mehrere Wärmepumpen (nicht unterstützt) und mehrere Heizkreise (automatisch) getrennt beschrieben; die Issue-Vorlagen verweisen auf die Doku.
+
+**Update:** Nach dem Update die Cockpit-Seite im Browser einmal neu laden (Strg+F5; in der Companion App den Frontend-Cache zurücksetzen), damit die neuen Karten geladen werden.
 
 ### [3.7.0] - 2026-11-09
 

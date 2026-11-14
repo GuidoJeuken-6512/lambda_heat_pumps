@@ -5,7 +5,7 @@
 // Card:  type: custom:lambda-entities-card
 // Options: config_entry (only that controller), back_path (the back button).
 // =====================================================================
-const LEC_VERSION = "3.7.0";
+const LEC_VERSION = "3.7.1";
 
 const LEC_T = {
   de: {

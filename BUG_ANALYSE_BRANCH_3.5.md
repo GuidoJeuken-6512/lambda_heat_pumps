@@ -1,6 +1,6 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 13.11.2026 (Abgleich mit GitHub; Änderungen für 3.7.1 noch nicht released)
+- **Stand:** 14.11.2026 (Abgleich mit GitHub; Version 3.7.1)
 - **Geschlossene Issues (V3.6.1):** #82, #85, #90, #94, #95, #104, #119, #120, #121, #122 (Duplikat #85), #132, #133, #134, #136, #140, #141 (Duplikat #121), #144. 
 - **Geschlossen nach V3.6.1:** #138 (Doku Hydraulic Card), #142 (gelöst), #149 (tmodbus-Anforderung, 3.6.2)
 - **Geschlossen:** #153 (behoben in 3.7.0), #105 und #161 (GitHub geschlossen), #165 (lokal als „nicht geplant“ notiert; auf GitHub noch offen, bitte prüfen)
@@ -21,7 +21,7 @@
 | [#143](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/143) | Viele Entitäten ohne Messwert (Puffer) | Feedback zu Screenshot (EU13, V1.0.4-3K) | niedrig–mittel |
 | [#101](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/101) | Solarthermiemodul wird nicht erkannt | Logs fehlen; Timeout-Logik prüfen (F9) | niedrig |
 | [#105](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/105) | E-Manager-Register springt auf 0 | **Geschlossen** (GitHub), Ursache zweiter Modbus-Client (evcc) | – |
-| [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Sollwert (Enhancement) | Abweichung Soll − berechnet im Cockpit sichtbar (3.7.1, nicht released); Abweichungs-Sensor (F17) offen | niedrig |
+| [#128](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/128) | Heizkurve: Abweichung zum Sollwert (Enhancement) | Abweichung Soll − berechnet im Cockpit sichtbar (3.7.1); Abweichungs-Sensor (F17) offen | niedrig |
 
 ---
 
@@ -117,13 +117,13 @@ Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 14.11.2026.
 
 | Issue | Titel | Einordnung | Priorität |
 |---|---|---|---|
-| [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | **FIXED** in 3.7.1 (nicht released), Suchfeld bleibt erhalten | mittel |
+| [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | **FIXED** in 3.7.1, Suchfeld bleibt erhalten | mittel |
 | [#162](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/162) | Raumtemperatur an Lambda immer ausgegraut | **Offen**; Raumfühler wird ab 3.7.1 je Heizkreis zugeordnet (kann helfen). Entitätsliste und Optionen vom Melder anfordern | mittel |
-| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **FIXED** in 3.7.1 (nicht released): bei mehreren Heizkreisen Kachel Heizbetrieb je Heizkreis auf der Hauptseite, Reiter je Heizkreis mit Karte „Lambda Heizkreis“; Reparaturmeldung für bestehende Cockpits. PV-Symbol offen | mittel |
-| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Teils FIXED** in 3.7.1 (nicht released): Vorlauf-Werte in der Heizkurve. Offen: fehlende Daten nach dem Start (Ursache unklar) | niedrig–mittel |
-| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1 (nicht released): Punkte 1, 4, 6, 7. Offen: 2, 3, 5 | mittel |
+| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **FIXED** in 3.7.1: bei mehreren Heizkreisen Kachel Heizbetrieb je Heizkreis auf der Hauptseite, Reiter je Heizkreis mit Karte „Lambda Heizkreis“; Reparaturmeldung für bestehende Cockpits. PV-Symbol offen | mittel |
+| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Teils FIXED** in 3.7.1: Vorlauf-Werte in der Heizkurve. Offen: fehlende Daten nach dem Start (Ursache unklar) | niedrig–mittel |
+| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1: Punkte 1, 4, 6, 7. Offen: 2, 3, 5 | mittel |
 | [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | **Offen** (Wunsch); Sensor existiert bereits | niedrig |
-| [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1 (nicht released): Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile | niedrig–mittel |
+| [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1: Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile | niedrig–mittel |
 | [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Offen** (Frage, neu 14.11.2026); Antwort nötig: eigene HACS-Karte oder Teile ins Cockpit | – |
 | [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
 
@@ -131,7 +131,7 @@ Nicht cockpit-spezifisch, aber neu: [#161](https://github.com/GuidoJeuken-6512/l
 
 ### #160: Entitäten-Suche schließt nach jedem Buchstaben
 
-**Status:** behoben am 13.11.2026, noch nicht released.
+**Status:** behoben in 3.7.1.
 
 Die Entitäten-Karte baute bei jeder Eingabe und bei jedem HA-Update (alle 5 s) die ganze Ansicht neu auf. Das Suchfeld wurde ersetzt, verlor den Fokus, und auf dem Handy schloss die Tastatur. Jetzt entsteht das Gerüst mit dem Suchfeld einmal; danach werden nur Zähler und Liste erneuert. Mit Playwright in Chrome und Firefox geprüft: alte Karte verliert Fokus und Eingabe, neue behält beides.
 
@@ -159,7 +159,7 @@ Das Cockpit zeigt wie im Original nur Heizkreis 1 (siehe toDo „Mehrere Wärmep
 
 Das PV-Symbol bei den Schaltpunkten ist nur eine Anzeige. Platzierung ist Geschmackssache.
 
-**Umgesetzt am 13.11.2026 (nicht released):** Schritt-für-Schritt-Anleitung in `docs/docs/Anwender/lambda-cockpit.md`: Karte kopieren, `_hc1_` durch `_hc2_` ersetzen, Tabelle der Heizkreis-Schlüssel, Hinweis zum Bild (immer Fußbodenheizung).
+**Umgesetzt am 13.11.2026:** Schritt-für-Schritt-Anleitung in `docs/docs/Anwender/lambda-cockpit.md`: Karte kopieren, `_hc1_` durch `_hc2_` ersetzen, Tabelle der Heizkreis-Schlüssel, Hinweis zum Bild (immer Fußbodenheizung).
 
 **Nächste Schritte:** Im Issue auf die Anleitung verweisen. Eine Auswahl in der Karte bleibt ein größerer Umbau.
 
@@ -173,7 +173,7 @@ Das PV-Symbol bei den Schaltpunkten ist nur eine Anzeige. Platzierung ist Geschm
 | C | Auswahl HK1/HK2/HK3 im Cockpit selbst | alles in einem Dashboard | mittel | mittel (Umbau für alle) |
 | D | Integration ergänzt das erzeugte Dashboard um eine Heizkreis-Karte (B) je weiterem Heizkreis | kein Einrichten | klein, wenn B existiert | siehe unten |
 
-**Umgesetzt am 13.11.2026 (3.7.1, nicht released):** Heizkreis-Karte als Unterklasse der Cockpit-Karte in derselben Datei (keine neue JS-Datei), gemeinsame Bausteine `_hcTile`, `_spHc`, `_vlRow`; bei mehreren Heizkreisen Kachel je Heizkreis im Cockpit (`heating_circuits` in der Karten-Konfiguration) und ein Reiter je Heizkreis (Entscheidung Nutzer 13.11.2026: bei einem Heizkreis keine Reiter); Reparatur `dashboard_heating_circuits` für bestehende. Cockpit vor/nach dem Umbau verglichen: einzige Änderung ist die neue Vorlauf-Zeile.
+**Umgesetzt am 13.11.2026 (3.7.1):** Heizkreis-Karte als Unterklasse der Cockpit-Karte in derselben Datei (keine neue JS-Datei), gemeinsame Bausteine `_hcTile`, `_spHc`, `_vlRow`; bei mehreren Heizkreisen Kachel je Heizkreis im Cockpit (`heating_circuits` in der Karten-Konfiguration) und ein Reiter je Heizkreis (Entscheidung Nutzer 13.11.2026: bei einem Heizkreis keine Reiter); Reparatur `dashboard_heating_circuits` für bestehende. Cockpit vor/nach dem Umbau verglichen: einzige Änderung ist die neue Vorlauf-Zeile.
 
 **Entscheidung:** B + D. D wird nicht automatisch ausgeführt: Bei mehr als einem Heizkreis erscheint eine Reparaturmeldung „Heizkreise 2/3 zum Lambda Cockpit hinzufügen“. Erst die Bestätigung schreibt das Dashboard neu; der Dialog warnt, dass eigene Änderungen am Cockpit verloren gehen. Neuinstallationen bekommen die Heizkreis-Karten direkt. Muster: vorhandene Reparatur mit Bestätigung (`repairs.py`, Neustart).
 
@@ -222,7 +222,7 @@ Vermutlich lädt die Karte, bevor die Werte der Heizkurve als Zustände vorliege
 6. **Laufzeiten am ersten Tag:** Die Tageszähler starten mit der Installation. Die Zeit davor zählt als „Ruhe/Sonst.“.
 7. **Wärmefahrplan-Verschiebung bei falscher Kurvenkopie (Nachtrag):** Bei ausgeschaltetem Wärmefahrplan zeigte der Sensor −1 K Verschiebung. Ursache: Der Kurvenpunkt 0 °C wurde am Display geändert, die Kopie in HA nicht. **Vorschlag:** Hinweis, dass eine Verschiebung auch auf eine nicht passende Kurvenkopie hinweisen kann. Bei ausgeschaltetem Wärmefahrplan sollte der Sensor ±0,4 K um „AT berechnet“ liegen; das ist ein guter Test für die Kopie.
 
-**Umgesetzt am 13.11.2026 (nicht released):**
+**Umgesetzt am 13.11.2026:**
 - Punkt 1: Hinweis „mit dem Display abgleichen“ erscheint jetzt auch, wenn die Kopie-Werte vorhanden sind; pro Browser ausblendbar.
 - Punkt 6: Doku erklärt die Laufzeiten am Installationstag.
 - Punkt 7: Hinweis unter der Heizkurve bei angezeigter Verschiebung; Doku beschreibt den Sensor als Kontrolle der Kurvenkopie.
@@ -247,7 +247,7 @@ Der Melder schlägt vor, den Wert unter dem Ventil im Heizen- bzw. Warmwasser-Bi
 
 Der Sensor existiert: `sensor.*_hp1_compressor_start_cycling_daily`. Er gehört aber nicht zu den Zählern, die das Cockpit eingeschaltet hält (`COCKPIT_COUNTER_KEYS` in `const.py`). Ohne „Perioden-Energiesensoren aktivieren“ ist er deshalb meist deaktiviert.
 
-**Umgesetzt (14.11.2026, 3.7.1, nicht released):** Kachel „Kompressorstarts heute“ in einer fünften Zeile unter „Umschaltungen“, gleiche Größe wie die übrigen; die drei AT-Werte stehen dafür in der Kopfzeile neben dem Betriebszustand. Höhe des oberen Bereichs in Chrome und Firefox bei 1100, 700 und 390 px gleich oder kleiner als vorher. Test für ein Dashboard aus 3.7.0.
+**Umgesetzt (14.11.2026, 3.7.1):** Kachel „Kompressorstarts heute“ in einer fünften Zeile unter „Umschaltungen“, gleiche Größe wie die übrigen; die drei AT-Werte stehen dafür in der Kopfzeile neben dem Betriebszustand. Höhe des oberen Bereichs in Chrome und Firefox bei 1100, 700 und 390 px gleich oder kleiner als vorher. Test für ein Dashboard aus 3.7.0.
 
 **Umsetzung:**
 - Slot `starts_vd` → `compressor_start_cycling_daily` in `dashboard.py` (`_SLOTS`) und in `_resolveMap` der Karte.
