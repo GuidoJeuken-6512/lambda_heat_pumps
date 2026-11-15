@@ -814,7 +814,9 @@ class LambdaCockpitCard extends HTMLElement {
           <path d="M14 116 H70" class="pb"/>
           <circle cx="134" cy="74" r="3" fill="#f8fafc"/>
           ${zTxt ? `<text x="140" y="71" class="ztxt">${L("circ")}</text><text x="140" y="83" class="ztxt ${zk.mode}">${zTxt}</text>` : ""}
-          ${this._box(74, 62, 52, 22, wwTop)}
+          ${this._has("ww_low")
+            ? this._box(74, 24, 52, 22, wwTop) + this._box(74, 104, 52, 22, this._n("ww_low"))
+            : this._box(74, 62, 52, 22, wwTop)}
         </svg></div>
         ${this._has("ww_climate")
           ? this._ctl(`🌡️ ${L("setpoint")}`, `${lccFmt(this._pendVal(this._id("ww_climate")), 0)}°`, 'data-act="clim"', this._id("ww_climate"))

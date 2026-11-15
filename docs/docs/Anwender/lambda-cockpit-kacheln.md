@@ -4,7 +4,7 @@ title: "Lambda Cockpit: die Kacheln"
 
 # Lambda Cockpit: die Kacheln
 
-*Zuletzt geändert am 14.11.2026*
+*Zuletzt geändert am 15.11.2026*
 
 Diese Seite erklärt jeden Teil des [Lambda Cockpits](lambda-cockpit.md). Das Symbol **?** oben an einer Kachel führt direkt zum passenden Abschnitt. Die kleinen **i** in den Kacheln klappen dagegen eine Kurzinfo direkt im Cockpit auf.
 
@@ -41,7 +41,7 @@ Ein Klick auf einen Wert öffnet seinen Verlauf. Ein „–“ heißt: Die Entit
 
 ## Brauchwasser
 
-Der Warmwasserspeicher. Oben links steht die eingestellte Solltemperatur, oben rechts der Zustand (z. B. „STBY“, „Heizen“). Im Speicher steht die Temperatur am oberen Fühler.
+Der Warmwasserspeicher. Oben links steht die eingestellte Solltemperatur, oben rechts der Zustand (z. B. „STBY“, „Heizen“). Im Speicher stehen die Temperaturen am oberen und am unteren Fühler; ohne unteren Fühler nur die obere in der Mitte.
 
 Läuft die Zirkulationspumpe oder lief sie vor kurzem, steht daneben „Zirku läuft“ bzw. „vor … min“.
 

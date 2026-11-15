@@ -355,7 +355,7 @@ Reihenfolge nach Aufwand und Risiko: erst die kleinen Fehler, dann die Darstellu
 | # | Aufgabe | Issues | Aufwand | Risiko | Status |
 |---|---|---|---|---|---|
 | 1 | Einheiten der Leistungen und Energien lesen und normieren (W/kW/MW, Wh/kWh/MWh) | #168 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
-| 2 | Brauchwasser: Temperatur unten zusätzlich zeigen | #170 | klein | gering | offen |
+| 2 | Brauchwasser: Temperatur unten zusätzlich zeigen | #170 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 3 | Cache der Karten: Prüfwert des Inhalts in der Adresse statt nur der Version | – | klein | gering | offen |
 | 4 | Stützpunkte der Heizkurve als einstellbar kennzeichnen (Mauszeiger, ✎) und Satz auf der Hilfeseite | #156 | klein | gering | offen |
 | 5 | Vorlauf-Werte in die Grafik der Heizkurve (Linien Soll und Ist, Werteliste, AT ist), Zeile unter der Kurve entfällt | #156, #128 | mittel | gering | offen |

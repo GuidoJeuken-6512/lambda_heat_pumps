@@ -11,6 +11,7 @@
 
 **Lambda Cockpit:**
 - Values in kW, Wh or MWh: if you switch the display unit of a power or energy sensor (e.g. the power consumption to kW), the cockpit converts it instead of showing 0.00 kW; the fan animation follows as well ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
+- Hot water shows the temperature at the bottom sensor as well, like the buffer ([#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170)).
 
 ### [3.7.1] - 2026-11-14
 
@@ -534,6 +535,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 
 **Lambda Cockpit:**
 - Werte in kW, Wh oder MWh: Wer die Anzeigeeinheit eines Leistungs- oder Energiesensors umstellt (z. B. die Leistungsaufnahme auf kW), bekommt im Cockpit den richtigen Wert statt 0,00 kW; auch die Lüfter-Animation stimmt dann ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
+- Brauchwasser zeigt zusätzlich die Temperatur am unteren Fühler, wie der Puffer ([#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170)).
 
 ### [3.7.1] - 2026-11-14
 

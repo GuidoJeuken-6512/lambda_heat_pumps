@@ -30,7 +30,7 @@
 - [x] **GitHub-Issues nach dem Release 3.7.1:** #160, #157, #167 kommentiert und geschlossen (14.11.2026). #156, #163 und #128 bleiben offen; #163 und #128 sind noch nicht kommentiert.
 - [ ] **Plan 3.7.2** steht in der Bugliste (Abschnitt „Plan 3.7.2“), Reihenfolge nach Aufwand und Risiko.
 - [x] **#168 Einheiten normieren** (3.7.2, erledigt 15.11.2026): „Aufnahme“ zeigt 0,00 kW, wenn der Sensor auf kW umgestellt ist; auch Lüfter-Laufprüfung, PV- und Batterie-Leistungen, Energien.
-- [ ] **#170 Brauchwasser unten** (3.7.2): Slot `ww_low` im Bild zeigen.
+- [x] **#170 Brauchwasser unten** (3.7.2, erledigt 15.11.2026): Slot `ww_low` im Bild zeigen.
 - [ ] **#169 PV-Überschuss „neg“** (3.7.2): Funktionen und Kodierung live per Websocket an die Karte; Vorzeichen vorher mit dem Melder klären. Behebt auch veraltete `features` nach Options-Änderung.
 - [ ] **#156 Antwort an AndiBo62:** Gespräch zu „Ungereimtheiten PV-Überschuss“ (evtl. wie #169).
 - [ ] **#156 Vorlauf-Werte in der Grafik der Heizkurve** (3.7.2), dazu AT ist: Linien VL Soll (gestrichelt) und VL ist, Werteliste oben links, Zeile unter der Kurve entfällt, Achse erweitern. Details in der Bugliste.
