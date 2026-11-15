@@ -68,7 +68,11 @@ Bei mehreren Heizkreisen steht diese Kachel für jeden Heizkreis auf der Hauptse
 Die Heizkurve des Heizkreises: Vorlauf-Soll abhängig von der Außentemperatur, gezeichnet durch die drei Stützpunkte bei −22 °C, 0 °C und +22 °C. Der Punkt zeigt, wo der Heizkreis gerade steht. Der **Offset Heizkurve** verschiebt die ganze Kurve nach oben oder unten (wird in die Lambda geschrieben).
 
 !!! note "Stützpunkte von Hand übertragen"
-    Die drei Stützpunkte sind Kopien der Heizkurve am Lambda-Display. Sie lassen sich leider nicht automatisch auslesen. Bitte von Hand übertragen, am Gerät des Heizkreises unter **Konfiguration**. Mehr dazu unter [Heizkurve](heizkurve.md).
+    Die drei Stützpunkte sind Kopien der Heizkurve am Lambda-Display. Sie lassen sich leider nicht automatisch auslesen. Bitte einmal von Hand übertragen. Mehr dazu unter [Heizkurve](heizkurve.md).
+
+**Stützpunkte direkt im Cockpit ändern:** Die drei Kästchen unter der Kurve zeigen die Stützpunkte (links +22 °C, Mitte 0 °C, rechts −22 °C Außentemperatur). Ein Klick auf ein Kästchen öffnet den Stützpunkt; dort den Wert vom Lambda-Display eintragen. Kurve, **VL berechnet**, die Abweichung und **AT Wärmefahrplan** rechnen sofort mit dem neuen Wert. Dieselben Werte stehen auch am Gerät des Heizkreises unter **Konfiguration** (Heizkurve −22 °C, 0 °C, +22 °C); es ist egal, wo Sie sie eintragen.
+
+Eine Änderung hier verstellt die Lambda nicht. Ändern Sie die Heizkurve am Display, tragen Sie die neuen Werte auch hier ein.
 
 **Wärmefahrplan:** Rechnet die Lambda gerade mit einer anderen Außentemperatur als der berechneten, zeigt die Kachel die Verschiebung. Zeigt sie eine Verschiebung, obwohl der Wärmefahrplan an der Lambda aus ist, passen die Stützpunkte nicht zur Lambda.
 

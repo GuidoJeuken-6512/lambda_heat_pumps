@@ -219,7 +219,7 @@ Vermutlich lädt die Karte, bevor die Werte der Heizkurve als Zustände vorliege
 - Fehlender Wert: keine Linie, „–“ in der Liste. Ohne PV-Offset (nur mit unveröffentlichter Firmware).
 - Prüfen mit flacher und steiler Kurve, Desktop und Handy; gilt auch für die Heizkreis-Reiter.
 
-**Stützpunkte:** Die drei Kästchen unter der Kurve sind schon mit `heating_curve_cold/mid/warm_outside_temp` verknüpft; ein Klick öffnet den Wert zum Ändern. Fehlt nur der Hinweis: Doku-Satz im Abschnitt Heizkurve der Hilfeseite, Kästchen sichtbar als einstellbar kennzeichnen (Mauszeiger, ✎).
+**Stützpunkte:** Die drei Kästchen unter der Kurve sind schon mit `heating_curve_cold/mid/warm_outside_temp` verknüpft; ein Klick öffnet den Wert zum Ändern. Beschrieben auf der Hilfeseite im Abschnitt Heizkurve (15.11.2026); ein ✎ in der Karte entfällt, dafür gibt es das „?“.
 
 **Weiter offen:** fehlende Kurvendaten nach dem Start; mit dem Test-Container und einem Neustart nachstellen, Zusammenhang mit dem sporadischen Konfigurationsfehler prüfen.
 
@@ -357,7 +357,7 @@ Reihenfolge nach Aufwand und Risiko: erst die kleinen Fehler, dann die Darstellu
 | 1 | Einheiten der Leistungen und Energien lesen und normieren (W/kW/MW, Wh/kWh/MWh) | #168 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 2 | Brauchwasser: Temperatur unten zusätzlich zeigen | #170 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 3 | Cache der Karten: Prüfwert des Inhalts in der Adresse statt nur der Version | – | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
-| 4 | Stützpunkte der Heizkurve als einstellbar kennzeichnen (Mauszeiger, ✎) und Satz auf der Hilfeseite | #156 | klein | gering | offen |
+| 4 | Stützpunkte der Heizkurve: auf der Hilfeseite beschreiben (Klick auf die Kästchen), kein ✎ in der Karte | #156 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 5 | Vorlauf-Werte in die Grafik der Heizkurve (Linien Soll und Ist, Werteliste, AT ist), Zeile unter der Kurve entfällt | #156, #128 | mittel | gering | offen |
 | 6 | Funktionen live lesen (Websocket statt `features` im Dashboard), Kodierung „neg“ beim PV-Überschuss | #169, #155 | mittel | mittel | offen; Vorzeichen mit Melder klären |
 | 7 | Schaltpunkte Punkte 2, 3, 5 (Modulationsziel, Puffer-Status, Warmwasser-Eco) | #163 | mittel | mittel | wartet auf Klärung mit Lambda |
