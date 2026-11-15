@@ -126,6 +126,7 @@ Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 14.11.2026.
 | [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1: Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile | niedrig–mittel |
 | [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Offen** (Frage, neu 14.11.2026); Antwort nötig: eigene HACS-Karte oder Teile ins Cockpit | – |
 | [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
+| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird (BMeyendriesch, EU15L, 3.7.0) | **Offen**; Ursache bestätigt: Karte rechnet fest `/ 1000`, `_n()` ignoriert die Einheit. Gleiche Stelle betrifft weitere Werte, siehe Details | mittel |
 
 Nicht cockpit-spezifisch, aber neu: [#161](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/161) (evcc und Register 102). Ursache wie bei #105: zwei Quellen schreiben in Register 102. Ein Melder hat es gelöst, indem er die PV-Option der Integration abgeschaltet hat und nur evcc schreiben lässt. Einordnung bei #105.
 
@@ -281,6 +282,26 @@ Für einen einzelnen Heizkreis verweist die Antwort auf den Raumthermostat je He
 
 ---
 
+### #168: „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird
+
+**Status:** Offen (gemeldet 14.11.2026, Melder BMeyendriesch; Lambda EU15L, Integration 3.7.0, HA 2026.11.1). Der Melder hat die Anzeigeeinheit von `sensor.*_hp1_inverter_power_consumption` in HA auf kW gestellt. Die Karte zeigt dann 0,00 kW, obwohl die Wärmepumpe läuft.
+
+**Ursache:** Die Karte nimmt fest Watt an und teilt durch 1000 ([lambda-cockpit-card.js](custom_components/lambda_heat_pumps/frontend/lambda-cockpit-card.js), Kachel „Aufnahme“). `_n()` liest nur den Zustand und ignoriert `unit_of_measurement`. Bei 1,48 kW rechnet die Karte 0,00148 kW.
+
+**Betroffen (gleiche Ursache):**
+- Laufprüfung `_n("power") > 30` in `_heroUnit`: bei kW nie erfüllt, fällt nur auf, wenn `rating` fehlt.
+- Abgabe (`heat`): Lambda liefert kW, die Karte rechnet nicht um. Bei umgestellter Einheit W steht „4500 kW“.
+- PV-Überschuss (`pv_surplus`) und PV-Leistung (`pv_power`) sowie Batterie (`bat_charge`, `bat_discharge`): bei kW steht „5 W“, und die Schwelle `> 5` greift nicht.
+- Laufzeit (`lz_*`, `lccHours`): Gerätetyp `duration` kann in Minuten oder Sekunden kommen.
+- Energie-Kacheln (`strom_*`, `waerme_*`) sind fest als kWh beschriftet. Der COP stimmt nur, wenn Zähler und Gegenzähler dieselbe Einheit haben.
+- Python-Seite ist bereits abgesichert: externe Zähler in [coordinator.py](custom_components/lambda_heat_pumps/coordinator.py) (Wh, kWh, MWh) und PV in [services.py](custom_components/lambda_heat_pumps/services.py) (kW → W).
+
+**Lösungsvorschlag:** Eine zentrale Methode in der Karte (z. B. `_val(key, "W" | "kW" | "kWh" | "h")`), die `unit_of_measurement` liest und in die Zieleinheit umrechnet. Fehlt die Einheit, gilt die native Einheit der Lambda-Sensoren. Der Vorschlag des Melders (`_w()` für W, kW, MW) ist der richtige Kern dafür. Die Umrechnung sollte separat testbar sein, weil [tests/test_cockpit.py](tests/test_cockpit.py) nur Python prüft.
+
+**Nächste Schritte:** Fix als Release 3.7.2 mit Umrechnungs-Helfer und Anpassung der betroffenen Stellen (F30). Antwort an den Melder, dass der Fix in 3.7.2 kommt; er hat um Mitnahme beim nächsten Update gebeten.
+
+---
+
 ## Umsetzungsplan (noch offen)
 
 | Aufgabe | Issues | Geschätzt | Status |
@@ -290,4 +311,5 @@ Für einen einzelnen Heizkreis verweist die Antwort auf den Raumthermostat je He
 | **F26:** Firmware V1.0.2-3K / V1.0.7-3K zu `FIRMWARE_CONFIG` | #100 | niedrig | offen (wird mit Feedback geklärt) |
 | **F27:** Sensoren 1024–1033 / 1051–1060 ab V1.0.x nicht anlegen | #100, #119, #143 | mittel | offen |
 | **F28:** Sentinel `32768` für `integer`-Felder | #100 | niedrig | offen |
+| **F30:** Cockpit: Einheiten der Sensoren (kW, W, Wh, Minuten) lesen und umrechnen | #168 | mittel | offen |
 
