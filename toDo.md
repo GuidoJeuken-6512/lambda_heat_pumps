@@ -26,7 +26,7 @@
 - [x] **Version 3.7.1** (14.11.2026: Version, Changelogs, Release-Seite) — GitHub-Release mit Zip noch anlegen. Inhalt: Climate-Fix, #160, #167, Hinweise aus #163, Heizkreis-Karte zu #157, Vorlauf-Werte zu #156/#128) — gebaut wird erst auf Anweisung. Changelog-Einträge stehen als „unveröffentlicht“.
 - [x] **Climate-Fix live geprüft** (13.11.2026): auf HA 2026.9.1 (Port 8124) und 2026.11.1 (Port 8125, schlanke Konfiguration `C:\Cursor\ha_test_2611`): Werte da, keine Veraltet-Warnung im Log. Nach dem Release zusätzlich im Log von .131 kontrollieren.
 - [x] **#167 Kompressorstarts heute** (14.11.2026, 3.7.1): Kachel unter „Umschaltungen“, AT-Werte in der Kopfzeile; bestehende Dashboards zeigen sie ohne Neuschreiben.
-- [ ] **#166 beantworten:** Prototyp einer Karte im Stil des Lambda-Displays. Empfehlung: eigene HACS-Karte, in der Doku verlinkt. Details in der Bugliste.
+- [x] **#166 beantwortet und geschlossen** (14.11.2026): keine zweite Karte im Projekt, Verlinkung angeboten.
 - [x] **GitHub-Issues nach dem Release 3.7.1:** #160, #157, #167 kommentiert und geschlossen (14.11.2026). #156, #163 und #128 bleiben offen; #163 und #128 sind noch nicht kommentiert.
 - [ ] **Plan 3.7.2** steht in der Bugliste (Abschnitt „Plan 3.7.2“), Reihenfolge nach Aufwand und Risiko.
 - [x] **#168 Einheiten normieren** (3.7.2, erledigt 15.11.2026): „Aufnahme“ zeigt 0,00 kW, wenn der Sensor auf kW umgestellt ist; auch Lüfter-Laufprüfung, PV- und Batterie-Leistungen, Energien.
@@ -36,7 +36,7 @@
 - [ ] **#156 Vorlauf-Werte in der Grafik der Heizkurve** (3.7.2), dazu AT ist: Linien VL Soll (gestrichelt) und VL ist, Werteliste oben links, Zeile unter der Kurve entfällt, Achse erweitern. Details in der Bugliste.
 - [x] **Stützpunkte der Heizkurve** (3.7.2, erledigt 15.11.2026): auf der Hilfeseite im Abschnitt Heizkurve beschrieben (Klick auf die Kästchen öffnet den Wert). Kein ✎ in der Karte; dafür gibt es das „?“.
 - [x] **Cache der Karten** (3.7.2, erledigt 15.11.2026, `_card_digests` in `dashboard.py`): Adresse der Karten-JS mit Prüfwert des Inhalts statt nur der Version, damit Browser auch ohne neue Versionsnummer neu laden (Prod per FileZilla zeigte die alte Karte).
-- [ ] **#165 auf GitHub schließen:** lokal als „nicht geplant“ notiert, auf GitHub noch offen.
+- [x] **GitHub-Issues geschlossen** (15.11.2026, mit Kommentar): #165 (nicht geplant), #137 (Verhalten der Lambda), #168 und #170 (behoben in 3.7.2, unveröffentlicht).
 - [ ] **Playwright-Skript `ha_session.cjs`** (Scratchpad) nutzt noch Port 8123. Auf Port 8124 umstellen, bevor Browser-Tests laufen.
 - [ ] **Schlanke Test-Konfiguration `C:\Cursor\ha_test_2611`** (ohne Datenbank, nur nötige Dateien) mit Container `ha-2611` (HA 2026.11.1, Port 8125). Ist nicht im Repo; bei Bedarf neu anlegen.
 - [ ] **Heizkreis ohne eigenen Rücklauffühler** (gemeldet 09.11.2026, Prod-Anlage): `hc1_return_line_temperature` (Register 5003) ist dauerhaft „unbekannt“; Kachel Heizkreis zeigt links ein leeres Feld „–“, Schaltpunkte Heizkreis zeigen „RL –“ und „noch – K“. Ein Klick auf die Kachel öffnet `hc1_flow_line_temperature` (ganze Kachel verknüpft, nicht das Feld).

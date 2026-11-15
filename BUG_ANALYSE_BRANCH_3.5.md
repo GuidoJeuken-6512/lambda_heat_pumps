@@ -3,8 +3,8 @@
 - **Stand:** 15.11.2026 (Abgleich mit GitHub; Version 3.7.1)
 - **Geschlossene Issues (V3.6.1):** #82, #85, #90, #94, #95, #104, #119, #120, #121, #122 (Duplikat #85), #132, #133, #134, #136, #140, #141 (Duplikat #121), #144. 
 - **Geschlossen nach V3.6.1:** #138 (Doku Hydraulic Card), #142 (gelöst), #149 (tmodbus-Anforderung, 3.6.2)
-- **Geschlossen:** #153 (behoben in 3.7.0), #105 und #161 (GitHub geschlossen), #160, #157 und #167 (behoben in 3.7.1, GitHub geschlossen 14.11.2026), #166 (beantwortet: keine zweite Karte, Verlinkung angeboten; geschlossen 14.11.2026), #165 (lokal als „nicht geplant“ notiert; auf GitHub noch offen, bitte prüfen)
-- **Offen, noch in Arbeit:** #152, #151, #137, #143, #101, #128 und die Cockpit-Issues (siehe Abschnitt unten)
+- **Geschlossen:** #153 (behoben in 3.7.0), #105 und #161 (GitHub geschlossen), #160, #157 und #167 (behoben in 3.7.1, GitHub geschlossen 14.11.2026), #166 (beantwortet: keine zweite Karte, Verlinkung angeboten; geschlossen 14.11.2026), #165 (nicht geplant), #137 (Verhalten der Lambda), #168 und #170 (behoben in 3.7.2, unveröffentlicht) – alle mit Kommentar geschlossen 15.11.2026
+- **Offen, noch in Arbeit:** #152, #151, #143, #101, #128 und die Cockpit-Issues (siehe Abschnitt unten)
 - **Technische Schulden (Enhancement):** #128, #101, #105 (Tests/Regressionen ausstehend)
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
 
@@ -14,7 +14,7 @@
 
 | Issue | Titel | Status | Priorität |
 |---|---|---|---|
-| [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss | Verhalten der Lambda (Schließ-Kommentar entworfen, auf GitHub noch offen) | niedrig |
+| [#137](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/137) | E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss | Verhalten der Lambda; **GitHub geschlossen** 15.11.2026 mit Kommentar | – |
 | [#153](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/153) | Außentemperatur „unbekannt“ bei 0 °C | **FIXED** in 3.7.0 (GitHub geschlossen) | – |
 | [#152](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/152) | `ambient_temperature` fehlt nach 3.6.1 | Firmware-Sperre `"1-7"`; Rückfrage Firmware und Werte vor dem Update | niedrig–mittel |
 | [#151](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/151) | PV-Modus endet nicht, Psoll springt auf 0 (2.6.0) | Lambda-Verhalten wie #137; 0-Sprünge vermutlich evcc parallel | niedrig |
@@ -61,7 +61,7 @@ Psoll bleibt stehen und der PV-Modus endet nicht: Logik der Lambda (wie #137). D
 
 ### #137: E-Manager-Sollleistung ≠ 0 ohne PV-Überschuss
 
-**Status:** Verhalten der Lambda, nicht der Integration. Schließ-Kommentar entworfen, auf GitHub noch nicht gepostet.
+**Status:** Verhalten der Lambda, nicht der Integration. Auf GitHub mit Kommentar geschlossen (15.11.2026).
 
 Die PV-Überschuss-Dokumentation erklärt jetzt, dass die Sollleistung (`emgr_power_consumption_setpoint`) nur im Betriebsmodus "Automatik" berechnet wird. Im Modus "Manuell" ist die Sollleistung immer 0. Der Wert kommt direkt von der Lambda (Register 1087), und die Integration schreibt nur den Überschusswert.
 
@@ -125,10 +125,10 @@ Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 15.11.2026.
 | [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | **Offen** (Wunsch); Sensor existiert bereits | niedrig |
 | [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1: Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile; GitHub geschlossen 14.11.2026 | niedrig–mittel |
 | [#169](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/169) | PV-Überschuss mit Kodierung „neg“ zeigt bei Netzbezug Überschuss | **Offen** (Bug, neu 15.11.2026); Karte kennt die Kodierung nicht (wie #155). Hängt an „Funktionen live lesen“ | mittel |
-| [#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170) | Brauchwasser: Temperatur oben und unten zeigen | **Offen** (Wunsch, neu 15.11.2026); Slot `ww_low` ist schon im Dashboard, nur nicht im Bild | niedrig |
+| [#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170) | Brauchwasser: Temperatur oben und unten zeigen | **FIXED** in 3.7.2 (unveröffentlicht): Speicher zeigt oben und unten; GitHub geschlossen 15.11.2026 | niedrig |
 | [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Beantwortet und geschlossen** 14.11.2026: keine zweite Karte im Projekt, Verlinkung angeboten | – |
-| [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
-| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird (BMeyendriesch, EU15L, 3.7.0) | **FIXED** in 3.7.2 (unveröffentlicht): `_n()` rechnet Leistung, Energie und Laufzeit nach der Einheit um, siehe Details | mittel |
+| [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); GitHub geschlossen 15.11.2026 | – |
+| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird (BMeyendriesch, EU15L, 3.7.0) | **FIXED** in 3.7.2 (unveröffentlicht): `_n()` rechnet Leistung, Energie und Laufzeit nach der Einheit um, siehe Details; GitHub geschlossen 15.11.2026 | mittel |
 
 Nicht cockpit-spezifisch, aber neu: [#161](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/161) (evcc und Register 102). Ursache wie bei #105: zwei Quellen schreiben in Register 102. Ein Melder hat es gelöst, indem er die PV-Option der Integration abgeschaltet hat und nur evcc schreiben lässt. Einordnung bei #105.
 
@@ -301,7 +301,7 @@ Mit „neg“ schickt die Integration den Wert vorzeichenbehaftet an Register 10
 
 ### #170: Brauchwasser oben und unten
 
-**Status:** Wunsch (15.11.2026, tilmancwoerz-web). Der Puffer zeigt oben und unten, das Brauchwasser nur oben.
+**Status:** behoben in 3.7.2 (unveröffentlicht), GitHub geschlossen 15.11.2026. Wunsch vom 15.11.2026 (tilmancwoerz-web): Der Puffer zeigt oben und unten, das Brauchwasser nur oben.
 
 Der Slot `ww_low` (`boil1_actual_low_temperature`) steht schon im erzeugten Dashboard, die Kachel zeichnet ihn nur nicht. **Umsetzung (klein):** zweites Feld unten im Speicher, wie beim Puffer; ohne Wert kein Feld. Bestehende Dashboards brauchen kein Neuschreiben.
 
@@ -309,7 +309,7 @@ Der Slot `ww_low` (`boil1_actual_low_temperature`) steht schon im erzeugten Dash
 
 ### #165: Heizkreise schaltbar machen (Register 5006)
 
-**Status:** geschlossen als „nicht geplant“ (13.11.2026). Gleiche Entscheidung wie bei #31, #98, #125 und #136.
+**Status:** geschlossen als „nicht geplant“ (lokal 13.11.2026, GitHub 15.11.2026). Gleiche Entscheidung wie bei #31, #98, #125 und #136.
 
 Register 5006 ist eine Anforderung mit Zeitlimit von etwa 5 Minuten, keine Einstellung. Danach übernimmt die Lambda wieder ihre eigene Betriebsart, und das Register liefert nach dem Zeitlimit „keine Anforderung“ zurück. Die Messungen von Sturmi77 in #136 belegen das. Die Integration bietet deshalb keine Auswahl dafür. Die Aktion `lambda_heat_pumps.write_modbus_register` bleibt für eigene Automationen auf eigene Verantwortung.
 
@@ -335,7 +335,7 @@ Für einen einzelnen Heizkreis verweist die Antwort auf den Raumthermostat je He
 
 **Umgesetzt (15.11.2026, 3.7.2, unveröffentlicht):** `_n()` multipliziert mit `_unitFactor()`: Leistungen auf W (`power`, `pv_surplus`, `pv_power`, `bat_*`, `src_*`), Abgabe `heat` auf kW, Energien auf kWh (`strom_*`, `waerme_*`, `e_*`, `hz_*`, `ww_*`, `netz_tag`, `eigen_tag`), Laufzeiten `lz_*` auf h (min, s, ms, d). Ohne oder mit unbekannter Einheit bleibt der Wert, wie er ist. Laufprüfung, Batterie-Schwelle und COP rechnen damit automatisch richtig. Geprüft mit einer Mock-Seite (W/kWh gegen kW/Wh: gleiche Anzeige).
 
-**Offen:** Antwort an den Melder (Fix kommt mit 3.7.2).
+**Erledigt:** Antwort an den Melder, Issue geschlossen (15.11.2026).
 
 **Ursprünglich geplant:** Fix als Release 3.7.2 mit Umrechnungs-Helfer und Anpassung der betroffenen Stellen (F30). Antwort an den Melder, dass der Fix in 3.7.2 kommt; er hat um Mitnahme beim nächsten Update gebeten.
 
@@ -357,7 +357,7 @@ Reihenfolge nach Aufwand und Risiko: erst die kleinen Fehler, dann die Darstellu
 | 8 | Volumenstrom anzeigen | #159 | klein–mittel | gering | Entscheidung zum Platz offen |
 | 9 | Raumtemperatur an Lambda ausgegraut | #162 | ? | ? | wartet auf Daten vom Melder |
 
-Antworten offen: #156 (Gespräch PV-Überschuss mit AndiBo62), #169 (Vorzeichen), #163 und #128 (Kommentar). #165 auf GitHub noch offen.
+Antworten offen: #156 (Gespräch PV-Überschuss mit AndiBo62), #169 (Vorzeichen), #163 und #128 (Kommentar).
 
 ## Umsetzungsplan (noch offen)
 
