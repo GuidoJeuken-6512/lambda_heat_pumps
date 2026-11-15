@@ -154,7 +154,9 @@ const LCC_ENERGY_KWH = [
   "strom_hz", "strom_ww", "strom_abt", "strom_kuehl", "strom_sb", "waerme_hz", "waerme_ww", "waerme_abt",
   "waerme_kuehl", "e_in", "e_out", "hz_in", "hz_out", "ww_in", "ww_out", "netz_tag", "eigen_tag",
 ];
+const LCC_DURATION_H = ["lz_hz", "lz_ww", "lz_abt", "lz_hs"];
 const LCC_W_PER = { w: 1, kw: 1e3, mw: 1e6, gw: 1e9 };
+const LCC_H_PER = { h: 1, min: 1 / 60, s: 1 / 3600, ms: 1 / 3.6e6, d: 24 };
 const LCC_KWH_PER = { wh: 1e-3, kwh: 1, mwh: 1e3, gwh: 1e6 };
 
 // Slots added after 3.7.0. A dashboard written before does not list them, so
@@ -499,6 +501,7 @@ class LambdaCockpitCard extends HTMLElement {
     if (LCC_POWER_W.includes(key)) return LCC_W_PER[u] || 1;
     if (LCC_POWER_KW.includes(key)) return LCC_W_PER[u] ? LCC_W_PER[u] / 1e3 : 1;
     if (LCC_ENERGY_KWH.includes(key)) return LCC_KWH_PER[u] || 1;
+    if (LCC_DURATION_H.includes(key)) return LCC_H_PER[u] || 1;
     return 1;
   }
   _t(key) {

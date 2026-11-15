@@ -10,7 +10,7 @@
 ### [3.7.2] - unreleased
 
 **Lambda Cockpit:**
-- Values in kW, Wh or MWh: if you switch the display unit of a power or energy sensor (e.g. the power consumption to kW), the cockpit converts it instead of showing 0.00 kW; the fan animation follows as well ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
+- Values in kW, Wh, MWh or minutes: if you switch the display unit of a power, energy or runtime sensor (e.g. the power consumption to kW), the cockpit converts it instead of showing 0.00 kW; the fan animation follows as well ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
 - Hot water shows the temperature at the bottom sensor as well, like the buffer ([#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170)).
 - The browser loads the cards anew whenever their files change, not only with a new version number.
 - Documentation: the help page explains that the three heating-curve points can be changed directly in the cockpit by clicking their boxes under the curve.
@@ -536,7 +536,7 @@ This release contains significant changes to the Entity Registry and sensor nami
 ### [3.7.2] - unveröffentlicht
 
 **Lambda Cockpit:**
-- Werte in kW, Wh oder MWh: Wer die Anzeigeeinheit eines Leistungs- oder Energiesensors umstellt (z. B. die Leistungsaufnahme auf kW), bekommt im Cockpit den richtigen Wert statt 0,00 kW; auch die Lüfter-Animation stimmt dann ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
+- Werte in kW, Wh, MWh oder Minuten: Wer die Anzeigeeinheit eines Leistungs-, Energie- oder Laufzeitsensors umstellt (z. B. die Leistungsaufnahme auf kW), bekommt im Cockpit den richtigen Wert statt 0,00 kW; auch die Lüfter-Animation stimmt dann ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
 - Brauchwasser zeigt zusätzlich die Temperatur am unteren Fühler, wie der Puffer ([#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170)).
 - Der Browser lädt die Karten neu, sobald sich ihre Dateien ändern, nicht erst mit einer neuen Versionsnummer.
 - Doku: Die Hilfeseite erklärt, dass sich die drei Stützpunkte der Heizkurve direkt im Cockpit ändern lassen, per Klick auf die Kästchen unter der Kurve.

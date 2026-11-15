@@ -124,12 +124,11 @@ Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 15.11.2026.
 | [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1: Punkte 1, 4, 6, 7. Offen: 2, 3, 5; Issue bleibt offen (noch nicht kommentiert) | mittel |
 | [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | **Offen** (Wunsch); Sensor existiert bereits | niedrig |
 | [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1: Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile; GitHub geschlossen 14.11.2026 | niedrig–mittel |
-| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor auf kW umgestellt ist | **Offen** (Bug, neu 14.11.2026); Karte teilt fest durch 1000. Einheit lesen und normieren | mittel |
 | [#169](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/169) | PV-Überschuss mit Kodierung „neg“ zeigt bei Netzbezug Überschuss | **Offen** (Bug, neu 15.11.2026); Karte kennt die Kodierung nicht (wie #155). Hängt an „Funktionen live lesen“ | mittel |
 | [#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170) | Brauchwasser: Temperatur oben und unten zeigen | **Offen** (Wunsch, neu 15.11.2026); Slot `ww_low` ist schon im Dashboard, nur nicht im Bild | niedrig |
 | [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Beantwortet und geschlossen** 14.11.2026: keine zweite Karte im Projekt, Verlinkung angeboten | – |
 | [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
-| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird (BMeyendriesch, EU15L, 3.7.0) | **Offen**; Ursache bestätigt: Karte rechnet fest `/ 1000`, `_n()` ignoriert die Einheit. Gleiche Stelle betrifft weitere Werte, siehe Details | mittel |
+| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird (BMeyendriesch, EU15L, 3.7.0) | **FIXED** in 3.7.2 (unveröffentlicht): `_n()` rechnet Leistung, Energie und Laufzeit nach der Einheit um, siehe Details | mittel |
 
 Nicht cockpit-spezifisch, aber neu: [#161](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/161) (evcc und Register 102). Ursache wie bei #105: zwei Quellen schreiben in Register 102. Ein Melder hat es gelöst, indem er die PV-Option der Integration abgeschaltet hat und nur evcc schreiben lässt. Einordnung bei #105.
 
@@ -288,16 +287,6 @@ Angeboten sind zwei Wege:
 
 ---
 
-### #168: „Aufnahme“ zeigt 0,00 kW bei Anzeigeeinheit kW
-
-**Status:** Bug der Karte (14.11.2026, BMeyendriesch, EU15L, 3.7.0). Analyse des Melders stimmt.
-
-Wer in den Entitätseinstellungen die Anzeigeeinheit von `hp1_inverter_power_consumption` auf kW stellt, bekommt den Zustand in kW (`1.48`). Die Karte teilt fest durch 1000 und zeigt „0,00 kW“. Dieselbe Annahme steckt in der Laufprüfung `rating > 0 || power > 30` (Lüfter-Animation).
-
-**Umsetzung (klein):** Hilfsfunktion, die Leistungen nach `unit_of_measurement` auf W normiert (W, kW, MW), für `power` und alle anderen Leistungs-Slots (`pv_surplus`, `pv_power`, `bat_charge`, `bat_discharge`, `src_*`). Energien analog auf kWh (Wh, kWh, MWh), weil auch dort die Anzeigeeinheit umstellbar ist. Test mit der Mock-Seite.
-
----
-
 ### #169: PV-Überschuss mit Kodierung „neg“
 
 **Status:** Bug der Karte (15.11.2026, Qowy, 3.7.1). Gleiches Thema wie #155 (vom Melder ohne Kommentar geschlossen).
@@ -344,7 +333,11 @@ Für einen einzelnen Heizkreis verweist die Antwort auf den Raumthermostat je He
 
 **Lösungsvorschlag:** Eine zentrale Methode in der Karte (z. B. `_val(key, "W" | "kW" | "kWh" | "h")`), die `unit_of_measurement` liest und in die Zieleinheit umrechnet. Fehlt die Einheit, gilt die native Einheit der Lambda-Sensoren. Der Vorschlag des Melders (`_w()` für W, kW, MW) ist der richtige Kern dafür. Die Umrechnung sollte separat testbar sein, weil [tests/test_cockpit.py](tests/test_cockpit.py) nur Python prüft.
 
-**Nächste Schritte:** Fix als Release 3.7.2 mit Umrechnungs-Helfer und Anpassung der betroffenen Stellen (F30). Antwort an den Melder, dass der Fix in 3.7.2 kommt; er hat um Mitnahme beim nächsten Update gebeten.
+**Umgesetzt (15.11.2026, 3.7.2, unveröffentlicht):** `_n()` multipliziert mit `_unitFactor()`: Leistungen auf W (`power`, `pv_surplus`, `pv_power`, `bat_*`, `src_*`), Abgabe `heat` auf kW, Energien auf kWh (`strom_*`, `waerme_*`, `e_*`, `hz_*`, `ww_*`, `netz_tag`, `eigen_tag`), Laufzeiten `lz_*` auf h (min, s, ms, d). Ohne oder mit unbekannter Einheit bleibt der Wert, wie er ist. Laufprüfung, Batterie-Schwelle und COP rechnen damit automatisch richtig. Geprüft mit einer Mock-Seite (W/kWh gegen kW/Wh: gleiche Anzeige).
+
+**Offen:** Antwort an den Melder (Fix kommt mit 3.7.2).
+
+**Ursprünglich geplant:** Fix als Release 3.7.2 mit Umrechnungs-Helfer und Anpassung der betroffenen Stellen (F30). Antwort an den Melder, dass der Fix in 3.7.2 kommt; er hat um Mitnahme beim nächsten Update gebeten.
 
 ---
 
@@ -354,7 +347,7 @@ Reihenfolge nach Aufwand und Risiko: erst die kleinen Fehler, dann die Darstellu
 
 | # | Aufgabe | Issues | Aufwand | Risiko | Status |
 |---|---|---|---|---|---|
-| 1 | Einheiten der Leistungen und Energien lesen und normieren (W/kW/MW, Wh/kWh/MWh) | #168 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
+| 1 | Einheiten der Leistungen, Energien und Laufzeiten lesen und normieren (W/kW/MW, Wh/kWh/MWh, h/min/s; F30) | #168 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 2 | Brauchwasser: Temperatur unten zusätzlich zeigen | #170 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 3 | Cache der Karten: Prüfwert des Inhalts in der Adresse statt nur der Version | – | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
 | 4 | Stützpunkte der Heizkurve: auf der Hilfeseite beschreiben (Klick auf die Kästchen), kein ✎ in der Karte | #156 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
@@ -375,5 +368,5 @@ Antworten offen: #156 (Gespräch PV-Überschuss mit AndiBo62), #169 (Vorzeichen)
 | **F26:** Firmware V1.0.2-3K / V1.0.7-3K zu `FIRMWARE_CONFIG` | #100 | niedrig | offen (wird mit Feedback geklärt) |
 | **F27:** Sensoren 1024–1033 / 1051–1060 ab V1.0.x nicht anlegen | #100, #119, #143 | mittel | offen |
 | **F28:** Sentinel `32768` für `integer`-Felder | #100 | niedrig | offen |
-| **F30:** Cockpit: Einheiten der Sensoren (kW, W, Wh, Minuten) lesen und umrechnen | #168 | mittel | offen |
+| **F30:** Cockpit: Einheiten der Sensoren (kW, W, Wh, Minuten) lesen und umrechnen | #168 | mittel | **erledigt** (3.7.2, unveröffentlicht; Plan 3.7.2 Punkt 1) |
 
