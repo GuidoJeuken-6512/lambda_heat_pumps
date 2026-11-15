@@ -17,6 +17,11 @@
 > - **Firmware 3+ (from V0.0.5-3K, incl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` is gone.** On this firmware, heating-circuit register 7 is the read-only target flow temperature the controller works with, not a writable setpoint request ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Its replacement is `hcX_target_temp_flow_line`. The old entity stays behind as "no longer provided", and dashboards, helpers and automations using it break silently. → To keep the history: delete the orphaned `…_flow_line_temperature_setpoint` entity, then rename `…_target_temp_flow_line` to the old entity_id (Settings → Entities → entity → ⚙ → Entity ID).
 > - Back up before upgrading.
 
+### [3.7.2] - unreleased
+
+**Lambda Cockpit:**
+- Values in kW, Wh or MWh: if you switch the display unit of a power or energy sensor (e.g. the power consumption to kW), the cockpit converts it instead of showing 0.00 kW; the fan animation follows as well ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
+
 ### [3.7.1] - 2026-11-14
 
 **No more deprecation warnings with Home Assistant 2026.11.** The hot water and room thermostats use Home Assistant's new temperature interface; 2026.9 and 2026.10 keep working.
@@ -112,6 +117,11 @@ Adopted a ground-up rewrite of the integration (PR #115): the Modbus layer moves
 > - Reparaturen zu *unbekannten Entitätsreferenzen* in Dashboards/Templates bedeuten, dass eine 2.x-Entität in 3.5 umbenannt oder entfernt wurde — Karte/Template anpassen.
 > - **Firmware 3+ (ab V0.0.5-3K, inkl. V0.0.10/V1.0.4/V1.1.0): `hcX_flow_line_temperature_setpoint` entfällt.** Auf dieser Firmware ist Heizkreis-Register 7 die schreibgeschützte Vorlauf-Solltemperatur, mit der die Steuerung arbeitet, keine beschreibbare Sollwert-Anforderung ([#112](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/112), 3.5.5). Ersatz ist `hcX_target_temp_flow_line`. Die alte Entität bleibt als „nicht mehr bereitgestellt“ zurück; Dashboards, Helfer und Automationen, die sie nutzen, brechen stillschweigend. → Um den Verlauf zu behalten: die verwaiste `…_flow_line_temperature_setpoint`-Entität löschen, dann `…_target_temp_flow_line` auf die alte entity_id umbenennen (Einstellungen → Entitäten → Entität → ⚙ → Entitäts-ID).
 > - Vor dem Update ein Backup erstellen.
+
+### [3.7.2] - unveröffentlicht
+
+**Lambda Cockpit:**
+- Werte in kW, Wh oder MWh: Wer die Anzeigeeinheit eines Leistungs- oder Energiesensors umstellt (z. B. die Leistungsaufnahme auf kW), bekommt im Cockpit den richtigen Wert statt 0,00 kW; auch die Lüfter-Animation stimmt dann ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
 
 ### [3.7.1] - 2026-11-14
 

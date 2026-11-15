@@ -7,6 +7,11 @@
 
 > **📚 Documentation**: A German documentation is currently being built at [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps)
 
+### [3.7.2] - unreleased
+
+**Lambda Cockpit:**
+- Values in kW, Wh or MWh: if you switch the display unit of a power or energy sensor (e.g. the power consumption to kW), the cockpit converts it instead of showing 0.00 kW; the fan animation follows as well ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
+
 ### [3.7.1] - 2026-11-14
 
 **No more deprecation warnings with Home Assistant 2026.11.** The hot water and room thermostats use Home Assistant's new temperature interface; 2026.9 and 2026.10 keep working.
@@ -524,6 +529,11 @@ This release contains significant changes to the Entity Registry and sensor nami
 <!-- lang:de -->
 
 > **📚 Dokumentation**: Eine deutsche Dokumentation wird derzeit unter [https://guidojeuken-6512.github.io/lambda_heat_pumps](https://guidojeuken-6512.github.io/lambda_heat_pumps) aufgebaut
+
+### [3.7.2] - unveröffentlicht
+
+**Lambda Cockpit:**
+- Werte in kW, Wh oder MWh: Wer die Anzeigeeinheit eines Leistungs- oder Energiesensors umstellt (z. B. die Leistungsaufnahme auf kW), bekommt im Cockpit den richtigen Wert statt 0,00 kW; auch die Lüfter-Animation stimmt dann ([#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168)).
 
 ### [3.7.1] - 2026-11-14
 

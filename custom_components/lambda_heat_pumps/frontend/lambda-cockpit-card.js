@@ -146,6 +146,17 @@ function L(key, ...args) {
 // The help page: one section per part of the card.
 const LCC_HELP_URL = "https://guidojeuken-6512.github.io/lambda_heat_pumps/Anwender/lambda-cockpit-kacheln/";
 
+// Units the card calculates in. A user may switch a sensor's display unit (e.g.
+// W to kW); its state then comes in that unit and is converted back here.
+const LCC_POWER_W = ["power", "pv_surplus", "pv_power", "bat_charge", "bat_discharge", "src_pv", "src_bat", "src_grid"];
+const LCC_POWER_KW = ["heat"];
+const LCC_ENERGY_KWH = [
+  "strom_hz", "strom_ww", "strom_abt", "strom_kuehl", "strom_sb", "waerme_hz", "waerme_ww", "waerme_abt",
+  "waerme_kuehl", "e_in", "e_out", "hz_in", "hz_out", "ww_in", "ww_out", "netz_tag", "eigen_tag",
+];
+const LCC_W_PER = { w: 1, kw: 1e3, mw: 1e6, gw: 1e9 };
+const LCC_KWH_PER = { wh: 1e-3, kwh: 1, mwh: 1e3, gwh: 1e6 };
+
 // Slots added after 3.7.0. A dashboard written before does not list them, so
 // the card looks them up itself.
 const LCC_LATE_KEYS = ["starts_vd"];
@@ -478,7 +489,17 @@ class LambdaCockpitCard extends HTMLElement {
     if (Number.isNaN(v)) return NaN;
     // A circuit without a request reports a flow setpoint of 0.
     if (key === "hc_soll" && v <= 0) return NaN;
-    return v;
+    return v * this._unitFactor(key, s);
+  }
+
+  // Factor from the sensor's unit to the one the card calculates in; 1 when the
+  // unit is the expected one, missing or unknown.
+  _unitFactor(key, s) {
+    const u = String((s.attributes && s.attributes.unit_of_measurement) || "").trim().toLowerCase();
+    if (LCC_POWER_W.includes(key)) return LCC_W_PER[u] || 1;
+    if (LCC_POWER_KW.includes(key)) return LCC_W_PER[u] ? LCC_W_PER[u] / 1e3 : 1;
+    if (LCC_ENERGY_KWH.includes(key)) return LCC_KWH_PER[u] || 1;
+    return 1;
   }
   _t(key) {
     const s = this._st(key);

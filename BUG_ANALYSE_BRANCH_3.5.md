@@ -1,9 +1,9 @@
 # Analyse der offenen Bug-Issues gegen Branch `3.5`
 
-- **Stand:** 14.11.2026 (Abgleich mit GitHub; Version 3.7.1)
+- **Stand:** 15.11.2026 (Abgleich mit GitHub; Version 3.7.1)
 - **Geschlossene Issues (V3.6.1):** #82, #85, #90, #94, #95, #104, #119, #120, #121, #122 (Duplikat #85), #132, #133, #134, #136, #140, #141 (Duplikat #121), #144. 
 - **Geschlossen nach V3.6.1:** #138 (Doku Hydraulic Card), #142 (gelöst), #149 (tmodbus-Anforderung, 3.6.2)
-- **Geschlossen:** #153 (behoben in 3.7.0), #105 und #161 (GitHub geschlossen), #165 (lokal als „nicht geplant“ notiert; auf GitHub noch offen, bitte prüfen)
+- **Geschlossen:** #153 (behoben in 3.7.0), #105 und #161 (GitHub geschlossen), #160, #157 und #167 (behoben in 3.7.1, GitHub geschlossen 14.11.2026), #166 (beantwortet: keine zweite Karte, Verlinkung angeboten; geschlossen 14.11.2026), #165 (lokal als „nicht geplant“ notiert; auf GitHub noch offen, bitte prüfen)
 - **Offen, noch in Arbeit:** #152, #151, #137, #143, #101, #128 und die Cockpit-Issues (siehe Abschnitt unten)
 - **Technische Schulden (Enhancement):** #128, #101, #105 (Tests/Regressionen ausstehend)
 - **Register ohne Werte nach Firmware:** eigene Auswertung in [`REGISTER_OHNE_WERTE.md`](REGISTER_OHNE_WERTE.md) (44 Issues, Tabelle Firmware → Register, F26–F29).
@@ -111,20 +111,23 @@ Ein Abweichungs-Sensor (Soll − Ist) würde helfen, Regelprobleme zu erkennen (
 
 ---
 
-## Lambda Cockpit: offene Issues (Stand 14.11.2026)
+## Lambda Cockpit: offene Issues (Stand 15.11.2026)
 
-Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 14.11.2026.
+Neues Dashboard aus 3.7.0. Die Meldungen stammen vom 10. bis 15.11.2026.
 
 | Issue | Titel | Einordnung | Priorität |
 |---|---|---|---|
-| [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | **FIXED** in 3.7.1, Suchfeld bleibt erhalten | mittel |
+| [#160](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/160) | Entitäten-Suche: Eingabe schließt nach jedem Buchstaben | **FIXED** in 3.7.1, Suchfeld bleibt erhalten; GitHub geschlossen 14.11.2026 | mittel |
 | [#162](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/162) | Raumtemperatur an Lambda immer ausgegraut | **Offen**; Raumfühler wird ab 3.7.1 je Heizkreis zugeordnet (kann helfen). Entitätsliste und Optionen vom Melder anfordern | mittel |
-| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **FIXED** in 3.7.1: bei mehreren Heizkreisen Kachel Heizbetrieb je Heizkreis auf der Hauptseite, Reiter je Heizkreis mit Karte „Lambda Heizkreis“; Reparaturmeldung für bestehende Cockpits. PV-Symbol offen | mittel |
-| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Teils FIXED** in 3.7.1: Vorlauf-Werte in der Heizkurve. Offen: fehlende Daten nach dem Start (Ursache unklar) | niedrig–mittel |
-| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1: Punkte 1, 4, 6, 7. Offen: 2, 3, 5 | mittel |
+| [#157](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/157) | Nur ein Heizkreis sichtbar (3 vorhanden); PV-Symbol schwer zu sehen | **FIXED** in 3.7.1: bei mehreren Heizkreisen Kachel Heizbetrieb je Heizkreis auf der Hauptseite, Reiter je Heizkreis mit Karte „Lambda Heizkreis“; Reparaturmeldung für bestehende Cockpits. PV-Symbol bleibt so (eigenes Issue, falls gewünscht); GitHub geschlossen 14.11.2026 | mittel |
+| [#156](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/156) | Keine Heizkurvendaten im Dashboard; Wunsch: VL berechnet, Vorlauf-Offset, VL Soll und VL Ist in der Heizkurve | **Teils FIXED** in 3.7.1: Vorlauf-Werte als Zeile unter der Heizkurve. **Bleibt offen:** Werte in die Grafik der Heizkurve (geplant 3.7.2); fehlende Daten nach dem Start (Ursache unklar) | niedrig–mittel |
+| [#163](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/163) | Schaltpunkte: Kopie-Werte, Dauerlauf, Puffer-Status, Warmwasser-Eco, Laufzeit am ersten Tag | **Teils FIXED** in 3.7.1: Punkte 1, 4, 6, 7. Offen: 2, 3, 5; Issue bleibt offen (noch nicht kommentiert) | mittel |
 | [#159](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/159) | Volumenstrom bei den Verdichter-Werten anzeigen | **Offen** (Wunsch); Sensor existiert bereits | niedrig |
-| [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1: Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile | niedrig–mittel |
-| [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Offen** (Frage, neu 14.11.2026); Antwort nötig: eigene HACS-Karte oder Teile ins Cockpit | – |
+| [#167](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/167) | Kompressorstarts täglich unter „Laufzeiten heute“ | **FIXED** in 3.7.1: Kachel „Kompressorstarts heute“ im oberen Bereich, AT-Werte in die Kopfzeile; GitHub geschlossen 14.11.2026 | niedrig–mittel |
+| [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor auf kW umgestellt ist | **Offen** (Bug, neu 14.11.2026); Karte teilt fest durch 1000. Einheit lesen und normieren | mittel |
+| [#169](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/169) | PV-Überschuss mit Kodierung „neg“ zeigt bei Netzbezug Überschuss | **Offen** (Bug, neu 15.11.2026); Karte kennt die Kodierung nicht (wie #155). Hängt an „Funktionen live lesen“ | mittel |
+| [#170](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/170) | Brauchwasser: Temperatur oben und unten zeigen | **Offen** (Wunsch, neu 15.11.2026); Slot `ww_low` ist schon im Dashboard, nur nicht im Bild | niedrig |
+| [#166](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/166) | Prototyp: Karte im Stil des Lambda-Displays (alle Heizkreise) | **Beantwortet und geschlossen** 14.11.2026: keine zweite Karte im Projekt, Verlinkung angeboten | – |
 | [#165](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/165) | Heizkreise über Register 5006 schaltbar machen | **Nicht geplant** (wie #31, #98, #125, #136); auf GitHub noch offen, bitte schließen | – |
 | [#168](https://github.com/GuidoJeuken-6512/lambda_heat_pumps/issues/168) | „Aufnahme“ zeigt 0,00 kW, wenn der Leistungssensor in kW angezeigt wird (BMeyendriesch, EU15L, 3.7.0) | **Offen**; Ursache bestätigt: Karte rechnet fest `/ 1000`, `_n()` ignoriert die Einheit. Gleiche Stelle betrifft weitere Werte, siehe Details | mittel |
 
@@ -207,7 +210,20 @@ Vermutlich lädt die Karte, bevor die Werte der Heizkurve als Zustände vorliege
 
 **Vorschlag des Melders (AndiBo62):** In der Heizkurven-Anzeige zusätzlich die Vorlauf-Werte zeigen: **VL berechnet**, **Vorlauf-Offset**, **VL Soll** und **VL Ist** (aktuelle Vorlauftemperatur). Dann lassen sich Konfiguration und Steuerung im Dashboard direkt vergleichen. Der Melder hat dafür einen eigenen Graphen mit Soll- und Ist-Linie gebaut.
 
-**Nächste Schritte:** Prüfen, ob die Heizkurven-Werte beim ersten Laden fehlen; mit dem Test-Container und einem Neustart nachstellen. Zusammenhang mit dem offenen Konfigurationsfehler (siehe toDo) prüfen. Die vier Vorlauf-Werte in die Heizkurven-Kachel aufnehmen (Werte sind im Cockpit schon vorhanden, nur nicht in der Kurve).
+**Umgesetzt in 3.7.1:** Zeile unter der Kurve mit VL berechnet, VL Soll, VL ist und Soll − berechnet (ab 1 K hervorgehoben).
+
+**Entschieden (14.11.2026): Issue bleibt offen.** Der Melder zeigt die Werte direkt in der Grafik (Screenshot: Liste oben links, Soll gestrichelt, Ist als rote Linie). Geplant für 3.7.2:
+- Waagerechte Linien: VL Soll gestrichelt gelb, VL ist rot; VL berechnet als Punkt im Schnitt der AT-Linie mit der Kurve.
+- Werteliste oben links im Diagramm (VL berechnet, Offset, VL Soll, VL ist, Abweichung ab 1 K hervorgehoben) in der Farbe der Linien; die Zeile unter der Kurve entfällt.
+- y-Achse um VL ist und VL Soll erweitern, mit Untergrenze (ausgekühlter Vorlauf im Stillstand).
+- Fehlender Wert: keine Linie, „–“ in der Liste. Ohne PV-Offset (nur mit unveröffentlichter Firmware).
+- Prüfen mit flacher und steiler Kurve, Desktop und Handy; gilt auch für die Heizkreis-Reiter.
+
+**Stützpunkte:** Die drei Kästchen unter der Kurve sind schon mit `heating_curve_cold/mid/warm_outside_temp` verknüpft; ein Klick öffnet den Wert zum Ändern. Fehlt nur der Hinweis: Doku-Satz im Abschnitt Heizkurve der Hilfeseite, Kästchen sichtbar als einstellbar kennzeichnen (Mauszeiger, ✎).
+
+**Weiter offen:** fehlende Kurvendaten nach dem Start; mit dem Test-Container und einem Neustart nachstellen, Zusammenhang mit dem sporadischen Konfigurationsfehler prüfen.
+
+**Nachtrag 14.11.2026 (AndiBo62):** Wunsch, auch **AT ist** in die Heizkurve einzutragen (bisher AT berechnet und AT Wärmefahrplan). Mit in die Grafik-Umsetzung nehmen. Außerdem meldet er „Ungereimtheiten mit der PV-Überschuss-Steuerung“ und bittet um ein Gespräch; möglicherweise derselbe Punkt wie #169. Antwort steht aus.
 
 ---
 
@@ -272,6 +288,36 @@ Angeboten sind zwei Wege:
 
 ---
 
+### #168: „Aufnahme“ zeigt 0,00 kW bei Anzeigeeinheit kW
+
+**Status:** Bug der Karte (14.11.2026, BMeyendriesch, EU15L, 3.7.0). Analyse des Melders stimmt.
+
+Wer in den Entitätseinstellungen die Anzeigeeinheit von `hp1_inverter_power_consumption` auf kW stellt, bekommt den Zustand in kW (`1.48`). Die Karte teilt fest durch 1000 und zeigt „0,00 kW“. Dieselbe Annahme steckt in der Laufprüfung `rating > 0 || power > 30` (Lüfter-Animation).
+
+**Umsetzung (klein):** Hilfsfunktion, die Leistungen nach `unit_of_measurement` auf W normiert (W, kW, MW), für `power` und alle anderen Leistungs-Slots (`pv_surplus`, `pv_power`, `bat_charge`, `bat_discharge`, `src_*`). Energien analog auf kWh (Wh, kWh, MWh), weil auch dort die Anzeigeeinheit umstellbar ist. Test mit der Mock-Seite.
+
+---
+
+### #169: PV-Überschuss mit Kodierung „neg“
+
+**Status:** Bug der Karte (15.11.2026, Qowy, 3.7.1). Gleiches Thema wie #155 (vom Melder ohne Kommentar geschlossen).
+
+Mit „neg“ schickt die Integration den Wert vorzeichenbehaftet an Register 102; die Lambda verhält sich laut Melder richtig. Die Karte wertet aber `emgr_actual_power > 0` immer als Überschuss. Bei „neg“ ist das Netzbezug, und das Cockpit zeigt dann PV-Überschuss an (Kachel und „PV aktiv“ bei den Schaltpunkten).
+
+**Ursache dahinter:** Die Karte bekommt die Funktionen (`features`) nur beim Schreiben des Dashboards. Die Kodierung fehlt dort ganz, und wer PV-Überschuss oder Raumthermostat später ein- oder ausschaltet, sieht im Cockpit weiter den alten Stand.
+
+**Vorschlag:** Kleiner Websocket-Befehl der Integration (z. B. `lambda_heat_pumps/cockpit_features` mit `config_entry`), den die Karte beim Laden abfragt: Raumthermostat, PV-Überschuss, Kodierung. Das Dashboard muss dafür nicht neu geschrieben werden, und eigene Dashboards profitieren mit. In der Karte bei „neg“ das Vorzeichen umdrehen. Vorher mit dem Melder klären, welches Vorzeichen `emgr_actual_power` bei „neg“ für Überschuss liefert (Verlauf oder Screenshot).
+
+---
+
+### #170: Brauchwasser oben und unten
+
+**Status:** Wunsch (15.11.2026, tilmancwoerz-web). Der Puffer zeigt oben und unten, das Brauchwasser nur oben.
+
+Der Slot `ww_low` (`boil1_actual_low_temperature`) steht schon im erzeugten Dashboard, die Kachel zeichnet ihn nur nicht. **Umsetzung (klein):** zweites Feld unten im Speicher, wie beim Puffer; ohne Wert kein Feld. Bestehende Dashboards brauchen kein Neuschreiben.
+
+---
+
 ### #165: Heizkreise schaltbar machen (Register 5006)
 
 **Status:** geschlossen als „nicht geplant“ (13.11.2026). Gleiche Entscheidung wie bei #31, #98, #125 und #136.
@@ -301,6 +347,24 @@ Für einen einzelnen Heizkreis verweist die Antwort auf den Raumthermostat je He
 **Nächste Schritte:** Fix als Release 3.7.2 mit Umrechnungs-Helfer und Anpassung der betroffenen Stellen (F30). Antwort an den Melder, dass der Fix in 3.7.2 kommt; er hat um Mitnahme beim nächsten Update gebeten.
 
 ---
+
+## Plan 3.7.2 (Lambda Cockpit, Stand 15.11.2026)
+
+Reihenfolge nach Aufwand und Risiko: erst die kleinen Fehler, dann die Darstellung, zuletzt was Klärung braucht.
+
+| # | Aufgabe | Issues | Aufwand | Risiko | Status |
+|---|---|---|---|---|---|
+| 1 | Einheiten der Leistungen und Energien lesen und normieren (W/kW/MW, Wh/kWh/MWh) | #168 | klein | gering | **erledigt** (3.7.2, unveröffentlicht) |
+| 2 | Brauchwasser: Temperatur unten zusätzlich zeigen | #170 | klein | gering | offen |
+| 3 | Cache der Karten: Prüfwert des Inhalts in der Adresse statt nur der Version | – | klein | gering | offen |
+| 4 | Stützpunkte der Heizkurve als einstellbar kennzeichnen (Mauszeiger, ✎) und Satz auf der Hilfeseite | #156 | klein | gering | offen |
+| 5 | Vorlauf-Werte in die Grafik der Heizkurve (Linien Soll und Ist, Werteliste, AT ist), Zeile unter der Kurve entfällt | #156, #128 | mittel | gering | offen |
+| 6 | Funktionen live lesen (Websocket statt `features` im Dashboard), Kodierung „neg“ beim PV-Überschuss | #169, #155 | mittel | mittel | offen; Vorzeichen mit Melder klären |
+| 7 | Schaltpunkte Punkte 2, 3, 5 (Modulationsziel, Puffer-Status, Warmwasser-Eco) | #163 | mittel | mittel | wartet auf Klärung mit Lambda |
+| 8 | Volumenstrom anzeigen | #159 | klein–mittel | gering | Entscheidung zum Platz offen |
+| 9 | Raumtemperatur an Lambda ausgegraut | #162 | ? | ? | wartet auf Daten vom Melder |
+
+Antworten offen: #156 (Gespräch PV-Überschuss mit AndiBo62), #169 (Vorzeichen), #163 und #128 (Kommentar). #165 auf GitHub noch offen.
 
 ## Umsetzungsplan (noch offen)
 
