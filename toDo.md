@@ -35,7 +35,7 @@
 - [ ] **#156 Antwort an AndiBo62:** Gespräch zu „Ungereimtheiten PV-Überschuss“ (evtl. wie #169).
 - [ ] **#156 Vorlauf-Werte in der Grafik der Heizkurve** (3.7.2), dazu AT ist: Linien VL Soll (gestrichelt) und VL ist, Werteliste oben links, Zeile unter der Kurve entfällt, Achse erweitern. Details in der Bugliste.
 - [ ] **Stützpunkte der Heizkurve im Cockpit als einstellbar kennzeichnen** (3.7.2): Kästchen sind schon verknüpft (Klick öffnet den Wert); Mauszeiger und ✎ ergänzen, Satz auf der Hilfeseite im Abschnitt Heizkurve.
-- [ ] **Cache der Karten:** Adresse der Karten-JS mit Prüfwert des Inhalts statt nur der Version, damit Browser auch ohne neue Versionsnummer neu laden (Prod per FileZilla zeigte die alte Karte).
+- [x] **Cache der Karten** (3.7.2, erledigt 15.11.2026, `_card_digests` in `dashboard.py`): Adresse der Karten-JS mit Prüfwert des Inhalts statt nur der Version, damit Browser auch ohne neue Versionsnummer neu laden (Prod per FileZilla zeigte die alte Karte).
 - [ ] **#165 auf GitHub schließen:** lokal als „nicht geplant“ notiert, auf GitHub noch offen.
 - [ ] **Playwright-Skript `ha_session.cjs`** (Scratchpad) nutzt noch Port 8123. Auf Port 8124 umstellen, bevor Browser-Tests laufen.
 - [ ] **Schlanke Test-Konfiguration `C:\Cursor\ha_test_2611`** (ohne Datenbank, nur nötige Dateien) mit Container `ha-2611` (HA 2026.11.1, Port 8125). Ist nicht im Repo; bei Bedarf neu anlegen.

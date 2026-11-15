@@ -527,3 +527,17 @@ async def test_an_existing_cockpit_is_only_rewritten_after_asking(
     await hass.async_block_till_done(wait_background_tasks=True)
     assert issues.async_get_issue(DOMAIN, ISSUE_DASHBOARD_HEATING_CIRCUITS) is None
 
+
+def test_a_changed_card_gets_a_new_address(tmp_path) -> None:
+    """The card's address changes with its content, not only with the version."""
+    from custom_components.lambda_heat_pumps.dashboard import FRONTEND_CARDS, _card_digests
+
+    for card in FRONTEND_CARDS:
+        (tmp_path / card).write_text("one", encoding="utf-8")
+    before = _card_digests(tmp_path)
+    (tmp_path / FRONTEND_CARDS[0]).write_text("two", encoding="utf-8")
+    after = _card_digests(tmp_path)
+
+    assert after[FRONTEND_CARDS[0]] != before[FRONTEND_CARDS[0]]
+    assert after[FRONTEND_CARDS[1]] == before[FRONTEND_CARDS[1]]
+    assert all(len(digest) == 10 for digest in after.values())

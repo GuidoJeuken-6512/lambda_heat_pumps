@@ -19,6 +19,7 @@ suffixes and legacy prefixes all resolve to what is really there.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import logging
 from pathlib import Path
@@ -182,8 +183,22 @@ async def async_register_frontend(hass: HomeAssistant) -> None:
         [StaticPathConfig(FRONTEND_URL, str(folder), cache_headers=False)]
     )
     version = await _integration_version(hass)
+    digests = await hass.async_add_executor_job(_card_digests, folder)
     for card in FRONTEND_CARDS:
-        add_extra_js_url(hass, f"{FRONTEND_URL}/{card}?v={version}")
+        add_extra_js_url(hass, f"{FRONTEND_URL}/{card}?v={version}-{digests[card]}")
+
+
+def _card_digests(folder: Path) -> dict[str, str]:
+    """A short fingerprint of each card's content.
+
+    It goes into the card's address next to the version, so a browser fetches
+    the card anew whenever the file changed, even without a new version number
+    (a copied file, a development build).
+    """
+    return {
+        card: hashlib.sha256((folder / card).read_bytes()).hexdigest()[:10]
+        for card in FRONTEND_CARDS
+    }
 
 
 async def _integration_version(hass: HomeAssistant) -> str:
